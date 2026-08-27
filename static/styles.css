@@ -3520,37 +3520,6 @@ html[data-theme="dark"] .bank-choice-logo{background:#fff!important;border-color
 .adm-vnote-v1070{font-size:11px;color:#c22f2f;background:#fff0f0;border-radius:12px;padding:9px 11px;margin:10px 0 0}
 .adm-vcard-v1070 .adm-vbtns-v1070{margin-top:11px}
 
-/* --- букмекеры --- */
-.adm-glob-v1070{padding:14px;margin-bottom:11px}
-.adm-glob-v1070 h3{font-size:14px;margin:0 0 10px}
-.adm-grow-v1070{min-height:52px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #f0f3f4;padding:7px 0}
-.adm-grow-v1070:first-of-type{border-top:0}
-.adm-grow-v1070>span{min-width:0}
-.adm-grow-v1070 b{display:block;font-size:12.5px}
-.adm-grow-v1070 small{display:block;font-size:10px;color:#8b98a2;margin-top:2px}
-.adm-ghint-v1070{font-size:10.5px;color:#7d8a94;margin:11px 0 0;line-height:1.45;background:#f6f8f9;border-radius:12px;padding:9px 11px}
-.adm-bkcard-v1070{padding:13px;margin-bottom:9px}
-.adm-bkhead-v1070{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:11px;align-items:center;margin-bottom:6px}
-.adm-bkhead-v1070 img{width:40px;height:40px;border-radius:12px;object-fit:contain;background:#f4f7f8}
-.adm-bkhead-v1070 b{display:block;font-size:14px}
-.adm-bkhead-v1070 small{display:block;font-size:10px;color:#8b98a2;margin-top:2px}
-.adm-bkstate-v1070{font-style:normal;font-size:9px;font-weight:800;padding:4px 8px;border-radius:9px}
-.adm-bkstate-v1070.on{background:#e7fbf1;color:#079160}
-.adm-bkstate-v1070.off{background:#f1f4f6;color:#8b98a2}
-.adm-lim-v1070{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:11px}
-.adm-lim-v1070 label{display:block}
-.adm-lim-v1070 small{display:block;font-size:9px;color:#8b98a2;margin-bottom:4px;font-weight:700}
-.adm-lim-v1070 input{width:100%;height:42px;border:1px solid #dfe6ea;background:#f8fafb;border-radius:12px;padding:0 10px;outline:none;font-size:12.5px;font-weight:700}
-.adm-bksave-v1070{width:100%;min-height:44px;margin-top:11px;border-radius:13px;background:linear-gradient(135deg,#347af5,#1769ed);color:#fff;font-size:11.5px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:7px;box-shadow:0 7px 16px rgba(23,105,237,.2)}
-
-/* --- рассылка по сайту --- */
-.adm-bcmode-v1070{display:grid;grid-template-columns:1fr 1fr;gap:5px;background:#eceff1;border-radius:14px;padding:4px;margin-bottom:9px}
-.adm-bcmode-v1070 button{min-height:38px;border-radius:11px;font-size:11.5px;font-weight:750;color:#5b6873}
-.adm-bcmode-v1070 button.active{background:var(--blue);color:#fff;box-shadow:0 4px 11px rgba(23,105,237,.2)}
-.adm-bctarget-v1070{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:9px}
-.adm-bctarget-v1070 button{padding:8px 11px;border-radius:11px;background:#f1f4f6;border:1px solid #e4eaed;font-size:10.5px;color:#5b6873}
-.adm-bctarget-v1070 button.active{background:#e9f1ff;border-color:#bcd6ff;color:var(--blue);font-weight:750}
-
 /* --- чат сайта --- */
 .adm-staffhead-v1070{display:flex;align-items:center;justify-content:space-between;margin:16px 2px 9px}
 .adm-staffhead-v1070 h3{font-size:15px;margin:0}
@@ -3627,3 +3596,82 @@ html[data-theme="dark"] .bank-choice-logo{background:#fff!important;border-color
 .adm-ss-bkrow-v1070 small.dep{background:#e8faf2;color:#07865b}
 .adm-ss-bkrow-v1070 small.wd{background:#fff0f0;color:#c72d2d}
 .adm-ss-bkrow-v1070 span{color:#8b98a2;text-align:right}
+
+/* ===== Управление LUXON 10.71 ===== */
+.lux-h-v1071{font-size:12px;font-weight:800;color:#8b98a2;text-transform:uppercase;letter-spacing:.5px;margin:20px 2px 8px}
+.lux-h-v1071.danger{color:var(--red)}
+.lux-lab-v1071{display:block;font-size:10px;font-weight:800;color:#8b98a2;text-transform:uppercase;letter-spacing:.4px;margin:0 0 7px}
+.lux-lab-v1071+.adm-bctarget-v1070,.lux-lab-v1071+textarea{margin-bottom:12px}
+
+/* хаб */
+.lux-tiles-v1071{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:9px}
+.lux-tile-v1071{padding:11px 5px;text-align:center}
+.lux-tile-v1071 b{display:block;font-size:19px;font-weight:850;letter-spacing:-.4px}
+.lux-tile-v1071 small{display:block;font-size:8.5px;color:#8b98a2;margin-top:2px}
+.lux-tile-v1071.on b{color:var(--green)}
+.lux-tile-v1071.warn b{color:#e29200}
+.lux-tile-v1071.bad b{color:var(--red)}
+.lux-money-v1071{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;padding:13px;margin-bottom:14px}
+.lux-money-v1071 small{display:block;font-size:8.5px;color:#8b98a2}
+.lux-money-v1071 b{display:block;font-size:14px;font-weight:850;margin-top:4px;letter-spacing:-.3px}
+.lux-money-v1071 b.dep{color:var(--green)}
+.lux-money-v1071 b.wd{color:var(--red)}
+.lux-money-v1071 em{display:block;font-style:normal;font-size:9px;color:#98a4ad;margin-top:3px}
+.lux-menu-v1071{display:flex;flex-direction:column;gap:8px}
+.lux-row-v1071{width:100%;padding:13px;display:grid;grid-template-columns:44px minmax(0,1fr) auto auto;gap:12px;align-items:center;text-align:left;color:#8b98a2;transition:transform .15s}
+.lux-row-v1071:active{transform:scale(.987)}
+.lux-ico-v1071{width:44px;height:44px;border-radius:14px;display:grid;place-items:center}
+.lux-ico-v1071.blue{background:#e8f1ff;color:var(--blue)}
+.lux-ico-v1071.green{background:#e8faef;color:#0aaf69}
+.lux-ico-v1071.orange{background:#fff2e2;color:#e07b00}
+.lux-ico-v1071.teal{background:#e2f7f3;color:#0a9a86}
+.lux-ico-v1071.cyan{background:#e3f7fb;color:#0d8ba8}
+.lux-ico-v1071.violet{background:#f2ebff;color:#7b45de}
+.lux-copy-v1071 b{display:block;font-size:14px;color:var(--ink)}
+.lux-copy-v1071 small{display:block;font-size:10.5px;color:#8b98a2;margin-top:3px}
+.lux-badge-v1071{font-style:normal;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:#e07b00;color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center}
+
+/* карточка клиента */
+.lux-uhead-v1071{display:grid;grid-template-columns:60px 1fr;gap:13px;align-items:center;padding:14px}
+.lux-uhead-v1071.blocked{border-color:#ffd7d7;background:#fffafa}
+.lux-uhead-v1071 b{display:block;font-size:18px;letter-spacing:-.3px}
+.lux-uhead-v1071>div>small{display:block;font-size:11.5px;color:#7d8a94;margin-top:2px}
+.lux-flags-v1071{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.lux-flags-v1071 i{font-style:normal;font-size:9px;font-weight:800;padding:3px 7px;border-radius:8px}
+.lux-flags-v1071 i.ok{background:#e7fbf1;color:#079160}
+.lux-flags-v1071 i.warn{background:#fff3d8;color:#b07800}
+.lux-flags-v1071 i.bad{background:#ffeded;color:#c22f2f}
+.lux-flags-v1071 i.role{background:#e9f1ff;color:var(--blue)}
+.lux-blockline-v1071{font-size:11px;color:#c22f2f;background:#fff0f0;border-radius:12px;padding:9px 12px;margin-top:8px}
+.lux-block-v1071{padding:4px 14px 14px}
+.lux-note-v1071{width:100%;min-height:74px;border:1px solid #dfe6ea;background:#fff;border-radius:15px;padding:11px 12px;outline:none;font-size:12px;resize:vertical}
+.lux-note-v1071:focus{border-color:#9bc0ff;box-shadow:0 0 0 3px rgba(23,105,237,.08)}
+.lux-card-v1071 .adm-ubal-v1070,.lux-card-v1071 .adm-ustats-v1070{margin-bottom:0}
+.lux-card-v1071 .adm-ustats-v1070{margin-top:9px}
+.lux-card-v1071 .adm-btn-v1070.wide{margin-top:9px}
+
+/* IP под кодом */
+.ip-hid-v1071{color:#a8b2ba!important;letter-spacing:.5px}
+.ip-open-v1071{color:var(--blue)!important;font-weight:700}
+.lux-ipgate-v1071{margin-top:9px;padding:13px}
+.lux-ipgate-v1071>span{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#6d7a84;margin-bottom:10px}
+.lux-ipgate-v1071>div{display:grid;grid-template-columns:1fr auto;gap:8px}
+.lux-ipgate-v1071 input{height:44px;border:1px solid #dfe6ea;background:#f8fafb;border-radius:13px;padding:0 13px;outline:none;font-size:16px;font-weight:750;letter-spacing:3px}
+.lux-ipgate-v1071 input:focus{border-color:#9bc0ff;box-shadow:0 0 0 3px rgba(23,105,237,.08)}
+.lux-ipgate-v1071 button{padding:0 18px;height:44px;border-radius:13px;background:var(--blue);color:#fff;font-size:11.5px;font-weight:800}
+.lux-ipgate-v1071 button:disabled{opacity:.5}
+.lux-iphide-v1071{display:inline-flex;align-items:center;gap:6px;margin-top:9px;padding:8px 12px;border-radius:11px;background:#f1f4f6;font-size:11px;font-weight:750;color:#5b6873}
+
+/* удаление */
+.lux-danger-v1071{padding:14px;border-color:#ffd7d7}
+.lux-danger-v1071 p{font-size:11px;color:#7d8a94;margin:0 0 11px;line-height:1.45}
+.lux-danger-v1071 button{width:100%;min-height:46px;border-radius:14px;background:linear-gradient(135deg,#f05252,#d02222);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 7px 16px rgba(223,45,45,.2)}
+
+/* рассылка сайта */
+.lux-mailbox-v1071{padding:14px}
+.lux-mailbox-v1071 .broadcast-textarea-v1030{margin-bottom:10px}
+
+@media(max-width:380px){
+ .lux-tiles-v1071{grid-template-columns:1fr 1fr}
+ .lux-money-v1071{grid-template-columns:1fr;gap:11px}
+}

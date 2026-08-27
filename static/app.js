@@ -29,7 +29,7 @@ function Skeleton(p){var n=p&&p.page==='stats'?4:5;return h('section',{className
 function Status(p){var c=clsStatus({status:p.value,raw_status:p.raw});return h('span',{className:'status '+c},h('i'),labelStatus(p.raw||p.value));}
 (function(){var css='.tx-attn-v1044{display:block;grid-column:1/-1;width:100%;min-width:0;flex-basis:100%;box-sizing:border-box;margin-top:8px;padding:6px 10px;border-radius:10px;background:#fdecec;color:#b42323;text-align:left;line-height:1.25}.tx-attn-v1044 b{display:block;font-size:12.5px;font-weight:700}.tx-attn-v1044 small{display:block;font-size:11.5px;color:#8a2a2a;opacity:.9;word-break:break-word}.card.tx-card.v9-tx{flex-wrap:wrap}.swipe-forward-underlay.defer-v1044{background:linear-gradient(90deg,#f0a53a,#e0871d)}';var st=document.createElement('style');st.textContent=css;document.head.appendChild(st);})();
 (function(){var css='.tx-flow{overflow:hidden;display:flex;align-items:center;justify-content:center}.tx-flow-arrow-v1044{display:block;stroke:#fff;stroke-width:3;will-change:transform;animation:txArrowDown-v1044 1.7s cubic-bezier(.45,0,.35,1) infinite}.tx-flow.withdraw .tx-flow-arrow-v1044{animation-name:txArrowUp-v1044}@keyframes txArrowDown-v1044{0%{transform:translateY(-90%);opacity:0}25%{opacity:1}50%{transform:translateY(0);opacity:1}75%{opacity:1}100%{transform:translateY(90%);opacity:0}}@keyframes txArrowUp-v1044{0%{transform:translateY(90%);opacity:0}25%{opacity:1}50%{transform:translateY(0);opacity:1}75%{opacity:1}100%{transform:translateY(-90%);opacity:0}}@media (prefers-reduced-motion:reduce){.tx-flow-arrow-v1044{animation:none}}';var st=document.createElement('style');st.textContent=css;document.head.appendChild(st);})();
-var APP_VERSION='10.70.0';
+var APP_VERSION='10.71.0';
 (function(){var css='.cash-alerts-v1044{position:fixed;left:10px;right:10px;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:9000;display:flex;flex-direction:column;gap:8px;pointer-events:none}.cash-alert-v1044{pointer-events:auto;display:flex;align-items:center;gap:12px;padding:12px 12px 12px 14px;border-radius:16px;color:#fff;box-shadow:0 10px 30px rgba(0,0,0,.22);background:linear-gradient(135deg,#f0a53a,#d97a12);animation:cashIn-v1044 .35s cubic-bezier(.2,.8,.2,1)}.cash-alert-v1044.critical{background:linear-gradient(135deg,#e5484d,#b81f2a)}.cash-alert-v1044 .ca-ic{flex:0 0 40px;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.22)}.cash-alert-v1044.critical .ca-ic{animation:cashPulse-v1044 1.2s ease-in-out infinite}.cash-alert-v1044 .ca-body{flex:1;min-width:0;line-height:1.25}.cash-alert-v1044 .ca-body b{display:block;font-size:14px;font-weight:800}.cash-alert-v1044 .ca-body small{display:block;font-size:12px;opacity:.92;margin-top:2px}.cash-alert-v1044 .ca-x{flex:0 0 36px;width:36px;height:36px;border-radius:50%;border:0;background:rgba(0,0,0,.18);color:#fff;display:flex;align-items:center;justify-content:center}@keyframes cashIn-v1044{from{transform:translateY(-16px);opacity:0}to{transform:none;opacity:1}}@keyframes cashPulse-v1044{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}.update-bar-v1044{pointer-events:auto;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:#1f2937;color:#fff;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.2)}.update-bar-v1044 button{margin-left:auto;border:0;border-radius:10px;padding:7px 12px;background:#3b82f6;color:#fff;font-weight:700}.tx-peek-v1044{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;margin-left:6px;background:#eef2f7;color:#4b5563;vertical-align:middle}.tx-peek-v1044:active{background:#dbe4f0}.tx-copy-v9 em{display:inline-flex;align-items:center}.peek-v1044 .pk-title{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}.pk-title .pk-sep{font-style:normal;color:#c3cad4;font-weight:400}.pk-title .pk-status{font-size:13px;font-weight:800;padding:3px 9px;border-radius:999px;background:#eef2f7;color:#374151}.pk-title .pk-status.st-success{background:#e3f6ea;color:#12783b}.pk-title .pk-status.st-pending{background:#fff3d6;color:#9a6200}.pk-title .pk-status.st-problem,.pk-title .pk-status.st-rejected,.pk-title .pk-status.st-expired{background:#fdecec;color:#b42323}.peek-v1044 .pk-head{display:flex;align-items:center;gap:12px;margin-bottom:10px}.peek-v1044 .pk-head.with-qr{align-items:flex-start;gap:12px}.peek-v1044 .pk-headtext{flex:1;min-width:0}.peek-v1044 .pk-head strong{font-size:22px;display:block;letter-spacing:-.3px}.peek-v1044 .pk-head.with-qr strong{font-size:19px}.peek-v1044 .pk-head strong.deposit{color:#14a44d}.peek-v1044 .pk-head strong.withdraw{color:#d4262e}.peek-v1044 .pk-qr{flex:0 0 auto;border:0;background:#fff;border-radius:16px;padding:6px;box-shadow:0 4px 16px rgba(0,0,0,.14);display:flex;flex-direction:column;align-items:center;gap:3px;animation:pkPop .3s cubic-bezier(.2,.8,.2,1)}.peek-v1044 .pk-qr img{width:min(44vw,180px);height:min(44vw,180px);border-radius:10px;object-fit:contain;background:#fff}.peek-v1044 .pk-qr em{font-style:normal;font-size:10.5px;color:#4b5563;font-weight:600}.peek-v1044 .pk-client{margin-top:8px;border-radius:14px;background:linear-gradient(135deg,#f5f7fa,#eef2f7);padding:10px;opacity:.7;transition:opacity .25s}.peek-v1044 .pk-client.ready{opacity:1}.peek-v1044 .pk-cname{display:flex;align-items:center;gap:6px;font-size:13.5px;margin-bottom:8px;color:#1f2937;min-width:0}.peek-v1044 .pk-cname b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.peek-v1044 .pk-cname small{color:#6b7280;font-size:12px}.peek-v1044 .pk-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}.peek-v1044 .pk-stat{border-radius:12px;background:#fff;padding:8px 9px;min-height:54px;display:flex;flex-direction:column;gap:2px;animation:pkFade .35s ease}.peek-v1044 .pk-stat span{display:flex;align-items:center;gap:4px;font-size:11px;color:#6b7280}.peek-v1044 .pk-stat b{font-size:17px;line-height:1.1}.peek-v1044 .pk-stat em{font-style:normal;font-size:11.5px;font-weight:700}.peek-v1044 .pk-stat.dep b,.peek-v1044 .pk-stat.dep em{color:#14a44d}.peek-v1044 .pk-stat.wd b,.peek-v1044 .pk-stat.wd em{color:#d4262e}.peek-v1044 .pk-stats.skel .pk-stat{background:linear-gradient(90deg,#f1f4f8 25%,#e6ebf1 50%,#f1f4f8 75%);background-size:200% 100%;animation:pkShimmer 1.1s linear infinite}.peek-v1044 .pk-flag{margin-top:8px;display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#b42323;font-weight:700}.peek-v1044 .pk-web{margin-top:8px;border-top:1px solid #e6eaf0;padding-top:8px}.peek-v1044 .pk-webrow{display:flex;align-items:center;gap:6px;font-size:12px;color:#4b5563}.peek-v1044 .pk-web small{display:block;margin-top:4px;font-size:12px;color:#6b7280}.peek-v1044 .pk-verify{margin-top:6px;display:flex;flex-wrap:wrap;align-items:center;gap:8px}.peek-v1044 .pk-verify img{width:44px;height:44px;border-radius:10px;object-fit:cover}.peek-v1044 .pk-verify b{font-size:12.5px;color:#9a6200}.peek-v1044 .pk-vbtns{display:flex;gap:6px;width:100%}.peek-v1044 .pk-vbtns button{flex:1;border:0;border-radius:10px;padding:8px;font-weight:700;font-size:12.5px}.peek-v1044 .pk-vbtns .ok{background:#16a34a;color:#fff}.peek-v1044 .pk-vbtns .no{background:#fdecec;color:#b42323}.peek-v1044 .pk-note{display:flex;gap:8px;align-items:flex-start;border-radius:12px;background:#fff8e1;color:#7a5200;padding:9px 11px;margin-bottom:10px;font-size:13px;line-height:1.3}.peek-v1044 .pk-note svg{flex:0 0 auto;margin-top:1px}.peek-v1044 .pk-rows{border-radius:14px;background:#f5f7fa;padding:2px 12px;margin-bottom:10px}.peek-v1044 .pk-row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #e6eaf0;font-size:13px}.peek-v1044 .pk-row:last-child{border-bottom:0}.peek-v1044 .pk-row span{color:#6b7280;flex:0 0 auto}.peek-v1044 .pk-row b{text-align:right;word-break:break-all;display:inline-flex;align-items:center;gap:5px}.peek-v1044 .pk-row.copyable b svg{color:#9ca3af}.peek-v1044 .pk-row.copyable:active{opacity:.6}.peek-v1044 .pk-attn{border-radius:12px;background:#fdecec;color:#b42323;padding:10px 12px;margin-bottom:10px;font-size:13px;line-height:1.3}.peek-v1044 .pk-attn b{display:block;margin-bottom:2px}.peek-v1044 .pk-main{width:100%;border:0;border-radius:14px;padding:13px;font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px}.peek-v1044 .pk-paid{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;box-shadow:0 6px 16px rgba(22,163,74,.28)}.peek-v1044 .pk-main:disabled{opacity:.6}.peek-v1044 .pk-actions{display:flex;gap:8px}.peek-v1044 .pk-btn{flex:1;border:0;border-radius:12px;padding:10px 6px;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;background:#eef2f7;color:#1f2937;cursor:pointer;transition:transform .12s,background .15s}.peek-v1044 .pk-btn.on{background:#dbe4f0}.peek-v1044 .pk-btn.busy{opacity:.6}.peek-v1044 .pk-btn.pk-open{background:#2563eb;color:#fff}.peek-v1044 .pk-chooser{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;animation:pkDrop .22s cubic-bezier(.2,.8,.2,1)}.peek-v1044 .pk-choice{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;background:#fff;border:1.5px dashed #c7d2e0;color:#1f2937;font-weight:700;font-size:13.5px;cursor:pointer}.peek-v1044 .pk-choice:active{background:#f1f5f9}.peek-v1044 .pk-chat{width:100%;margin-top:8px;border:0;border-radius:12px;padding:11px;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;gap:8px;background:#e8f0ff;color:#1d4ed8}.peek-v1044 .pk-reject{width:100%;margin-top:6px;border:0;background:transparent;color:#b42323;font-weight:700;font-size:13px;padding:8px}@keyframes pkPop{from{transform:scale(.92);opacity:0}to{transform:none;opacity:1}}@keyframes pkFade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}@keyframes pkShimmer{from{background-position:200% 0}to{background-position:-200% 0}}@keyframes pkDrop{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}.card.tx-card.v9-tx{animation:cardIn-v1045 .22s ease}@keyframes cardIn-v1045{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}button,.pk-choice,.tx-peek-v1044{-webkit-tap-highlight-color:transparent}button:not(:disabled):active,.tx-peek-v1044:active,.pk-choice:active{transform:scale(.965)}.tx-peek-v1044{transition:transform .14s,background .15s}.tx-attn-v1044{animation:cardIn-v1045 .3s ease both}.cash-alert-v1044 .ca-x:active{transform:scale(.9)}.app-stage.edge-swiping>main.mobile-shell{transform:translate3d(var(--edge-x,0),0,0)!important;transition:none;box-shadow:-12px 0 24px rgba(0,0,0,.14)}.app-stage>main.mobile-shell{transition:transform .22s cubic-bezier(.2,.8,.2,1)}@media (prefers-reduced-motion:reduce){.card.tx-card.v9-tx,.tx-attn-v1044,.pk-qr,.pk-stat,.pk-chooser{animation:none!important}}';var st=document.createElement('style');st.textContent=css;document.head.appendChild(st);})();
 function TxCard(p){var tx=p.tx,dep=tx.kind==='deposit',missingWithdraw=!dep&&!(Number(txMoney(tx))>0),isWithdrawProblem=!dep&&String(tx.status||'').toLowerCase()==='problem',amountText=missingWithdraw?(isWithdrawProblem?'Вывод не выполнен':'Сумма не получена'):(dep?'+':'−')+money(txMoney(tx));return h('button',{className:'card tx-card v9-tx',onClick:function(){p.open(tx);}},h('span',{className:'tx-logo-wrap'},h(Logo),h('i',{className:'tx-flow '+tx.kind},h(Icon,{name:dep?'arrowDown':'arrowUp',size:15,className:'tx-flow-arrow-v1044'}))),h('span',{className:'tx-copy-v9'},h('b',null,tx.telegram_name||'Клиент'),h('small',null,'ID: '+(tx.account_id||tx.bookmaker_id||'—')),h('em',null,'# '+(tx.request_no||tx.request_id||tx.id),h('span',{className:'tx-peek-v1044',role:'button','aria-label':'Быстрый просмотр',onClick:function(ev){ev.stopPropagation();ev.preventDefault();try{window.dispatchEvent(new CustomEvent('luxon-peek',{detail:tx}));}catch(_){}},onTouchEnd:function(ev){ev.stopPropagation();}},h(Icon,{name:'peek',size:16})))),h('span',{className:'tx-right-v9'},h('time',null,tx.display_time||fmtDate(tx.created_at)),h('strong',{className:tx.kind+(missingWithdraw?' missing-amount-v1017':'')},amountText),h(Status,{value:tx.status,raw:tx.raw_status})),tx.attention?h('span',{className:'tx-attn-v1044'},h('b',null,tx.attention),tx.attention_reason?h('small',null,tx.attention_reason):null):null);
 }
@@ -187,7 +187,7 @@ class SwipeForwardCard extends React.Component{
 }
 
 class App extends React.Component{
- constructor(){super();var saved={},prefs={enabled:false,chatSound:true,transactionSound:true};try{saved=JSON.parse(localStorage.getItem('luxon-v1029-route')||'{}');}catch(_){}try{prefs=Object.assign(prefs,JSON.parse(localStorage.getItem('luxon-notify-prefs')||'{}'));}catch(_){}this.admUsersSeq=0;this.state={checking:true,authed:false,password:'',loginError:'',data:null,page:['home','history','chats','search','menu'].indexOf(saved.page)>=0?saved.page:'home',stack:[],loadingPage:false,homeTab:saved.homeTab||'actual',homePage:1,historyTab:saved.historyTab||'all',historyPage:1,historyFilterOpen:false,historyStatus:'all',historySite:'all',historyFrom:'',historyTo:'',historyId:'',historyExact:'',historyMin:'',historyMax:'',historyOperator:false,historyNoChoice:false,selectedTx:saved.selectedTx||null,detailPage:1,qrTab:'generated',chatTab:'open',chatKind:'all',chatSearch:'',chatPage:1,chatId:saved.chatId||null,chatDraft:'',chatReply:null,chatCase:null,chatCases:[],clientId:saved.clientId||null,clientPage:1,search:{q:'',kind:'all',status:'all',site:'all'},searchPage:1,modal:null,modalData:null,toast:'',admUsers:[],admUsersQ:'',admUsersFilter:'all',admUsersCounts:{},admUsersOffset:0,admUsersMore:false,admUsersTotal:0,admUsersLoading:false,admVerify:[],admVerifyTab:'pending',admVerifyCounts:{},admVerifyLoading:false,admBk:[],admBkWallets:[],admBkGlobal:{},admBkDraft:{},admBkLoading:false,admChat:[],admStaff:[],admChatLoading:false,admBcTarget:'all',admBcMode:'tg',admBcHistory:[],admBusy:false,siteStats:null,settingsDraft:null,settingsTabRef:'main',settingsDirtyRef:false,walletDraft:{name:'',source:'',enabled:true,bank_type:'optima',email:'',mail_password:''},walletFile:null,walletLogoFile:null,noteDraft:'',noteTarget:null,supportBlockReason:'',quickDraft:{title:'',text:''},broadcastText:'',broadcastBot:'main',broadcastPhotoFile:null,broadcastPhotoPreview:'',broadcastBusy:false,chatLoading:false,pull:0,pulling:false,dragging:null,refreshing:false,actionBusy:false,qrPreparingTx:'',qrPrepError:'',statsFrom:isoDay(new Date()),statsTo:isoDay(new Date()),statsFiltered:null,statsLoading:false,statsCalendarMonth:isoDay(new Date()).slice(0,7),providerLimits:null,providerLimitsLoading:false,statement:null,statementLoading:false,statementError:'',statementFrom:isoDay(new Date()),statementTo:isoDay(new Date()),statementTimeFrom:'',statementTimeTo:'',statementMin:'',statementMax:'',statementQuery:'',statementPage:1,gatewayDraft:{name:'',login:'',password:'',code:'',enabled:true},gatewayBusy:false,notifyPrefs:prefs,notificationPrompt:false,pageLoading:false,pageHasMore:false,pageOffset:0,pageTotal:0,homeCounts:{actual:0,deferred:0},chatCounts:{open:0,closed:0,deposit_open:0,withdraw_open:0,deposit_closed:0,withdraw_closed:0},chatLastId:0,toastType:'info',pageError:'',cashAlerts:[],updateAvailable:false,edgeX:0,peekBusy:false,clientTransactions:[],clientTxClientId:'',clientTxLoading:false,clientTxError:'',clientTxOffset:0,clientTxHasMore:false,clientTxTotal:0,clientProfile:null,aiSupportSettings:null,aiKb:[],aiLogs:[],aiToday:{total:0,replied:0,handed:0},aiLoading:false,aiSaving:false,aiKeyDraft:'',aiKbDraft:{id:null,title:'',hints:'',answer_ru:'',answer_kg:'',enabled:true}};this.poll=null;this.toastTimer=null;this.pullStartY=0;this.scrollRestore=Number(saved.scrollY||0);this.audioCtx=null;this.lastProviderLimitsLoad=0;this.lastStatementLoad=0;this.statementBusy=false;this.liveBusy=false;this.routeSeq=0;this.txSeq=0;this.chatListSeq=0;this.chatOpenSeq=0;this.statsSeq=0;this.clientTxSeq=0;this.clientTxCache={};this.chatDeltaBusy={};this.pageCache={home:[],history:[],search:[],chats:[],mail:[]};this.pageCacheKey={home:'',history:'',search:'',chats:'',mail:''};}
+ constructor(){super();var saved={},prefs={enabled:false,chatSound:true,transactionSound:true};try{saved=JSON.parse(localStorage.getItem('luxon-v1029-route')||'{}');}catch(_){}try{prefs=Object.assign(prefs,JSON.parse(localStorage.getItem('luxon-notify-prefs')||'{}'));}catch(_){}this.admUsersSeq=0;this.state={checking:true,authed:false,password:'',loginError:'',data:null,page:['home','history','chats','search','menu'].indexOf(saved.page)>=0?saved.page:'home',stack:[],loadingPage:false,homeTab:saved.homeTab||'actual',homePage:1,historyTab:saved.historyTab||'all',historyPage:1,historyFilterOpen:false,historyStatus:'all',historySite:'all',historyFrom:'',historyTo:'',historyId:'',historyExact:'',historyMin:'',historyMax:'',historyOperator:false,historyNoChoice:false,selectedTx:saved.selectedTx||null,detailPage:1,qrTab:'generated',chatTab:'open',chatKind:'all',chatSearch:'',chatPage:1,chatId:saved.chatId||null,chatDraft:'',chatReply:null,chatCase:null,chatCases:[],clientId:saved.clientId||null,clientPage:1,search:{q:'',kind:'all',status:'all',site:'all'},searchPage:1,modal:null,modalData:null,toast:'',admUsers:[],admUsersQ:'',admUsersFilter:'all',admUsersCounts:{},admUsersOffset:0,admUsersMore:false,admUsersTotal:0,admUsersLoading:false,admVerify:[],admVerifyTab:'pending',admVerifyCounts:{},admVerifyLoading:false,admChat:[],admStaff:[],admChatLoading:false,admBcTarget:'all',admBcHistory:[],admBusy:false,siteStats:null,admUid:null,admCard:null,admCardLoading:false,admIps:null,admIpCode:'',siteBcText:'',siteBcFile:null,siteBcPreview:'',settingsDraft:null,settingsTabRef:'main',settingsDirtyRef:false,walletDraft:{name:'',source:'',enabled:true,bank_type:'optima',email:'',mail_password:''},walletFile:null,walletLogoFile:null,noteDraft:'',noteTarget:null,supportBlockReason:'',quickDraft:{title:'',text:''},broadcastText:'',broadcastBot:'main',broadcastPhotoFile:null,broadcastPhotoPreview:'',broadcastBusy:false,chatLoading:false,pull:0,pulling:false,dragging:null,refreshing:false,actionBusy:false,qrPreparingTx:'',qrPrepError:'',statsFrom:isoDay(new Date()),statsTo:isoDay(new Date()),statsFiltered:null,statsLoading:false,statsCalendarMonth:isoDay(new Date()).slice(0,7),providerLimits:null,providerLimitsLoading:false,statement:null,statementLoading:false,statementError:'',statementFrom:isoDay(new Date()),statementTo:isoDay(new Date()),statementTimeFrom:'',statementTimeTo:'',statementMin:'',statementMax:'',statementQuery:'',statementPage:1,gatewayDraft:{name:'',login:'',password:'',code:'',enabled:true},gatewayBusy:false,notifyPrefs:prefs,notificationPrompt:false,pageLoading:false,pageHasMore:false,pageOffset:0,pageTotal:0,homeCounts:{actual:0,deferred:0},chatCounts:{open:0,closed:0,deposit_open:0,withdraw_open:0,deposit_closed:0,withdraw_closed:0},chatLastId:0,toastType:'info',pageError:'',cashAlerts:[],updateAvailable:false,edgeX:0,peekBusy:false,clientTransactions:[],clientTxClientId:'',clientTxLoading:false,clientTxError:'',clientTxOffset:0,clientTxHasMore:false,clientTxTotal:0,clientProfile:null,aiSupportSettings:null,aiKb:[],aiLogs:[],aiToday:{total:0,replied:0,handed:0},aiLoading:false,aiSaving:false,aiKeyDraft:'',aiKbDraft:{id:null,title:'',hints:'',answer_ru:'',answer_kg:'',enabled:true}};this.poll=null;this.toastTimer=null;this.pullStartY=0;this.scrollRestore=Number(saved.scrollY||0);this.audioCtx=null;this.lastProviderLimitsLoad=0;this.lastStatementLoad=0;this.statementBusy=false;this.liveBusy=false;this.routeSeq=0;this.txSeq=0;this.chatListSeq=0;this.chatOpenSeq=0;this.statsSeq=0;this.clientTxSeq=0;this.clientTxCache={};this.chatDeltaBusy={};this.pageCache={home:[],history:[],search:[],chats:[],mail:[]};this.pageCacheKey={home:'',history:'',search:'',chats:'',mail:''};}
  componentDidMount(){var self=this;api('/api/session').then(function(r){self.setState({checking:false,authed:!!r.authenticated},function(){if(r.authenticated)self.load().then(function(){if(typeof Notification!=='undefined'&&Notification.permission==='default')self.setState({notificationPrompt:true});});});}).catch(function(){self.setState({checking:false});});this.onScroll=function(){clearTimeout(self.scrollTimer);self.scrollTimer=setTimeout(function(){self.persist();self.maybeLoadMore();},90);};window.addEventListener('scroll',this.onScroll,{passive:true});}
  componentWillUnmount(){clearInterval(this.poll);window.removeEventListener('scroll',this.onScroll);}
  componentDidUpdate(prev,st){if(st.page!==this.state.page||st.selectedTx!==this.state.selectedTx||st.chatId!==this.state.chatId)this.persist();if(this.state.page==='chatThread'&&this.state.chatId){var prevMsgs=((st.data||{}).messages||{})[this.state.chatId]||[],nowMsgs=((this.state.data||{}).messages||{})[this.state.chatId]||[],openedNow=st.page!=='chatThread'||st.chatId!==this.state.chatId||(st.chatLoading&&!this.state.chatLoading);if(openedNow){this.scrollChatBottom(true);}else if(nowMsgs.length!==prevMsgs.length){this.scrollChatBottom(false);}}}
@@ -195,7 +195,7 @@ class App extends React.Component{
  persist(){try{localStorage.setItem('luxon-v1029-route',JSON.stringify({page:this.state.page,selectedTx:this.state.selectedTx,chatId:this.state.chatId,clientId:this.state.clientId,homeTab:this.state.homeTab,scrollY:window.scrollY||0}));}catch(_){}}
  startPoll(){var self=this;clearInterval(this.poll);if(!this._peekBound){this._peekBound=true;window.addEventListener('luxon-peek',function(ev){var tx=ev.detail;self.setState({modal:'txPeek',modalData:{tx:tx,client:null,chooser:false}});if(tx&&tx.client_id){api('/api/ui/clients/'+encodeURIComponent(tx.client_id)+'/summary',{timeout:8000,retries:0}).then(function(r){self.setState(function(st){if(st.modal!=='txPeek'||!st.modalData||String((st.modalData.tx||{}).id)!==String(tx.id))return null;return {modalData:Object.assign({},st.modalData,{client:r})};});}).catch(function(){});}});}this.poll=setInterval(function(){if(document.hidden||!self.state.authed)return;var p=self.state.page,now=Date.now();if(now-Number(self.lastAlertsPoll||0)>=30000){self.lastAlertsPoll=now;self.pollAlerts();}if(p==='chatThread'&&self.state.chatId){if(now-Number(self.lastChatDeltaPoll||0)>=420){self.lastChatDeltaPoll=now;self.loadChatDelta();}return;}if(p==='home'){if(now-Number(self.lastHomePoll||0)>=1400){self.lastHomePoll=now;self.pollHomeRevision();}return;}if(p==='chats'){if(now-Number(self.lastChatListPoll||0)>=2400&&Number(self.state.pageOffset||0)<=10){self.lastChatListPoll=now;self.loadChats(true,true);}return;}if(p==='mail'){if(now-Number(self.lastMailPoll||0)>=3500){self.lastMailPoll=now;self.loadBroadcastHistory(true);}return;}},220);}
  load(){var self=this;return api('/api/ui/bootstrap?_='+Date.now()).then(function(d){d=normalize(d);self.setState({data:d,settingsDraft:JSON.parse(JSON.stringify(d.settings||{})),pull:0,pulling:false},function(){self.startPoll();self.loadRouteData(true);if(self.scrollRestore){var y=self.scrollRestore;self.scrollRestore=0;setTimeout(function(){window.scrollTo(0,y);},60);}});return d;}).catch(function(err){if(err.auth)self.setState({authed:false,data:null});else self.toast(err.message,'error');throw err;});}
- loadRouteData(reset){var self=this,p=this.state.page;if(p==='home')return this.loadHome(reset!==false,true);if(p==='history')return this.loadHistory(reset!==false,true);if(p==='chats')return this.loadChats(reset!==false,true);if(p==='search')return this.loadSearch(reset!==false,true);if(p==='chatThread'&&this.state.chatId)return this.loadChatThread(false,false);if(p==='stats'){setTimeout(function(){if(self.state.page==='stats')self.loadProviderLimits(true);},120);this.loadSiteStats(true);return this.loadStats(true);}if(p==='mail'){this.loadSiteBroadcasts(true);return this.loadBroadcastHistory(true);}if(['users','verify','bookmakers','sitechat'].indexOf(p)>=0)return this.admLoad(p,false);if(p==='statement')return this.loadStatement(false,true);if(p==='ai')return this.loadAiSupport(true);if(p==='client'&&this.state.clientId)return this.loadClientTransactions(this.state.clientId,true,true);if(p==='detail'){var tx=this.currentTx();if(tx&&tx.client_id)return this.loadClientTransactions(tx.client_id,true,true);}return Promise.resolve();}
+ loadRouteData(reset){var self=this,p=this.state.page;if(p==='home')return this.loadHome(reset!==false,true);if(p==='history')return this.loadHistory(reset!==false,true);if(p==='chats')return this.loadChats(reset!==false,true);if(p==='search')return this.loadSearch(reset!==false,true);if(p==='chatThread'&&this.state.chatId)return this.loadChatThread(false,false);if(p==='stats'){setTimeout(function(){if(self.state.page==='stats')self.loadProviderLimits(true);},120);return this.loadStats(true);}if(p==='mail')return this.loadBroadcastHistory(true);if(p==='lux'||p==='luxStats')return this.loadSiteStats(false);if(p==='luxMail')return this.loadSiteBroadcasts(true);if(p==='userCard')return this.loadAdmCard(false);if(['users','verify','sitechat'].indexOf(p)>=0)return this.admLoad(p,false);if(p==='statement')return this.loadStatement(false,true);if(p==='ai')return this.loadAiSupport(true);if(p==='client'&&this.state.clientId)return this.loadClientTransactions(this.state.clientId,true,true);if(p==='detail'){var tx=this.currentTx();if(tx&&tx.client_id)return this.loadClientTransactions(tx.client_id,true,true);}return Promise.resolve();}
  mergeTransactions(items,replace){var incoming=Array.isArray(items)?items:[];this.setState(function(st){if(!st.data)return null;var d=Object.assign({},st.data),arr=replace?[]:(d.transactions||[]).slice(),by={};arr.forEach(function(x){by[String(x.id)]=x;});incoming.forEach(function(x){by[String(x.id)]=x;});d.transactions=Object.keys(by).map(function(k){return by[k];}).sort(function(a,b){return String(b.created_at||'').localeCompare(String(a.created_at||''));});return {data:d};});}
  txQuery(view,reset,silent,extra){var self=this,requestPage=this.state.page,seq=++this.txSeq,params=Object.assign({view:view,offset:reset?0:Number(this.state.pageOffset||0),limit:10},extra||{}),cacheKey=view+'|'+JSON.stringify(extra||{}),cached=(this.pageCacheKey[view]===cacheKey?(this.pageCache[view]||[]):[]),offset=reset?0:Number(this.state.pageOffset||0),qs;params.offset=offset;qs=Object.keys(params).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(params[k]==null?'':params[k]);}).join('&');if(this.state.pageLoading&&!reset)return Promise.resolve();if(reset){this.setState(function(st){if(!st.data)return {pageLoading:cached.length===0,pageError:'',pageOffset:0};var d=Object.assign({},st.data);d.transactions=cached.slice();return {data:d,pageLoading:cached.length===0,pageError:'',pageOffset:0,pageHasMore:false};});}else if(!silent)this.setState({pageLoading:true,pageError:''});return api('/api/ui/transactions?'+qs+'&_='+Date.now(),{timeout:5500,retries:1}).then(function(r){if(seq!==self.txSeq||self.state.page!==requestPage)return r;var incoming=Array.isArray(r.items)?r.items:[],arr=reset?[]:(self.pageCacheKey[view]===cacheKey?(self.pageCache[view]||[]).slice():[]),by={};arr.forEach(function(x){by[String(x.id)]=x;});incoming.forEach(function(x){by[String(x.id)]=x;});arr=Object.keys(by).map(function(k){return by[k];}).sort(function(a,b){return String(b.created_at||'').localeCompare(String(a.created_at||''));});self.pageCache[view]=arr;self.pageCacheKey[view]=cacheKey;self.setState(function(st){if(!st.data||seq!==self.txSeq||st.page!==requestPage)return null;var d=Object.assign({},st.data);d.transactions=arr.slice();return {data:d,pageOffset:Number(r.offset||0)+incoming.length,pageHasMore:!!r.has_more,pageTotal:Number(r.total||0),pageLoading:false,pageError:'',homeCounts:r.counts||st.homeCounts};});return r;}).catch(function(err){if(seq!==self.txSeq||self.state.page!==requestPage)return;self.setState({pageLoading:false,pageError:err.message||'Не удалось получить данные'});if(!silent&&!err.network)self.toast(err.message,'error');});}
  loadHome(reset,silent){return this.txQuery('home',reset,silent,{tab:this.state.homeTab});}
@@ -481,8 +481,7 @@ renderDetail(){var self=this,tx=this.currentTx();if(!tx)return h('section',{clas
 
  renderMenu(){
  var self=this,rows=[
-  ['users','user','Пользователи','blue'],['verify','shield','Идентификация','orange'],
-  ['bookmakers','bank','Букмекеры','green'],['sitechat','chat','Чат сайта','cyan'],
+  ['lux','shield','Управление LUXON','green'],
   ['stats','stats','Статистика','blue'],['wallet','wallet','Кошельки','green'],
   ['statement','calendar','Выписка','violet'],['paygateway','shield','Платежка Optima','purple'],
   ['mail','send','Рассылка','cyan'],['device','shield','Безопасность','teal'],
@@ -507,7 +506,6 @@ renderDetail(){var self=this,tx=this.currentTx();if(!tx)return h('section',{clas
    h('div',{className:'stats-period-caption-ref-v1029'},period==='day'?'Сегодня • 00:00—сейчас':period==='all'?'За всё время':fmtDay(this.state.statsFrom)+' — '+fmtDay(this.state.statsTo||this.state.statsFrom)),
    h('div',{className:'stats-hero-ref-v1029'},h('small',null,'ПРИБЛИЗИТЕЛЬНЫЙ ДОХОД'),h('strong',null,money(income)+' с'),h('em',null,'~ '+approxUsd+' $'),h('div',{className:'stats-hero-bottom-ref-v1029'},h('div',null,h('span',null,'Выведено наличных'),h('b',null,money(s.cash_withdrawn||s.withdrawals_sum||0)+' с')),h('div',null,h('span',null,'Суммарный лимит'),h('b',null,money(totalLimit)+' с')))),
    h('div',{className:'stats-pair-ref-v1029'},h('div',{className:'card stats-mini-ref-v1029 deposit'},h('i',null,'↗'),h('small',null,'Пополнения'),h('b',null,money(s.deposits_sum||0)+' с'),h('em',null,(s.deposits_count||0)+' транзакций')),h('div',{className:'card stats-mini-ref-v1029 withdraw'},h('i',null,'↙'),h('small',null,'Выводы'),h('b',null,money(s.withdrawals_sum||0)+' с'),h('em',null,(s.withdrawals_count||0)+' транзакций'))),
-   this.renderSiteStatsBlock(),
    h('div',{className:'card limits-ref-v1029'},h('div',{className:'limits-title-ref-v1029'},h(Icon,{name:'terminal',size:19}),h('b',null,'ЛИМИТЫ ШЛЮЗОВ'),h('button',{onClick:function(){self.loadProviderLimits(false,true);}},h(Icon,{name:'refresh',size:16}))),limits.length?limits.map(function(row){var key=String(row.bookmaker||'').toLowerCase();return h('div',{className:'limit-row-ref-v1029',key:key},h('span',null,BK_LABELS[key]||String(row.label||key).toUpperCase()),h('b',null,row.limit==null?'—':money(row.limit)+' с'));}):h('div',{className:'limit-row-ref-v1029'},h('span',null,'Данные лимитов'),h('b',null,'—')),oneWinBalance?h('div',{className:'onewin-ref-v1029'},h(Icon,{name:'wallet',size:17}),h('span',null,'Баланс вывода 1win'),h('b',null,money(oneWinBalance)+' с')):null),
    h('div',{className:'stats-section-label-ref-v1029'},'РАЗБИВКА ПО ШЛЮЗАМ'),
    ps.length?h('div',{className:'stats-platforms-ref-v1029'},ps.map(function(p){var key=String(p.name||'').toLowerCase();return h('div',{className:'card platform-ref-v1029',key:key},h('div',{className:'platform-head-ref-v1029'},h('b',null,BK_LABELS[key]||key.toUpperCase()),h('em',null,'Доход: '+money(p.income||0)+' с')),h('div',{className:'platform-grid-ref-v1029'},h('div',null,h('small',null,'Ввод'),h('b',null,money(p.deposits||0)+' с'),h('span',null,(p.deposits_count||0)+' операций')),h('div',null,h('small',null,'Вывод'),h('b',null,money(p.withdrawals||0)+' с'),h('span',null,(p.withdrawals_count||0)+' операций'))),h('div',{className:'platform-foot-ref-v1029'},h('span',null,'Начисления:'),h('b',null,money(p.income||0)+' с')));})) : h(Empty,{title:'За выбранный период операций нет'})
@@ -560,15 +558,13 @@ renderDetail(){var self=this,tx=this.currentTx();if(!tx)return h('section',{clas
     h(Header,{title:'Рассылка',back:function(){self.back();}}),
     h('div',{className:'card broadcast-compose-v1030'},
       h('div',{className:'broadcast-compose-head-v1030'},h('div',null,h('b',null,'Новое сообщение'),h('small',null,'Фотография — необязательно'))),
-      h('div',{className:'adm-bcmode-v1070'},h('button',{className:this.state.admBcMode!=='site'?'active':'',onClick:function(){self.setState({admBcMode:'tg'});}},'Телеграм-бот'),h('button',{className:this.state.admBcMode==='site'?'active':'',onClick:function(){self.setState({admBcMode:'site'});}},'Сайт LUXON')),
-      this.state.admBcMode==='site'?h('div',{className:'adm-bctarget-v1070'},[['all','Всем'],['verified','Верифицированным'],['unverified','Без верификации'],['active','Активным за 7 дней'],['balance','С балансом']].map(function(t){return h('button',{key:t[0],className:self.state.admBcTarget===t[0]?'active':'',onClick:function(){self.setState({admBcTarget:t[0]});}},t[1]);})):h('div',{className:'broadcast-bot-tabs-v1030'},h('button',{className:this.state.broadcastBot==='main'?'active':'',onClick:function(){self.setState({broadcastBot:'main'});}},'Основной бот'),h('button',{className:this.state.broadcastBot==='support'?'active':'',onClick:function(){self.setState({broadcastBot:'support'});}},'Поддержка')),
+      h('div',{className:'broadcast-bot-tabs-v1030'},h('button',{className:this.state.broadcastBot==='main'?'active':'',onClick:function(){self.setState({broadcastBot:'main'});}},'Основной бот'),h('button',{className:this.state.broadcastBot==='support'?'active':'',onClick:function(){self.setState({broadcastBot:'support'});}},'Поддержка')),
       h('textarea',{className:'broadcast-textarea-v1030',placeholder:'Текст сообщения',value:this.state.broadcastText,maxLength:4096,onChange:function(ev){self.setState({broadcastText:ev.target.value});}}),
       preview?h('div',{className:'broadcast-photo-preview-v1030'},h('img',{src:preview,alt:'Фото рассылки'}),h('button',{type:'button',onClick:removePhoto},h(Icon,{name:'close',size:18}))):h('label',{className:'broadcast-photo-add-v1030'},h(Icon,{name:'image',size:20}),h('span',null,h('b',null,'Прикрепить фотографию'),h('small',null,'PNG, JPG или WEBP')),h('input',{type:'file',accept:'image/png,image/jpeg,image/webp',hidden:true,onChange:pickPhoto})),
-      h('button',{className:'broadcast-send-v1030',disabled:this.state.broadcastBusy||(!this.state.broadcastText.trim()&&!this.state.broadcastPhotoFile),onClick:function(){if(self.state.admBcMode==='site')self.admSiteBroadcast();else self.broadcast();}},h(Icon,{name:'send',size:18}),this.state.broadcastBusy?'Подготовка…':(this.state.admBcMode==='site'?'Отправить на сайт':'Отправить рассылку'))
+      h('button',{className:'broadcast-send-v1030',disabled:this.state.broadcastBusy||(!this.state.broadcastText.trim()&&!this.state.broadcastPhotoFile),onClick:function(){self.broadcast();}},h(Icon,{name:'send',size:18}),this.state.broadcastBusy?'Подготовка…':'Отправить рассылку')
     ),
-    this.state.admBcMode==='site'?h('div',null,h('div',{className:'broadcast-history-head-v1030'},h('h3',null,'Рассылки по сайту'),h('span',null,(this.state.admBcHistory||[]).length)),(this.state.admBcHistory||[]).length?h('div',{className:'broadcast-history-v1030'},(this.state.admBcHistory||[]).map(function(b){return h('div',{className:'card broadcast-item-v1030',key:b.id},h('div',{className:'broadcast-item-top-v1030'},h('span',{className:'broadcast-state-icon-v1030 completed'},h(Icon,{name:'check',size:18})),h('div',{className:'broadcast-item-copy-v1030'},h('b',null,'Сайт • '+(b.target==='all'?'всем':b.target)),h('small',{className:'completed'},'Доставлено '+Number(b.total||0)+' пользователям'))),h('p',null,b.text||'—'),h('time',null,fmtDate(b.created_at)));})):h(Empty,{title:'Рассылок по сайту ещё не было'})):null,
-    this.state.admBcMode==='site'?null:h('div',{className:'broadcast-history-head-v1030'},h('h3',null,'Отправленные рассылки'),h('span',null,items.length)),
-    this.state.admBcMode==='site'?null:items.length?h('div',{className:'broadcast-history-v1030'},items.map(function(b){var done=Number(b.delivered||b.sent||0),total=Number(b.total||0),failed=Number(b.failed||0),status=String(b.status||'queued'),line=status==='completed'&&failed===0?'Успешно отправлено '+done+' пользователям':status==='running'?'Отправлено '+done+' из '+total:status==='completed'?'Отправлено '+done+' • ошибок '+failed:status==='failed'?'Рассылка не выполнена':'Готовится к отправке';return h('div',{className:'card broadcast-item-v1030',key:b.id},h('div',{className:'broadcast-item-top-v1030'},h('span',{className:'broadcast-state-icon-v1030 '+status},h(Icon,{name:status==='completed'?'check':status==='failed'?'close':'send',size:18})),h('div',{className:'broadcast-item-copy-v1030'},h('b',null,b.bot==='support'?'Поддержка':'Основной бот'),h('small',{className:status},line)),h('button',{className:'broadcast-eye-v1030',onClick:function(){self.setState({modal:'broadcastView',modalData:b});}},h(Icon,{name:'eye',size:19}))),h('p',null,b.text||'Сообщение с фотографией'),b.photo_url?h('span',{className:'broadcast-has-photo-v1030'},h(Icon,{name:'image',size:15}),'Есть фотография'):null,h('time',null,fmtDate(b.created_at)));})):h(Empty,{title:'Рассылок ещё нет',text:'После отправки здесь появится история.'})
+    h('div',{className:'broadcast-history-head-v1030'},h('h3',null,'Отправленные рассылки'),h('span',null,items.length)),
+    items.length?h('div',{className:'broadcast-history-v1030'},items.map(function(b){var done=Number(b.delivered||b.sent||0),total=Number(b.total||0),failed=Number(b.failed||0),status=String(b.status||'queued'),line=status==='completed'&&failed===0?'Успешно отправлено '+done+' пользователям':status==='running'?'Отправлено '+done+' из '+total:status==='completed'?'Отправлено '+done+' • ошибок '+failed:status==='failed'?'Рассылка не выполнена':'Готовится к отправке';return h('div',{className:'card broadcast-item-v1030',key:b.id},h('div',{className:'broadcast-item-top-v1030'},h('span',{className:'broadcast-state-icon-v1030 '+status},h(Icon,{name:status==='completed'?'check':status==='failed'?'close':'send',size:18})),h('div',{className:'broadcast-item-copy-v1030'},h('b',null,b.bot==='support'?'Поддержка':'Основной бот'),h('small',{className:status},line)),h('button',{className:'broadcast-eye-v1030',onClick:function(){self.setState({modal:'broadcastView',modalData:b});}},h(Icon,{name:'eye',size:19}))),h('p',null,b.text||'Сообщение с фотографией'),b.photo_url?h('span',{className:'broadcast-has-photo-v1030'},h(Icon,{name:'image',size:15}),'Есть фотография'):null,h('time',null,fmtDate(b.created_at)));})):h(Empty,{title:'Рассылок ещё нет',text:'После отправки здесь появится история.'})
   );
  }
  renderQuick(){var self=this,items=this.state.data.quick_replies||[];return h('section',{className:'screen quick-screen',onPointerMove:function(ev){self.quickMove(ev);},onPointerUp:function(){self.quickEnd();},onTouchMove:function(ev){self.quickMove(ev);},onTouchEnd:function(){self.quickEnd();}},h(Header,{title:'Быстрые ответы',back:function(){self.back();},right:h('button',{className:'header-btn primary-head',onClick:function(){self.setState({modal:'quickAdd'});}},h(Icon,{name:'plus',size:19}))}),h('div',{className:'hint-card'},h(Icon,{name:'grip',size:18}),h('span',null,'Зажмите ручку и перемещайте ответ вверх или вниз.')),items.map(function(q){return h('div',{className:'card quick-card '+(self.state.dragging===q.id?'dragging':''),key:q.id,'data-qid':q.id},h('button',{className:'drag-handle',onPointerDown:function(ev){self.quickStart(q.id,ev);},onTouchStart:function(ev){self.quickStart(q.id,ev);}},h(Icon,{name:'grip',size:22})),h('div',{className:'quick-copy'},h('b',null,q.title),h('p',null,q.text)),h('button',{className:'mini-icon-btn danger',onClick:function(){self.quickDelete(q.id);}},h(Icon,{name:'trash',size:16})));}));}
@@ -636,53 +632,20 @@ renderDetail(){var self=this,tx=this.currentTx();if(!tx)return h('section',{clas
  renderAlerts(){var self=this,list=this.state.cashAlerts||[],upd=this.state.updateAvailable;if(!list.length&&!upd)return null;return h('div',{className:'cash-alerts-v1044'},upd?h('div',{className:'update-bar-v1044'},h(Icon,{name:'refresh',size:16}),h('span',null,'Вышло обновление админки'),h('button',{type:'button',onClick:function(){window.location.reload();}},'Обновить')):null,list.map(function(a){return h('div',{className:'cash-alert-v1044 '+(a.level||'low'),key:a.id},h('span',{className:'ca-ic'},h(Icon,{name:a.level==='critical'?'close':'wallet',size:20})),h('div',{className:'ca-body'},h('b',null,a.title),h('small',null,a.text)),h('button',{className:'ca-x',type:'button','aria-label':'Закрыть',onClick:function(){self.dismissAlert(a.id);}},h(Icon,{name:'close',size:18})));}));}
  renderModal(){
   var self=this,m=this.state.modal;if(!m)return null;
-  if(m==='admUser'){var md=this.state.modalData||{},u=md.user||{},txs=md.transactions||[],blog=md.balance_log||[],sess=md.sessions||[],audit=md.audit||[];
-   var roleNames={user:'Пользователь',support:'Поддержка',operator:'Оператор чата',admin:'Администратор'};
-   var close=function(cb){self.setState({modal:null,modalData:null},cb);};
-   if(md.loading)return h(Sheet,{title:'Профиль',ratio:.9,close:function(){close();}},h('div',{className:'adm-sheet-v1070'},h(RouteLoader)));
-   var rows=[['Почта',u.email||'—',true],['Телефон',u.phone||'Не указан',!!u.phone],['ID на сайте',String(u.id),true],['Telegram chat_id',u.chat_id?String(u.chat_id):'—',!!u.chat_id],['Регистрация',u.created_at?fmtDate(u.created_at):'—',false],['Последний вход',u.last_login?fmtDate(u.last_login):'—',false],['Был(а) в сети',u.online?'сейчас в сети':(u.last_seen?fmtDate(u.last_seen):'—'),false]];
-   return h(Sheet,{title:h('span',{className:'pk-title'},u.name||'Профиль',h('i',{className:'pk-sep'},' • '),h('span',{className:'pk-status st-'+(u.blocked?'rejected':u.online?'success':'off')},u.blocked?'заблокирован':(u.online?'в сети':'офлайн'))),ratio:.92,close:function(){close();}},
+  if(m==='admDelete'){var mdl=this.state.modalData||{},okName=String(mdl.code||'').length>=4;
+   return h(Sheet,{title:'Удалить аккаунт',ratio:.6,close:function(){self.setState({modal:null,modalData:null});}},
     h('div',{className:'adm-sheet-v1070'},
-     h('div',{className:'adm-uhero-v1070'},h('span',{className:'adm-av-v1070 big'},h(ClientAvatar,{name:u.name,url:u.avatar_url}),u.online?h('i',{className:'adm-online-v1070'}):null),
-      h('div',null,h('b',null,u.name||'Без имени'),u.username?h('small',null,'@'+u.username):null,h('small',{className:'muted'},roleNames[u.role]||'Пользователь'))),
-     h('div',{className:'adm-ubal-v1070'},h('small',null,'БАЛАНС НА САЙТЕ'),h('strong',null,money(u.balance)+' сом'),
-      h('div',{className:'adm-ubalbtns-v1070'},
-       h('button',{className:'plus',onClick:function(){self.setState({modal:'admBalance',modalData:Object.assign({},md,{mode:'add',amount:'',note:''})});}},h(Icon,{name:'plus',size:16}),'Пополнить'),
-       h('button',{className:'minus',onClick:function(){self.setState({modal:'admBalance',modalData:Object.assign({},md,{mode:'sub',amount:'',note:''})});}},'−  Списать'),
-       h('button',{className:'set',onClick:function(){self.setState({modal:'admBalance',modalData:Object.assign({},md,{mode:'set',amount:String(Math.round(Number(u.balance||0))),note:''})});}},h(Icon,{name:'edit',size:15}),'Задать'))),
-     h('div',{className:'adm-ustats-v1070'},
-      h('span',null,h('b',null,Number(u.deposits_count||0)),h('small',null,'пополнений'),h('em',null,money(u.deposits_sum||0))),
-      h('span',null,h('b',null,Number(u.withdrawals_count||0)),h('small',null,'выводов'),h('em',null,money(u.withdrawals_sum||0))),
-      h('span',null,h('b',null,Number(u.pending_count||0)),h('small',null,'в работе'),h('em',null,Number(u.messages_count||0)+' сообщ.'))),
-     h('div',{className:'adm-urows-v1070'},rows.map(function(r){return h('div',{className:'adm-urow-v1070'+(r[2]?' copyable':''),key:r[0],onClick:function(){if(r[2])self.copy(r[1]);}},h('span',null,r[0]),h('b',null,r[1],r[2]?h(Icon,{name:'copy',size:13}):null));})),
-     h('h4',{className:'adm-sub-v1070'},'Идентификация'),
-     h('div',{className:'adm-ver-v1070 st-'+(u.verify_status||'none')},
-      u.verify_photo?h('button',{className:'adm-vthumb-v1070',onClick:function(){self.setState({modal:'image',modalData:{url:u.verify_photo,title:'Селфи • '+u.name}});}},h('img',{src:u.verify_photo,alt:''})):h('span',{className:'adm-vthumb-v1070 empty'},h(Icon,{name:'shield',size:22})),
-      h('div',null,h('b',null,u.verify_status==='approved'?'Подтверждён':u.verify_status==='pending'?'Ждёт проверки':u.verify_status==='rejected'?'Отклонён':'Не проходил'),u.verify_note?h('small',null,'Причина: '+u.verify_note):null,u.verify_at?h('small',{className:'muted'},fmtDate(u.verify_at)):null)),
-     h('div',{className:'adm-vbtns-v1070'},
-      u.verify_status!=='approved'?h('button',{className:'adm-btn-v1070 ok',disabled:this.state.admBusy,onClick:function(){self.admVerifySet(u.id,'approved','');}},h(Icon,{name:'check',size:16}),'Подтвердить'):null,
-      u.verify_status!=='rejected'?h('button',{className:'adm-btn-v1070 no',disabled:this.state.admBusy,onClick:function(){self.setState({modal:'admReject',modalData:{uid:u.id,name:u.name,reason:'',back:'admUser'}});}},h(Icon,{name:'close',size:16}),'Отклонить'):null),
-     h('h4',{className:'adm-sub-v1070'},'Доступ и роль'),
-     h('div',{className:'adm-grow-v1070'},h('span',null,h('b',null,u.blocked?'Заблокирован на сайте':'Доступ открыт'),h('small',null,u.blocked?(u.block_reason||'Вход и операции запрещены'):'Вход, чаты и заявки доступны')),
-      h(Switch,{on:!u.blocked,onClick:function(){if(u.blocked)self.admBlock(u.id,false,'');else self.setState({modal:'admBlock',modalData:{uid:u.id,name:u.name,reason:''}});}})),
-     h('label',{className:'adm-wsel-v1070'},h('small',null,'Роль в системе'),h('select',{value:u.role||'user',onChange:function(ev){self.admRole(u.id,ev.target.value);}},['user','support','operator','admin'].map(function(r){return h('option',{key:r,value:r},roleNames[r]);}))),
-     h('label',{className:'adm-note-v1070'},h('small',null,'Заметка администратора'),h('textarea',{defaultValue:u.admin_note||'',placeholder:'Видна только операторам',onBlur:function(ev){if(ev.target.value!==(u.admin_note||''))self.admNote(u.id,ev.target.value);}})),
-     u.chat_id?h('button',{className:'adm-btn-v1070 wide',onClick:function(){close(function(){self.openChat('tg-'+u.chat_id);});}},h(Icon,{name:'chat',size:17}),'Открыть чат с клиентом'):null,
-     h('h4',{className:'adm-sub-v1070'},'Последние заявки'),
-     txs.length?h('div',{className:'adm-txmini-v1070'},txs.slice(0,8).map(function(t){return h('button',{key:t.id,className:'adm-txrow-v1070 '+clsStatus(t),onClick:function(){close(function(){self.openTx(t);});}},
-      h('i',{className:t.kind},t.kind==='deposit'?'↗':'↙'),h('span',null,h('b',null,(t.kind==='deposit'?'+':'−')+money(txMoney(t))),h('small',null,String(t.site||'').toUpperCase()+' • '+labelStatus(t.raw_status||t.status))),h('small',{className:'adm-txtime-v1070'},t.display_time||fmtDate(t.created_at)));})):h('div',{className:'adm-empty-inline-v1070'},'Заявок ещё не было'),
-     h('h4',{className:'adm-sub-v1070'},'Движение баланса'),
-     blog.length?h('div',{className:'adm-blog-v1070'},blog.slice(0,10).map(function(b){return h('div',{key:b.id,className:'adm-blogrow-v1070'},h('b',{className:Number(b.delta)>=0?'up':'down'},(Number(b.delta)>=0?'+':'')+money(b.delta)),h('span',null,b.note||b.kind||'—'),h('small',null,fmtDate(b.created_at)));})):h('div',{className:'adm-empty-inline-v1070'},'Операций по балансу нет'),
-     sess.length?h('h4',{className:'adm-sub-v1070'},'Устройства'):null,
-     sess.length?h('div',{className:'adm-sess-v1070'},sess.slice(0,5).map(function(s,i){return h('div',{key:i,className:'adm-sessrow-v1070'},h(Icon,{name:'device',size:16}),h('span',null,h('b',null,s.device||'Устройство'),h('small',null,(s.ip||'—')+' • '+(s.last_seen?fmtDate(s.last_seen):'—'))));})):null,
-     audit.length?h('h4',{className:'adm-sub-v1070'},'История действий'):null,
-     audit.length?h('div',{className:'adm-audit-v1070'},audit.map(function(a,i){return h('div',{key:i},h('b',null,a.action),h('small',null,(a.detail?a.detail+' • ':'')+a.operator+' • '+fmtDate(a.created_at)));})):null
-    ));
+     h('p',{className:'adm-balwho-v1070'},mdl.name+' • '+(mdl.email||'')),
+     h('p',{className:'adm-warn-v1070'},'Аккаунт, чаты, контакты и сессии удалятся без возврата. Заявки и касса останутся.'),
+     h('label',{className:'adm-field-v1070'},h('small',null,'Код подтверждения'),h('input',{type:'tel',inputMode:'numeric',maxLength:8,autoFocus:true,placeholder:'Код',value:mdl.code||'',onChange:function(ev){self.setState({modalData:Object.assign({},mdl,{code:ev.target.value.replace(/\D/g,'')})});}})),
+     h('div',{className:'adm-sheetbtns-v1070'},
+      h('button',{className:'adm-btn-v1070 ghost',onClick:function(){self.setState({modal:null,modalData:null});}},'Отмена'),
+      h('button',{className:'adm-btn-v1070 no',disabled:!okName||this.state.admBusy,onClick:function(){self.admDeleteUser(mdl.uid,mdl.code);}},this.state.admBusy?'Удаляем…':'Удалить'))));
   }
   if(m==='admBalance'){var mb=this.state.modalData||{},bu=mb.user||{},mode=mb.mode||'add';
    var titles={add:'Пополнить баланс',sub:'Списать с баланса',set:'Задать баланс'};
    var apply=function(){var v=Number(String(mb.amount||'').replace(',','.'));if(!(v>0)){self.toast('Введите сумму','error');return;}self.admBalance(bu.id,mode,v,mb.note||'');};
-   return h(Sheet,{title:titles[mode],ratio:.62,close:function(){self.setState({modal:'admUser'});}},
+   return h(Sheet,{title:titles[mode],ratio:.62,close:function(){self.setState({modal:null,modalData:null});}},
     h('div',{className:'adm-sheet-v1070 adm-balsheet-v1070'},
      h('p',{className:'adm-balwho-v1070'},bu.name+' • сейчас '+money(bu.balance)+' сом'),
      h('div',{className:'adm-balmode-v1070'},[['add','Пополнить'],['sub','Списать'],['set','Задать']].map(function(t){return h('button',{key:t[0],className:mode===t[0]?'active '+t[0]:'',onClick:function(){self.setState({modalData:Object.assign({},mb,{mode:t[0]})});}},t[1]);})),
@@ -691,35 +654,35 @@ renderDetail(){var self=this,tx=this.currentTx();if(!tx)return h('section',{clas
      h('input',{className:'adm-balnote-v1070',placeholder:'Комментарий для клиента (необязательно)',value:mb.note||'',onChange:function(ev){self.setState({modalData:Object.assign({},mb,{note:ev.target.value})});}}),
      mode!=='set'?h('p',{className:'adm-balres-v1070'},'После операции: '+money(Number(bu.balance||0)+(mode==='add'?1:-1)*Number(String(mb.amount||0).replace(',','.')||0))+' сом'):null,
      h('div',{className:'adm-sheetbtns-v1070'},
-      h('button',{className:'adm-btn-v1070 ghost',onClick:function(){self.setState({modal:'admUser'});}},'Отмена'),
+      h('button',{className:'adm-btn-v1070 ghost',onClick:function(){self.setState({modal:null,modalData:null});}},'Отмена'),
       h('button',{className:'adm-btn-v1070 '+(mode==='sub'?'no':'ok'),disabled:this.state.admBusy,onClick:apply},this.state.admBusy?'Сохраняем…':titles[mode]))));
   }
   if(m==='admBlock'){var mk=this.state.modalData||{};
-   return h(Sheet,{title:'Блокировка доступа',ratio:.56,close:function(){self.setState({modal:'admUser'});}},
+   return h(Sheet,{title:'Блокировка доступа',ratio:.56,close:function(){self.setState({modal:null,modalData:null});}},
     h('div',{className:'adm-sheet-v1070'},
-     h('p',{className:'adm-balwho-v1070'},mk.name+' потеряет доступ к сайту, чатам и заявкам. Активные сессии будут завершены.'),
+     h('p',{className:'adm-balwho-v1070'},mk.name+' — вход и заявки закроются, сессии завершатся'),
      h('textarea',{className:'adm-reason-v1070',autoFocus:true,placeholder:'Причина блокировки (видна оператору)',value:mk.reason||'',onChange:function(ev){self.setState({modalData:Object.assign({},mk,{reason:ev.target.value})});}}),
      h('div',{className:'adm-sheetbtns-v1070'},
-      h('button',{className:'adm-btn-v1070 ghost',onClick:function(){self.setState({modal:'admUser'});}},'Отмена'),
-      h('button',{className:'adm-btn-v1070 no',disabled:this.state.admBusy,onClick:function(){self.admBlock(mk.uid,true,mk.reason||'').then(function(){self.setState({modal:'admUser'});});}},'Заблокировать'))));
+      h('button',{className:'adm-btn-v1070 ghost',onClick:function(){self.setState({modal:null,modalData:null});}},'Отмена'),
+      h('button',{className:'adm-btn-v1070 no',disabled:this.state.admBusy,onClick:function(){self.admBlock(mk.uid,true,mk.reason||'').then(function(){self.setState({modal:null,modalData:null});self.loadAdmCard(true);});}},'Заблокировать'))));
   }
   if(m==='admReject'){var mr=this.state.modalData||{},presets=['Фото нечёткое — лицо не видно','На фото несколько человек','Документ не совпадает с данными профиля','Истёк срок действия документа'];
-   var backTo=mr.back==='admUser'?'admUser':null;
+   var backTo=null;
    return h(Sheet,{title:'Отклонить идентификацию',ratio:.66,close:function(){if(backTo)self.setState({modal:backTo});else self.setState({modal:null,modalData:null});}},
     h('div',{className:'adm-sheet-v1070'},
-     h('p',{className:'adm-balwho-v1070'},mr.name+' получит уведомление с причиной и сможет отправить фото заново.'),
+     h('p',{className:'adm-balwho-v1070'},mr.name+' — причина уйдёт клиенту'),
      h('div',{className:'adm-presets-v1070'},presets.map(function(p){return h('button',{key:p,className:mr.reason===p?'active':'',onClick:function(){self.setState({modalData:Object.assign({},mr,{reason:p})});}},p);})),
      h('textarea',{className:'adm-reason-v1070',placeholder:'Причина отклонения',value:mr.reason||'',onChange:function(ev){self.setState({modalData:Object.assign({},mr,{reason:ev.target.value})});}}),
      h('div',{className:'adm-sheetbtns-v1070'},
       h('button',{className:'adm-btn-v1070 ghost',onClick:function(){if(backTo)self.setState({modal:backTo});else self.setState({modal:null,modalData:null});}},'Отмена'),
-      h('button',{className:'adm-btn-v1070 no',disabled:this.state.admBusy||!String(mr.reason||'').trim(),onClick:function(){self.admVerifySet(mr.uid,'rejected',mr.reason).then(function(){if(backTo)self.openAdmUser(mr.uid);else self.setState({modal:null,modalData:null});});}},'Отклонить'))));
+      h('button',{className:'adm-btn-v1070 no',disabled:this.state.admBusy||!String(mr.reason||'').trim(),onClick:function(){self.admVerifySet(mr.uid,'rejected',mr.reason).then(function(){self.setState({modal:null,modalData:null});self.loadAdmCard(true);});}},'Отклонить'))));
   }
   if(m==='txEdit'){var me=this.state.modalData||{},et=me.tx||{},ed=me.draft||{},bks=me.bookmakers||[];
    var setD=function(p){self.setState(function(st){var q=st.modalData||{};return {modalData:Object.assign({},q,{draft:Object.assign({},q.draft||{},p)})};});};
    var dirty=String(ed.player_id||'')!==String(et.account_id||et.bookmaker_id||'')||String(ed.bookmaker||'')!==String(et.site||'')||String(ed.amount||'')!==String(Math.round(Number(et.amount||0)));
    return h(Sheet,{title:'Изменить заявку # '+(et.request_no||et.id),ratio:.78,close:function(){self.setState({modal:null,modalData:null});}},
     h('div',{className:'adm-sheet-v1070'},
-     me.editable===false?h('p',{className:'adm-warn-v1070'},'Заявка уже закрыта — редактирование недоступно.'):h('p',{className:'adm-balwho-v1070'},'Клиент получит уведомление об изменениях. Для пополнения сумма к оплате и QR пересобираются автоматически.'),
+     me.editable===false?h('p',{className:'adm-warn-v1070'},'Заявка закрыта — правка недоступна'):null,
      h('label',{className:'adm-field-v1070'},h('small',null,'ID счёта игрока'),h('input',{value:ed.player_id||'',inputMode:'numeric',disabled:me.editable===false,onChange:function(ev){setD({player_id:ev.target.value});}})),
      h('label',{className:'adm-field-v1070'},h('small',null,'Сумма, сом'),h('input',{type:'number',inputMode:'numeric',value:ed.amount||'',disabled:me.editable===false,onChange:function(ev){setD({amount:ev.target.value});}})),
      h('label',{className:'adm-field-v1070'},h('small',null,'Букмекер'),h('select',{value:ed.bookmaker||'',disabled:me.editable===false,onChange:function(ev){setD({bookmaker:ev.target.value});}},bks.map(function(b){return h('option',{key:b.key,value:b.key},b.label);}))),
@@ -732,7 +695,7 @@ renderDetail(){var self=this,tx=this.currentTx();if(!tx)return h('section',{clas
   if(m==='txCancel'){var mc=this.state.modalData||{},ct=mc.tx||{},creasons=['Клиент передумал','Ошибка в реквизитах','Оплата не поступила','Дубликат заявки','Подозрение на мошенничество'];
    return h(Sheet,{title:'Отменить заявку # '+(ct.request_no||ct.id),ratio:.66,close:function(){self.setState({modal:null,modalData:null});}},
     h('div',{className:'adm-sheet-v1070'},
-     h('p',{className:'adm-balwho-v1070'},'Заявка получит статус «Отменено», клиенту уйдёт уведомление с причиной.'),
+     
      h('div',{className:'adm-presets-v1070'},creasons.map(function(p){return h('button',{key:p,className:mc.reason===p?'active':'',onClick:function(){self.setState({modalData:Object.assign({},mc,{reason:p})});}},p);})),
      h('textarea',{className:'adm-reason-v1070',placeholder:'Причина отмены',value:mc.reason||'',onChange:function(ev){self.setState({modalData:Object.assign({},mc,{reason:ev.target.value})});}}),
      h('div',{className:'adm-sheetbtns-v1070'},
@@ -811,47 +774,6 @@ renderDetail(){var self=this,tx=this.currentTx();if(!tx)return h('section',{clas
  }
 
  // ===== LUXON ADMIN 10.70: пользователи, идентификация, БК, чат сайта =====
- renderSiteStatsBlock(){var st=this.state.siteStats;if(!st||!st.ok)return null;
-  var u=st.users||{},site=st.site||{},dep=site.deposit||{},wd=site.withdraw||{},td=st.site_today||{},msg=st.messages||{},chart=st.chart||[],self=this;
-  var maxV=1;chart.forEach(function(d){maxV=Math.max(maxV,Number(d.deposit||0),Number(d.withdraw||0));});
-  return h('div',{className:'adm-sitestats-v1070'},
-   h('h3',{className:'adm-sechead-v1070'},'По сайту LUXON'),
-   h('div',{className:'card adm-ss-users-v1070'},
-    h('div',{className:'adm-ss-grid-v1070'},
-     h('span',null,h('b',null,Number(u.total||0)),h('small',null,'всего')),
-     h('span',{className:'on'},h('b',null,Number(u.online||0)),h('small',null,'онлайн')),
-     h('span',null,h('b',null,Number(u.active_today||0)),h('small',null,'сегодня')),
-     h('span',null,h('b',null,'+'+Number(u.new_today||0)),h('small',null,'новых'))),
-    h('div',{className:'adm-ss-grid-v1070'},
-     h('span',{className:'ok'},h('b',null,Number(u.verified||0)),h('small',null,'верифиц.')),
-     h('span',{className:'warn'},h('b',null,Number(u.pending_verify||0)),h('small',null,'на проверке')),
-     h('span',{className:'bad'},h('b',null,Number(u.blocked||0)),h('small',null,'в блоке')),
-     h('span',null,h('b',null,money(u.balance_total||0)),h('small',null,'на балансах')))),
-   h('div',{className:'stats-pair-ref-v1029'},
-    h('div',{className:'card stats-mini-ref-v1029 deposit'},h('i',null,'↗'),h('small',null,'Пополнения с сайта'),h('b',null,money(dep.sum||0)+' с'),h('em',null,(dep.count||0)+' шт • сегодня '+(((td.deposit||{}).count)||0))),
-    h('div',{className:'card stats-mini-ref-v1029 withdraw'},h('i',null,'↙'),h('small',null,'Выводы с сайта'),h('b',null,money(wd.sum||0)+' с'),h('em',null,(wd.count||0)+' шт • сегодня '+(((td.withdraw||{}).count)||0)))),
-   (Number(dep.pending||0)+Number(wd.pending||0)+Number(dep.problem||0)+Number(wd.problem||0))?h('div',{className:'card adm-ss-work-v1070'},
-    h('span',null,h('b',null,Number(dep.pending||0)+Number(wd.pending||0)),h('small',null,'в работе')),
-    h('span',{className:'bad'},h('b',null,Number(dep.problem||0)+Number(wd.problem||0)),h('small',null,'проблемных')),
-    h('span',null,h('b',null,Number(msg.dm_today||0)),h('small',null,'сообщений сегодня')),
-    h('span',null,h('b',null,Number(msg.dm_total||0)),h('small',null,'всего сообщений'))):null,
-   chart.length?h('div',{className:'card adm-ss-chart-v1070'},h('h4',null,'Обороты за 14 дней'),
-    h('div',{className:'adm-ss-bars-v1070'},chart.map(function(d){return h('div',{key:d.day,className:'adm-ss-bar-v1070',title:fmtDay(d.day)},
-     h('i',{className:'dep',style:{height:Math.round(Number(d.deposit||0)/maxV*100)+'%'}}),
-     h('i',{className:'wd',style:{height:Math.round(Number(d.withdraw||0)/maxV*100)+'%'}}));})),
-    h('div',{className:'adm-ss-legend-v1070'},h('span',null,h('i',{className:'dep'}),'пополнения'),h('span',null,h('i',{className:'wd'}),'выводы'))):null,
-   (st.top_users||[]).length?h('div',{className:'card adm-ss-top-v1070'},h('h4',null,'Топ клиентов сайта'),
-    (st.top_users||[]).map(function(t){return h('button',{key:t.id,className:'adm-ss-toprow-v1070',onClick:function(){self.openAdmUser(t.id);}},
-     h(ClientAvatar,{name:t.name,url:t.avatar_url,mini:true}),
-     h('span',null,h('b',null,t.name),h('small',null,(t.username?'@'+t.username+' • ':'')+Number(t.n||0)+' пополнений')),
-     h('strong',null,money(t.s||0)));})):null,
-   (st.by_bookmaker||[]).length?h('div',{className:'card adm-ss-bk-v1070'},h('h4',null,'По букмекерам'),
-    (st.by_bookmaker||[]).slice(0,12).map(function(b,i){return h('div',{key:i,className:'adm-ss-bkrow-v1070'},
-     h('b',null,String(b.bookmaker||'').toUpperCase()),
-     h('small',{className:b.kind==='deposit'?'dep':'wd'},b.kind==='deposit'?'пополнения':'выводы'),
-     h('span',null,Number(b.n||0)+' шт'),
-     h('strong',null,money(b.s||0)));})):null);
- }
  loadSiteStats(silent){var self=this;
   return api('/api/admin/site-stats?days=14',{timeout:12000,retries:1}).then(function(r){self.setState({siteStats:r});return r;})
    .catch(function(e){if(!silent)self.toast(e.message||'Статистика сайта недоступна','error');});
@@ -859,7 +781,6 @@ renderDetail(){var self=this,tx=this.currentTx();if(!tx)return h('section',{clas
  admLoad(page,silent){var self=this;
   if(page==='users')return this.loadAdmUsers(true,silent);
   if(page==='verify')return this.loadAdmVerify(silent);
-  if(page==='bookmakers')return this.loadAdmBk(silent);
   if(page==='sitechat')return this.loadAdmSiteChat(silent);
   return Promise.resolve();
  }
@@ -878,18 +799,19 @@ renderDetail(){var self=this,tx=this.currentTx();if(!tx)return h('section',{clas
   }).catch(function(e){self.toast(e.message||'Не удалось открыть профиль','error');self.setState({modal:null,modalData:null});});
  }
  admUserPatch(u){var self=this;this.setState(function(st){
-   var md=st.modalData&&st.modalData.user?Object.assign({},st.modalData,{user:Object.assign({},st.modalData.user,u)}):st.modalData;
-   var list=(st.admUsers||[]).map(function(x){return String(x.id)===String(u.id!=null?u.id:(md&&md.user&&md.user.id))?Object.assign({},x,u):x;});
-   var ver=(st.admVerify||[]).map(function(x){return String(x.id)===String(u.id!=null?u.id:(md&&md.user&&md.user.id))?Object.assign({},x,u):x;});
-   return {modalData:md,admUsers:list,admVerify:ver};
+   var id=u.id!=null?u.id:(st.admCard&&st.admCard.user&&st.admCard.user.id);
+   var card=(st.admCard&&st.admCard.user&&String(st.admCard.user.id)===String(id))?Object.assign({},st.admCard,{user:Object.assign({},st.admCard.user,u)}):st.admCard;
+   var list=(st.admUsers||[]).map(function(x){return String(x.id)===String(id)?Object.assign({},x,u):x;});
+   var ver=(st.admVerify||[]).map(function(x){return String(x.id)===String(id)?Object.assign({},x,u):x;});
+   return {admCard:card,admUsers:list,admVerify:ver};
   });
  }
  admBalance(uid,mode,amount,note){var self=this;this.setState({admBusy:true});
   return api('/api/admin/users/'+uid+'/balance',{method:'POST',body:{mode:mode,amount:amount,note:note||''},timeout:12000}).then(function(r){
    self.admUserPatch({id:uid,balance:r.balance});
    self.toast(mode==='sub'?'Списано с баланса':'Баланс обновлён','success');
-   self.openAdmUser(uid);return r;
-  }).catch(function(e){self.toast(e.message||'Не удалось изменить баланс','error');}).then(function(r){self.setState({admBusy:false,modal:'admUser'});return r;});
+   self.loadAdmCard(true);return r;
+  }).catch(function(e){self.toast(e.message||'Не удалось изменить баланс','error');}).then(function(r){self.setState({admBusy:false,modal:null,modalData:null});return r;});
  }
  admBlock(uid,blocked,reason){var self=this;this.setState({admBusy:true});
   return api('/api/admin/users/'+uid+'/block',{method:'POST',body:{blocked:blocked,reason:reason||''},timeout:12000}).then(function(r){
@@ -914,6 +836,7 @@ renderDetail(){var self=this,tx=this.currentTx();if(!tx)return h('section',{clas
    self.admUserPatch({id:uid,verify_status:r.verify_status,verify_note:r.verify_note||''});
    self.toast(status==='approved'?'Идентификация подтверждена':'Идентификация отклонена',status==='approved'?'success':'error');
    if(self.state.page==='verify')self.loadAdmVerify(true);
+   if(self.state.page==='userCard')self.loadAdmCard(true);
    self.loadAdmUsers(true,true);return r;
   }).catch(function(e){self.toast(e.message||'Не удалось изменить статус','error');}).then(function(r){self.setState({admBusy:false});return r;});
  }
@@ -921,22 +844,6 @@ renderDetail(){var self=this,tx=this.currentTx();if(!tx)return h('section',{clas
   return api('/api/admin/verifications?status='+encodeURIComponent(this.state.admVerifyTab||'pending'),{timeout:9000,retries:1}).then(function(r){
    self.setState({admVerify:r.items||[],admVerifyCounts:r.counts||{},admVerifyLoading:false,pageError:''});return r;
   }).catch(function(e){self.setState({admVerifyLoading:false,pageError:e.message||'Не удалось загрузить заявки'});});
- }
- loadAdmBk(silent){var self=this;if(!silent)this.setState({admBkLoading:true,pageError:''});
-  return api('/api/admin/bookmakers',{timeout:9000,retries:1}).then(function(r){
-   self.setState({admBk:r.items||[],admBkWallets:r.wallets||[],admBkGlobal:r.global||{},admBkLoading:false,pageError:''});return r;
-  }).catch(function(e){self.setState({admBkLoading:false,pageError:e.message||'Не удалось загрузить букмекеров'});});
- }
- admBkSave(key,patch,quiet){var self=this;
-  self.setState(function(st){return {admBk:(st.admBk||[]).map(function(x){return x.key===key?Object.assign({},x,patch):x;})};});
-  return api('/api/admin/bookmakers/'+encodeURIComponent(key),{method:'POST',body:patch,timeout:12000}).then(function(r){
-   if(!quiet)self.toast(key.toUpperCase()+': сохранено','success');return r;
-  }).catch(function(e){self.toast(e.message||'Не удалось сохранить','error');self.loadAdmBk(true);});
- }
- admBkGlobal(patch){var self=this;
-  self.setState(function(st){return {admBkGlobal:Object.assign({},st.admBkGlobal||{},patch)};});
-  return api('/api/admin/bookmakers-global',{method:'POST',body:patch,timeout:12000}).then(function(){self.toast('Применено','success');})
-   .catch(function(e){self.toast(e.message||'Не удалось применить','error');self.loadAdmBk(true);});
  }
  loadAdmSiteChat(silent){var self=this;if(!silent)this.setState({admChatLoading:true,pageError:''});
   return api('/api/admin/site-chat?limit=60',{timeout:9000,retries:1}).then(function(r){
@@ -949,7 +856,7 @@ renderDetail(){var self=this,tx=this.currentTx();if(!tx)return h('section',{clas
    self.loadAdmSiteChat(true);
   }).catch(function(e){self.toast(e.message||'Не удалось','error');});
  }
- admSiteBroadcast(){var self=this,text=String(this.state.broadcastText||'').trim(),file=this.state.broadcastPhotoFile;
+ admSiteBroadcast(){var self=this,text=String(this.state.siteBcText||'').trim(),file=this.state.siteBcFile;
   if(!text&&!file){this.toast('Введите текст рассылки','error');return;}
   this.setState({broadcastBusy:true});
   var photoStep=file?(function(){var fd=new FormData();fd.append('file',file);return api('/api/broadcasts/photo',{method:'POST',body:fd,timeout:60000}).then(function(r){return (r&&r.url)||'';});})():Promise.resolve('');
@@ -957,8 +864,8 @@ renderDetail(){var self=this,tx=this.currentTx();if(!tx)return h('section',{clas
    return api('/api/admin/broadcast/site',{method:'POST',body:{text:text,photo_url:url,target:self.state.admBcTarget||'all'},timeout:60000});
   }).then(function(r){
    self.toast('Отправлено '+r.sent+' пользователям сайта','send');
-   if(self.state.broadcastPhotoPreview)try{URL.revokeObjectURL(self.state.broadcastPhotoPreview);}catch(_){}
-   self.setState({broadcastText:'',broadcastPhotoFile:null,broadcastPhotoPreview:''});self.loadSiteBroadcasts(true);
+   if(self.state.siteBcPreview)try{URL.revokeObjectURL(self.state.siteBcPreview);}catch(_){}
+   self.setState({siteBcText:'',siteBcFile:null,siteBcPreview:''});self.loadSiteBroadcasts(true);
   }).catch(function(e){self.toast(e.message||'Рассылка не выполнена','error');}).then(function(){self.setState({broadcastBusy:false});});
  }
  loadSiteBroadcasts(silent){var self=this;
@@ -989,6 +896,193 @@ renderDetail(){var self=this,tx=this.currentTx();if(!tx)return h('section',{clas
   }).catch(function(e){self.toast(e.message||'Не удалось отменить','error');}).then(function(){self.setState({admBusy:false});});
  }
  // ---- экраны ----
+ // ===== Управление LUXON =====
+ loadAdmCard(silent){var self=this,uid=this.state.admUid;if(!uid)return Promise.resolve();
+  if(!silent)this.setState({admCardLoading:true,pageError:''});
+  return api('/api/admin/users/'+uid,{timeout:10000,retries:1}).then(function(r){
+   self.setState({admCard:r,admCardLoading:false,pageError:''});return r;
+  }).catch(function(e){self.setState({admCardLoading:false,pageError:e.message||'Не удалось открыть профиль'});});
+ }
+ openAdmUser(uid){this.navigate('userCard',{admUid:uid,admCard:null,admIps:null,admIpCode:''});}
+ admRevealIps(){var self=this,code=String(this.state.admIpCode||'').trim(),uid=this.state.admUid;
+  if(code.length<4){this.toast('Введите код','error');return;}
+  this.setState({admBusy:true});
+  api('/api/admin/users/'+uid+'/devices',{method:'POST',body:{code:code},timeout:10000}).then(function(r){
+   self.setState({admIps:r.items||[],admIpCode:''});self.toast('IP открыты','success');
+  }).catch(function(e){self.toast(e.message||'Неверный код','error');}).then(function(){self.setState({admBusy:false});});
+ }
+ admDeleteUser(uid,code){var self=this;this.setState({admBusy:true});
+  return api('/api/admin/users/'+uid+'?code='+encodeURIComponent(code),{method:'DELETE',timeout:20000}).then(function(){
+   self.toast('Аккаунт удалён','error');
+   self.setState({modal:null,modalData:null},function(){self.back();self.loadAdmUsers(true,true);});
+  }).catch(function(e){self.toast(e.message||'Не удалось удалить','error');}).then(function(){self.setState({admBusy:false});});
+ }
+ renderLuxHub(){var self=this,st=this.state.siteStats,u=(st&&st.users)||{},site=(st&&st.site)||{},dep=site.deposit||{},wd=site.withdraw||{};
+  var rows=[
+   ['luxStats','stats','Статистика сайта','Обороты, клиенты, графики','blue'],
+   ['users','user','Пользователи','Баланс, блокировка, роли','green'],
+   ['verify','shield','Идентификация','Проверка документов',Number(u.pending_verify||0)?'orange':'teal',Number(u.pending_verify||0)],
+   ['luxMail','send','Рассылка по сайту','Сообщение всем или по фильтру','cyan'],
+   ['sitechat','chat','Чат сайта','Модерация и админы чата','violet']
+  ];
+  return h('section',{className:'screen lux-hub-v1071'},
+   h(Header,{title:'Управление LUXON',back:function(){self.back();},right:h('button',{className:'header-btn',onClick:function(){self.loadSiteStats(false);}},h(Icon,{name:'refresh',size:18}))}),
+   h('div',{className:'lux-tiles-v1071'},
+    h('div',{className:'card lux-tile-v1071'},h('b',null,Number(u.total||0)),h('small',null,'клиентов')),
+    h('div',{className:'card lux-tile-v1071 on'},h('b',null,Number(u.online||0)),h('small',null,'онлайн')),
+    h('div',{className:'card lux-tile-v1071 warn'},h('b',null,Number(u.pending_verify||0)),h('small',null,'на проверке')),
+    h('div',{className:'card lux-tile-v1071 bad'},h('b',null,Number(u.blocked||0)),h('small',null,'в блоке'))),
+   h('div',{className:'card lux-money-v1071'},
+    h('div',null,h('small',null,'Пополнения с сайта'),h('b',{className:'dep'},money(dep.sum||0)+' с'),h('em',null,Number(dep.count||0)+' шт')),
+    h('div',null,h('small',null,'Выводы с сайта'),h('b',{className:'wd'},money(wd.sum||0)+' с'),h('em',null,Number(wd.count||0)+' шт')),
+    h('div',null,h('small',null,'На балансах'),h('b',null,money(u.balance_total||0)+' с'),h('em',null,Number(dep.pending||0)+Number(wd.pending||0)+' в работе'))),
+   h('div',{className:'lux-menu-v1071'},rows.map(function(r){return h('button',{key:r[0],className:'card lux-row-v1071',onClick:function(){self.navigate(r[0]);}},
+    h('span',{className:'lux-ico-v1071 '+r[4]},h(Icon,{name:r[1],size:20})),
+    h('span',{className:'lux-copy-v1071'},h('b',null,r[2]),h('small',null,r[3])),
+    r[5]?h('i',{className:'lux-badge-v1071'},r[5]):null,
+    h(Icon,{name:'chevron',size:18}));}))
+  );
+ }
+ renderLuxStats(){var self=this,st=this.state.siteStats;
+  if(!st||!st.ok)return h('section',{className:'screen'},h(Header,{title:'Статистика сайта',back:function(){self.back();}}),h(RouteLoader));
+  var u=st.users||{},site=st.site||{},dep=site.deposit||{},wd=site.withdraw||{},td=st.site_today||{},msg=st.messages||{},chart=st.chart||[];
+  var maxV=1;chart.forEach(function(d){maxV=Math.max(maxV,Number(d.deposit||0),Number(d.withdraw||0));});
+  return h('section',{className:'screen lux-stats-v1071'},
+   h(Header,{title:'Статистика сайта',back:function(){self.back();},right:h('button',{className:'header-btn',onClick:function(){self.loadSiteStats(false);}},h(Icon,{name:'refresh',size:18}))}),
+   h('h3',{className:'lux-h-v1071'},'Клиенты'),
+   h('div',{className:'card adm-ss-users-v1070'},
+    h('div',{className:'adm-ss-grid-v1070'},
+     h('span',null,h('b',null,Number(u.total||0)),h('small',null,'всего')),
+     h('span',{className:'on'},h('b',null,Number(u.online||0)),h('small',null,'онлайн')),
+     h('span',null,h('b',null,Number(u.active_today||0)),h('small',null,'сегодня')),
+     h('span',null,h('b',null,'+'+Number(u.new_today||0)),h('small',null,'новых'))),
+    h('div',{className:'adm-ss-grid-v1070'},
+     h('span',{className:'ok'},h('b',null,Number(u.verified||0)),h('small',null,'верифиц.')),
+     h('span',{className:'warn'},h('b',null,Number(u.pending_verify||0)),h('small',null,'на проверке')),
+     h('span',{className:'bad'},h('b',null,Number(u.blocked||0)),h('small',null,'в блоке')),
+     h('span',null,h('b',null,money(u.balance_total||0)),h('small',null,'на балансах')))),
+   h('h3',{className:'lux-h-v1071'},'Обороты'),
+   h('div',{className:'stats-pair-ref-v1029'},
+    h('div',{className:'card stats-mini-ref-v1029 deposit'},h('i',null,'↗'),h('small',null,'Пополнения'),h('b',null,money(dep.sum||0)+' с'),h('em',null,Number(dep.count||0)+' шт • сегодня '+Number((td.deposit||{}).count||0))),
+    h('div',{className:'card stats-mini-ref-v1029 withdraw'},h('i',null,'↙'),h('small',null,'Выводы'),h('b',null,money(wd.sum||0)+' с'),h('em',null,Number(wd.count||0)+' шт • сегодня '+Number((td.withdraw||{}).count||0)))),
+   h('div',{className:'card adm-ss-work-v1070'},
+    h('span',null,h('b',null,Number(dep.pending||0)+Number(wd.pending||0)),h('small',null,'в работе')),
+    h('span',{className:'bad'},h('b',null,Number(dep.problem||0)+Number(wd.problem||0)),h('small',null,'проблемных')),
+    h('span',null,h('b',null,Number(msg.dm_today||0)),h('small',null,'сообщений сегодня')),
+    h('span',null,h('b',null,Number(msg.dm_total||0)),h('small',null,'всего сообщений'))),
+   chart.length?h('div',{className:'card adm-ss-chart-v1070'},h('h4',null,'За 14 дней'),
+    h('div',{className:'adm-ss-bars-v1070'},chart.map(function(d){return h('div',{key:d.day,className:'adm-ss-bar-v1070',title:fmtDay(d.day)},
+     h('i',{className:'dep',style:{height:Math.round(Number(d.deposit||0)/maxV*100)+'%'}}),
+     h('i',{className:'wd',style:{height:Math.round(Number(d.withdraw||0)/maxV*100)+'%'}}));})),
+    h('div',{className:'adm-ss-legend-v1070'},h('span',null,h('i',{className:'dep'}),'пополнения'),h('span',null,h('i',{className:'wd'}),'выводы'))):null,
+   (st.top_users||[]).length?h('div',{className:'card adm-ss-top-v1070'},h('h4',null,'Топ клиентов'),
+    (st.top_users||[]).map(function(t){return h('button',{key:t.id,className:'adm-ss-toprow-v1070',onClick:function(){self.openAdmUser(t.id);}},
+     h(ClientAvatar,{name:t.name,url:t.avatar_url,mini:true}),
+     h('span',null,h('b',null,t.name),h('small',null,(t.username?'@'+t.username+' • ':'')+Number(t.n||0)+' пополнений')),
+     h('strong',null,money(t.s||0)));})):null,
+   (st.by_bookmaker||[]).length?h('div',{className:'card adm-ss-bk-v1070'},h('h4',null,'По букмекерам'),
+    (st.by_bookmaker||[]).slice(0,12).map(function(b,i){return h('div',{key:i,className:'adm-ss-bkrow-v1070'},
+     h('b',null,String(b.bookmaker||'').toUpperCase()),
+     h('small',{className:b.kind==='deposit'?'dep':'wd'},b.kind==='deposit'?'пополнения':'выводы'),
+     h('span',null,Number(b.n||0)+' шт'),
+     h('strong',null,money(b.s||0)));})):null
+  );
+ }
+ renderLuxMail(){var self=this,hist=this.state.admBcHistory||[],preview=this.state.siteBcPreview;
+  var targets=[['all','Всем'],['verified','Верифицированным'],['unverified','Без верификации'],['active','Активным за 7 дней'],['balance','С балансом']];
+  function pickPhoto(ev){var f=ev.target.files&&ev.target.files[0];if(!f)return;if(preview)try{URL.revokeObjectURL(preview);}catch(_){}self.setState({siteBcFile:f,siteBcPreview:URL.createObjectURL(f)});}
+  function removePhoto(){if(preview)try{URL.revokeObjectURL(preview);}catch(_){}self.setState({siteBcFile:null,siteBcPreview:''});}
+  return h('section',{className:'screen lux-mail-v1071'},
+   h(Header,{title:'Рассылка по сайту',back:function(){self.back();}}),
+   h('div',{className:'card lux-mailbox-v1071'},
+    h('label',{className:'lux-lab-v1071'},'Кому'),
+    h('div',{className:'adm-bctarget-v1070'},targets.map(function(t){return h('button',{key:t[0],className:self.state.admBcTarget===t[0]?'active':'',onClick:function(){self.setState({admBcTarget:t[0]});}},t[1]);})),
+    h('label',{className:'lux-lab-v1071'},'Текст'),
+    h('textarea',{className:'broadcast-textarea-v1030',placeholder:'Текст сообщения',maxLength:3000,value:this.state.siteBcText||'',onChange:function(ev){self.setState({siteBcText:ev.target.value});}}),
+    preview?h('div',{className:'broadcast-photo-preview-v1030'},h('img',{src:preview,alt:''}),h('button',{type:'button',onClick:removePhoto},h(Icon,{name:'close',size:18}))):h('label',{className:'broadcast-photo-add-v1030'},h(Icon,{name:'image',size:20}),h('span',null,h('b',null,'Фото'),h('small',null,'необязательно')),h('input',{type:'file',accept:'image/*',hidden:true,onChange:pickPhoto})),
+    h('button',{className:'broadcast-send-v1030',disabled:this.state.broadcastBusy||(!String(this.state.siteBcText||'').trim()&&!this.state.siteBcFile),onClick:function(){self.admSiteBroadcast();}},h(Icon,{name:'send',size:18}),this.state.broadcastBusy?'Отправка…':'Отправить')),
+   h('h3',{className:'lux-h-v1071'},'История'),
+   hist.length?h('div',{className:'broadcast-history-v1030'},hist.map(function(b){var t=targets.filter(function(x){return x[0]===b.target;})[0];return h('div',{className:'card broadcast-item-v1030',key:b.id},
+    h('div',{className:'broadcast-item-top-v1030'},h('span',{className:'broadcast-state-icon-v1030 completed'},h(Icon,{name:'check',size:18})),h('div',{className:'broadcast-item-copy-v1030'},h('b',null,(t?t[1]:b.target)),h('small',{className:'completed'},'Доставлено '+Number(b.total||0)))),
+    h('p',null,b.text||'—'),h('time',null,fmtDate(b.created_at)));})):h(Empty,{title:'Рассылок не было'})
+  );
+ }
+ renderUserCard(){var self=this,card=this.state.admCard,uid=this.state.admUid;
+  if(!card||!card.user)return h('section',{className:'screen'},h(Header,{title:'Клиент',back:function(){self.back();}}),this.state.pageError?h(RouteError,{retry:function(){self.loadAdmCard(false);}}):h(RouteLoader));
+  var u=card.user,txs=card.transactions||[],blog=card.balance_log||[],sess=card.sessions||[],audit=card.audit||[];
+  var roleNames={user:'Пользователь',support:'Поддержка',operator:'Оператор чата',admin:'Администратор'};
+  var ips=this.state.admIps;
+  var contact=[['Почта',u.email||'—',!!u.email],['Телефон',u.phone||'Не указан',!!u.phone],['ID на сайте',String(u.id),true],['Telegram chat_id',u.chat_id?String(u.chat_id):'—',!!u.chat_id],['Регистрация',u.created_at?fmtDate(u.created_at):'—',false],['Последний вход',u.last_login?fmtDate(u.last_login):'—',false],['Был(а) в сети',u.online?'сейчас в сети':(u.last_seen?fmtDate(u.last_seen):'—'),false]];
+  return h('section',{className:'screen lux-card-v1071'},
+   h(Header,{title:'Клиент',back:function(){self.back();},right:h('button',{className:'header-btn',onClick:function(){self.loadAdmCard(false);}},h(Icon,{name:'refresh',size:18}))}),
+   h('div',{className:'card lux-uhead-v1071'+(u.blocked?' blocked':'')},
+    h('span',{className:'adm-av-v1070 big'},h(ClientAvatar,{name:u.name,url:u.avatar_url}),u.online?h('i',{className:'adm-online-v1070'}):null),
+    h('div',null,h('b',null,u.name||'Без имени'),u.username?h('small',null,'@'+u.username):null,
+     h('div',{className:'lux-flags-v1071'},
+      h('i',{className:u.blocked?'bad':'ok'},u.blocked?'заблокирован':(u.online?'в сети':'офлайн')),
+      u.verify_status==='approved'?h('i',{className:'ok'},'верифицирован'):u.verify_status==='pending'?h('i',{className:'warn'},'на проверке'):u.verify_status==='rejected'?h('i',{className:'bad'},'отклонён'):null,
+      u.role!=='user'?h('i',{className:'role'},roleNames[u.role]):null))),
+   u.blocked&&u.block_reason?h('div',{className:'lux-blockline-v1071'},'Причина: '+u.block_reason):null,
+
+   h('h3',{className:'lux-h-v1071'},'Баланс'),
+   h('div',{className:'adm-ubal-v1070'},h('small',null,'НА САЙТЕ'),h('strong',null,money(u.balance)+' сом'),
+    h('div',{className:'adm-ubalbtns-v1070'},
+     h('button',{className:'plus',onClick:function(){self.setState({modal:'admBalance',modalData:{user:u,mode:'add',amount:'',note:''}});}},h(Icon,{name:'plus',size:16}),'Пополнить'),
+     h('button',{className:'minus',onClick:function(){self.setState({modal:'admBalance',modalData:{user:u,mode:'sub',amount:'',note:''}});}},'−  Списать'),
+     h('button',{className:'set',onClick:function(){self.setState({modal:'admBalance',modalData:{user:u,mode:'set',amount:String(Math.round(Number(u.balance||0))),note:''}});}},h(Icon,{name:'edit',size:15}),'Задать'))),
+   h('div',{className:'adm-ustats-v1070'},
+    h('span',null,h('b',null,Number(u.deposits_count||0)),h('small',null,'пополнений'),h('em',null,money(u.deposits_sum||0))),
+    h('span',null,h('b',null,Number(u.withdrawals_count||0)),h('small',null,'выводов'),h('em',null,money(u.withdrawals_sum||0))),
+    h('span',null,h('b',null,Number(u.pending_count||0)),h('small',null,'в работе'),h('em',null,Number(u.messages_count||0)+' сообщ.'))),
+
+   h('h3',{className:'lux-h-v1071'},'Контакты'),
+   h('div',{className:'adm-urows-v1070'},contact.map(function(r){return h('div',{className:'adm-urow-v1070'+(r[2]?' copyable':''),key:r[0],onClick:function(){if(r[2])self.copy(r[1]);}},h('span',null,r[0]),h('b',null,r[1],r[2]?h(Icon,{name:'copy',size:13}):null));})),
+   u.chat_id?h('button',{className:'adm-btn-v1070 wide',onClick:function(){self.openChat('tg-'+u.chat_id);}},h(Icon,{name:'chat',size:17}),'Написать клиенту'):null,
+
+   h('h3',{className:'lux-h-v1071'},'Идентификация'),
+   h('div',{className:'adm-ver-v1070 st-'+(u.verify_status||'none')},
+    u.verify_photo?h('button',{className:'adm-vthumb-v1070',onClick:function(){self.setState({modal:'image',modalData:{url:u.verify_photo,title:u.name}});}},h('img',{src:u.verify_photo,alt:''})):h('span',{className:'adm-vthumb-v1070 empty'},h(Icon,{name:'shield',size:22})),
+    h('div',null,h('b',null,u.verify_status==='approved'?'Подтверждён':u.verify_status==='pending'?'Ждёт проверки':u.verify_status==='rejected'?'Отклонён':'Не проходил'),u.verify_note?h('small',null,'Причина: '+u.verify_note):null,u.verify_at?h('small',{className:'muted'},fmtDate(u.verify_at)):null)),
+   h('div',{className:'adm-vbtns-v1070'},
+    u.verify_status!=='approved'?h('button',{className:'adm-btn-v1070 ok',disabled:this.state.admBusy,onClick:function(){self.admVerifySet(u.id,'approved','');}},h(Icon,{name:'check',size:16}),'Подтвердить'):null,
+    u.verify_status!=='rejected'?h('button',{className:'adm-btn-v1070 no',disabled:this.state.admBusy,onClick:function(){self.setState({modal:'admReject',modalData:{uid:u.id,name:u.name,reason:''}});}},h(Icon,{name:'close',size:16}),'Отклонить'):null),
+
+   h('h3',{className:'lux-h-v1071'},'Доступ'),
+   h('div',{className:'card lux-block-v1071'},
+    h('div',{className:'adm-grow-v1070'},h('span',null,h('b',null,u.blocked?'Заблокирован':'Доступ открыт'),h('small',null,u.blocked?'Вход и заявки закрыты':'Вход, чаты и заявки работают')),
+     h(Switch,{on:!u.blocked,onClick:function(){if(u.blocked)self.admBlock(u.id,false,'');else self.setState({modal:'admBlock',modalData:{uid:u.id,name:u.name,reason:''}});}})),
+    h('label',{className:'adm-wsel-v1070'},h('small',null,'Роль'),h('select',{value:u.role||'user',onChange:function(ev){self.admRole(u.id,ev.target.value);}},['user','support','operator','admin'].map(function(r){return h('option',{key:r,value:r},roleNames[r]);})))),
+
+   h('h3',{className:'lux-h-v1071'},'Заметка'),
+   h('textarea',{className:'lux-note-v1071',defaultValue:u.admin_note||'',placeholder:'Видна только операторам',onBlur:function(ev){if(ev.target.value!==(u.admin_note||''))self.admNote(u.id,ev.target.value);}}),
+
+   h('h3',{className:'lux-h-v1071'},'Заявки'),
+   txs.length?h('div',{className:'adm-txmini-v1070'},txs.slice(0,10).map(function(t){return h('button',{key:t.id,className:'adm-txrow-v1070 '+clsStatus(t),onClick:function(){self.openTx(t);}},
+    h('i',{className:t.kind},t.kind==='deposit'?'↗':'↙'),
+    h('span',null,h('b',null,(t.kind==='deposit'?'+':'−')+money(txMoney(t))),h('small',null,String(t.site||'').toUpperCase()+' • '+labelStatus(t.raw_status||t.status))),
+    h('small',{className:'adm-txtime-v1070'},t.display_time||fmtDate(t.created_at)));})):h('div',{className:'adm-empty-inline-v1070'},'Заявок нет'),
+
+   h('h3',{className:'lux-h-v1071'},'Движение баланса'),
+   blog.length?h('div',{className:'adm-blog-v1070'},blog.slice(0,12).map(function(b){return h('div',{key:b.id,className:'adm-blogrow-v1070'},h('b',{className:Number(b.delta)>=0?'up':'down'},(Number(b.delta)>=0?'+':'')+money(b.delta)),h('span',null,b.note||b.kind||'—'),h('small',null,fmtDate(b.created_at)));})):h('div',{className:'adm-empty-inline-v1070'},'Операций нет'),
+
+   h('h3',{className:'lux-h-v1071'},'Устройства'),
+   sess.length?h('div',{className:'adm-sess-v1070'},sess.map(function(s,i){var real=ips&&ips[i];return h('div',{key:i,className:'adm-sessrow-v1070'},h(Icon,{name:'device',size:16}),h('span',null,h('b',null,s.device||'Устройство'),h('small',{className:real?'ip-open-v1071':'ip-hid-v1071'},(real?real.ip:(s.ip||'скрыт'))+' • '+(s.last_seen?fmtDate(s.last_seen):'—'))));})):h('div',{className:'adm-empty-inline-v1070'},'Входов не было'),
+   sess.length&&!ips?h('div',{className:'card lux-ipgate-v1071'},
+    h('span',null,h(Icon,{name:'shield',size:18}),'IP скрыты. Введите код доступа'),
+    h('div',null,
+     h('input',{type:'tel',inputMode:'numeric',maxLength:8,placeholder:'Код',value:this.state.admIpCode||'',onChange:function(ev){self.setState({admIpCode:ev.target.value.replace(/\D/g,'')});},onKeyDown:function(ev){if(ev.key==='Enter')self.admRevealIps();}}),
+     h('button',{disabled:this.state.admBusy,onClick:function(){self.admRevealIps();}},'Показать'))):null,
+   ips?h('button',{className:'lux-iphide-v1071',onClick:function(){self.setState({admIps:null});}},h(Icon,{name:'close',size:15}),'Скрыть IP'):null,
+
+   audit.length?h('h3',{className:'lux-h-v1071'},'История действий'):null,
+   audit.length?h('div',{className:'adm-audit-v1070'},audit.map(function(a,i){return h('div',{key:i},h('b',null,a.action),h('small',null,(a.detail?a.detail+' • ':'')+a.operator+' • '+fmtDate(a.created_at)));})):null,
+
+   h('h3',{className:'lux-h-v1071 danger'},'Удаление'),
+   h('div',{className:'card lux-danger-v1071'},
+    h('p',null,'Аккаунт, чаты, контакты и сессии будут удалены. Заявки и касса останутся в истории.'),
+    h('button',{onClick:function(){self.setState({modal:'admDelete',modalData:{uid:u.id,name:u.name,email:u.email,code:''}});}},h(Icon,{name:'trash',size:17}),'Удалить аккаунт'))
+  );
+ }
  renderUsers(){var self=this,list=this.state.admUsers||[],counts=this.state.admUsersCounts||{},f=this.state.admUsersFilter||'all';
   var chips=[['all','Все',counts.all],['pending','На проверке',counts.pending],['blocked','Заблокированы',counts.blocked],['verified','Подтверждены',counts.verified],['balance','С балансом',null],['staff','Персонал',counts.staff]];
   function pick(v){self.setState({admUsersFilter:v,admUsersOffset:0},function(){self.loadAdmUsers(true,false);});}
@@ -1006,14 +1100,13 @@ renderDetail(){var self=this,tx=this.currentTx();if(!tx)return h('section',{clas
       h('small',{className:'adm-user-seen-v1070'},u.online?'в сети':(u.last_seen?'был(а) '+fmtDate(u.last_seen):'ни разу не заходил')),
       u.blocked?h('small',{className:'adm-user-block-v1070'},'Заблокирован'+(u.block_reason?': '+u.block_reason:'')):null),
      h('span',{className:'adm-user-bal-v1070'},h('b',null,money(u.balance)),h('small',null,'сом'))
-    );}),this.state.admUsersMore?h('button',{className:'adm-more-v1070',disabled:this.state.admUsersLoading,onClick:function(){self.loadAdmUsers(false,false);}},this.state.admUsersLoading?'Загрузка…':'Показать ещё'):null):h(Empty,{title:'Пользователей не найдено',text:'Измените фильтр или поисковый запрос.'})
+    );}),this.state.admUsersMore?h('button',{className:'adm-more-v1070',disabled:this.state.admUsersLoading,onClick:function(){self.loadAdmUsers(false,false);}},this.state.admUsersLoading?'Загрузка…':'Показать ещё'):null):h(Empty,{title:'Ничего не найдено',text:''})
   );
  }
  renderVerify(){var self=this,list=this.state.admVerify||[],c=this.state.admVerifyCounts||{},tab=this.state.admVerifyTab||'pending';
   function pick(v){self.setState({admVerifyTab:v},function(){self.loadAdmVerify(false);});}
   return h('section',{className:'screen adm-verify-v1070'},
    h(Header,{title:'Идентификация',back:function(){self.back();},right:h('button',{className:'header-btn',onClick:function(){self.loadAdmVerify(false);}},h(Icon,{name:'refresh',size:18}))}),
-   h('div',{className:'card adm-hero-v1070'},h('span',null,h(Icon,{name:'shield',size:26})),h('div',null,h('b',null,'Проверка документов'),h('p',null,'Подтвердите личность или отклоните с указанием причины — клиент получит уведомление.'))),
    h('div',{className:'adm-tabs-v1070'},[['pending','На проверке',c.pending],['approved','Подтверждены',c.approved],['rejected','Отклонены',c.rejected]].map(function(t){return h('button',{key:t[0],className:tab===t[0]?'active':'',onClick:function(){pick(t[0]);}},t[1],h('small',null,Number(t[2]||0)));})),
    this.state.admVerifyLoading&&!list.length?h(RouteLoader):list.length?h('div',{className:'adm-vlist-v1070'},list.map(function(u){return h('div',{className:'card adm-vcard-v1070',key:u.id},
      h('div',{className:'adm-vtop-v1070'},
@@ -1024,47 +1117,15 @@ renderDetail(){var self=this,tx=this.currentTx();if(!tx)return h('section',{clas
       h('button',{className:'adm-btn-v1070 ghost',onClick:function(){self.openAdmUser(u.id);}},h(Icon,{name:'user',size:16}),'Профиль'),
       tab!=='approved'?h('button',{className:'adm-btn-v1070 ok',disabled:self.state.admBusy,onClick:function(){self.admVerifySet(u.id,'approved','');}},h(Icon,{name:'check',size:16}),'Подтвердить'):null,
       tab!=='rejected'?h('button',{className:'adm-btn-v1070 no',disabled:self.state.admBusy,onClick:function(){self.setState({modal:'admReject',modalData:{uid:u.id,name:u.name,reason:''}});}},h(Icon,{name:'close',size:16}),'Отклонить'):null)
-    );})):h(Empty,{title:tab==='pending'?'Заявок на проверку нет':'Пусто',text:'Здесь появятся клиенты, отправившие фото для идентификации.'})
-  );
- }
- renderBookmakers(){var self=this,list=this.state.admBk||[],wallets=this.state.admBkWallets||[],g=this.state.admBkGlobal||{};
-  var drafts=this.state.admBkDraft||{};
-  function setDraft(k,patch){self.setState(function(st){var d=Object.assign({},st.admBkDraft||{});d[k]=Object.assign({},d[k]||{},patch);return {admBkDraft:d};});}
-  return h('section',{className:'screen adm-bk-v1070'},
-   h(Header,{title:'Букмекеры',back:function(){self.back();},right:h('button',{className:'header-btn',onClick:function(){self.loadAdmBk(false);}},h(Icon,{name:'refresh',size:18}))}),
-   h('div',{className:'card adm-glob-v1070'},
-    h('h3',null,'Приём заявок на сайте и в боте'),
-    h('div',{className:'adm-grow-v1070'},h('span',null,h('b',null,'Пополнения'),h('small',null,'Общий выключатель для всех БК')),h(Switch,{on:!!g.deposits_enabled,onClick:function(){self.admBkGlobal({deposits_enabled:!g.deposits_enabled});}})),
-    h('div',{className:'adm-grow-v1070'},h('span',null,h('b',null,'Выводы'),h('small',null,'Общий выключатель для всех БК')),h(Switch,{on:!!g.withdrawals_enabled,onClick:function(){self.admBkGlobal({withdrawals_enabled:!g.withdrawals_enabled});}})),
-    h('div',{className:'adm-grow-v1070'},h('span',null,h('b',null,'Пауза платформы'),h('small',null,'Полностью останавливает приём')),h(Switch,{on:!!g.bot_paused,onClick:function(){self.admBkGlobal({bot_paused:!g.bot_paused});}})),
-    h('p',{className:'adm-ghint-v1070'},'Кошелёк по умолчанию: '+(g.wallet_mode==='fixed'?'фиксированный':'случайный из активных')+'. Ниже можно закрепить свой кошелёк за конкретной БК.')
-   ),
-   this.state.admBkLoading&&!list.length?h(RouteLoader):list.map(function(b){var d=drafts[b.key]||{};
-    var dmin=d.deposit_min!=null?d.deposit_min:b.deposit_min,dmax=d.deposit_max!=null?d.deposit_max:b.deposit_max,
-        wmin=d.withdraw_min!=null?d.withdraw_min:b.withdraw_min,wmax=d.withdraw_max!=null?d.withdraw_max:b.withdraw_max,
-        rid=d.requisite_id!=null?d.requisite_id:b.requisite_id,
-        dirty=String(dmin)!==String(b.deposit_min)||String(dmax)!==String(b.deposit_max)||String(wmin)!==String(b.withdraw_min)||String(wmax)!==String(b.withdraw_max)||String(rid)!==String(b.requisite_id);
-    return h('div',{className:'card adm-bkcard-v1070',key:b.key},
-     h('div',{className:'adm-bkhead-v1070'},h('img',{src:b.logo,alt:'',onError:function(ev){ev.target.style.display='none';}}),h('div',null,h('b',null,b.label),h('small',null,b.provider_label||b.provider||'—')),h('i',{className:'adm-bkstate-v1070 '+((b.deposit||b.withdraw)?'on':'off')},(b.deposit||b.withdraw)?'активен':'выключен')),
-     h('div',{className:'adm-grow-v1070'},h('span',null,h('b',null,'Пополнение')),h(Switch,{on:!!b.deposit,onClick:function(){self.admBkSave(b.key,{deposit:!b.deposit});}})),
-     h('div',{className:'adm-grow-v1070'},h('span',null,h('b',null,'Вывод')),h(Switch,{on:!!b.withdraw,onClick:function(){self.admBkSave(b.key,{withdraw:!b.withdraw});}})),
-     h('div',{className:'adm-lim-v1070'},
-      h('label',null,h('small',null,'Пополнение от'),h('input',{type:'number',inputMode:'numeric',value:dmin,onChange:function(ev){setDraft(b.key,{deposit_min:ev.target.value});}})),
-      h('label',null,h('small',null,'до'),h('input',{type:'number',inputMode:'numeric',value:dmax,onChange:function(ev){setDraft(b.key,{deposit_max:ev.target.value});}})),
-      h('label',null,h('small',null,'Вывод от'),h('input',{type:'number',inputMode:'numeric',value:wmin,onChange:function(ev){setDraft(b.key,{withdraw_min:ev.target.value});}})),
-      h('label',null,h('small',null,'до'),h('input',{type:'number',inputMode:'numeric',value:wmax,onChange:function(ev){setDraft(b.key,{withdraw_max:ev.target.value});}}))),
-     h('label',{className:'adm-wsel-v1070'},h('small',null,'Кошелёк для приёма'),h('select',{value:rid||'',onChange:function(ev){setDraft(b.key,{requisite_id:ev.target.value});}},h('option',{value:''},'Как настроено глобально'),wallets.map(function(w){return h('option',{key:w.id,value:w.id,disabled:!w.enabled},w.name+(w.enabled?'':' (выключен)'));}))),
-     dirty?h('button',{className:'adm-bksave-v1070',onClick:function(){self.admBkSave(b.key,{deposit_min:dmin,deposit_max:dmax,withdraw_min:wmin,withdraw_max:wmax,requisite_id:rid||''});self.setState(function(st){var dd=Object.assign({},st.admBkDraft||{});delete dd[b.key];return {admBkDraft:dd};});}},h(Icon,{name:'check',size:17}),'Сохранить '+b.label):null
-    );})
+    );})):h(Empty,{title:tab==='pending'?'Заявок на проверку нет':'Пусто',text:''})
   );
  }
  renderSiteChat(){var self=this,msgs=this.state.admChat||[],staff=this.state.admStaff||[];
   var roleNames={user:'Пользователь',support:'Поддержка',operator:'Оператор чата',admin:'Администратор'};
   return h('section',{className:'screen adm-sitechat-v1070'},
    h(Header,{title:'Чат сайта',back:function(){self.back();},right:h('button',{className:'header-btn',onClick:function(){self.loadAdmSiteChat(false);}},h(Icon,{name:'refresh',size:18}))}),
-   h('div',{className:'card adm-hero-v1070'},h('span',null,h(Icon,{name:'chat',size:26})),h('div',null,h('b',null,'Модерация общего чата'),h('p',null,'Назначайте администраторов чата, закрепляйте и удаляйте сообщения.'))),
    h('div',{className:'adm-staffhead-v1070'},h('h3',null,'Назначенные аккаунты'),h('button',{onClick:function(){self.navigate('users');}},h(Icon,{name:'plus',size:16}),'Назначить')),
-   staff.length?h('div',{className:'adm-staff-v1070'},staff.map(function(u){return h('div',{className:'card adm-staffrow-v1070',key:u.id},h(ClientAvatar,{name:u.name,url:u.avatar_url,mini:true}),h('span',null,h('b',null,u.name),h('small',null,roleNames[u.role]||u.role)),h('button',{className:'adm-btn-v1070 ghost',onClick:function(){self.openAdmUser(u.id);}},'Изменить'));})):h('div',{className:'adm-empty-inline-v1070'},'Пока никто не назначен. Откройте раздел «Пользователи» и выдайте роль.'),
+   staff.length?h('div',{className:'adm-staff-v1070'},staff.map(function(u){return h('div',{className:'card adm-staffrow-v1070',key:u.id},h(ClientAvatar,{name:u.name,url:u.avatar_url,mini:true}),h('span',null,h('b',null,u.name),h('small',null,roleNames[u.role]||u.role)),h('button',{className:'adm-btn-v1070 ghost',onClick:function(){self.openAdmUser(u.id);}},'Изменить'));})):h('div',{className:'adm-empty-inline-v1070'},'Никто не назначен'),
    h('h3',{className:'adm-sechead-v1070'},'Последние сообщения'),
    this.state.admChatLoading&&!msgs.length?h(RouteLoader):msgs.length?h('div',{className:'adm-msgs-v1070'},msgs.map(function(m){return h('div',{className:'card adm-msg-v1070'+(m.pinned?' pinned':''),key:m.id},
     h('div',{className:'adm-msgtop-v1070'},h(ClientAvatar,{name:m.name||'Гость',url:m.avatar_url,mini:true}),h('div',null,h('b',null,m.name||'Гость'),h('small',null,fmtDate(m.created_at))),m.pinned?h('i',{className:'adm-pin-v1070'},'закреп'):null),
@@ -1073,10 +1134,10 @@ renderDetail(){var self=this,tx=this.currentTx();if(!tx)return h('section',{clas
      h('button',{onClick:function(){self.admChatMsg(m.id,m.pinned?'unpin':'pin');}},h(Icon,{name:'note',size:15}),m.pinned?'Открепить':'Закрепить'),
      m.user_id?h('button',{onClick:function(){self.openAdmUser(m.user_id);}},h(Icon,{name:'user',size:15}),'Автор'):null,
      h('button',{className:'danger',onClick:function(){self.admChatMsg(m.id,'delete');}},h(Icon,{name:'trash',size:15}),'Удалить'))
-   );})):h(Empty,{title:'Сообщений нет',text:'Сообщения общего чата сайта появятся здесь.'})
+   );})):h(Empty,{title:'Сообщений нет',text:''})
   );
  }
- renderPage(){if(this.state.loadingPage)return h(Skeleton,{page:this.state.page});switch(this.state.page){case'home':return this.renderHome();case'history':return this.renderHistory();case'detail':return this.renderDetail();case'chats':return this.renderChats();case'chatThread':return this.renderChatThread();case'client':return this.renderClient();case'search':return this.renderSearch();case'menu':return this.renderMenu();case'statement':return this.renderStatement();case'paygateway':return this.renderGateway();case'stats':return this.renderStats();case'wallet':return this.renderWallets();case'mail':return this.renderBroadcast();case'bolt':return this.renderQuick();case'terminal':return this.renderLogs();case'device':return this.renderDevices();case'settings':return this.renderSettings();case'ai':return this.renderAiSupport();case'users':return this.renderUsers();case'verify':return this.renderVerify();case'bookmakers':return this.renderBookmakers();case'sitechat':return this.renderSiteChat();default:return this.renderHome();}}
+ renderPage(){if(this.state.loadingPage)return h(Skeleton,{page:this.state.page});switch(this.state.page){case'home':return this.renderHome();case'history':return this.renderHistory();case'detail':return this.renderDetail();case'chats':return this.renderChats();case'chatThread':return this.renderChatThread();case'client':return this.renderClient();case'search':return this.renderSearch();case'menu':return this.renderMenu();case'statement':return this.renderStatement();case'paygateway':return this.renderGateway();case'stats':return this.renderStats();case'wallet':return this.renderWallets();case'mail':return this.renderBroadcast();case'bolt':return this.renderQuick();case'terminal':return this.renderLogs();case'device':return this.renderDevices();case'settings':return this.renderSettings();case'ai':return this.renderAiSupport();case'lux':return this.renderLuxHub();case'luxStats':return this.renderLuxStats();case'luxMail':return this.renderLuxMail();case'users':return this.renderUsers();case'userCard':return this.renderUserCard();case'verify':return this.renderVerify();case'sitechat':return this.renderSiteChat();default:return this.renderHome();}}
  render(){if(this.state.checking)return h('div',{className:'loading'},h('div',{className:'spinner'}));if(!this.state.authed)return this.renderLogin();if(!this.state.data)return h('div',{className:'loading'},h('div',{className:'spinner'}));var page=this.state.page,main=['home','history','chats','search','menu'],active=main.indexOf(page)>=0?page:(page==='chatThread'||page==='client'?'chats':(page==='detail'||page==='stats'||page==='wallet'||page==='statement'||page==='paygateway')?'home':'menu'),hide=page==='chatThread'||page==='device',pull=this.state.pull;return h('div',{className:'app-stage'+(this.state.edgeX>0?' edge-swiping':''),style:this.state.edgeX>0?{'--edge-x':this.state.edgeX+'px'}:null,onTouchStart:this.edgeStart.bind(this),onTouchMove:this.edgeMove.bind(this),onTouchEnd:this.edgeEnd.bind(this),onTouchCancel:this.edgeEnd.bind(this)},h('div',{className:'pull-refresh',style:{transform:'translate3d(-50%,'+(Math.min(64,pull)-46)+'px,0)',opacity:Math.min(1,pull/30)}},h(Icon,{name:'refresh',size:18}),h('span',null,pull>=55?'Отпустите':'Потяните для обновления')),h('main',{className:'mobile-shell '+(hide?'no-nav':'')+(page==='chatThread'?' chat-shell':''),style:pull?{transform:'translateY('+pull+'px)'}:null},this.renderPage()),hide?null:h(BottomNav,{page:active,go:this.go.bind(this)}),this.renderAlerts(),this.renderModal(),this.state.toast?h('div',{className:'toast toast-v1031 '+(this.state.toastType||'info')},h('span',{className:'toast-icon-v1031'},h(Icon,{name:this.state.toastType==='error'?'close':this.state.toastType==='refresh'?'refresh':this.state.toastType==='copy'?'copy':this.state.toastType==='send'?'send':this.state.toastType==='stats'?'stats':'check',size:17})),h('b',null,this.state.toast)):null);}
 }
 class ErrorBoundary extends React.Component{constructor(p){super(p);this.state={error:null};}componentDidCatch(e){console.error(e);this.setState({error:e});}render(){var self=this;if(!this.state.error)return this.props.children;var msg=String((this.state.error&&this.state.error.message)||this.state.error||'Неизвестная ошибка');return h('div',{className:'fatal-ui fatal-ui-v1029'},h('h2',null,'Экран не загрузился'),h('p',null,'Интерфейс можно безопасно сбросить. Данные и заявки не затрагиваются.'),h('code',null,msg),h('button',{className:'primary-btn',onClick:function(){try{localStorage.removeItem('luxon-v1029-route');localStorage.removeItem('luxon-v92-route');localStorage.removeItem('luxon-v9-route');}catch(_){}location.reload();}},'Сбросить экран'));}}

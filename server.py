@@ -14002,7 +14002,7 @@ def _web_face_count(raw: bytes) -> int:
 # === LUX WEB v10.49: баланс LUXON, запросы в ЛС, приватность, устройства, QR-вход,
 #     правка/удаление сообщений (5 минут), уведомления (прочитано/удалить), QR профиля
 # =====================================================================================
-_LUX_WEB_VERSION = "10.70.0"
+_LUX_WEB_VERSION = "10.71.0"
 _WEB_BALANCE_MIN, _WEB_BALANCE_MAX = 100, 500000
 
 
@@ -16287,9 +16287,10 @@ async def adm_user_card(uid: int, request: Request):
         balance_log = [dict(r) for r in c.execute(
             "SELECT id,COALESCE(delta,amount) delta,COALESCE(kind,'') kind,COALESCE(note,'') note,created_at "
             "FROM web_balance_log WHERE user_id=? ORDER BY id DESC LIMIT 30", (int(uid),)).fetchall()]
+        # IP по умолчанию скрыт — открывается отдельно по коду доступа.
         sessions = [{
             "device": str(_adm_col(s, "device", "") or "Устройство"),
-            "ip": str(_adm_col(s, "ip", "") or ""),
+            "ip": _adm_mask_ip(str(_adm_col(s, "ip", "") or "")),
             "last_seen": str(_adm_col(s, "last_seen", "") or ""),
             "created_at": str(_adm_col(s, "created_at", "") or ""),
         } for s in c.execute("SELECT * FROM web_sessions WHERE user_id=? ORDER BY COALESCE(last_seen,created_at) DESC LIMIT 10", (int(uid),)).fetchall()]
@@ -16388,6 +16389,85 @@ async def adm_user_role(uid: int, request: Request):
     return {"ok": True, "role": role}
 
 
+_LUX_IP_CODE_DEFAULT = "972936"
+
+
+def _lux_ip_code() -> str:
+    return str((reload_config().get("security") or {}).get("ip_reveal_code") or _LUX_IP_CODE_DEFAULT)
+
+
+def _adm_mask_ip(ip: str) -> str:
+    ip = str(ip or "").strip()
+    if not ip:
+        return ""
+    if ":" in ip:
+        head = ip.split(":")[0]
+        return f"{head}:****:****"
+    parts = ip.split(".")
+    if len(parts) == 4:
+        return f"{parts[0]}.***.***.{parts[3]}"
+    return "***"
+
+
+@app.post("/api/admin/users/{uid}/devices")
+async def adm_user_devices(uid: int, request: Request):
+    """IP-адреса устройств. Открываются только по коду доступа."""
+    sess = get_session(request)
+    d = await request_json(request)
+    code = re.sub(r"\D", "", str(d.get("code") or ""))
+    if not code or not _hmac.compare_digest(code, _lux_ip_code()):
+        raise HTTPException(403, "Неверный код")
+    with _ui_read_conn() as c:
+        rows = c.execute(
+            "SELECT * FROM web_sessions WHERE user_id=? ORDER BY COALESCE(last_seen,created_at) DESC LIMIT 20",
+            (int(uid),),
+        ).fetchall()
+    items = [{
+        "device": str(_adm_col(s, "device", "") or "Устройство"),
+        "ip": str(_adm_col(s, "ip", "") or ""),
+        "ua": str(_adm_col(s, "ua", "") or "")[:160],
+        "last_seen": str(_adm_col(s, "last_seen", "") or ""),
+        "created_at": str(_adm_col(s, "created_at", "") or ""),
+    } for s in rows]
+    operator = current_operator(sess)
+    _adm_audit(operator, "Просмотр IP", str(uid), f"{len(items)} устройств")
+    add_log("Просмотр IP клиента", f"{operator} • клиент {uid}", "warning")
+    return {"ok": True, "items": items}
+
+
+@app.delete("/api/admin/users/{uid}")
+async def adm_user_delete(uid: int, request: Request):
+    """Удаление аккаунта сайта. Заявки и движения по кассе остаются в истории."""
+    sess = get_session(request)
+    code = re.sub(r"\D", "", str(request.query_params.get("code") or ""))
+    if not code or not _hmac.compare_digest(code, _lux_ip_code()):
+        raise HTTPException(403, "Неверный код")
+    with _ui_read_conn() as c:
+        row = c.execute("SELECT id,name,email,chat_id FROM web_users WHERE id=?", (int(uid),)).fetchone()
+    if not row:
+        raise HTTPException(404, "Пользователь не найден")
+    name, email = str(row["name"] or ""), str(row["email"] or "")
+    # Колонки, по которым таблица привязана к пользователю. Перебираем схему,
+    # чтобы удаление не сломалось при появлении новых таблиц.
+    user_cols = ("user_id", "from_id", "to_id", "peer_id", "blocked_id", "contact_id", "user_a", "user_b", "winner_user_id")
+    removed = 0
+    with _DB_LOCK, _db_conn() as c:
+        tables = [r["name"] for r in c.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'web_%' AND name<>'web_users'").fetchall()]
+        for t in tables:
+            cols = {r["name"] for r in c.execute(f"PRAGMA table_info({t})").fetchall()}
+            hit = [col for col in user_cols if col in cols]
+            if not hit:
+                continue
+            where = " OR ".join(f"{col}=?" for col in hit)
+            removed += c.execute(f"DELETE FROM {t} WHERE {where}", [int(uid)] * len(hit)).rowcount
+        c.execute("DELETE FROM web_users WHERE id=?", (int(uid),))
+    operator = current_operator(sess)
+    _adm_audit(operator, "Удаление аккаунта", str(uid), f"{name} • {email} • строк удалено {removed}")
+    add_log("Аккаунт удалён", f"{operator} • {name} • {email}", "danger")
+    return {"ok": True, "deleted": True, "rows": removed}
+
+
 @app.post("/api/admin/users/{uid}/note")
 async def adm_user_note(uid: int, request: Request):
     sess = get_session(request)
@@ -16421,7 +16501,8 @@ def _adm_set_verify(uid: int, status: str, note: str, operator: str) -> dict:
                 text += f"\n\nПричина: {note}"
             text += "\n\nВы можете отправить новое фото в профиле."
             queue_outbox(chat_id, text, kind="notify")
-    _adm_audit(operator, "Идентификация " + status, str(uid), note[:120])
+    st_ru = {"approved": "подтверждена", "rejected": "отклонена", "pending": "на проверке", "none": "сброшена"}
+    _adm_audit(operator, "Идентификация " + st_ru.get(status, status), str(uid), note[:120])
     add_log("Идентификация " + ("подтверждена" if status == "approved" else "отклонена" if status == "rejected" else status),
             f"{operator} • {row['name']}", "info" if status == "approved" else "warning")
     return {"ok": True, "verify_status": status, "verify_note": note}
@@ -16912,7 +16993,8 @@ async def adm_site_chat_message(mid: int, request: Request):
         _web_wake_chat()
     except Exception:
         pass
-    _adm_audit(operator, "Чат сайта: " + action, str(mid), "")
+    act_ru = {"delete": "удалено сообщение", "pin": "закреплено", "unpin": "откреплено"}
+    _adm_audit(operator, "Чат сайта: " + act_ru.get(action, action), str(mid), "")
     return {"ok": True}
 
 
