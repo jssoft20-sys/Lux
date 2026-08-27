@@ -11,7 +11,7 @@
 <link rel="icon" href="/static/app/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/app/icon.svg">
 <link rel="manifest" href="/static/app/manifest.json">
-<link rel="stylesheet" href="/static/app/styles.css?v=10.66.0">
+<link rel="stylesheet" href="/static/app/styles.css?v=10.67.0">
 </head>
 <body>
 <div id="root"></div>
@@ -34,13 +34,20 @@
    'background:#22a35a;color:#fff;font-size:15px;font-weight:700">Обновить страницу</button>'+
    '<div style="margin-top:12px;font-size:12px;color:#64748b">Пришлите этот текст разработчику.</div></div>';
  }
+ /* Реагируем ТОЛЬКО на наши скрипты. Сторонние (Cloudflare beacon,
+    аналитика, расширения браузера) падать не должны рушить кабинет. */
+ function ours(src){src=String(src||'');return src.indexOf(location.origin+'/static/app/')===0||src.indexOf('/static/app/')===0;}
  window.addEventListener('error',function(e){
-  if(e.target&&e.target.tagName==='SCRIPT'){show('Не загрузился файл',e.target.src||'');return;}
+  if(e.target&&e.target.tagName==='SCRIPT'){if(ours(e.target.src))show('Не загрузился файл',e.target.src||'');return;}
+  var f=String(e.filename||'');
+  if(f&&f.indexOf('/static/app/')<0&&f.indexOf(location.origin)!==0)return; // чужой файл — игнор
   show(e.message||'Ошибка',(e.filename||'')+':'+(e.lineno||'')+':'+(e.colno||'')+
    '\n'+((e.error&&e.error.stack)||''));
  },true);
  window.addEventListener('unhandledrejection',function(e){
-  var r=e.reason;show('Необработанная ошибка',(r&&(r.stack||r.message))||String(r));
+  var r=e.reason;var s=(r&&(r.stack||r.message))||String(r);
+  if(/cloudflareinsights|beacon|Failed to fetch|Load failed|NetworkError/i.test(s))return; // сеть/аналитика — не фатально
+  show('Необработанная ошибка',s);
  });
  setTimeout(function(){
   var r=document.getElementById('root');
@@ -50,13 +57,13 @@
  },8000);
 })();
 </script>
-<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
-<script src="/static/app/app.js?v=10.66.0"></script>
-<script src="/static/app/pages.js?v=10.66.0"></script>
-<script src="/static/app/social.js?v=10.66.0"></script>
-<script src="/static/app/social2.js?v=10.66.0"></script>
-<script src="/static/app/calls.js?v=10.66.0"></script>
-<script src="/static/app/main.js?v=10.66.0"></script>
+<script src="/static/app/vendor/react.min.js?v=10.67.0"></script>
+<script src="/static/app/vendor/react-dom.min.js?v=10.67.0"></script>
+<script src="/static/app/app.js?v=10.67.0"></script>
+<script src="/static/app/pages.js?v=10.67.0"></script>
+<script src="/static/app/social.js?v=10.67.0"></script>
+<script src="/static/app/social2.js?v=10.67.0"></script>
+<script src="/static/app/calls.js?v=10.67.0"></script>
+<script src="/static/app/main.js?v=10.67.0"></script>
 </body>
 </html>

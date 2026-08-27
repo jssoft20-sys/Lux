@@ -5938,20 +5938,31 @@ def _queue_main_success_replace(row: dict, processing_seconds: int = 1) -> bool:
         kind="replace_pending" if replace_current else "text",
         meta={"request_id": request_id, "final_status": "success", "replace_current": replace_current},
     )
-    # Веб-бот LuxOn: то же финальное сообщение приходит в чат бота в кабинете,
-    # чтобы заявка «менялась» после подтверждения, как в Telegram.
+    # Веб-бот LuxOn: заявка в чате бота «превращается» в успех — как в Telegram
+    # редактируется то же сообщение. Находим сообщение-заявку этого пользователя
+    # (QR + кнопка «Отменить пополнение» с этим request_id) и переписываем его:
+    # QR убираем, текст → успех, кнопки → «Пополнить ещё».
     try:
         with _DB_LOCK, _db_conn() as c:
             wu = c.execute("SELECT id FROM web_users WHERE chat_id=?", (chat_id,)).fetchone()
             lb = c.execute("SELECT id FROM lux_bots WHERE builtin='luxon'").fetchone()
             if wu and lb:
-                started = c.execute("SELECT 1 FROM lux_bot_messages WHERE bot_id=? AND user_id=? LIMIT 1",
-                                    (int(lb["id"]), int(wu["id"]))).fetchone()
-                if started:
+                success_txt = _main_success_text(row, processing_seconds)
+                succ_btns = json.dumps([[_btn("📥 Пополнить ещё", "dep", "g")]], ensure_ascii=False)
+                rows_ = c.execute("SELECT id,buttons FROM lux_bot_messages WHERE bot_id=? AND user_id=? "
+                                  "AND direction='out' ORDER BY id DESC LIMIT 25", (int(lb["id"]), int(wu["id"]))).fetchall()
+                target = None
+                for rr in rows_:
+                    if ("canceltx:" + request_id) in str(rr["buttons"] or ""):
+                        target = int(rr["id"]); break
+                if target:
+                    c.execute("UPDATE lux_bot_messages SET kind='text', file_url='', text=?, buttons=? WHERE id=?",
+                              (_lux_enc(success_txt), succ_btns, target))
+                elif c.execute("SELECT 1 FROM lux_bot_messages WHERE bot_id=? AND user_id=? LIMIT 1",
+                               (int(lb["id"]), int(wu["id"]))).fetchone():
                     c.execute("INSERT INTO lux_bot_messages(bot_id,user_id,direction,kind,text,buttons,created_at) "
                               "VALUES(?,?,'out','text',?,?,?)",
-                              (int(lb["id"]), int(wu["id"]), _lux_enc(_main_success_text(row, processing_seconds)),
-                               json.dumps([[_btn("📥 Пополнить ещё", "dep", "g")]], ensure_ascii=False), now_iso()))
+                              (int(lb["id"]), int(wu["id"]), _lux_enc(success_txt), succ_btns, now_iso()))
     except Exception:
         pass
     return True
@@ -13207,8 +13218,10 @@ async def web_dm_list(request: Request):
             hidden = {int(r["peer_id"]): int(r["upto_id"] or 0) for r in
                       c.execute("SELECT peer_id,upto_id FROM web_dm_hidden WHERE user_id=?", (me,)).fetchall()}
             pinned = {int(r[0]) for r in c.execute("SELECT peer_id FROM web_dm_chatpins WHERE user_id=?", (me,)).fetchall()}
+            archived = {int(r[0]) for r in c.execute("SELECT peer_id FROM web_dm_archive WHERE user_id=?", (me,)).fetchall()}
+            muted = {int(r[0]) for r in c.execute("SELECT peer_id FROM web_dm_muted WHERE user_id=?", (me,)).fetchall()}
         except Exception:
-            hidden, pinned = {}, set()
+            hidden, pinned, archived, muted = {}, set(), set(), set()
         alias = _web_contact_alias_map(c, me)
         peers = {}
         for r in rows:
@@ -13237,13 +13250,14 @@ async def web_dm_list(request: Request):
         items.append({"peer": {"id": pid, "name": alias.get(pid) or p_.get("name") or "Пользователь", "username": p_.get("username") or "", "avatar": p_.get("avatar_url") or "",
                                "verified": p_.get("verify_status") == "approved", "online": time.time() - _WEB_PRESENCE.get(pid, 0) < 70},
                      "request": bool(pairs.get(pid, {}).get("request")), "approved": bool(pairs.get(pid, {}).get("approved")),
-                     "pinned": pid in pinned,
+                     "pinned": pid in pinned, "archived": pid in archived, "muted": pid in muted,
                      "last": {"text": (_lux_dec(r["text"]) or ("🎤 Голосовое" if r["kind"] == "voice" else ("🖼 Фото" if r["kind"] == "photo" else ("📞 Звонок" if str(r["kind"] or "").startswith("call") else "")))) if not r["deleted"] else "Сообщение удалено",
                               "mine": int(r["from_id"]) == me, "created_at": r["created_at"] or "", "id": int(r["id"]),
                               "read": bool(r["read"]), "kind": r["kind"] or "text"},
                      "unread": unread.get(pid, 0)})
     items.sort(key=lambda x: (0 if x["pinned"] else 1, -x["last"]["id"]))
-    return {"ok": True, "items": items, "unread_total": sum(unread.values())}
+    arch_n = sum(1 for x in items if x.get("archived"))
+    return {"ok": True, "items": items, "unread_total": sum(unread.values()), "archived": arch_n}
 
 
 @app.get("/api/web/dm/{peer_id}")
@@ -13938,7 +13952,7 @@ def _web_face_count(raw: bytes) -> int:
 # === LUX WEB v10.49: баланс LUXON, запросы в ЛС, приватность, устройства, QR-вход,
 #     правка/удаление сообщений (5 минут), уведомления (прочитано/удалить), QR профиля
 # =====================================================================================
-_LUX_WEB_VERSION = "10.66.0"
+_LUX_WEB_VERSION = "10.67.0"
 _WEB_BALANCE_MIN, _WEB_BALANCE_MAX = 100, 500000
 
 
@@ -14561,6 +14575,8 @@ def _lux_v1062_init() -> None:
         CREATE TABLE IF NOT EXISTS web_dm_reactions(
           msg_id INTEGER, user_id INTEGER, emoji TEXT, created_at TEXT, PRIMARY KEY(msg_id,user_id)
         );
+        CREATE TABLE IF NOT EXISTS web_dm_archive(user_id INTEGER, peer_id INTEGER, created_at TEXT, PRIMARY KEY(user_id,peer_id));
+        CREATE TABLE IF NOT EXISTS web_dm_muted(user_id INTEGER, peer_id INTEGER, created_at TEXT, PRIMARY KEY(user_id,peer_id));
         """)
         ucols = {r["name"] for r in c.execute("PRAGMA table_info(web_users)").fetchall()}
         if "priv_phone" not in ucols:
@@ -14619,6 +14635,34 @@ async def web_dm_pinchat(peer_id: int, request: Request):
                 raise HTTPException(400, "Закрепить можно не больше 5 чатов")
             c.execute("INSERT INTO web_dm_chatpins(user_id,peer_id,created_at) VALUES(?,?,?)", (me, int(peer_id), now_iso()))
     return {"ok": True, "pinned": not bool(r)}
+
+
+@app.post("/api/web/dm/{peer_id}/archive")
+async def web_dm_archive(peer_id: int, request: Request):
+    """Свайп → «В архив». Архивные чаты уходят в папку «Архив»."""
+    u = _web_user_from_request(request)
+    me = int(u["id"])
+    with _DB_LOCK, _db_conn() as c:
+        r = c.execute("SELECT 1 FROM web_dm_archive WHERE user_id=? AND peer_id=?", (me, int(peer_id))).fetchone()
+        if r:
+            c.execute("DELETE FROM web_dm_archive WHERE user_id=? AND peer_id=?", (me, int(peer_id)))
+        else:
+            c.execute("INSERT INTO web_dm_archive(user_id,peer_id,created_at) VALUES(?,?,?)", (me, int(peer_id), now_iso()))
+    return {"ok": True, "archived": not bool(r)}
+
+
+@app.post("/api/web/dm/{peer_id}/mute")
+async def web_dm_mute(peer_id: int, request: Request):
+    """Свайп → «Без звука»."""
+    u = _web_user_from_request(request)
+    me = int(u["id"])
+    with _DB_LOCK, _db_conn() as c:
+        r = c.execute("SELECT 1 FROM web_dm_muted WHERE user_id=? AND peer_id=?", (me, int(peer_id))).fetchone()
+        if r:
+            c.execute("DELETE FROM web_dm_muted WHERE user_id=? AND peer_id=?", (me, int(peer_id)))
+        else:
+            c.execute("INSERT INTO web_dm_muted(user_id,peer_id,created_at) VALUES(?,?,?)", (me, int(peer_id), now_iso()))
+    return {"ok": True, "muted": not bool(r)}
 
 
 @app.post("/api/web/dm/{peer_id}/hide")

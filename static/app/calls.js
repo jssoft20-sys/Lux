@@ -342,7 +342,7 @@ function CallRow(p){var x=p.x;var sx=useRef(0),sy=useRef(0),dx=useRef(0),sw=useR
 function CallsPage(p){
  var [items,setItems]=useState(null);
  var [tab,setTab]=useState('all');
- var [sel,setSel]=useState(null);
+ var [sel,setSel]=useState(null);var [callable,setCallable]=useState(null);
  function load(){api('/api/web/calls/history').then(function(r){setItems(r.items||[]);}).catch(function(){setItems([]);});}
  useEffect(load,[]);
  function label(x){
@@ -350,6 +350,7 @@ function CallsPage(p){
   if(x.reason==='declined')return 'Отклонён';
   if(x.duration)return (x.outgoing?'Исходящий':'Входящий')+' ('+dur(x.duration)+')';
   return x.outgoing?'Исходящий · отменён':'Отменённый';}
+ function tryCall(x,video){if(callable&&callable.can_call===false){p.toast&&p.toast(callable.reason||(x.peer.name+' не принимает звонки'),'');vibrate(8);return;}setSel(null);p.onCall&&p.onCall(x.peer,video);}
  function del(x){api('/api/web/calls/'+x.id,{method:'DELETE'}).then(function(){setSel(null);setItems(function(l){return (l||[]).filter(function(y){return y.id!==x.id;});});p.toast&&p.toast('Запись удалена','success');}).catch(function(e){p.toast&&p.toast(e.message,'error');});}
  var list=(items||[]).filter(function(x){return tab!=='miss'||(x.reason==='missed'&&!x.outgoing);});
  return h('div',{className:'page'},
@@ -365,14 +366,15 @@ function CallsPage(p){
   (!list.length?h('div',{className:'empty-line'},h(I,{name:'phone',size:18}),tab==='miss'?'Пропущенных нет':'Звонков ещё не было'):
    h('div',{className:'list tg'},list.map(function(x){
     var miss=x.reason==='missed'&&!x.outgoing;
-    return h(CallRow,{key:x.id,x:x,miss:miss,label:label(x)+(x.video?' · видео':''),onOpen:function(){setSel(x);},onDel:function(){del(x);}});}))),
+    return h(CallRow,{key:x.id,x:x,miss:miss,label:label(x)+(x.video?' · видео':''),onOpen:function(){setCallable(null);api('/api/web/calls/peer/'+x.peer.id).then(setCallable).catch(function(){setCallable({can_call:true});});setSel(x);},onDel:function(){del(x);}});}))),
   sel?h(L.Sheet,{title:sel.video?'Видеозвонок':'Звонок',sub:sel.peer.name,onClose:function(){setSel(null);},center:true},
    h(Av,{src:sel.peer.avatar,name:sel.peer.name,size:72,className:'big'}),
    h('b',{style:{fontSize:17,marginTop:8}},sel.peer.name),
    h('p',{className:'muted',style:{margin:'4px 0 2px',fontSize:13}},label(sel)+' · '+(L.fmtDate?L.fmtDate(sel.created_at):'')+' '+(L.fmtTime?L.fmtTime(sel.created_at):'')),
+   (callable&&callable.can_call===false)?h('p',{className:'note',style:{textAlign:'center',color:'var(--red)'}},callable.reason||(sel.peer.name+' не принимает звонки')):null,
    h('div',{className:'two-btn',style:{width:'100%',marginTop:14}},
-    h('button',{className:'btn',onClick:function(){setSel(null);p.onCall&&p.onCall(sel.peer,false);}},h(I,{name:'phone',size:18}),'Позвонить'),
-    h('button',{className:'btn ghost',onClick:function(){setSel(null);p.onCall&&p.onCall(sel.peer,true);}},h(I,{name:'cam',size:18}),'Видео')),
+    h('button',{className:'btn'+((callable&&callable.can_call===false)?' off':''),onClick:function(){tryCall(sel,false);}},h(I,{name:'phone',size:18}),'Позвонить'),
+    h('button',{className:'btn ghost'+((callable&&callable.can_call===false)?' off':''),onClick:function(){tryCall(sel,true);}},h(I,{name:'cam',size:18}),'Видео')),
    h('button',{className:'btn dangerfill mt8',style:{width:'100%'},onClick:function(){del(sel);}},h(I,{name:'trash',size:17}),'Удалить запись')):null);}
 
 Object.assign(L,{CallLayer:CallLayer,CallsPage:CallsPage,callDur:dur});

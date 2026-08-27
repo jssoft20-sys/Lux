@@ -1636,3 +1636,55 @@ html.kb-on .bot-kb{padding-bottom:8px}
 .notif.success{background:linear-gradient(135deg,var(--green-soft),var(--card));border:1px solid rgba(34,163,90,.25)}
 .notif.success .nt em{display:inline-block;margin-top:5px;font-style:normal;font-weight:800;font-size:16px;color:var(--green-ink)}
 .notif.success .nt b{font-size:14px}
+
+/* ==================================================================
+   10.67 — визуальный рефреш (в духе 1win, наши цвета)
+   Токены и ключевые компоненты. Грузится последним — перекрывает базу.
+   ================================================================== */
+:root{
+  --green:#00b85c;--green-2:#009a4c;--green-soft:#e3f7ec;--green-ink:#0a7a3f;
+  --grad-g:linear-gradient(135deg,#12d06a,#00a34e);
+  --grad-dark:linear-gradient(135deg,#141b22,#0b1016);
+  --r:18px;--r-lg:24px;--r-sm:12px;
+  --sh:0 2px 10px rgba(16,32,24,.06);--sh2:0 14px 40px rgba(16,32,24,.14);
+  --sp2:cubic-bezier(.22,1,.36,1);
+}
+[data-theme="dark"]{
+  --green:#12d06a;--green-2:#00b85c;--green-soft:#0f2c1d;--green-ink:#5ef29a;
+  --grad-g:linear-gradient(135deg,#12d06a,#00a34e);
+  --bg:#0a0e12;--card:#141a21;--card2:#1a222b;--chatbg:#080c10;--nav:rgba(14,19,25,.94);
+}
+body{font-family:"Manrope","SF Pro Display",-apple-system,BlinkMacSystemFont,"Inter",Roboto,"Segoe UI",sans-serif;letter-spacing:-.01em}
+/* Заголовки — крупнее и жирнее, как на игровых порталах */
+.h1{font-size:27px;font-weight:800;letter-spacing:-.03em}
+.ph{padding-top:calc(10px + var(--safe-t))}
+.sec h3{font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+/* Главная кнопка — фирменный градиент, объём, отклик */
+.btn{height:52px;border-radius:16px;font-weight:800;font-size:15.5px;letter-spacing:-.01em;background:var(--grad-g);color:#fff;box-shadow:0 10px 26px rgba(0,184,92,.32);display:flex;align-items:center;justify-content:center;gap:8px;transition:transform .12s var(--sp2),box-shadow .2s,filter .15s}
+.btn:active{transform:translateY(1px) scale(.985);box-shadow:0 6px 16px rgba(0,184,92,.28);filter:brightness(.97)}
+.btn.ghost{background:var(--card2);color:var(--ink);box-shadow:none;border:1px solid var(--line)}
+.btn.ghost:active{background:var(--line2)}
+.btn:disabled{opacity:.5;box-shadow:none}
+/* Карточки/строки — мягче, воздушнее */
+.dm-row,.row,.tx,.bk-item,.notif,.news{border-radius:0}
+.list,.list.tg{background:var(--card);border-radius:var(--r)}
+.card,.lf-hero,.bot-intro,.tgp-card,.tgp-menu{border-radius:var(--r-lg)}
+/* Нижняя навигация — стеклянная, приподнятая касса */
+.nav{background:var(--nav);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-top:1px solid var(--line2)}
+.nav .nfab.on span{background:var(--grad-g);box-shadow:0 8px 22px rgba(0,184,92,.4)}
+/* Пузыри сообщений — как в мессенджерах, свои по цвету */
+.gm.mine .gm-b{background:var(--grad-g);color:#fff}
+.gm-b{border-radius:18px}
+/* Свайп-ряд из 3 действий (iOS Telegram) */
+.dm-sw.lrow .sw-actions{opacity:1;pointer-events:auto}
+.sw-actions{position:absolute;top:0;right:0;bottom:0;display:flex;opacity:0;pointer-events:none;transition:opacity .12s}
+.sw-actions .swa{width:62px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:#fff;font-size:10px;font-weight:700}
+.sw-actions .swa span{white-space:nowrap;font-size:9.5px}
+.sw-actions .swa.mute{background:#e79a1e}
+.sw-actions .swa.arch{background:#5b6b7e}
+.sw-actions .swa.del{background:var(--red)}
+.sw-actions .swa:active{filter:brightness(.9)}
+.dm-row .mutei{color:var(--muted);margin-left:5px;vertical-align:-2px}
+.cnt.muted{background:var(--muted)}
+/* Спиннеры/акценты — фирменный зелёный */
+.spin{border-top-color:var(--green)}
