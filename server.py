@@ -925,9 +925,20 @@ async def ui_client_summary(client_id: str, request: Request):
     web = None
     try:
         with _ui_read_conn() as c:
-            w = c.execute("SELECT email,verify_status,verify_photo,verify_note,phone FROM web_users WHERE chat_id=?", (chat_id,)).fetchone()
+            w = c.execute("SELECT * FROM web_users WHERE chat_id=?", (chat_id,)).fetchone()
         if w:
-            web = {"email": w["email"], "phone": w["phone"] or "", "verify_status": w["verify_status"] or "none", "verify_photo": w["verify_photo"] or ""}
+            web = {
+                "id": int(w["id"]), "name": str(w["name"] or ""), "email": w["email"],
+                "phone": str(_adm_col(w, "phone", "") or ""),
+                "username": str(_adm_col(w, "username", "") or ""),
+                "balance": round(float(_adm_col(w, "balance", 0) or 0), 2),
+                "blocked": bool(_adm_col(w, "blocked", 0)),
+                "role": str(_adm_col(w, "role", "user") or "user"),
+                "last_seen": str(_adm_col(w, "last_seen", "") or ""),
+                "verify_status": w["verify_status"] or "none",
+                "verify_photo": w["verify_photo"] or "",
+                "verify_note": str(_adm_col(w, "verify_note", "") or ""),
+            }
     except Exception:
         web = None
     return {
@@ -1728,15 +1739,22 @@ async def upload_receipt(tx_id: str, request: Request, file: UploadFile = File(.
         tx = next((x for x in _state["transactions"] if str(x.get("id")) == str(tx_id)), None)
     if not tx:
         raise HTTPException(404, "Transaction not found")
-    if tx.get("kind") != "withdraw":
-        raise HTTPException(400, "Чек прикладывается только к выводу")
-    suffix = Path(file.filename or "receipt").suffix.lower()
-    if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
-        raise HTTPException(400, "Разрешены только PNG, JPG и WEBP")
     raw = await file.read()
-    if len(raw) > 12 * 1024 * 1024:
-        raise HTTPException(413, "Файл больше 12 МБ")
+    if len(raw) > 25 * 1024 * 1024:
+        raise HTTPException(413, "Файл больше 25 МБ")
+    # Не доверяем расширению: iOS отдаёт из галереи image.heic или имя без
+    # расширения, Android — просто "image". Смотрим на содержимое и
+    # перекодируем в чистый JPEG.
+    try:
+        raw, suffix = await asyncio.to_thread(_web_validate_image, raw, 2400, 92)
+    except HTTPException:
+        head = raw[:12]
+        heic = len(raw) > 12 and raw[4:8] == b"ftyp" and raw[8:12].lower() in (b"heic", b"heix", b"hevc", b"mif1", b"msf1")
+        if heic:
+            raise HTTPException(400, "Формат HEIC не поддерживается. В настройках iPhone: Камера → Форматы → «Наиболее совместимый», либо отправьте скриншот чека.")
+        raise HTTPException(400, "Не удалось распознать изображение. Пришлите фото или скриншот чека (JPG, PNG, WEBP).")
     name = f"{tx_id}_{secrets.token_hex(6)}{suffix}"
+    (UPLOADS / "receipts").mkdir(parents=True, exist_ok=True)
     (UPLOADS / "receipts" / name).write_bytes(raw)
     url = f"/uploads/receipts/{name}"
     # Для реальных заявок чек храним в SQLite. Иначе фоновая синхронизация
@@ -5800,12 +5818,21 @@ def _generated_qr_link(payload: str, original_source: str = "", cfg: dict | None
     encoded = _urlparse.quote(clean, safe="")
     return "https://api.dengi.o.kg/#" + encoded
 
-def _choose_requisite():
+def _choose_requisite(bookmaker: str = ""):
+    """Реквизит для заявки. Приоритет: кошелёк, закреплённый за БК в админке,
+    затем общий режим (фиксированный / случайный)."""
     cfg = reload_config()
     m = cfg.get("macro", {})
     rows = [r for r in m.get("requisites", []) if r.get("enabled", True)]
     if not rows:
         return None
+    bk = str(bookmaker or "").strip().lower()
+    if bk:
+        pinned = str((cfg.get("bookmakers", {}).get(bk) or {}).get("requisite_id") or "")
+        if pinned:
+            found = next((r for r in rows if str(r.get("id")) == pinned), None)
+            if found:
+                return found
     mode = m.get("selection_mode", m.get("mode", "random"))
     active = str(m.get("active_requisite_id") or m.get("fixed_requisite_id") or "")
     if mode == "fixed":
@@ -6677,7 +6704,7 @@ async def bot_deposit(request: Request):
         u = c.execute("SELECT blocked FROM bot_users WHERE chat_id=?", (int(d["chat_id"]),)).fetchone()
     if u and u["blocked"]:
         return {"ok": False, "message": "Ваша учетная запись заблокирована. Если это ошибка, напишите в поддержку."}
-    req = _choose_requisite()
+    req = _choose_requisite(bk)
     if not req:
         return {"ok": False, "message": "Пополнение временно недоступно: нет активного реквизита"}
     try:
@@ -11199,7 +11226,30 @@ def _web_user_from_request(request: Request):
         u = c.execute("SELECT * FROM web_users WHERE id=?", (int(s["user_id"]),)).fetchone()
     if not u:
         raise HTTPException(401, "Пользователь не найден")
+    keys = u.keys()
+    if "blocked" in keys and int(u["blocked"] or 0):
+        reason = str(u["block_reason"] or "") if "block_reason" in keys else ""
+        raise HTTPException(403, "Аккаунт заблокирован" + (f": {reason}" if reason else ". Обратитесь в поддержку."))
+    _web_touch_seen(int(u["id"]))
     return u
+
+
+_WEB_SEEN_CACHE: dict[int, float] = {}
+_WEB_SEEN_EVERY = 60.0
+
+
+def _web_touch_seen(user_id: int) -> None:
+    """«Был(а) в сети» для админки. Пишем не чаще раза в минуту на пользователя."""
+    now_ts = time.time()
+    last = _WEB_SEEN_CACHE.get(user_id, 0.0)
+    if now_ts - last < _WEB_SEEN_EVERY:
+        return
+    _WEB_SEEN_CACHE[user_id] = now_ts
+    try:
+        with _DB_LOCK, _db_conn() as c:
+            c.execute("UPDATE web_users SET last_seen=? WHERE id=?", (now_iso(), user_id))
+    except Exception as exc:
+        print(f"[WEB] touch_seen: {exc}", flush=True)
 
 
 def _web_set_cookie(response, token: str, request: Request) -> None:
@@ -13952,7 +14002,7 @@ def _web_face_count(raw: bytes) -> int:
 # === LUX WEB v10.49: баланс LUXON, запросы в ЛС, приватность, устройства, QR-вход,
 #     правка/удаление сообщений (5 минут), уведомления (прочитано/удалить), QR профиля
 # =====================================================================================
-_LUX_WEB_VERSION = "10.69.0"
+_LUX_WEB_VERSION = "10.70.0"
 _WEB_BALANCE_MIN, _WEB_BALANCE_MAX = 100, 500000
 
 
@@ -14064,7 +14114,7 @@ def _web_create_deposit_tx(u, bk: str, player_id: str, amount: float, source: st
     cfg = reload_config()
     if cfg.get("bot_paused") or not cfg.get("deposits_enabled", True):
         return {"ok": False, "message": "Пополнение временно недоступно"}
-    req = _choose_requisite()
+    req = _choose_requisite(bk)
     if not req:
         return {"ok": False, "message": "Пополнение временно недоступно: нет реквизита"}
     if bk == "luxon":
@@ -16067,6 +16117,818 @@ async def lux_bot_api_set_start(request: Request):
         c.execute(f"UPDATE lux_bots SET {','.join(fields)} WHERE id=?", params)
     return {"ok": True}
 # === /LuxFather ===
+
+
+# === LUXON ADMIN 10.70 =======================================================
+# Разделы админки: пользователи сайта, идентификация, рассылка по сайту,
+# управление БК и кошельками, правка и отмена заявок, статистика, чат-админ.
+
+_LUX_ADMIN_ROLES = ("user", "support", "operator", "admin")
+
+
+def _lux_adm_init() -> None:
+    with _DB_LOCK, _db_conn() as c:
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(web_users)").fetchall()}
+        for col, ddl in (
+            ("blocked", "INTEGER DEFAULT 0"),
+            ("block_reason", "TEXT DEFAULT ''"),
+            ("blocked_at", "TEXT DEFAULT ''"),
+            ("role", "TEXT DEFAULT 'user'"),
+            ("verify_at", "TEXT DEFAULT ''"),
+            ("verify_by", "TEXT DEFAULT ''"),
+            ("admin_note", "TEXT DEFAULT ''"),
+        ):
+            if col not in cols:
+                c.execute(f"ALTER TABLE web_users ADD COLUMN {col} {ddl}")
+        c.executescript("""
+        CREATE TABLE IF NOT EXISTS lux_site_broadcasts(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT DEFAULT '', photo_url TEXT DEFAULT '',
+          target TEXT DEFAULT 'all', total INTEGER DEFAULT 0, operator TEXT DEFAULT '', created_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS lux_admin_audit(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, operator TEXT DEFAULT '', action TEXT DEFAULT '',
+          target TEXT DEFAULT '', detail TEXT DEFAULT '', created_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_lux_audit_target ON lux_admin_audit(target,id);
+        """)
+
+
+_lux_adm_init()
+
+
+def _adm_audit(operator: str, action: str, target: str = "", detail: str = "") -> None:
+    try:
+        with _DB_LOCK, _db_conn() as c:
+            c.execute(
+                "INSERT INTO lux_admin_audit(operator,action,target,detail,created_at) VALUES(?,?,?,?,?)",
+                (str(operator)[:64], str(action)[:120], str(target)[:64], str(detail)[:400], now_iso()),
+            )
+    except Exception as exc:
+        print(f"[ADMIN] audit: {exc}", flush=True)
+
+
+def _adm_col(row, name: str, default=None):
+    try:
+        return row[name] if name in row.keys() else default
+    except Exception:
+        return default
+
+
+def _adm_online(last_seen: str) -> bool:
+    if not last_seen:
+        return False
+    try:
+        return (now() - datetime.fromisoformat(str(last_seen))).total_seconds() < 180
+    except Exception:
+        return False
+
+
+def _adm_user_public(row, c=None) -> dict:
+    """Карточка пользователя сайта для админки."""
+    uid = int(row["id"])
+    last_seen = str(_adm_col(row, "last_seen", "") or "")
+    out = {
+        "id": uid,
+        "name": str(row["name"] or "") or "Без имени",
+        "username": str(_adm_col(row, "username", "") or ""),
+        "email": str(row["email"] or ""),
+        "phone": str(_adm_col(row, "phone", "") or ""),
+        "avatar_url": str(_adm_col(row, "avatar_url", "") or ""),
+        "chat_id": int(_adm_col(row, "chat_id", 0) or 0),
+        "balance": round(float(_adm_col(row, "balance", 0) or 0), 2),
+        "blocked": bool(_adm_col(row, "blocked", 0)),
+        "block_reason": str(_adm_col(row, "block_reason", "") or ""),
+        "role": str(_adm_col(row, "role", "user") or "user"),
+        "verify_status": str(_adm_col(row, "verify_status", "none") or "none"),
+        "verify_photo": str(_adm_col(row, "verify_photo", "") or ""),
+        "verify_note": str(_adm_col(row, "verify_note", "") or ""),
+        "verify_at": str(_adm_col(row, "verify_at", "") or ""),
+        "admin_note": str(_adm_col(row, "admin_note", "") or ""),
+        "bio": str(_adm_col(row, "bio", "") or ""),
+        "created_at": str(_adm_col(row, "created_at", "") or ""),
+        "last_login": str(_adm_col(row, "last_login", "") or ""),
+        "last_seen": last_seen,
+        "online": _adm_online(last_seen),
+    }
+    if c is not None:
+        cid = out["chat_id"]
+        if cid:
+            st = c.execute(
+                "SELECT kind,COUNT(*) n,COALESCE(SUM(COALESCE(pay_amount,amount)),0) s FROM bot_transactions "
+                "WHERE chat_id=? AND status IN ('success','credited','paid','completed') GROUP BY kind",
+                (cid,),
+            ).fetchall()
+            agg = {str(r["kind"]): (int(r["n"]), float(r["s"] or 0)) for r in st}
+            out["deposits_count"], out["deposits_sum"] = agg.get("deposit", (0, 0.0))
+            out["withdrawals_count"], out["withdrawals_sum"] = agg.get("withdraw", (0, 0.0))
+            pend = c.execute("SELECT COUNT(*) n FROM bot_transactions WHERE chat_id=? AND status='pending'", (cid,)).fetchone()
+            out["pending_count"] = int(pend["n"] if pend else 0)
+        else:
+            out.update({"deposits_count": 0, "deposits_sum": 0.0, "withdrawals_count": 0, "withdrawals_sum": 0.0, "pending_count": 0})
+    return out
+
+
+@app.get("/api/admin/users")
+async def adm_users(request: Request, q: str = "", filter: str = "all", limit: int = 40, offset: int = 0):
+    get_session(request)
+    limit = max(1, min(100, int(limit or 40)))
+    offset = max(0, int(offset or 0))
+    where, params = ["1=1"], []
+    term = str(q or "").strip()
+    if term:
+        # lux_lower — питоновский lower(): встроенный SQLite LOWER() не понимает кириллицу.
+        like = f"%{term.lower()}%"
+        where.append("(lux_lower(name) LIKE ? OR lux_lower(email) LIKE ? OR lux_lower(COALESCE(username,'')) LIKE ? OR COALESCE(phone,'') LIKE ? OR CAST(id AS TEXT)=? OR CAST(COALESCE(chat_id,0) AS TEXT)=?)")
+        params += [like, like, like, f"%{term}%", term, term]
+    f = str(filter or "all").lower()
+    if f == "blocked":
+        where.append("COALESCE(blocked,0)=1")
+    elif f == "verified":
+        where.append("COALESCE(verify_status,'none')='approved'")
+    elif f == "pending":
+        where.append("COALESCE(verify_status,'none')='pending'")
+    elif f == "balance":
+        where.append("COALESCE(balance,0)>0")
+    elif f == "staff":
+        where.append("COALESCE(role,'user')<>'user'")
+    sql_where = " AND ".join(where)
+    with _ui_read_conn() as c:
+        c.create_function("lux_lower", 1, lambda s: str(s or "").lower())
+        total = int(c.execute(f"SELECT COUNT(*) n FROM web_users WHERE {sql_where}", params).fetchone()["n"])
+        rows = c.execute(
+            f"SELECT * FROM web_users WHERE {sql_where} ORDER BY (COALESCE(last_seen,'')) DESC, id DESC LIMIT ? OFFSET ?",
+            params + [limit, offset],
+        ).fetchall()
+        items = [_adm_user_public(r, c) for r in rows]
+        counts = {
+            "all": int(c.execute("SELECT COUNT(*) n FROM web_users").fetchone()["n"]),
+            "blocked": int(c.execute("SELECT COUNT(*) n FROM web_users WHERE COALESCE(blocked,0)=1").fetchone()["n"]),
+            "pending": int(c.execute("SELECT COUNT(*) n FROM web_users WHERE COALESCE(verify_status,'none')='pending'").fetchone()["n"]),
+            "verified": int(c.execute("SELECT COUNT(*) n FROM web_users WHERE COALESCE(verify_status,'none')='approved'").fetchone()["n"]),
+            "staff": int(c.execute("SELECT COUNT(*) n FROM web_users WHERE COALESCE(role,'user')<>'user'").fetchone()["n"]),
+        }
+        counts["online"] = sum(1 for i in items if i["online"])
+    return {"ok": True, "items": items, "total": total, "has_more": offset + len(items) < total, "counts": counts}
+
+
+@app.get("/api/admin/users/{uid}")
+async def adm_user_card(uid: int, request: Request):
+    get_session(request)
+    with _ui_read_conn() as c:
+        row = c.execute("SELECT * FROM web_users WHERE id=?", (int(uid),)).fetchone()
+        if not row:
+            raise HTTPException(404, "Пользователь не найден")
+        user = _adm_user_public(row, c)
+        chat_id = user["chat_id"]
+        txs = []
+        if chat_id:
+            txs = [_web_tx_row(r) for r in c.execute(
+                "SELECT * FROM bot_transactions WHERE chat_id=? ORDER BY id DESC LIMIT 20", (chat_id,)).fetchall()]
+        balance_log = [dict(r) for r in c.execute(
+            "SELECT id,COALESCE(delta,amount) delta,COALESCE(kind,'') kind,COALESCE(note,'') note,created_at "
+            "FROM web_balance_log WHERE user_id=? ORDER BY id DESC LIMIT 30", (int(uid),)).fetchall()]
+        sessions = [{
+            "device": str(_adm_col(s, "device", "") or "Устройство"),
+            "ip": str(_adm_col(s, "ip", "") or ""),
+            "last_seen": str(_adm_col(s, "last_seen", "") or ""),
+            "created_at": str(_adm_col(s, "created_at", "") or ""),
+        } for s in c.execute("SELECT * FROM web_sessions WHERE user_id=? ORDER BY COALESCE(last_seen,created_at) DESC LIMIT 10", (int(uid),)).fetchall()]
+        msgs = int(c.execute("SELECT COUNT(*) n FROM web_dm WHERE from_id=?", (int(uid),)).fetchone()["n"])
+        audit = [dict(r) for r in c.execute(
+            "SELECT operator,action,detail,created_at FROM lux_admin_audit WHERE target=? ORDER BY id DESC LIMIT 15",
+            (str(uid),)).fetchall()]
+    user["messages_count"] = msgs
+    return {"ok": True, "user": user, "transactions": txs, "balance_log": balance_log, "sessions": sessions, "audit": audit}
+
+
+@app.post("/api/admin/users/{uid}/balance")
+async def adm_user_balance(uid: int, request: Request):
+    sess = get_session(request)
+    d = await request_json(request)
+    mode = str(d.get("mode") or "add").lower()
+    if mode not in ("add", "sub", "set"):
+        raise HTTPException(400, "mode: add | sub | set")
+    try:
+        amount = round(float(str(d.get("amount") or 0).replace(",", ".")), 2)
+    except Exception:
+        raise HTTPException(400, "Введите сумму")
+    if amount <= 0:
+        raise HTTPException(400, "Сумма должна быть больше нуля")
+    note = str(d.get("note") or "").strip()[:200]
+    operator = current_operator(sess)
+    with _ui_read_conn() as c:
+        row = c.execute("SELECT id,chat_id,name,COALESCE(balance,0) balance FROM web_users WHERE id=?", (int(uid),)).fetchone()
+    if not row:
+        raise HTTPException(404, "Пользователь не найден")
+    current = float(row["balance"] or 0)
+    delta = amount if mode == "add" else (-amount if mode == "sub" else round(amount - current, 2))
+    if mode == "sub" and current + delta < 0:
+        raise HTTPException(400, f"Недостаточно средств: на балансе {current:,.2f} сом".replace(",", " "))
+    if not delta:
+        return {"ok": True, "balance": current, "message": "Баланс уже такой"}
+    label = note or ("Начисление оператором" if delta > 0 else "Списание оператором")
+    balance = _web_balance_add(int(uid), delta, "admin", f"{label} • {operator}", "")
+    chat_id = int(row["chat_id"] or 0)
+    if chat_id:
+        sign = "пополнен на" if delta > 0 else "уменьшен на"
+        text = f"💳 Ваш баланс {sign} {abs(delta):,.2f} сом.\nТекущий баланс: {balance:,.2f} сом".replace(",", " ")
+        if note:
+            text += f"\n\nКомментарий: {note}"
+        queue_outbox(chat_id, text, kind="notify")
+    _adm_audit(operator, "Баланс " + ("+" if delta > 0 else "−"), str(uid), f"{delta:+.2f} сом • {label}")
+    add_log("Баланс изменён", f"{operator} • {row['name']} • {delta:+.2f} сом", "info")
+    return {"ok": True, "balance": balance, "delta": delta}
+
+
+@app.post("/api/admin/users/{uid}/block")
+async def adm_user_block(uid: int, request: Request):
+    sess = get_session(request)
+    d = await request_json(request)
+    blocked = bool(d.get("blocked"))
+    reason = str(d.get("reason") or "").strip()[:300]
+    operator = current_operator(sess)
+    with _DB_LOCK, _db_conn() as c:
+        row = c.execute("SELECT id,chat_id,name FROM web_users WHERE id=?", (int(uid),)).fetchone()
+        if not row:
+            raise HTTPException(404, "Пользователь не найден")
+        c.execute(
+            "UPDATE web_users SET blocked=?,block_reason=?,blocked_at=? WHERE id=?",
+            (1 if blocked else 0, reason if blocked else "", now_iso() if blocked else "", int(uid)),
+        )
+        if blocked:
+            c.execute("DELETE FROM web_sessions WHERE user_id=?", (int(uid),))
+        chat_id = int(row["chat_id"] or 0)
+        if chat_id:
+            c.execute("UPDATE bot_users SET blocked=? WHERE chat_id=?", (1 if blocked else 0, chat_id))
+    if chat_id and not blocked:
+        queue_outbox(chat_id, "✅ Доступ к сайту восстановлен. Приятной игры!", kind="notify")
+    _adm_audit(operator, "Блокировка" if blocked else "Разблокировка", str(uid), reason)
+    add_log("Клиент " + ("заблокирован" if blocked else "разблокирован"), f"{operator} • {row['name']}", "warning" if blocked else "info")
+    return {"ok": True, "blocked": blocked, "reason": reason}
+
+
+@app.post("/api/admin/users/{uid}/role")
+async def adm_user_role(uid: int, request: Request):
+    sess = get_session(request)
+    d = await request_json(request)
+    role = str(d.get("role") or "user").lower()
+    if role not in _LUX_ADMIN_ROLES:
+        raise HTTPException(400, "role: " + " | ".join(_LUX_ADMIN_ROLES))
+    with _DB_LOCK, _db_conn() as c:
+        row = c.execute("SELECT id,chat_id,name FROM web_users WHERE id=?", (int(uid),)).fetchone()
+        if not row:
+            raise HTTPException(404, "Пользователь не найден")
+        c.execute("UPDATE web_users SET role=? WHERE id=?", (role, int(uid)))
+    titles = {"user": "Пользователь", "support": "Поддержка", "operator": "Оператор чата", "admin": "Администратор"}
+    chat_id = int(row["chat_id"] or 0)
+    if chat_id and role != "user":
+        queue_outbox(chat_id, f"🛡 Вам назначена роль: {titles[role]}.", kind="notify")
+    _adm_audit(current_operator(sess), "Роль " + titles[role], str(uid), "")
+    add_log("Назначена роль", f"{current_operator(sess)} • {row['name']} → {titles[role]}", "info")
+    return {"ok": True, "role": role}
+
+
+@app.post("/api/admin/users/{uid}/note")
+async def adm_user_note(uid: int, request: Request):
+    sess = get_session(request)
+    d = await request_json(request)
+    note = str(d.get("note") or "")[:400]
+    with _DB_LOCK, _db_conn() as c:
+        cur = c.execute("UPDATE web_users SET admin_note=? WHERE id=?", (note, int(uid)))
+    if not cur.rowcount:
+        raise HTTPException(404, "Пользователь не найден")
+    _adm_audit(current_operator(sess), "Заметка", str(uid), note[:120])
+    return {"ok": True, "note": note}
+
+
+# ---------- Идентификация ----------
+def _adm_set_verify(uid: int, status: str, note: str, operator: str) -> dict:
+    with _DB_LOCK, _db_conn() as c:
+        row = c.execute("SELECT id,chat_id,name FROM web_users WHERE id=?", (int(uid),)).fetchone()
+        if not row:
+            raise HTTPException(404, "Пользователь не найден")
+        c.execute(
+            "UPDATE web_users SET verify_status=?,verify_note=?,verify_at=?,verify_by=? WHERE id=?",
+            (status, note, now_iso(), operator, int(uid)),
+        )
+    chat_id = int(row["chat_id"] or 0)
+    if chat_id:
+        if status == "approved":
+            queue_outbox(chat_id, "✅ Идентификация пройдена. Аккаунт подтверждён — все операции доступны.", kind="notify")
+        elif status == "rejected":
+            text = "❌ Идентификация отклонена."
+            if note:
+                text += f"\n\nПричина: {note}"
+            text += "\n\nВы можете отправить новое фото в профиле."
+            queue_outbox(chat_id, text, kind="notify")
+    _adm_audit(operator, "Идентификация " + status, str(uid), note[:120])
+    add_log("Идентификация " + ("подтверждена" if status == "approved" else "отклонена" if status == "rejected" else status),
+            f"{operator} • {row['name']}", "info" if status == "approved" else "warning")
+    return {"ok": True, "verify_status": status, "verify_note": note}
+
+
+@app.get("/api/admin/verifications")
+async def adm_verifications(request: Request, status: str = "pending", limit: int = 60):
+    get_session(request)
+    limit = max(1, min(200, int(limit or 60)))
+    st = str(status or "pending").lower()
+    where = "COALESCE(verify_status,'none')<>'none'"
+    params: list = []
+    if st in ("pending", "approved", "rejected"):
+        where = "COALESCE(verify_status,'none')=?"
+        params = [st]
+    with _ui_read_conn() as c:
+        rows = c.execute(
+            f"SELECT * FROM web_users WHERE {where} ORDER BY COALESCE(verify_at,'') DESC, id DESC LIMIT ?",
+            params + [limit],
+        ).fetchall()
+        items = [_adm_user_public(r, c) for r in rows]
+        counts = {k: int(c.execute("SELECT COUNT(*) n FROM web_users WHERE COALESCE(verify_status,'none')=?", (k,)).fetchone()["n"])
+                  for k in ("pending", "approved", "rejected")}
+    return {"ok": True, "items": items, "counts": counts}
+
+
+@app.post("/api/admin/users/{uid}/verify")
+async def adm_user_verify(uid: int, request: Request):
+    sess = get_session(request)
+    d = await request_json(request)
+    status = str(d.get("status") or "").lower()
+    if status not in ("approved", "rejected", "pending", "none"):
+        raise HTTPException(400, "status: approved | rejected | pending | none")
+    note = str(d.get("note") or d.get("reason") or "").strip()[:300]
+    if status == "rejected" and not note:
+        raise HTTPException(400, "Укажите причину отклонения")
+    return _adm_set_verify(int(uid), status, note, current_operator(sess))
+
+
+# ---------- Рассылка по сайту ----------
+@app.post("/api/admin/broadcast/site")
+async def adm_broadcast_site(request: Request):
+    sess = get_session(request)
+    d = await request_json(request)
+    text = str(d.get("text") or "").strip()[:3000]
+    photo_url = str(d.get("photo_url") or "").strip()[:500]
+    target = str(d.get("target") or "all").lower()
+    if not text and not photo_url:
+        raise HTTPException(400, "Введите текст рассылки")
+    where = "chat_id IS NOT NULL AND COALESCE(blocked,0)=0"
+    if target == "verified":
+        where += " AND COALESCE(verify_status,'none')='approved'"
+    elif target == "unverified":
+        where += " AND COALESCE(verify_status,'none')<>'approved'"
+    elif target == "active":
+        where += " AND COALESCE(last_seen,'') > '" + (now() - timedelta(days=7)).isoformat(timespec="seconds") + "'"
+    elif target == "balance":
+        where += " AND COALESCE(balance,0)>0"
+    with _ui_read_conn() as c:
+        ids = [int(r["chat_id"]) for r in c.execute(f"SELECT chat_id FROM web_users WHERE {where}").fetchall()]
+    sent = 0
+    for cid in ids:
+        try:
+            queue_outbox(cid, text, photo_url=photo_url, caption=text if photo_url else "", kind="broadcast")
+            sent += 1
+        except Exception as exc:
+            print(f"[ADMIN] broadcast {cid}: {exc}", flush=True)
+    operator = current_operator(sess)
+    with _DB_LOCK, _db_conn() as c:
+        c.execute(
+            "INSERT INTO lux_site_broadcasts(text,photo_url,target,total,operator,created_at) VALUES(?,?,?,?,?,?)",
+            (text, photo_url, target, sent, operator, now_iso()),
+        )
+    try:
+        _lux_push_enqueue("site_broadcast", _lux_push_payload("site_broadcast", "LUXON", text[:140] or "Новое сообщение", image=photo_url, url="/app"))
+    except Exception:
+        pass
+    _adm_audit(operator, "Рассылка сайта", target, f"{sent} получателей")
+    add_log("Рассылка по сайту", f"{operator} • {sent} получателей", "info")
+    return {"ok": True, "sent": sent, "total": len(ids)}
+
+
+@app.get("/api/admin/broadcast/site/history")
+async def adm_broadcast_site_history(request: Request, limit: int = 30):
+    get_session(request)
+    with _ui_read_conn() as c:
+        rows = c.execute("SELECT * FROM lux_site_broadcasts ORDER BY id DESC LIMIT ?", (max(1, min(100, int(limit or 30))),)).fetchall()
+    return {"ok": True, "items": [dict(r) for r in rows]}
+
+
+# ---------- Полная статистика сайта ----------
+@app.get("/api/admin/site-stats")
+async def adm_site_stats(request: Request, days: int = 14):
+    get_session(request)
+    days = max(1, min(60, int(days or 14)))
+    since = (now() - timedelta(days=days)).isoformat(timespec="seconds")
+    today = now().date().isoformat()
+    done = "('success','credited','paid','completed')"
+    with _ui_read_conn() as c:
+        users_total = int(c.execute("SELECT COUNT(*) n FROM web_users").fetchone()["n"])
+        users_new = int(c.execute("SELECT COUNT(*) n FROM web_users WHERE COALESCE(created_at,'')>=?", (today,)).fetchone()["n"])
+        users_week = int(c.execute("SELECT COUNT(*) n FROM web_users WHERE COALESCE(created_at,'')>=?", (since,)).fetchone()["n"])
+        blocked = int(c.execute("SELECT COUNT(*) n FROM web_users WHERE COALESCE(blocked,0)=1").fetchone()["n"])
+        verified = int(c.execute("SELECT COUNT(*) n FROM web_users WHERE COALESCE(verify_status,'none')='approved'").fetchone()["n"])
+        pending_verify = int(c.execute("SELECT COUNT(*) n FROM web_users WHERE COALESCE(verify_status,'none')='pending'").fetchone()["n"])
+        online = int(c.execute("SELECT COUNT(*) n FROM web_users WHERE COALESCE(last_seen,'')>=?",
+                               ((now() - timedelta(minutes=3)).isoformat(timespec="seconds"),)).fetchone()["n"])
+        active_day = int(c.execute("SELECT COUNT(*) n FROM web_users WHERE COALESCE(last_seen,'')>=?", (today,)).fetchone()["n"])
+        balance_total = float(c.execute("SELECT COALESCE(SUM(balance),0) s FROM web_users").fetchone()["s"] or 0)
+        web_chats = c.execute(
+            "SELECT chat_id FROM web_users WHERE chat_id IS NOT NULL"
+        ).fetchall()
+        web_ids = {int(r["chat_id"]) for r in web_chats}
+
+        def _tx_agg(extra_where: str, params: list) -> dict:
+            rows = c.execute(
+                f"SELECT kind,status,COUNT(*) n,COALESCE(SUM(COALESCE(pay_amount,amount)),0) s "
+                f"FROM bot_transactions WHERE {extra_where} GROUP BY kind,status", params).fetchall()
+            agg = {"deposit": {"count": 0, "sum": 0.0, "pending": 0, "problem": 0},
+                   "withdraw": {"count": 0, "sum": 0.0, "pending": 0, "problem": 0}}
+            for r in rows:
+                k = str(r["kind"] or "")
+                if k not in agg:
+                    continue
+                st = str(r["status"] or "").lower()
+                if st in ("success", "credited", "paid", "completed"):
+                    agg[k]["count"] += int(r["n"])
+                    agg[k]["sum"] += float(r["s"] or 0)
+                elif st == "pending":
+                    agg[k]["pending"] += int(r["n"])
+                elif st in ("problem", "error", "provider_error", "failed"):
+                    agg[k]["problem"] += int(r["n"])
+            return agg
+
+        site_all = _tx_agg("source_ip='Web' OR source_ip LIKE 'Web%'", [])
+        site_today = _tx_agg("(source_ip='Web' OR source_ip LIKE 'Web%') AND COALESCE(created_at,'')>=?", [today])
+        all_all = _tx_agg("1=1", [])
+        chart = [dict(r) for r in c.execute(
+            "SELECT substr(created_at,1,10) d, kind, COUNT(*) n, COALESCE(SUM(COALESCE(pay_amount,amount)),0) s "
+            f"FROM bot_transactions WHERE COALESCE(created_at,'')>=? AND status IN {done} "
+            "GROUP BY d,kind ORDER BY d", (since,)).fetchall()]
+        top = [dict(r) for r in c.execute(
+            "SELECT u.id,u.name,u.username,u.avatar_url,COUNT(t.id) n,COALESCE(SUM(COALESCE(t.pay_amount,t.amount)),0) s "
+            "FROM web_users u JOIN bot_transactions t ON t.chat_id=u.chat_id "
+            f"WHERE t.kind='deposit' AND t.status IN {done} GROUP BY u.id ORDER BY s DESC LIMIT 8").fetchall()]
+        by_bk = [dict(r) for r in c.execute(
+            "SELECT bookmaker, kind, COUNT(*) n, COALESCE(SUM(COALESCE(pay_amount,amount)),0) s "
+            f"FROM bot_transactions WHERE status IN {done} GROUP BY bookmaker,kind ORDER BY s DESC").fetchall()]
+        dm_total = int(c.execute("SELECT COUNT(*) n FROM web_dm").fetchone()["n"])
+        dm_today = int(c.execute("SELECT COUNT(*) n FROM web_dm WHERE COALESCE(created_at,'')>=?", (today,)).fetchone()["n"])
+        try:
+            chat_total = int(c.execute("SELECT COUNT(*) n FROM web_chat_messages").fetchone()["n"])
+        except Exception:
+            chat_total = 0
+    days_map: dict[str, dict] = {}
+    for r in chart:
+        d = str(r["d"] or "")
+        days_map.setdefault(d, {"day": d, "deposit": 0.0, "withdraw": 0.0})
+        days_map[d][str(r["kind"] or "deposit")] = float(r["s"] or 0)
+    income = round(site_all["deposit"]["sum"] * 0.08 + site_all["withdraw"]["sum"] * 0.02, 2)
+    return {
+        "ok": True,
+        "users": {
+            "total": users_total, "new_today": users_new, "new_period": users_week,
+            "blocked": blocked, "verified": verified, "pending_verify": pending_verify,
+            "online": online, "active_today": active_day, "balance_total": round(balance_total, 2),
+            "with_chat": len(web_ids),
+        },
+        "site": site_all, "site_today": site_today, "platform": all_all,
+        "chart": sorted(days_map.values(), key=lambda x: x["day"]),
+        "top_users": top, "by_bookmaker": by_bk,
+        "messages": {"dm_total": dm_total, "dm_today": dm_today, "chat_total": chat_total},
+        "income_estimate": income,
+        "server_time": now_iso(),
+    }
+
+
+# ---------- Управление БК и кошельками ----------
+@app.get("/api/admin/bookmakers")
+async def adm_bookmakers(request: Request):
+    get_session(request)
+    cfg = reload_config()
+    bks = dict(cfg.get("bookmakers") or {})
+    macro = dict(cfg.get("macro") or {})
+    wallets = [{
+        "id": str(w.get("id") or ""),
+        "name": str(w.get("name") or w.get("title") or "Реквизит"),
+        "bank_type": str(w.get("bank_type") or ""),
+        "enabled": bool(w.get("enabled", True)),
+    } for w in (macro.get("requisites") or [])]
+    items = []
+    for k, b in bks.items():
+        dmin, dmax = _bookmaker_deposit_limits(k, b)
+        items.append({
+            "key": k, "label": k.upper(),
+            "deposit": bool(b.get("deposit", True)),
+            "withdraw": bool(b.get("withdraw", True)),
+            "deposit_min": int(dmin), "deposit_max": int(dmax),
+            "withdraw_min": int(b.get("withdraw_min") or 100),
+            "withdraw_max": int(b.get("withdraw_max") or 500000),
+            "provider": str(b.get("provider") or ""),
+            "provider_label": str(b.get("provider_label") or ""),
+            "requisite_id": str(b.get("requisite_id") or ""),
+            "site": str(b.get("site") or ""),
+            "logo": f"/static/app/logos/{k}.png",
+        })
+    return {
+        "ok": True, "items": items, "wallets": wallets,
+        "global": {
+            "bot_paused": bool(cfg.get("bot_paused")),
+            "deposits_enabled": bool(cfg.get("deposits_enabled", True)),
+            "withdrawals_enabled": bool(cfg.get("withdrawals_enabled", True)),
+            "wallet_mode": str(macro.get("selection_mode", macro.get("mode", "random"))),
+            "fixed_wallet_id": str(macro.get("active_requisite_id") or macro.get("fixed_requisite_id") or ""),
+        },
+    }
+
+
+@app.post("/api/admin/bookmakers/{key}")
+async def adm_bookmaker_save(key: str, request: Request):
+    sess = get_session(request)
+    d = await request_json(request)
+    cfg = reload_config()
+    bks = cfg.setdefault("bookmakers", {})
+    bk = str(key or "").lower()
+    if bk not in bks:
+        raise HTTPException(404, "Букмекер не найден")
+    b = bks[bk]
+    changed = []
+    for field in ("deposit", "withdraw"):
+        if field in d:
+            b[field] = bool(d.get(field))
+            changed.append(f"{'Пополнение' if field == 'deposit' else 'Вывод'}: {'вкл' if b[field] else 'выкл'}")
+    for field in ("deposit_min", "deposit_max", "withdraw_min", "withdraw_max"):
+        if field in d:
+            try:
+                b[field] = max(0, int(float(d.get(field) or 0)))
+                changed.append(f"{field}={b[field]}")
+            except Exception:
+                raise HTTPException(400, f"Некорректное значение {field}")
+    if int(b.get("deposit_min") or 0) > int(b.get("deposit_max") or 0) and b.get("deposit_max"):
+        raise HTTPException(400, "Минимум пополнения больше максимума")
+    if "requisite_id" in d:
+        rid = str(d.get("requisite_id") or "")
+        if rid and not any(str(w.get("id")) == rid for w in (cfg.get("macro", {}).get("requisites") or [])):
+            raise HTTPException(400, "Реквизит не найден")
+        b["requisite_id"] = rid
+        changed.append("кошелёк: " + (rid or "общий режим"))
+    if "site" in d:
+        b["site"] = str(d.get("site") or "")[:200]
+    save_config(cfg)
+    operator = current_operator(sess)
+    _adm_audit(operator, "БК " + bk.upper(), bk, "; ".join(changed)[:300])
+    add_log("Настройки БК", f"{operator} • {bk.upper()} • " + ("; ".join(changed) or "без изменений"), "info")
+    return {"ok": True, "bookmaker": bk, "changed": changed}
+
+
+@app.post("/api/admin/bookmakers-global")
+async def adm_bookmakers_global(request: Request):
+    sess = get_session(request)
+    d = await request_json(request)
+    cfg = reload_config()
+    changed = []
+    for field in ("bot_paused", "deposits_enabled", "withdrawals_enabled"):
+        if field in d:
+            cfg[field] = bool(d.get(field))
+            changed.append(f"{field}={'да' if cfg[field] else 'нет'}")
+    save_config(cfg)
+    _adm_audit(current_operator(sess), "Глобальные переключатели", "", "; ".join(changed)[:300])
+    add_log("Глобальные настройки приёма", f"{current_operator(sess)} • " + "; ".join(changed), "warning")
+    return {"ok": True, "changed": changed}
+
+
+# ---------- Заявки: правка и отмена ----------
+def _adm_find_tx(c, tx_id: str):
+    return c.execute(
+        "SELECT * FROM bot_transactions WHERE public_id=? OR CAST(request_no AS TEXT)=? OR CAST(id AS TEXT)=? ORDER BY id DESC LIMIT 1",
+        (str(tx_id), str(tx_id), str(tx_id)),
+    ).fetchone()
+
+
+@app.get("/api/admin/tx/{tx_id}")
+async def adm_tx_get(tx_id: str, request: Request):
+    get_session(request)
+    with _ui_read_conn() as c:
+        row = _adm_find_tx(c, tx_id)
+        if not row:
+            raise HTTPException(404, "Заявка не найдена")
+        tx = _tx_to_front(row)
+        chat_id = int(row["chat_id"] or 0)
+        user = c.execute("SELECT * FROM web_users WHERE chat_id=?", (chat_id,)).fetchone() if chat_id else None
+        profile = _adm_user_public(user, c) if user else None
+        if profile is None and chat_id:
+            bu = c.execute("SELECT * FROM bot_users WHERE chat_id=?", (chat_id,)).fetchone()
+            if bu:
+                profile = {
+                    "id": 0, "name": str(_adm_col(bu, "first_name", "") or "Клиент"),
+                    "username": str(_adm_col(bu, "username", "") or ""), "email": "", "phone": str(_adm_col(bu, "phone", "") or ""),
+                    "chat_id": chat_id, "balance": 0.0, "blocked": bool(_adm_col(bu, "blocked", 0)),
+                    "role": "user", "verify_status": "none", "source": "telegram", "online": False,
+                    "avatar_url": "", "last_seen": "", "created_at": str(_adm_col(bu, "created_at", "") or ""),
+                }
+    cfg = reload_config()
+    return {
+        "ok": True, "tx": tx, "profile": profile,
+        "editable": str(row["status"] or "").lower() in ("pending", "problem", "error", "provider_error", "failed", "expired"),
+        "bookmakers": [{"key": k, "label": k.upper()} for k in (cfg.get("bookmakers") or {})],
+    }
+
+
+@app.post("/api/admin/tx/{tx_id}/edit")
+async def adm_tx_edit(tx_id: str, request: Request):
+    sess = get_session(request)
+    d = await request_json(request)
+    operator = current_operator(sess)
+    cfg = reload_config()
+    with _ui_read_conn() as c:
+        row = _adm_find_tx(c, tx_id)
+    if not row:
+        raise HTTPException(404, "Заявка не найдена")
+    row = dict(row)
+    status = str(row.get("status") or "").lower()
+    if status in ("success", "credited", "paid", "completed"):
+        raise HTTPException(400, "Завершённую заявку менять нельзя")
+    pid_db = str(row.get("public_id") or "")
+    fields, params, changed = [], [], []
+
+    if "player_id" in d:
+        new_pid = re.sub(r"[^0-9A-Za-z]", "", str(d.get("player_id") or ""))
+        if len(new_pid) < 3:
+            raise HTTPException(400, "ID счёта слишком короткий")
+        if new_pid != str(row.get("player_id") or ""):
+            fields.append("player_id=?")
+            params.append(new_pid)
+            changed.append(f"ID: {row.get('player_id')} → {new_pid}")
+
+    new_bk = str(row.get("bookmaker") or "").lower()
+    if "bookmaker" in d:
+        cand = str(d.get("bookmaker") or "").lower()
+        if cand and cand != new_bk:
+            if cand != "luxon" and cand not in (cfg.get("bookmakers") or {}):
+                raise HTTPException(400, "Неизвестный букмекер")
+            fields.append("bookmaker=?")
+            params.append(cand)
+            changed.append(f"БК: {new_bk.upper()} → {cand.upper()}")
+            new_bk = cand
+
+    if "amount" in d and str(d.get("amount") or "").strip() != "":
+        try:
+            new_amount = float(int(round(float(str(d.get("amount")).replace(",", ".")))))
+        except Exception:
+            raise HTTPException(400, "Некорректная сумма")
+        if new_amount <= 0:
+            raise HTTPException(400, "Сумма должна быть больше нуля")
+        if abs(new_amount - float(row.get("amount") or 0)) > 0.004:
+            if str(row.get("kind")) == "deposit":
+                if new_bk != "luxon":
+                    minimum, maximum = _bookmaker_deposit_limits(new_bk, (cfg.get("bookmakers") or {}).get(new_bk))
+                else:
+                    minimum, maximum = _WEB_BALANCE_MIN, _WEB_BALANCE_MAX
+                if new_amount < minimum or new_amount > maximum:
+                    raise HTTPException(400, f"Сумма вне лимитов: от {minimum:,} до {maximum:,} сом".replace(",", " "))
+                req = next((x for x in (cfg.get("macro", {}).get("requisites") or [])
+                            if str(x.get("id")) == str(row.get("requisite_id") or "")), None) or _choose_requisite(new_bk)
+                if not req:
+                    raise HTTPException(400, "Нет активного реквизита для пересборки QR")
+                raw = req.get("payload") or req.get("fragment") or req.get("qr_url") or req.get("source_url") or ""
+                with _PAY_AMOUNT_LOCK:
+                    pay_amount = _unique_pay_amount(new_amount)
+                    try:
+                        gen = inject_qr_amount(raw, pay_amount)
+                    except Exception as exc:
+                        raise HTTPException(400, f"Не удалось пересобрать QR: {str(exc)[:120]}")
+                methods = _bank_method_urls(gen, cfg)
+                fields += ["amount=?", "pay_amount=?", "generated_qr=?", "payment_methods_json=?", "requisite_id=?"]
+                params += [new_amount, pay_amount, gen, json.dumps(methods, ensure_ascii=False), str(req.get("id", ""))]
+                changed.append(f"Сумма: {float(row.get('amount') or 0):.0f} → {new_amount:.0f} (к оплате {pay_amount:.2f})")
+            else:
+                fields += ["amount=?", "pay_amount=?"]
+                params += [new_amount, new_amount]
+                changed.append(f"Сумма вывода: {float(row.get('amount') or 0):.2f} → {new_amount:.2f}")
+
+    if not fields:
+        return {"ok": True, "changed": [], "message": "Изменений нет"}
+    fields += ["updated_at=?", "operator=?"]
+    params += [now_iso(), operator]
+    params.append(pid_db)
+    with _DB_LOCK, _db_conn() as c:
+        c.execute(f"UPDATE bot_transactions SET {','.join(fields)} WHERE public_id=?", params)
+        fresh = c.execute("SELECT * FROM bot_transactions WHERE public_id=?", (pid_db,)).fetchone()
+    _sync_bot_transactions_to_state(force=True)
+    _adm_audit(operator, "Правка заявки", pid_db, "; ".join(changed)[:300])
+    add_log("Заявка изменена", f"{operator} • #{row.get('request_no') or pid_db} • " + "; ".join(changed), "warning")
+    chat_id = int(row.get("chat_id") or 0)
+    if chat_id and changed:
+        queue_outbox(chat_id, "✏️ Оператор обновил вашу заявку #" + str(row.get("request_no") or pid_db) + ":\n" + "\n".join("• " + x for x in changed), kind="notify")
+    return {"ok": True, "changed": changed, "tx": _tx_to_front(fresh) if fresh else None}
+
+
+@app.post("/api/admin/tx/{tx_id}/cancel")
+async def adm_tx_cancel(tx_id: str, request: Request):
+    sess = get_session(request)
+    d = await request_json(request)
+    reason = str(d.get("reason") or "").strip()[:300]
+    operator = current_operator(sess)
+    with _ui_read_conn() as c:
+        row = _adm_find_tx(c, tx_id)
+    if not row:
+        raise HTTPException(404, "Заявка не найдена")
+    row = dict(row)
+    status = str(row.get("status") or "").lower()
+    if status in ("success", "credited", "paid", "completed"):
+        raise HTTPException(400, "Завершённую заявку отменить нельзя")
+    if status == "cancelled":
+        return {"ok": True, "status": "cancelled", "message": "Заявка уже отменена"}
+    pid_db = str(row.get("public_id") or "")
+    with _DB_LOCK, _db_conn() as c:
+        c.execute(
+            "UPDATE bot_transactions SET status='cancelled',error=?,closed_at=?,updated_at=?,operator=? WHERE public_id=?",
+            (reason or "Отменена оператором", now_iso(), now_iso(), operator, pid_db),
+        )
+    # Пополнение баланса LUXON возвращать нечего — деньги ещё не списаны.
+    # Пополнение БК с внутреннего баланса: средства уже списаны, возвращаем.
+    if str(row.get("kind")) == "deposit" and str(row.get("source_ip") or "").lower().startswith("balance"):
+        with _ui_read_conn() as c:
+            u = c.execute("SELECT id FROM web_users WHERE chat_id=?", (int(row.get("chat_id") or 0),)).fetchone()
+        if u:
+            _web_balance_add(int(u["id"]), float(row.get("amount") or 0), "refund",
+                             f"Возврат по отменённой заявке #{row.get('request_no') or pid_db}", f"cancel:{pid_db}")
+    _sync_bot_transactions_to_state(force=True)
+    chat_id = int(row.get("chat_id") or 0)
+    if chat_id:
+        text = f"❌ Заявка #{row.get('request_no') or pid_db} отменена оператором."
+        if reason:
+            text += f"\n\nПричина: {reason}"
+        queue_outbox(chat_id, text, kind="notify")
+    _adm_audit(operator, "Отмена заявки", pid_db, reason)
+    add_log("Заявка отменена", f"{operator} • #{row.get('request_no') or pid_db} • {reason or 'без причины'}", "warning")
+    return {"ok": True, "status": "cancelled", "reason": reason}
+
+
+# ---------- Чат сайта: админ и назначение аккаунта ----------
+@app.get("/api/admin/site-chat")
+async def adm_site_chat(request: Request, limit: int = 60):
+    get_session(request)
+    limit = max(1, min(200, int(limit or 60)))
+    with _ui_read_conn() as c:
+        try:
+            rows = c.execute(
+                "SELECT m.id,m.user_id,m.text,m.created_at,u.name,u.username,u.avatar_url,COALESCE(u.role,'user') role,"
+                "COALESCE(u.blocked,0) blocked,COALESCE(u.muted_until,'') muted_until "
+                "FROM web_chat_messages m LEFT JOIN web_users u ON u.id=m.user_id "
+                "ORDER BY m.id DESC LIMIT ?", (limit,)).fetchall()
+        except Exception:
+            rows = []
+        pins = [int(r["message_id"]) for r in c.execute("SELECT message_id FROM web_chat_pins").fetchall()]
+        staff = [_adm_user_public(r, c) for r in c.execute(
+            "SELECT * FROM web_users WHERE COALESCE(role,'user')<>'user' ORDER BY role,id").fetchall()]
+    items = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["text"] = _lux_dec(str(d.get("text") or ""))
+        except Exception:
+            pass
+        d["pinned"] = int(d["id"]) in pins
+        items.append(d)
+    return {"ok": True, "items": items, "staff": staff, "roles": list(_LUX_ADMIN_ROLES)}
+
+
+@app.post("/api/admin/site-chat/message/{mid}")
+async def adm_site_chat_message(mid: int, request: Request):
+    sess = get_session(request)
+    d = await request_json(request)
+    action = str(d.get("action") or "").lower()
+    operator = current_operator(sess)
+    with _DB_LOCK, _db_conn() as c:
+        if action == "delete":
+            c.execute("DELETE FROM web_chat_messages WHERE id=?", (int(mid),))
+            c.execute("DELETE FROM web_chat_pins WHERE message_id=?", (int(mid),))
+        elif action == "pin":
+            c.execute("INSERT OR REPLACE INTO web_chat_pins(message_id,pinned_by,created_at) VALUES(?,?,?)", (int(mid), operator, now_iso()))
+        elif action == "unpin":
+            c.execute("DELETE FROM web_chat_pins WHERE message_id=?", (int(mid),))
+        else:
+            raise HTTPException(400, "action: delete | pin | unpin")
+    try:
+        _web_wake_chat()
+    except Exception:
+        pass
+    _adm_audit(operator, "Чат сайта: " + action, str(mid), "")
+    return {"ok": True}
+
+
+@app.post("/api/admin/users/{uid}/mute")
+async def adm_user_mute(uid: int, request: Request):
+    sess = get_session(request)
+    d = await request_json(request)
+    minutes = int(d.get("minutes") or 0)
+    until = (now() + timedelta(minutes=minutes)).isoformat(timespec="seconds") if minutes > 0 else ""
+    with _DB_LOCK, _db_conn() as c:
+        cur = c.execute("UPDATE web_users SET muted_until=? WHERE id=?", (until, int(uid)))
+    if not cur.rowcount:
+        raise HTTPException(404, "Пользователь не найден")
+    _adm_audit(current_operator(sess), "Мут в чате" if minutes > 0 else "Снят мут", str(uid), f"{minutes} мин")
+    return {"ok": True, "muted_until": until}
+# === /LUXON ADMIN 10.70 ======================================================
 
 
 # === SPA catch-all админки: ДОЛЖЕН быть последним GET-маршрутом ===
