@@ -1414,3 +1414,85 @@ mark.hl{background:var(--amber-soft);color:var(--ink);border-radius:3px;padding:
 .fwd-prev.tap span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fwd-prev.tap svg:last-child{flex:0 0 auto;color:var(--muted)}
 .fwd-prev.tap:active{transform:scale(.98);background:var(--card2)}
+
+/* ===== v10.62: свайпы по чатам, папки, контакты ===== */
+.dm-sw{position:relative;overflow:hidden}
+.dm-sw .sw-pin,.dm-sw .sw-del{position:absolute;top:0;bottom:0;display:flex;align-items:center;gap:6px;padding:0 16px;font-size:12.5px;font-weight:800;color:#fff;opacity:0;transition:opacity .15s}
+.dm-sw .sw-pin{left:0;background:var(--green);border-radius:0}
+.dm-sw .sw-del{right:0;background:var(--red)}
+.dm-sw.r .sw-pin{opacity:1}
+.dm-sw.l .sw-del{opacity:1}
+.dm-sw .dm-row{position:relative;z-index:1}
+.dm-row .r .pinned{color:var(--muted);margin-top:3px}
+.folders .fadd{display:flex;align-items:center;gap:4px}
+.ficons{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0}
+.ficons button{width:40px;height:40px;border-radius:12px;background:var(--card2);font-size:19px;display:flex;align-items:center;justify-content:center;border:2px solid transparent}
+.ficons button.on{border-color:var(--green);background:var(--green-soft)}
+.fpick{max-height:38vh;overflow-y:auto;border-radius:14px}
+.fpick .dm-row.sel{background:var(--green-soft)}
+.fpick .fchk{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;color:#fff;flex:0 0 auto}
+.fpick .dm-row.sel .fchk{background:var(--green);border-color:var(--green)}
+.frow .ic.danger{color:var(--red)}
+.inp{width:100%;padding:12px 14px;border-radius:13px;background:var(--card2);border:1px solid var(--line);font-size:15px;color:var(--ink)}
+
+/* ===== v10.62: перемотка голосового, одноразовые фото, превью профиля ===== */
+.voice .wave.seek{cursor:pointer;touch-action:none}
+.burn-ph{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:var(--card2);border:1px dashed var(--line);max-width:250px;text-align:left}
+.burn-ph .bp-ic{font-size:22px}
+.burn-ph .bp-t b{display:block;font-size:13.5px}
+.burn-ph .bp-t small{color:var(--muted);font-size:11.5px}
+.burn-ph.off{opacity:.6}
+.pv.burnview .burn-cnt{position:absolute;top:calc(14px + var(--safe-t,0px));left:50%;transform:translateX(-50%);background:rgba(0,0,0,.6);color:#fff;font-weight:800;padding:6px 14px;border-radius:999px;z-index:3}
+.plink{display:flex;align-items:center;gap:9px;margin-top:7px;padding:8px 10px;border-radius:12px;background:var(--card2);border:1px solid var(--line2);width:100%;max-width:280px;text-align:left}
+.plink .t{flex:1;min-width:0}
+.plink .t b{display:flex;align-items:center;gap:4px;font-size:13.5px}
+.plink .t small{display:block;color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.md-token{display:inline-flex;align-items:center;gap:5px;background:var(--blue-soft);color:var(--blue);border-radius:8px;padding:2px 7px;font-family:SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all;text-align:left}
+.uav-tap{border-radius:50%;line-height:0}
+.uatag.uphone{margin-top:4px;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+
+/* ===== Редактор фото (14.1) ===== */
+.pedit{position:fixed;inset:0;z-index:340;background:#000;display:flex;flex-direction:column;animation:fadeIn .18s}
+.pe-top{display:flex;align-items:center;gap:8px;padding:calc(10px + var(--safe-t,0px)) 12px 8px}
+.pe-x{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;display:flex;align-items:center;justify-content:center}
+.pe-tools{display:flex;gap:7px;margin-left:auto}
+.pe-tools button{display:flex;align-items:center;gap:6px;padding:8px 13px;border-radius:999px;background:rgba(255,255,255,.12);color:#fff;font-size:13px;font-weight:700}
+.pe-tools button.on{background:var(--green)}
+.pe-tools button.q{min-width:46px;justify-content:center}
+.pe-tools button.q.on{background:var(--blue)}
+.pe-stage{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px}
+.pe-stage canvas{max-width:100%;max-height:100%;border-radius:10px;touch-action:none}
+.pe-colors{display:flex;align-items:center;gap:9px;padding:8px 14px;justify-content:center}
+.pe-colors button{width:30px;height:30px;border-radius:50%;border:2.5px solid rgba(255,255,255,.35)}
+.pe-colors button.on{border-color:#fff;transform:scale(1.15)}
+.pe-colors .pe-clear{width:auto;height:auto;border:0;border-radius:999px;background:rgba(255,255,255,.12);color:#fff;font-size:12.5px;font-weight:700;padding:7px 12px}
+.pe-crophint{padding:8px 14px;text-align:center;color:#cbd5e1;font-size:13px}
+.pe-burn{display:flex;gap:6px;padding:8px 12px;overflow-x:auto;scrollbar-width:none;justify-content:center}
+.pe-burn button{flex:0 0 auto;padding:7px 12px;border-radius:999px;background:rgba(255,255,255,.12);color:#fff;font-size:12.5px;font-weight:700}
+.pe-burn button.on{background:#e0533f}
+.pe-bottom{display:flex;align-items:center;gap:10px;padding:8px 14px calc(14px + var(--safe-b))}
+.pe-note{flex:1;color:#94a3b8;font-size:12.5px}
+.pe-send{width:52px;height:52px;border-radius:50%;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 22px rgba(34,163,90,.4)}
+
+/* ===== Внутренний браузер (15.1) ===== */
+.iab{position:fixed;inset:0;z-index:330;background:var(--bg);display:flex;flex-direction:column;animation:riseIn .22s}
+.iab-top{display:flex;align-items:center;gap:10px;padding:calc(8px + var(--safe-t,0px)) 10px 8px;background:var(--card);border-bottom:1px solid var(--line2)}
+.iab-x{width:36px;height:36px;border-radius:50%;background:var(--card2);display:flex;align-items:center;justify-content:center;color:var(--ink)}
+.iab-t{flex:1;min-width:0}
+.iab-t b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iab-t small{color:var(--muted);font-size:11.5px}
+.iab-ext{display:flex;align-items:center;gap:5px;padding:8px 12px;border-radius:999px;background:var(--blue-soft);color:var(--blue);font-size:12.5px;font-weight:700;text-decoration:none}
+.iab-body{flex:1;position:relative;background:#fff}
+.iab-body iframe{width:100%;height:100%;border:0}
+.iab-hint{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:var(--bg);padding:24px;text-align:center;color:var(--muted);font-size:13.5px}
+.iab-hint p{max-width:280px;margin:0}
+
+/* ===== Экран входа (17.1): аккуратнее, как в ТГ ===== */
+.auth{position:relative}
+.auth:before{content:"";position:fixed;inset:0;background:radial-gradient(ellipse 90% 45% at 50% -12%,rgba(34,163,90,.16),transparent 70%);pointer-events:none}
+.auth .mark{width:72px;height:72px;border-radius:22px;margin-left:auto;margin-right:auto;margin-bottom:22px}
+.auth h1{text-align:center;font-size:27px}
+.auth>p{text-align:center}
+.auth .field{height:52px;border-radius:15px}
+.auth .btn{height:52px;border-radius:15px}
+.auth.gate .mark{width:84px;height:84px;border-radius:26px}

@@ -1,7 +1,7 @@
 (function(){
 'use strict';
-var L=window.__LUX,h=L.h,I=L.I,money=L.money,fmtDate=L.fmtDate,fmtTime=L.fmtTime,api=L.api,initial=L.initial,ding=L.ding,vibrate=L.vibrate,Sheet=L.Sheet,Av=L.Av;
-L.P.bot='M12 3v3M7 6h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2ZM9 11h.01M15 11h.01M9 15h6';L.P.eye='M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z';L.P.pause=L.P.pause||'M10 5v14M14 5v14';L.P.trash=L.P.trash||'M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13';
+var L=window.__LUX,h=L.h,I=L.I,money=L.money,fmtDate=L.fmtDate,fmtTime=L.fmtTime,api=L.api,initial=L.initial,ding=L.ding,vibrate=L.vibrate,Sheet=L.Sheet,Av=L.Av,copyText=L.copyText;
+L.P.bot='M12 3v3M7 6h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2ZM9 11h.01M15 11h.01M9 15h6';L.P.folder=L.P.folder||'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z';L.P.eye='M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z';L.P.pause=L.P.pause||'M10 5v14M14 5v14';L.P.trash=L.P.trash||'M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13';
 var useState=React.useState,useEffect=React.useEffect,useRef=React.useRef;
 function ago(iso){if(!iso)return '';var d=(Date.now()-new Date(iso))/1000;if(d<60)return 'только что';if(d<3600)return Math.floor(d/60)+' мин назад';if(d<86400)return Math.floor(d/3600)+' ч назад';return fmtDate(iso);}
 
@@ -15,12 +15,17 @@ function PhotoViewer(p){var [scale,setScale]=useState(1);var start=useRef(null);
 L.openPhoto=function(url){try{window.dispatchEvent(new CustomEvent('luxon-photo',{detail:url}));}catch(e){}};
 
 /* ---------- Chats list ---------- */
-function ChatsList(p){var [items,setItems]=useState(null);var [online,setOnline]=useState(0);var [tab,setTab]=useState('all');var [q,setQ]=useState('');var [found,setFound]=useState(null);var [peek,setPeek]=useState(null);var alive=useRef(true),qt=useRef(0);
+function ChatsList(p){var [items,setItems]=useState(null);var [online,setOnline]=useState(0);var [tab,setTab]=useState('all');var [q,setQ]=useState('');var [found,setFound]=useState(null);var [fmsgs,setFmsgs]=useState(null);var [peek,setPeek]=useState(null);var [folders,setFolders]=useState([]);var [fmanage,setFmanage]=useState(false);var [ask,setAsk]=useState(null);var alive=useRef(true),qt=useRef(0);
+ function loadFolders(){api('/api/web/folders').then(function(r){if(alive.current)setFolders(r.items||[]);}).catch(function(){});}
+ /* Свайпы по строке чата: вправо — закрепить, влево — удалить у себя */
+ function pinChat(it){api('/api/web/dm/'+it.peer.id+'/pinchat',{method:'POST',body:{}}).then(function(r){p.toast&&p.toast(r.pinned?'Чат закреплён':'Чат откреплён','success');load();}).catch(function(e){p.toast&&p.toast(e.message,'error');});}
+ function hideChat(it){setAsk(it);}
  function load(){api('/api/web/dm').then(function(r){if(alive.current)setItems(r.items||[]);}).catch(function(){if(alive.current)setItems([]);});api('/api/web/chat/messages?limit=1').then(function(r){if(alive.current)setOnline(r.online||0);}).catch(function(){});}
- useEffect(function(){alive.current=true;load();var iv=setInterval(load,5000);return function(){alive.current=false;clearInterval(iv);};},[]);
+ useEffect(function(){alive.current=true;load();loadFolders();var iv=setInterval(load,5000);return function(){alive.current=false;clearInterval(iv);};},[]);
  /* Глобальный поиск как в ТГ: контакты → люди → боты */
- useEffect(function(){var v=q.trim();if(v.length<2){setFound(null);return;}var my=++qt.current;var tm=setTimeout(function(){api('/api/web/search?q='+encodeURIComponent(v)).then(function(r){if(my===qt.current)setFound(r);}).catch(function(){});},280);return function(){clearTimeout(tm);};},[q]);
- var reqs=(items||[]).filter(function(x){return x.request;});var rest=(items||[]).filter(function(x){return !x.request&&(tab!=='unread'||x.unread>0);});
+ useEffect(function(){var v=q.trim();if(v.length<2){setFound(null);setFmsgs(null);return;}var my=++qt.current;var tm=setTimeout(function(){api('/api/web/search?q='+encodeURIComponent(v)).then(function(r){if(my===qt.current)setFound(r);}).catch(function(){});api('/api/web/search/messages?q='+encodeURIComponent(v)).then(function(r){if(my===qt.current)setFmsgs(r.items||[]);}).catch(function(){});},280);return function(){clearTimeout(tm);};},[q]);
+ var cf=tab.charAt(0)==='f'?folders.filter(function(x){return 'f'+x.id===tab;})[0]:null;
+ var reqs=(items||[]).filter(function(x){return x.request;});var rest=(items||[]).filter(function(x){return !x.request&&(tab!=='unread'||x.unread>0)&&(!cf||(cf.peers||[]).indexOf(Number(x.peer.id))>=0);});
  function srow(cls,icon,title,sub,go,extra){return h('button',{className:'dm-row main',onClick:go},h('span',{className:'dm-av'},h('span',{className:'cav sys '+cls},h(I,{name:icon,size:20})),extra||null),h('span',{className:'t'},h('b',null,title,(cls==='lux'||cls==='father'||cls==='news')?h('span',{className:'vbadge sm'},h(I,{name:'check',size:9,w:3})):null),h('small',null,sub)),h(I,{name:'chev',size:18,className:'chev'}));}
  function urow(x,kind){return h('button',{key:kind+x.id,className:'dm-row',onClick:function(){if(kind==='bot'){p.onBot&&p.onBot(x);}else p.onOpen(x.id);}},
    h('span',{className:'dm-av'},kind==='bot'?h('span',{className:'cav sys bot2'},x.avatar_url?h('img',{src:x.avatar_url,alt:''}):h(I,{name:'bot',size:19})):h(Av,{src:x.avatar,name:x.name,size:44}),x.online?h('i',{className:'on'}):null),
@@ -35,22 +40,49 @@ function ChatsList(p){var [items,setItems]=useState(null);var [online,setOnline]
     found.contacts.length?h(React.Fragment,null,h('div',{className:'sec'},h('h3',null,'Контакты')),h('div',{className:'list'},found.contacts.map(function(x){return urow(x,'user');}))):null,
     found.users.length?h(React.Fragment,null,h('div',{className:'sec'},h('h3',null,'Люди')),h('div',{className:'list'},found.users.map(function(x){return urow(x,'user');}))):null,
     found.bots.length?h(React.Fragment,null,h('div',{className:'sec'},h('h3',null,'Боты')),h('div',{className:'list'},found.bots.map(function(x){return urow(x,'bot');}))):null,
-    (!found.contacts.length&&!found.users.length&&!found.bots.length)?h('div',{className:'empty-line'},h(I,{name:'search',size:18}),'Ничего не найдено'):null)
+    fmsgs&&fmsgs.length?h(React.Fragment,null,h('div',{className:'sec'},h('h3',null,'Сообщения'),h('small',null,fmsgs.length)),h('div',{className:'list'},fmsgs.map(function(m){return h('button',{key:'m'+m.msg_id,className:'dm-row',onClick:function(){p.onOpen(String(m.peer.id));}},h('span',{className:'dm-av'},h(Av,{src:m.peer.avatar,name:m.peer.name,size:44})),h('span',{className:'t'},h('b',null,m.peer.name),h('small',null,(m.mine?'Вы: ':'')+m.text)),h('span',{className:'r'},h('small',null,fmtTime(m.created_at))));}))):null,
+    (!found.contacts.length&&!found.users.length&&!found.bots.length&&!(fmsgs&&fmsgs.length))?h('div',{className:'empty-line'},h(I,{name:'search',size:18}),'Ничего не найдено'):null)
   ):h(React.Fragment,null,
   /* Закреплённые строки как в ТГ: Избранное, общий чат, новости, LuxFather */
   h('div',{className:'list'},
    srow('fav','cloud','Избранное','Заметки, файлы и пересланное — только для вас',function(){if(!p.meId){p.toast&&p.toast('Профиль ещё загружается','');return;}p.onOpen(String(p.meId));}),
    srow('lux','chat',(p.brand||'LUXON')+' чат','в сети: '+online+' · общий чат клиентов',p.onGroup),
    srow('news','bell','Новости','Официальные объявления '+(p.brand||'LUXON'),p.onNews),
-   srow('father','bot','LuxFather','Создание и настройка ваших ботов',p.onFather)),
+   srow('father','bot','LuxFather','Создание и настройка ваших ботов',p.onFather),srow('cts','users','Контакты','Ваши люди — со своими именами',function(){p.onContacts&&p.onContacts();})),
   /* Папки */
-  h('div',{className:'folders'},[['all','Все'],['personal','Личные'],['bots','Боты'],['unread','Непрочитанные']].map(function(t){var n=t[0]==='unread'?(items||[]).filter(function(x){return x.unread;}).length:0;return h('button',{key:t[0],className:tab===t[0]?'on':'',onClick:function(){setTab(t[0]);vibrate(8);}},t[1],n?h('span',{className:'fcnt'},n):null);})),
-  reqs.length&&tab!=='bots'?h(React.Fragment,null,h('div',{className:'sec'},h('h3',null,'Запросы'),h('small',null,reqs.length)),h('div',{className:'list'},reqs.map(function(it){return h(DmRow,{key:'r'+it.peer.id,it:it,onOpen:p.onOpen,onPeek:setPeek,req:true});}))):null,
+  h('div',{className:'folders'},[['all','Все'],['personal','Личные'],['bots','Боты'],['unread','Непрочитанные']].map(function(t){var n=t[0]==='unread'?(items||[]).filter(function(x){return x.unread;}).length:0;return h('button',{key:t[0],className:tab===t[0]?'on':'',onClick:function(){setTab(t[0]);vibrate(8);}},t[1],n?h('span',{className:'fcnt'},n):null);}).concat(folders.map(function(f){return h('button',{key:'f'+f.id,className:tab==='f'+f.id?'on':'',onClick:function(){setTab('f'+f.id);vibrate(8);}},f.icon+' '+f.name);})).concat([h('button',{key:'fmng',className:'fadd',onClick:function(){setFmanage(true);vibrate(8);},'aria-label':'Папки'},h(I,{name:'folder',size:14}),'+')])),
+  reqs.length&&tab!=='bots'?h(React.Fragment,null,h('div',{className:'sec'},h('h3',null,'Запросы'),h('small',null,reqs.length)),h('div',{className:'list'},reqs.map(function(it){return h(DmRow,{key:'r'+it.peer.id,it:it,onOpen:p.onOpen,onPeek:setPeek,req:true,onSwipePin:pinChat,onSwipeHide:hideChat});}))):null,
   tab==='bots'?h(BotsFolder,{toast:p.toast,onBot:p.onBot}):h(React.Fragment,null,
    h('div',{className:'sec'},h('h3',null,'Личные')),
-   items===null?h('div',{className:'list'},[0,1,2].map(function(i){return h('div',{key:i,className:'dm-row'},h('span',{className:'skel',style:{width:44,height:44,borderRadius:14}}),h('span',{className:'t'},h('span',{className:'skel',style:{height:12,width:'40%',display:'block'}}),h('span',{className:'skel',style:{height:10,width:'62%',display:'block',marginTop:6}})));})):(!rest.length?h('div',{className:'empty-line'},h(I,{name:'msg',size:18}),'Пока нет переписок — найдите человека в поиске или в общем чате'):h('div',{className:'list'},rest.map(function(it){return h(DmRow,{key:it.peer.id,it:it,onOpen:p.onOpen,onPeek:setPeek});}))),
+   items===null?h('div',{className:'list'},[0,1,2].map(function(i){return h('div',{key:i,className:'dm-row'},h('span',{className:'skel',style:{width:44,height:44,borderRadius:14}}),h('span',{className:'t'},h('span',{className:'skel',style:{height:12,width:'40%',display:'block'}}),h('span',{className:'skel',style:{height:10,width:'62%',display:'block',marginTop:6}})));})):(!rest.length?h('div',{className:'empty-line'},h(I,{name:'msg',size:18}),'Пока нет переписок — найдите человека в поиске или в общем чате'):h('div',{className:'list'},rest.map(function(it){return h(DmRow,{key:it.peer.id,it:it,onOpen:p.onOpen,onPeek:setPeek,onSwipePin:pinChat,onSwipeHide:hideChat});}))),
    tab==='all'?h(BotsFolder,{toast:p.toast,onBot:p.onBot}):null)),
+  ask?h(L.Confirm,{danger:true,title:'Удалить чат?',text:'Переписка с «'+ask.peer.name+'» удалится только у вас. У собеседника она останется.',okLabel:'Удалить',onOk:function(){var it=ask;setAsk(null);return api('/api/web/dm/'+it.peer.id+'/hide',{method:'POST',body:{}}).then(function(){p.toast&&p.toast('Чат удалён','success');load();}).catch(function(e){p.toast&&p.toast(e.message,'error');});},onCancel:function(){setAsk(null);}}):null,
+  fmanage?h(FoldersSheet,{folders:folders,chats:(items||[]).filter(function(x){return !x.request;}),toast:p.toast,onClose:function(){setFmanage(false);},onSaved:function(list){setFolders(list);}}):null,
   peek?h(PeekSheet,{it:peek,onClose:function(){setPeek(null);},onOpen:p.onOpen,onProfile:function(id){p.onProfile?p.onProfile(id):p.onOpen(id);}}):null);}
+
+/* Свои папки (11.11): имя, иконка, какие чаты входят */
+function FoldersSheet(p){var [list,setList]=useState((p.folders||[]).map(function(x){return {id:x.id,name:x.name,icon:x.icon,peers:(x.peers||[]).slice()};}));var [edit,setEdit]=useState(null);var [busy,setBusy]=useState(false);
+ var ICONS=['📁','⭐','💼','🎮','🛒','❤️','🔥','🎓','🏦','👥','🤖','🔔'];
+ function save(nl){if(busy)return;setBusy(true);api('/api/web/folders',{method:'POST',body:{items:nl}}).then(function(r){setList(r.items||[]);p.onSaved&&p.onSaved(r.items||[]);setBusy(false);setEdit(null);}).catch(function(e){p.toast&&p.toast(e.message,'error');setBusy(false);});}
+ function del(f){save(list.filter(function(x){return x.id!==f.id;}));}
+ if(edit)return h(Sheet,{title:edit.id?'Папка':'Новая папка',onClose:function(){setEdit(null);}},
+  h('input',{className:'inp',placeholder:'Название папки',maxLength:16,value:edit.name,onChange:function(e){setEdit(Object.assign({},edit,{name:e.target.value}));}}),
+  h('div',{className:'ficons'},ICONS.map(function(ic){return h('button',{key:ic,className:edit.icon===ic?'on':'',onClick:function(){setEdit(Object.assign({},edit,{icon:ic}));vibrate(6);}},ic);})),
+  h('div',{className:'sec'},h('h3',null,'Чаты в папке'),h('small',null,edit.peers.length)),
+  h('div',{className:'list fpick'},(p.chats||[]).length?(p.chats||[]).map(function(it){var id=Number(it.peer.id);var on=edit.peers.indexOf(id)>=0;return h('button',{key:id,className:'dm-row'+(on?' sel':''),onClick:function(){var np=on?edit.peers.filter(function(x){return x!==id;}):edit.peers.concat([id]);setEdit(Object.assign({},edit,{peers:np}));vibrate(6);}},h('span',{className:'dm-av'},h(Av,{src:it.peer.avatar,name:it.peer.name,size:38})),h('span',{className:'t'},h('b',null,it.peer.name)),h('span',{className:'fchk'},on?h(I,{name:'check',size:14,w:3}):null));}):h('div',{className:'empty-line'},'Пока нет чатов — папку можно наполнить позже')),
+  h('button',{className:'btn mt12',disabled:busy||!edit.name.trim(),onClick:function(){var nl=edit.id?list.map(function(x){return x.id===edit.id?edit:x;}):list.concat([Object.assign({},edit,{id:(Math.max.apply(null,[0].concat(list.map(function(x){return x.id;})))+1)})]);save(nl);}},busy?h('span',{className:'spin'}):h(I,{name:'check',size:18,w:2.6}),'Сохранить'));
+ return h(Sheet,{title:'Мои папки',sub:'до 6 папок со своим именем и иконкой',onClose:p.onClose},
+  list.length?h('div',{className:'list'},list.map(function(f){return h('div',{key:f.id,className:'row frow'},h('span',{className:'i'},f.icon),h('span',{className:'t'},h('b',null,f.name),h('small',null,(f.peers||[]).length+' чат(ов)')),h('button',{className:'ic',onClick:function(){setEdit({id:f.id,name:f.name,icon:f.icon,peers:(f.peers||[]).slice()});}},h(I,{name:'edit2',size:16})),h('button',{className:'ic danger',onClick:function(){del(f);}},h(I,{name:'trash',size:16})));})):h('div',{className:'empty-line'},h(I,{name:'folder',size:18}),'Своих папок пока нет'),
+  h('button',{className:'btn ghost mt12',disabled:list.length>=6,onClick:function(){setEdit({id:0,name:'',icon:'📁',peers:[]});}},h(I,{name:'spark',size:17}),list.length>=6?'Лимит 6 папок':'Новая папка'));}
+
+/* Экран «Контакты» (12.1) */
+function ContactsPage(p){var [items,setItems]=useState(null);var [q,setQ]=useState('');
+ useEffect(function(){api('/api/web/contacts').then(function(r){setItems(r.items||[]);}).catch(function(){setItems([]);});},[]);
+ var list=(items||[]).filter(function(x){var s=q.trim().toLowerCase();if(!s)return true;return ((x.alias||'')+' '+(x.name||'')+' '+(x.username||'')).toLowerCase().indexOf(s)>=0;});
+ return h('div',{className:'page',key:'contacts'},
+  h('div',{className:'ph'},h('button',{className:'pback',onClick:p.onBack},h(I,{name:'back',size:22})),h('div',null,h('h1',{className:'h1'},'Контакты'),h('p',{className:'h1sub'},items===null?'…':(items.length+' контакт(ов)')))),
+  h('div',{className:'search'},h(I,{name:'search',size:18}),h('input',{placeholder:'Поиск по контактам',value:q,onChange:function(e){setQ(e.target.value);}}),q?h('button',{className:'sx',onClick:function(){setQ('');}},h(I,{name:'close',size:15})):null),
+  items===null?h('div',{className:'center',style:{padding:24}},h('span',{className:'spin'})):(!list.length?h('div',{className:'empty-line'},h(I,{name:'users',size:18}),items.length?'Никого не нашли':'Контактов пока нет — добавляйте людей из их профиля'):h('div',{className:'list'},list.map(function(x){return h('button',{key:x.id,className:'dm-row',onClick:function(){p.onOpen(String(x.id));}},h('span',{className:'dm-av'},h(Av,{src:x.avatar,name:x.alias||x.name,size:44}),x.online?h('i',{className:'on'}):null),h('span',{className:'t'},h('b',null,x.alias||x.name,x.verified?h(I,{name:'check',size:11,w:3,className:'vf'}):null),h('small',null,(x.alias?x.name+' · ':'')+(x.username?'@'+x.username:''))),h(I,{name:'chev',size:18,className:'chev'}));}))));}
 
 /* Папка «Боты»: свои + с кем уже общался */
 function BotsFolder(p){var [items,setItems]=useState(null);
@@ -71,13 +103,23 @@ function BotsFolder(p){var [items,setItems]=useState(null);
   h('div',{className:'sec'},h('h3',null,'Ваши боты')),
   items===null?h('div',{className:'center',style:{padding:20}},h('span',{className:'spin'})):(!items.length?h('div',{className:'empty-line'},h(I,{name:'bot',size:18}),'Ботов нет — создайте в LuxFather'):h('div',{className:'list'},items.map(function(b){return brow(b,true);}))));}
 
-/* Долгое нажатие на диалог — предпросмотр последних сообщений, как в ТГ */
-function DmRow(p){var it=p.it;var lp=useRef(0),fired=useRef(false);
- function ts(){fired.current=false;clearTimeout(lp.current);lp.current=setTimeout(function(){fired.current=true;vibrate(20);p.onPeek&&p.onPeek(it);},380);}
- function te(e){clearTimeout(lp.current);if(fired.current){e.preventDefault();e.stopPropagation();}}
- return h('button',{className:'dm-row'+(p.req?' req':''),
-  onTouchStart:ts,onTouchMove:function(){clearTimeout(lp.current);},onTouchEnd:te,onContextMenu:function(e){e.preventDefault();},
-  onClick:function(e){if(fired.current){e.preventDefault();return;}p.onOpen(it.peer.id);}},h('span',{className:'dm-av'},h(Av,{src:it.peer.avatar,name:it.peer.name,size:44}),it.peer.online?h('i',{className:'on'}):null),h('span',{className:'t'},h('b',null,it.peer.name,it.peer.verified?h(I,{name:'check',size:11,w:3,className:'vf'}):null),h('small',null,p.req?'Хочет написать вам':h(React.Fragment,null,it.last.mine?h('span',{className:'ticks pv'+(it.last.read?' rd':'')},h(I,{name:'check',size:11,w:3}),it.last.read?h(I,{name:'check',size:11,w:3,className:'t2'}):null):null,(it.last.mine?'Вы: ':'')+it.last.text))),h('span',{className:'r'},h('small',null,fmtTime(it.last.created_at)),it.unread?h('b',{className:'cnt'},it.unread):null));}
+/* Долгое нажатие — предпросмотр; свайп вправо — закрепить, влево — удалить (11.10) */
+function DmRow(p){var it=p.it;var lp=useRef(0),fired=useRef(false),sx=useRef(0),sy=useRef(0),dx=useRef(0),sw=useRef(0),el=useRef(null);
+ function ts(e){var t=e.touches[0];sx.current=t.clientX;sy.current=t.clientY;dx.current=0;sw.current=0;fired.current=false;clearTimeout(lp.current);lp.current=setTimeout(function(){if(sw.current)return;fired.current=true;vibrate(20);p.onPeek&&p.onPeek(it);},380);}
+ function tm(e){var t=e.touches[0];var x=t.clientX-sx.current,y=t.clientY-sy.current;
+  if(!sw.current&&Math.abs(x)>14&&Math.abs(x)>Math.abs(y)*1.4){sw.current=1;clearTimeout(lp.current);}
+  else if(!sw.current&&Math.abs(y)>8){clearTimeout(lp.current);return;}
+  if(sw.current){if(e.cancelable)e.preventDefault();dx.current=Math.max(-96,Math.min(96,x));var n=el.current;if(n){n.style.transform='translateX('+dx.current+'px)';n.style.transition='none';}
+   var host=n&&n.parentNode;if(host)host.className='dm-sw'+(dx.current>30?' r':(dx.current<-30?' l':''));}}
+ function te(e){clearTimeout(lp.current);var d=dx.current;var n=el.current;if(n){n.style.transition='transform .22s var(--sp2,ease)';n.style.transform='';var host=n.parentNode;if(host)setTimeout(function(){host.className='dm-sw';},220);}
+  if(sw.current){if(e&&e.cancelable)e.preventDefault();if(d>64&&p.onSwipePin){vibrate(15);p.onSwipePin(it);}else if(d<-64&&p.onSwipeHide){vibrate(15);p.onSwipeHide(it);}sw.current=0;dx.current=0;return;}
+  if(fired.current){e.preventDefault();e.stopPropagation();}}
+ return h('div',{className:'dm-sw'},
+  h('span',{className:'sw-pin'},h(I,{name:'pin',size:17}),it.pinned?'Открепить':'Закрепить'),
+  h('span',{className:'sw-del'},h(I,{name:'trash',size:17}),'Удалить'),
+  h('button',{ref:el,className:'dm-row'+(p.req?' req':''),
+  onTouchStart:ts,onTouchMove:tm,onTouchEnd:te,onContextMenu:function(e){e.preventDefault();},
+  onClick:function(e){if(fired.current||sw.current){e.preventDefault();return;}p.onOpen(it.peer.id);}},h('span',{className:'dm-av'},h(Av,{src:it.peer.avatar,name:it.peer.name,size:44}),it.peer.online?h('i',{className:'on'}):null),h('span',{className:'t'},h('b',null,it.peer.name,it.peer.verified?h(I,{name:'check',size:11,w:3,className:'vf'}):null),h('small',null,p.req?'Хочет написать вам':h(React.Fragment,null,it.last.mine?h('span',{className:'ticks pv'+(it.last.read?' rd':'')},h(I,{name:'check',size:11,w:3}),it.last.read?h(I,{name:'check',size:11,w:3,className:'t2'}):null):null,(it.last.mine?'Вы: ':'')+it.last.text))),h('span',{className:'r'},h('small',null,fmtTime(it.last.created_at)),it.unread?h('b',{className:'cnt'},it.unread):(it.pinned?h(I,{name:'pin',size:13,className:'pinned'}):null))));}
 
 /* Предпросмотр переписки по зажатию */
 function PeekSheet(p){var it=p.it;var [msgs,setMsgs]=useState(null);
@@ -154,7 +196,11 @@ function BotChat(p){var bid=p.botId;var [msgs,setMsgs]=useState(null);var [bot,s
   prof&&bot?h(BotProfileSheet,{bot:bot,toast:p.toast,onClose:function(){setProf(false);},onStart:function(){setProf(false);send('/start');}}):null);}
 
 /* /команды в тексте кликабельны — тап отправляет команду */
-function botRich(text,send){var t=String(text||'');if(t.indexOf('/')<0)return L.fmtRich?L.fmtRich(t):t;
+function botRich(text,send){var t=String(text||'');
+ var tk=t.match(/\b(\d+:[A-Za-z0-9_-]{25,})\b/);
+ if(tk){var pre2=t.slice(0,tk.index),post2=t.slice(tk.index+tk[1].length);
+  return [pre2,h('button',{key:'tok',className:'md-token',onClick:function(e){e.stopPropagation();copyText(tk[1],'Токен скопирован');}},tk[1],h(I,{name:'copy',size:13})),post2];}
+ if(t.indexOf('/')<0)return L.fmtRich?L.fmtRich(t):t;
  var out=[],re=/(^|\s)(\/[a-z0-9_]{2,24})/g,last=0,m,k=0;
  while((m=re.exec(t))){var pre=t.slice(last,m.index)+m[1];if(pre)out.push(pre);
   out.push(h('button',{key:'c'+(k++),className:'md-cmd',onClick:function(cmd){return function(e){e.stopPropagation();send(cmd);};}(m[2])},m[2]));
@@ -377,9 +423,9 @@ function QrLogin(p){var [d,setD]=useState(null);var [left,setLeft]=useState(180)
  return h('div',{className:'auth'},h('button',{className:'back',onClick:p.onBack},h(I,{name:'back',size:20}),'Назад'),h('div',{className:'mark'},h(I,{name:'qr2',size:28})),h('h1',null,'Вход по QR'),h('p',null,'На телефоне, где вы уже вошли: Профиль → Устройства → «Сканировать QR».'),d?h('div',{className:'qr2 login'},h('img',{src:d.qr,alt:'QR'}),h('small',null,'Обновится через '+Math.floor(left/60)+':'+String(left%60).padStart(2,'0'))):h('div',{className:'qr2 login'},h('button',{className:'btn ghost sm',onClick:start},'Получить новый QR')));}
 
 /* ---------- Privacy ---------- */
-function PrivacySheet(p){var u=p.user;var [dm,setDm]=useState(u.priv_dm||'all');var [seen,setSeen]=useState(u.priv_seen!==false);var [calls,setCalls]=useState(u.priv_calls||'all');var [busy,setBusy]=useState(false);
- function save(){setBusy(true);api('/api/web/privacy',{method:'POST',body:{priv_dm:dm,priv_seen:seen,priv_calls:calls}}).then(function(){p.onSaved();}).catch(function(e){p.toast(e.message,'error');}).then(function(){setBusy(false);});}
- return h(Sheet,{title:'Конфиденциальность',onClose:p.onClose},h('div',{className:'f-label'},'Кто может писать мне'),h('div',{className:'tabs'},h('button',{className:dm==='all'?'on':'',onClick:function(){setDm('all');}},'Все'),h('button',{className:dm==='none'?'on':'',onClick:function(){setDm('none');}},'Никто')),h('p',{className:'note'},dm==='none'?'Новые пользователи не смогут написать первыми. Те, кому вы уже ответили, — смогут.':'Первое сообщение от незнакомого человека придёт как запрос — вы решите, отвечать ли.'),h('div',{className:'f-label'},'Время последнего входа'),h('div',{className:'tabs'},h('button',{className:seen?'on':'',onClick:function(){setSeen(true);}},'Показывать'),h('button',{className:!seen?'on':'',onClick:function(){setSeen(false);}},'Скрывать')),h('p',{className:'note'},seen?'Другие видят «был(а) 5 мин назад».':'Другие видят только «был(а) недавно».'),h('div',{className:'f-label'},'Кто может мне звонить'),h('div',{className:'tabs'},h('button',{className:calls==='all'?'on':'',onClick:function(){setCalls('all');}},'Все'),h('button',{className:calls==='contacts'?'on':'',onClick:function(){setCalls('contacts');}},'Контакты'),h('button',{className:calls==='none'?'on':'',onClick:function(){setCalls('none');}},'Никто')),h('p',{className:'note'},calls==='none'?'Входящие звонки отключены полностью.':(calls==='contacts'?'Дозвонятся только те, кого вы сохранили в контактах.':'Позвонить может любой пользователь, которого вы не заблокировали.')),h('p',{className:'note dim'},'Разговор идёт напрямую между устройствами и шифруется (DTLS-SRTP). Сервер передаёт только служебные данные соединения.'),h('div',{className:'f-label'},'Защита входа'),h('button',{className:'row nav-row',onClick:function(){p.onPin&&p.onPin();}},h('span',{className:'i'},h(I,{name:'lock2',size:18})),h('span',{className:'t'},h('b',null,'Пароль на вход'),h('small',null,pinRead()?'Включён':'Выключен')),h(I,{name:'chev',size:18,className:'chev'})),h('button',{className:'btn mt12',disabled:busy,onClick:save},'Сохранить'));}
+function PrivacySheet(p){var u=p.user;var [dm,setDm]=useState(u.priv_dm||'all');var [seen,setSeen]=useState(u.priv_seen!==false);var [calls,setCalls]=useState(u.priv_calls||'all');var [phone,setPhone]=useState(u.priv_phone||'all');var [busy,setBusy]=useState(false);
+ function save(){setBusy(true);api('/api/web/privacy',{method:'POST',body:{priv_dm:dm,priv_seen:seen,priv_calls:calls,priv_phone:phone}}).then(function(){p.onSaved();}).catch(function(e){p.toast(e.message,'error');}).then(function(){setBusy(false);});}
+ return h(Sheet,{title:'Конфиденциальность',onClose:p.onClose},h('div',{className:'f-label'},'Кто может писать мне'),h('div',{className:'tabs'},h('button',{className:dm==='all'?'on':'',onClick:function(){setDm('all');}},'Все'),h('button',{className:dm==='none'?'on':'',onClick:function(){setDm('none');}},'Никто')),h('p',{className:'note'},dm==='none'?'Новые пользователи не смогут написать первыми. Те, кому вы уже ответили, — смогут.':'Первое сообщение от незнакомого человека придёт как запрос — вы решите, отвечать ли.'),h('div',{className:'f-label'},'Время последнего входа'),h('div',{className:'tabs'},h('button',{className:seen?'on':'',onClick:function(){setSeen(true);}},'Показывать'),h('button',{className:!seen?'on':'',onClick:function(){setSeen(false);}},'Скрывать')),h('p',{className:'note'},seen?'Другие видят «был(а) 5 мин назад».':'Другие видят только «был(а) недавно».'),h('div',{className:'f-label'},'Кто может мне звонить'),h('div',{className:'tabs'},h('button',{className:calls==='all'?'on':'',onClick:function(){setCalls('all');}},'Все'),h('button',{className:calls==='contacts'?'on':'',onClick:function(){setCalls('contacts');}},'Контакты'),h('button',{className:calls==='none'?'on':'',onClick:function(){setCalls('none');}},'Никто')),h('p',{className:'note'},calls==='none'?'Входящие звонки отключены полностью.':(calls==='contacts'?'Дозвонятся только те, кого вы сохранили в контактах.':'Позвонить может любой пользователь, которого вы не заблокировали.')),h('p',{className:'note dim'},'Разговор идёт напрямую между устройствами и шифруется (DTLS-SRTP). Сервер передаёт только служебные данные соединения.'),h('div',{className:'f-label'},'Кто видит мой номер телефона'),h('div',{className:'tabs'},h('button',{className:phone==='all'?'on':'',onClick:function(){setPhone('all');}},'Все'),h('button',{className:phone==='contacts'?'on':'',onClick:function(){setPhone('contacts');}},'Контакты'),h('button',{className:phone==='none'?'on':'',onClick:function(){setPhone('none');}},'Никто')),h('p',{className:'note'},phone==='none'?'Номер скрыт ото всех.':(phone==='contacts'?'Номер видят только люди из ваших контактов.':'Номер виден в профиле всем пользователям.')),h('div',{className:'f-label'},'Защита входа'),h('button',{className:'row nav-row',onClick:function(){p.onPin&&p.onPin();}},h('span',{className:'i'},h(I,{name:'lock2',size:18})),h('span',{className:'t'},h('b',null,'Пароль на вход'),h('small',null,pinRead()?'Включён':'Выключен')),h(I,{name:'chev',size:18,className:'chev'})),h('button',{className:'btn mt12',disabled:busy,onClick:save},'Сохранить'));}
 
 /* ---------- ПИН-код входа и автоблокировка ---------- */
 var LOCK_OPTS=[[60,'1 минута'],[300,'5 минут'],[600,'10 минут'],[1800,'30 минут'],[3600,'1 час'],
@@ -467,6 +513,19 @@ function BalanceSheet(p){var u=p.user;var [tab,setTab]=useState('main');var [amo
   tab==='main'?h(React.Fragment,null,h('div',{className:'f-label'},'Сумма'),h('div',{className:'field'},h(I,{name:'wallet',size:18}),h('input',{inputMode:'numeric',placeholder:'от 100',value:amount,onChange:function(e){setAmount(e.target.value.replace(/\D/g,''));}}),h('span',{className:'suffix'},'сом')),h('div',{className:'presets'},[500,1000,3000,5000,10000].map(function(v){return h('button',{key:v,className:amt===v?'on':'',onClick:function(){setAmount(String(v));}},money(v));})),h('p',{className:'note'},'От 100 до 500 000 сом. Оплата по QR или через банк — как обычное пополнение.'),h('button',{className:'btn mt8',disabled:amt<100||amt>500000||busy,onClick:topup},busy?h('span',{className:'spin w'}):h(I,{name:'qr',size:18}),'Пополнить баланс')):
   (hist===null?h('div',{className:'center'},h('span',{className:'spin'})):(!hist.length?h('div',{className:'empty-line'},h(I,{name:'history',size:18}),'Движений пока нет'):h('div',{className:'tx-list'},hist.map(function(x){return h('div',{key:x.id,className:'tx'},h('span',{className:'ic '+(x.delta>=0?'deposit':'withdraw')},h(I,{name:x.delta>=0?'arrowDown':'arrowUp',size:18,w:2.4})),h('span',{className:'t'},h('b',null,x.note||x.kind),h('small',null,fmtDate(x.created_at))),h('span',{className:'r'},h('b',{style:{color:x.delta>=0?'var(--green)':'var(--red)'}},(x.delta>=0?'+':'−')+money(Math.abs(x.delta)))));})))));}
 
-Object.assign(L,{LuxFather:LuxFather,NewsPage:NewsPage,BotChat:BotChat,PhotoViewer:PhotoViewer,ChatsList:ChatsList,NotifPage:NotifPage,NotifSheet:NotifSheet,DevicesPage:DevicesPage,QrScanSheet:QrScanSheet,LinkApprove:LinkApprove,QrLogin:QrLogin,PrivacySheet:PrivacySheet,BalanceSheet:BalanceSheet});
+/* Внутренний браузер (15.1): ссылка из чата открывается поверх приложения.
+   Часть сайтов запрещает встраивание — тогда остаётся кнопка «В браузере». */
+function InAppBrowser(p){var [loaded,setLoaded]=useState(false);var host='';try{host=new URL(p.url).host;}catch(e){host=p.url.slice(0,40);}
+ useEffect(function(){var prev=document.body.style.overflow;document.body.style.overflow='hidden';var t=setTimeout(function(){setLoaded(function(v){return v;});},4000);return function(){document.body.style.overflow=prev;clearTimeout(t);};},[]);
+ return h('div',{className:'iab'},
+  h('div',{className:'iab-top'},
+   h('button',{className:'iab-x',onClick:p.onClose},h(I,{name:'close',size:20})),
+   h('div',{className:'iab-t'},h('b',null,host),h('small',null,loaded?'загружено':'загружаем…')),
+   h('a',{className:'iab-ext',href:p.url,target:'_blank',rel:'noopener noreferrer',onClick:function(){setTimeout(p.onClose,150);}},h(I,{name:'ext',size:16}),'В браузере')),
+  h('div',{className:'iab-body'},
+   h('iframe',{src:p.url,sandbox:'allow-scripts allow-same-origin allow-forms allow-popups',referrerPolicy:'no-referrer',onLoad:function(){setLoaded(true);}}),
+   loaded?null:h('div',{className:'iab-hint'},h('span',{className:'spin'}),h('p',null,'Если страница не открылась — сайт запрещает встраивание. Нажмите «В браузере».'))));}
+
+Object.assign(L,{InAppBrowser:InAppBrowser,LuxFather:LuxFather,NewsPage:NewsPage,BotChat:BotChat,PhotoViewer:PhotoViewer,ChatsList:ChatsList,ContactsPage:ContactsPage,NotifPage:NotifPage,NotifSheet:NotifSheet,DevicesPage:DevicesPage,QrScanSheet:QrScanSheet,LinkApprove:LinkApprove,QrLogin:QrLogin,PrivacySheet:PrivacySheet,BalanceSheet:BalanceSheet});
 L.P.phone2='M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1ZM11 18h2';L.P.link='M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1';
 })();

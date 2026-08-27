@@ -13022,6 +13022,7 @@ def _web_public_user2(row) -> dict:
         "priv_dm": (row["priv_dm"] if "priv_dm" in keys else "") or "all",
         "priv_seen": bool(row["priv_seen"]) if "priv_seen" in keys else True,
         "priv_calls": (row["priv_calls"] if "priv_calls" in keys else "") or "all",
+        "priv_phone": (row["priv_phone"] if "priv_phone" in keys else "") or "all",
         "muted_until": _web_muted(row),
     })
     return d
@@ -13039,15 +13040,19 @@ async def web_me_qr(request: Request):
 
 @app.get("/api/web/users/{handle}")
 async def web_user_public(handle: str, request: Request):
-    _web_user_from_request(request)
+    viewer = _web_user_from_request(request)
     h_ = handle.strip().lstrip("@").lower()
     with _ui_read_conn() as c:
         r = c.execute("SELECT * FROM web_users WHERE username=? OR (?='id'||id)", (h_, h_)).fetchone()
         cnt = int(c.execute("SELECT COUNT(*) FROM web_chat_messages WHERE user_id=? AND deleted=0", (int(r["id"]),)).fetchone()[0] or 0) if r else 0
+        phone = _web_phone_visible(c, r, int(viewer["id"])) if r else ""
+        ct = c.execute("SELECT alias FROM web_contacts WHERE user_id=? AND contact_id=?",
+                       (int(viewer["id"]), int(r["id"]))).fetchone() if r else None
     if not r:
         raise HTTPException(404, "Пользователь не найден")
     seen = _WEB_PRESENCE.get(int(r["id"]), 0)
     return {"ok": True, "user": {"id": int(r["id"]), "name": r["name"], "username": r["username"] or "", "avatar": r["avatar_url"] or "", "bio": r["bio"] or "",
+                                 "phone": phone, "contact": bool(ct), "alias": str((ct and ct["alias"]) or ""),
                                  "verified": r["verify_status"] == "approved", "since": r["created_at"] or "", "messages": cnt,
                                  "online": time.time() - seen < 70, "last_seen": (datetime.fromtimestamp(seen, TZ).isoformat(timespec="seconds") if seen else "")}}
 
@@ -13153,7 +13158,8 @@ def _web_dm_row(r, users: dict, me: int) -> dict:
             "name": fr.get("name") or "", "avatar": fr.get("avatar_url") or "", "kind": r["kind"] or "text",
             "text": "" if r["deleted"] else _lux_dec(r["text"]), "file_url": "" if r["deleted"] else (r["file_url"] or ""),
             "duration": float(r["duration"] or 0), "reply_to": r["reply_to"], "read": bool(r["read"]), "deleted": bool(r["deleted"]), "created_at": r["created_at"] or "",
-            "edited": bool(r["edited_at"]) if "edited_at" in r.keys() else False}
+            "edited": bool(r["edited_at"]) if "edited_at" in r.keys() else False,
+            "burn": int(r["burn"] or 0) if "burn" in r.keys() else 0}
 
 
 @app.get("/api/web/dm")
@@ -13165,11 +13171,20 @@ async def web_dm_list(request: Request):
         rows = c.execute(
             "SELECT m.* FROM web_dm m JOIN (SELECT MAX(id) AS mid FROM web_dm WHERE from_id=? OR to_id=? GROUP BY CASE WHEN from_id=? THEN to_id ELSE from_id END) t ON t.mid=m.id ORDER BY m.id DESC LIMIT 100",
             (me, me, me)).fetchall()
+        try:
+            hidden = {int(r["peer_id"]): int(r["upto_id"] or 0) for r in
+                      c.execute("SELECT peer_id,upto_id FROM web_dm_hidden WHERE user_id=?", (me,)).fetchall()}
+            pinned = {int(r[0]) for r in c.execute("SELECT peer_id FROM web_dm_chatpins WHERE user_id=?", (me,)).fetchall()}
+        except Exception:
+            hidden, pinned = {}, set()
+        alias = _web_contact_alias_map(c, me)
         peers = {}
         for r in rows:
             pid = int(r["to_id"]) if int(r["from_id"]) == me else int(r["from_id"])
             if pid == me:
                 continue  # Избранное живёт отдельной строкой
+            if int(r["id"]) <= hidden.get(pid, 0):
+                continue  # диалог удалён у себя свайпом — до новых сообщений
             peers[pid] = r
         users = {}
         if peers:
@@ -13187,14 +13202,15 @@ async def web_dm_list(request: Request):
     items = []
     for pid, r in peers.items():
         p_ = users.get(pid, {})
-        items.append({"peer": {"id": pid, "name": p_.get("name") or "Пользователь", "username": p_.get("username") or "", "avatar": p_.get("avatar_url") or "",
+        items.append({"peer": {"id": pid, "name": alias.get(pid) or p_.get("name") or "Пользователь", "username": p_.get("username") or "", "avatar": p_.get("avatar_url") or "",
                                "verified": p_.get("verify_status") == "approved", "online": time.time() - _WEB_PRESENCE.get(pid, 0) < 70},
                      "request": bool(pairs.get(pid, {}).get("request")), "approved": bool(pairs.get(pid, {}).get("approved")),
+                     "pinned": pid in pinned,
                      "last": {"text": (_lux_dec(r["text"]) or ("🎤 Голосовое" if r["kind"] == "voice" else ("🖼 Фото" if r["kind"] == "photo" else ("📞 Звонок" if str(r["kind"] or "").startswith("call") else "")))) if not r["deleted"] else "Сообщение удалено",
                               "mine": int(r["from_id"]) == me, "created_at": r["created_at"] or "", "id": int(r["id"]),
                               "read": bool(r["read"]), "kind": r["kind"] or "text"},
                      "unread": unread.get(pid, 0)})
-    items.sort(key=lambda x: -x["last"]["id"])
+    items.sort(key=lambda x: (0 if x["pinned"] else 1, -x["last"]["id"]))
     return {"ok": True, "items": items, "unread_total": sum(unread.values())}
 
 
@@ -13204,7 +13220,12 @@ async def web_dm_messages(peer_id: int, request: Request, after_id: int = 0, bef
     me = int(u["id"])
     _web_touch_presence(me)
     with _DB_LOCK, _db_conn() as c:
-        base = "SELECT * FROM web_dm WHERE ((from_id=? AND to_id=?) OR (from_id=? AND to_id=?)) "
+        try:
+            hid = c.execute("SELECT upto_id FROM web_dm_hidden WHERE user_id=? AND peer_id=?", (me, int(peer_id))).fetchone()
+            hid_upto = int((hid and hid["upto_id"]) or 0)
+        except Exception:
+            hid_upto = 0
+        base = "SELECT * FROM web_dm WHERE ((from_id=? AND to_id=?) OR (from_id=? AND to_id=?)) " + (f"AND id>{hid_upto} " if hid_upto else "")
         args = [me, int(peer_id), int(peer_id), me]
         if after_id:
             rows = c.execute(base + "AND id>? ORDER BY id LIMIT ?", args + [int(after_id), max(1, min(100, limit))]).fetchall()
@@ -13214,12 +13235,14 @@ async def web_dm_messages(peer_id: int, request: Request, after_id: int = 0, bef
             rows = c.execute(base + "ORDER BY id DESC LIMIT ?", args + [max(1, min(100, limit))]).fetchall()[::-1]
         c.execute("UPDATE web_dm SET read=1 WHERE to_id=? AND from_id=? AND read=0", (me, int(peer_id)))
         users = {int(x["id"]): dict(x) for x in c.execute("SELECT id,name,avatar_url FROM web_users WHERE id IN (?,?)", (me, int(peer_id))).fetchall()}
-        peer = c.execute("SELECT id,name,username,avatar_url,verify_status,bio FROM web_users WHERE id=?", (int(peer_id),)).fetchone()
+        peer = c.execute("SELECT * FROM web_users WHERE id=?", (int(peer_id),)).fetchone()
+        phone = _web_phone_visible(c, peer, me) if peer else ""
+        alias = _web_contact_alias_map(c, me).get(int(peer_id), "") if peer else ""
     if not peer:
         raise HTTPException(404, "Пользователь не найден")
     seen = _WEB_PRESENCE.get(int(peer_id), 0)
     return {"ok": True, "items": [_web_dm_row(r, users, me) for r in rows],
-            "peer": {"id": int(peer["id"]), "name": ("Избранное" if int(peer_id) == me else peer["name"]), "username": peer["username"] or "", "avatar": peer["avatar_url"] or "", "bio": peer["bio"] or "",
+            "peer": {"id": int(peer["id"]), "name": ("Избранное" if int(peer_id) == me else (alias or peer["name"])), "username": peer["username"] or "", "avatar": peer["avatar_url"] or "", "bio": peer["bio"] or "", "phone": phone,
                      "saved": int(peer_id) == me,
                      "verified": peer["verify_status"] == "approved", "online": time.time() - seen < 70, "last_seen": (datetime.fromtimestamp(seen, TZ).isoformat(timespec="seconds") if seen else ""),
                      "typing": time.time() - _WEB_TYPING.get(int(peer_id), 0) < 4}}
@@ -13646,7 +13669,7 @@ async def web_dm_send(peer_id: int, request: Request):
         except Exception:
             pass
     ctype = str(request.headers.get("content-type") or "")
-    text, file_url, kind, duration, reply_to = "", "", "text", 0.0, None
+    text, file_url, kind, duration, reply_to, burn = "", "", "text", 0.0, None, 0
     if "multipart/form-data" in ctype:
         form = await request.form()
         text = str(form.get("text") or "").strip()[:1500]
@@ -13655,6 +13678,12 @@ async def web_dm_send(peer_id: int, request: Request):
             duration = float(form.get("duration") or 0)
         except Exception:
             duration = 0.0
+        try:
+            burn = int(form.get("burn") or 0)
+        except Exception:
+            burn = 0
+        if burn not in (0, 1, 3, 5, 10):
+            burn = 0
         f = form.get("file")
         if f is not None:
             raw = await f.read()
@@ -13701,8 +13730,9 @@ async def web_dm_send(peer_id: int, request: Request):
     with _DB_LOCK, _db_conn() as c:
         if not c.execute("SELECT 1 FROM web_users WHERE id=?", (int(peer_id),)).fetchone():
             raise HTTPException(404, "Пользователь не найден")
-        cur = c.execute("INSERT INTO web_dm(from_id,to_id,kind,text,file_url,duration,reply_to,created_at) VALUES(?,?,?,?,?,?,?,?)",
-                        (me, int(peer_id), kind, _lux_enc(text), file_url, duration, int(reply_to) if reply_to else None, stamp))
+        cur = c.execute("INSERT INTO web_dm(from_id,to_id,kind,text,file_url,duration,reply_to,burn,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                        (me, int(peer_id), kind, _lux_enc(text), file_url, duration, int(reply_to) if reply_to else None,
+                         (burn if kind == "photo" else 0), stamp))
         mid = int(cur.lastrowid)
         users = {int(x["id"]): dict(x) for x in c.execute("SELECT id,name,avatar_url FROM web_users WHERE id=?", (me,)).fetchall()}
         row = c.execute("SELECT * FROM web_dm WHERE id=?", (mid,)).fetchone()
@@ -13857,7 +13887,7 @@ def _web_face_count(raw: bytes) -> int:
 # === LUX WEB v10.49: баланс LUXON, запросы в ЛС, приватность, устройства, QR-вход,
 #     правка/удаление сообщений (5 минут), уведомления (прочитано/удалить), QR профиля
 # =====================================================================================
-_LUX_WEB_VERSION = "10.61.0"
+_LUX_WEB_VERSION = "10.62.0"
 _WEB_BALANCE_MIN, _WEB_BALANCE_MAX = 100, 500000
 
 
@@ -14101,9 +14131,12 @@ async def web_privacy(request: Request):
     calls = str(d.get("priv_calls") or "all")
     if calls not in ("all", "contacts", "none"):
         calls = "all"
+    phone = str(d.get("priv_phone") or "all")
+    if phone not in ("all", "contacts", "none"):
+        phone = "all"
     with _DB_LOCK, _db_conn() as c:
-        c.execute("UPDATE web_users SET priv_dm=?, priv_seen=?, priv_calls=? WHERE id=?", (dm, seen, calls, int(u["id"])))
-    return {"ok": True, "priv_dm": dm, "priv_seen": bool(seen), "priv_calls": calls}
+        c.execute("UPDATE web_users SET priv_dm=?, priv_seen=?, priv_calls=?, priv_phone=? WHERE id=?", (dm, seen, calls, phone, int(u["id"])))
+    return {"ok": True, "priv_dm": dm, "priv_seen": bool(seen), "priv_calls": calls, "priv_phone": phone}
 
 
 def _web_last_seen_text(user_row, viewer_id: int = 0) -> tuple[bool, str]:
@@ -14461,6 +14494,200 @@ def _lux_social2_init() -> None:
 _lux_social2_init()
 
 
+# =====================================================================================
+# === LUX v10.62: свайпы по чатам (закрепить/удалить), алиасы контактов, папки,
+#     телефон с приватностью, одноразовые фото, глобальный поиск по сообщениям
+# =====================================================================================
+def _lux_v1062_init() -> None:
+    with _DB_LOCK, _db_conn() as c:
+        c.executescript("""
+        CREATE TABLE IF NOT EXISTS web_dm_chatpins(
+          user_id INTEGER, peer_id INTEGER, created_at TEXT, PRIMARY KEY(user_id,peer_id)
+        );
+        CREATE TABLE IF NOT EXISTS web_dm_hidden(
+          user_id INTEGER, peer_id INTEGER, upto_id INTEGER DEFAULT 0, PRIMARY KEY(user_id,peer_id)
+        );
+        """)
+        ucols = {r["name"] for r in c.execute("PRAGMA table_info(web_users)").fetchall()}
+        if "priv_phone" not in ucols:
+            c.execute("ALTER TABLE web_users ADD COLUMN priv_phone TEXT DEFAULT 'all'")
+        if "folders_json" not in ucols:
+            c.execute("ALTER TABLE web_users ADD COLUMN folders_json TEXT DEFAULT '[]'")
+        kcols = {r["name"] for r in c.execute("PRAGMA table_info(web_contacts)").fetchall()}
+        if "alias" not in kcols:
+            c.execute("ALTER TABLE web_contacts ADD COLUMN alias TEXT DEFAULT ''")
+        dcols = {r["name"] for r in c.execute("PRAGMA table_info(web_dm)").fetchall()}
+        if "burn" not in dcols:
+            # 0 — обычное, 1 — одноразовое, 3/5/10 — автоудаление через N сек после открытия
+            c.execute("ALTER TABLE web_dm ADD COLUMN burn INTEGER DEFAULT 0")
+
+
+_lux_v1062_init()
+
+
+def _web_contact_alias_map(c, me: int) -> dict:
+    """Свои имена для контактов: {peer_id: alias}."""
+    try:
+        return {int(r["contact_id"]): str(r["alias"] or "") for r in
+                c.execute("SELECT contact_id,alias FROM web_contacts WHERE user_id=? AND COALESCE(alias,'')<>''", (me,)).fetchall()}
+    except Exception:
+        return {}
+
+
+def _web_phone_visible(c, target_row, viewer_id: int) -> str:
+    """Телефон в профиле: Всем / Контактам (я в контактах владельца) / Никому."""
+    keys = target_row.keys()
+    phone = str((target_row["phone"] if "phone" in keys else "") or "")
+    if not phone or int(target_row["id"]) == int(viewer_id):
+        return phone
+    mode = str((target_row["priv_phone"] if "priv_phone" in keys else "") or "all")
+    if mode == "none":
+        return ""
+    if mode == "contacts":
+        ok = c.execute("SELECT 1 FROM web_contacts WHERE user_id=? AND contact_id=?",
+                       (int(target_row["id"]), int(viewer_id))).fetchone()
+        return phone if ok else ""
+    return phone
+
+
+@app.post("/api/web/dm/{peer_id}/pinchat")
+async def web_dm_pinchat(peer_id: int, request: Request):
+    """Свайп вправо по строке чата — закрепить/открепить диалог."""
+    u = _web_user_from_request(request)
+    me = int(u["id"])
+    with _DB_LOCK, _db_conn() as c:
+        r = c.execute("SELECT 1 FROM web_dm_chatpins WHERE user_id=? AND peer_id=?", (me, int(peer_id))).fetchone()
+        if r:
+            c.execute("DELETE FROM web_dm_chatpins WHERE user_id=? AND peer_id=?", (me, int(peer_id)))
+        else:
+            cnt = int(c.execute("SELECT COUNT(*) FROM web_dm_chatpins WHERE user_id=?", (me,)).fetchone()[0] or 0)
+            if cnt >= 5:
+                raise HTTPException(400, "Закрепить можно не больше 5 чатов")
+            c.execute("INSERT INTO web_dm_chatpins(user_id,peer_id,created_at) VALUES(?,?,?)", (me, int(peer_id), now_iso()))
+    return {"ok": True, "pinned": not bool(r)}
+
+
+@app.post("/api/web/dm/{peer_id}/hide")
+async def web_dm_hide(peer_id: int, request: Request):
+    """Свайп влево — удалить диалог у себя. У собеседника переписка остаётся."""
+    u = _web_user_from_request(request)
+    me = int(u["id"])
+    with _DB_LOCK, _db_conn() as c:
+        top = c.execute("SELECT MAX(id) FROM web_dm WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?)",
+                        (me, int(peer_id), int(peer_id), me)).fetchone()[0] or 0
+        c.execute("INSERT INTO web_dm_hidden(user_id,peer_id,upto_id) VALUES(?,?,?) "
+                  "ON CONFLICT(user_id,peer_id) DO UPDATE SET upto_id=excluded.upto_id", (me, int(peer_id), int(top)))
+        c.execute("DELETE FROM web_dm_chatpins WHERE user_id=? AND peer_id=?", (me, int(peer_id)))
+        c.execute("UPDATE web_dm SET read=1 WHERE to_id=? AND from_id=? AND read=0", (me, int(peer_id)))
+    return {"ok": True}
+
+
+@app.post("/api/web/dm/msg/{mid}/burn")
+async def web_dm_burn(mid: int, request: Request):
+    """Получатель посмотрел одноразовое/таймерное фото — сжигаем: файл и текст."""
+    u = _web_user_from_request(request)
+    me = int(u["id"])
+    with _DB_LOCK, _db_conn() as c:
+        r = c.execute("SELECT * FROM web_dm WHERE id=?", (int(mid),)).fetchone()
+        if not r or int(r["to_id"]) != me or not int(r["burn"] or 0):
+            raise HTTPException(404, "Сообщение не найдено")
+        if not r["deleted"]:
+            c.execute("UPDATE web_dm SET deleted=1, file_url='', text='' WHERE id=?", (int(mid),))
+            fu = str(r["file_url"] or "")
+            if fu.startswith("/uploads/web/"):
+                try:
+                    (_WEB_UPLOADS / fu[len("/uploads/web/"):]).unlink(missing_ok=True)
+                except Exception:
+                    pass
+    return {"ok": True}
+
+
+@app.get("/api/web/search/messages")
+async def web_search_messages(request: Request, q: str = "", limit: int = 30):
+    """Глобальный поиск по тексту во всех личных чатах (7.2). Сообщения
+    зашифрованы — расшифровываем последние и фильтруем на сервере."""
+    u = _web_user_from_request(request)
+    me = int(u["id"])
+    term = str(q or "").strip().lower()
+    if len(term) < 2:
+        return {"ok": True, "items": []}
+    out = []
+    with _ui_read_conn() as c:
+        hidden = {int(r["peer_id"]): int(r["upto_id"] or 0) for r in
+                  c.execute("SELECT peer_id,upto_id FROM web_dm_hidden WHERE user_id=?", (me,)).fetchall()}
+        rows = c.execute("SELECT id,from_id,to_id,kind,text,created_at FROM web_dm "
+                         "WHERE (from_id=? OR to_id=?) AND deleted=0 AND kind='text' "
+                         "ORDER BY id DESC LIMIT 4000", (me, me)).fetchall()
+        for r in rows:
+            pid = int(r["to_id"]) if int(r["from_id"]) == me else int(r["from_id"])
+            if int(r["id"]) <= hidden.get(pid, 0):
+                continue
+            txt = _lux_dec(r["text"]) or ""
+            if term in txt.lower():
+                out.append({"peer_id": pid, "msg_id": int(r["id"]), "text": txt[:160],
+                            "mine": int(r["from_id"]) == me, "created_at": r["created_at"] or ""})
+                if len(out) >= max(1, min(50, limit)):
+                    break
+        pids = sorted({x["peer_id"] for x in out})
+        users = {}
+        if pids:
+            qs = ",".join("?" * len(pids))
+            for x in c.execute(f"SELECT id,name,username,avatar_url,verify_status FROM web_users WHERE id IN ({qs})", pids).fetchall():
+                users[int(x["id"])] = x
+        alias = _web_contact_alias_map(c, me)
+    for x in out:
+        p_ = users.get(x["peer_id"])
+        x["peer"] = {"id": x["peer_id"],
+                     "name": ("Избранное" if x["peer_id"] == me else (alias.get(x["peer_id"]) or (p_ and p_["name"]) or "Пользователь")),
+                     "username": (p_ and p_["username"]) or "", "avatar": (p_ and p_["avatar_url"]) or "",
+                     "verified": bool(p_ and p_["verify_status"] == "approved")}
+    return {"ok": True, "items": out}
+
+
+_WEB_FOLDER_ICONS = ("📁", "⭐", "💼", "🎮", "🛒", "❤️", "🔥", "🎓", "🏦", "👥", "🤖", "🔔")
+
+
+@app.get("/api/web/folders")
+async def web_folders_get(request: Request):
+    u = _web_user_from_request(request)
+    with _ui_read_conn() as c:
+        r = c.execute("SELECT folders_json FROM web_users WHERE id=?", (int(u["id"]),)).fetchone()
+    try:
+        items = json.loads((r and r["folders_json"]) or "[]")
+    except Exception:
+        items = []
+    return {"ok": True, "items": items, "icons": list(_WEB_FOLDER_ICONS)}
+
+
+@app.post("/api/web/folders")
+async def web_folders_save(request: Request):
+    """Свои папки чатов (11.11): имя, иконка-эмодзи, список собеседников."""
+    u = _web_user_from_request(request)
+    d = await request_json(request)
+    raw = d.get("items") or []
+    items = []
+    for x in (raw if isinstance(raw, list) else [])[:6]:
+        if not isinstance(x, dict):
+            continue
+        name = str(x.get("name") or "").strip()[:16]
+        if not name:
+            continue
+        icon = str(x.get("icon") or "📁")[:4]
+        if icon not in _WEB_FOLDER_ICONS:
+            icon = "📁"
+        peers = []
+        for p in (x.get("peers") or [])[:200]:
+            try:
+                peers.append(int(p))
+            except Exception:
+                pass
+        items.append({"id": int(x.get("id") or (len(items) + 1)), "name": name, "icon": icon, "peers": peers})
+    with _DB_LOCK, _db_conn() as c:
+        c.execute("UPDATE web_users SET folders_json=? WHERE id=?",
+                  (json.dumps(items, ensure_ascii=False), int(u["id"])))
+    return {"ok": True, "items": items}
+
+
 @app.get("/api/web/search")
 async def web_global_search(request: Request, q: str = "", limit: int = 20):
     """Глобальный поиск как в ТГ: контакты → люди → боты. По @юзернейму и имени."""
@@ -14494,26 +14721,36 @@ async def web_contacts_list(request: Request):
     u = _web_user_from_request(request)
     with _ui_read_conn() as c:
         rows = c.execute(
-            "SELECT u.id,u.name,u.username,u.avatar_url,u.verify_status FROM web_contacts k "
-            "JOIN web_users u ON u.id=k.contact_id WHERE k.user_id=? ORDER BY u.name",
+            "SELECT u.id,u.name,u.username,u.avatar_url,u.verify_status,k.alias FROM web_contacts k "
+            "JOIN web_users u ON u.id=k.contact_id WHERE k.user_id=? ORDER BY COALESCE(NULLIF(k.alias,''),u.name)",
             (int(u["id"]),)).fetchall()
     return {"ok": True, "items": [{"id": int(r["id"]), "name": r["name"] or "", "username": r["username"] or "",
+                                   "alias": str(r["alias"] or ""),
                                    "avatar": r["avatar_url"] or "", "verified": r["verify_status"] == "approved",
                                    "online": time.time() - _WEB_PRESENCE.get(int(r["id"]), 0) < 70} for r in rows]}
 
 
 @app.post("/api/web/contacts/{peer_id}")
 async def web_contact_add(peer_id: int, request: Request):
+    """Добавить в контакты. В body можно передать {alias} — своё имя для
+    собеседника (12.2): видно только вам, его профиль не меняется."""
     u = _web_user_from_request(request)
     if int(peer_id) == int(u["id"]):
         raise HTTPException(400, "Себя добавлять не нужно — для этого есть Избранное")
+    alias = ""
+    try:
+        d = await request_json(request)
+        alias = str(d.get("alias") or "").strip()[:48]
+    except Exception:
+        alias = ""
     with _DB_LOCK, _db_conn() as c:
         p = c.execute("SELECT id FROM web_users WHERE id=?", (int(peer_id),)).fetchone()
         if not p:
             raise HTTPException(404, "Пользователь не найден")
-        c.execute("INSERT OR IGNORE INTO web_contacts(user_id,contact_id,created_at) VALUES(?,?,?)",
-                  (int(u["id"]), int(peer_id), now_iso()))
-    return {"ok": True}
+        c.execute("INSERT INTO web_contacts(user_id,contact_id,alias,created_at) VALUES(?,?,?,?) "
+                  "ON CONFLICT(user_id,contact_id) DO UPDATE SET alias=excluded.alias",
+                  (int(u["id"]), int(peer_id), alias, now_iso()))
+    return {"ok": True, "alias": alias}
 
 
 @app.delete("/api/web/contacts/{peer_id}")
