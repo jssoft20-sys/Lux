@@ -1314,6 +1314,75 @@ def _support_finish_case(chat_id: int, transaction_id: int, case_id: int | None,
     }
 
 
+_MEDIA_MAX = {"photo": 12 * 1024 * 1024, "voice": 20 * 1024 * 1024, "audio": 25 * 1024 * 1024,
+              "video": 64 * 1024 * 1024, "video_note": 32 * 1024 * 1024, "document": 25 * 1024 * 1024}
+_MEDIA_EXT = {
+    b"\x1aE\xdf\xa3": ".webm", b"OggS": ".ogg", b"ID3": ".mp3", b"RIFF": ".wav",
+    b"\x89PNG": ".png", b"\xff\xd8\xff": ".jpg", b"GIF8": ".gif",
+}
+
+
+def _media_ext(raw: bytes, ctype: str, kind: str, strict: bool = False) -> str:
+    """Расширение по содержимому файла: Telegram отдаёт .oga для голосовых,
+    браузеры — webm, и полагаться на content-type нельзя.
+    strict=True — вернуть '' если формат не опознан (файл от клиента)."""
+    head = raw[:12]
+    for magic, ext in _MEDIA_EXT.items():
+        if head.startswith(magic):
+            if ext == ".wav" and head[8:12] != b"WAVE":
+                continue
+            return ext
+    if head[4:8] == b"ftyp":
+        brand = head[8:12].lower()
+        if brand.startswith(b"m4a") or kind in ("voice", "audio"):
+            return ".m4a"
+        return ".mp4"
+    if strict:
+        # content-type присылает клиент — в строгом режиме ему не верим.
+        return ""
+    ct = str(ctype or "").lower()
+    for needle, ext in (("webm", ".webm"), ("ogg", ".ogg"), ("mpeg", ".mp3"), ("mp4", ".mp4"),
+                        ("wav", ".wav"), ("webp", ".webp"), ("png", ".png"), ("gif", ".gif")):
+        if needle in ct:
+            return ext
+    if kind in ("voice", "audio"):
+        return ".ogg"
+    if kind in ("video", "video_note"):
+        return ".mp4"
+    return ".jpg"
+
+
+async def _localize_support_media(remote_url: str, chat_id: int, kind: str = "photo") -> str:
+    """Скачиваем вложение из Telegram к себе: ссылки Telegram живут недолго
+    и содержат токен бота — отдавать их в браузер оператора нельзя."""
+    value = str(remote_url or "").strip()
+    if not value:
+        return ""
+    if value.startswith("/uploads/"):
+        return value
+    kind = str(kind or "photo").lower()
+    limit = _MEDIA_MAX.get(kind, 12 * 1024 * 1024)
+    try:
+        parsed = urllib.parse.urlparse(value)
+        if (parsed.hostname or "").lower() != "api.telegram.org":
+            return ""
+        timeout = httpx.Timeout(45.0, connect=5.0)
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            r = await client.get(value, headers={"Accept": "*/*", "User-Agent": "Luxon/10.72"})
+            r.raise_for_status()
+            raw = r.content
+            if not raw or len(raw) > limit:
+                return ""
+            ctype = str(r.headers.get("content-type") or "").lower()
+        ext = _media_ext(raw, ctype, kind)
+        name = f"support_{int(chat_id)}_{secrets.token_hex(8)}{ext}"
+        (SUPPORT_UPLOADS / name).write_bytes(raw)
+        return f"/uploads/support/{name}"
+    except Exception as exc:
+        print(f"support media cache ({kind}): {exc}", flush=True)
+        return ""
+
+
 async def _localize_support_photo(remote_url: str, chat_id: int) -> str:
     value = str(remote_url or "").strip()
     if not value:
@@ -1518,7 +1587,7 @@ async def live_updates(request: Request, chat_id: str = ""):
     chats=_decorate_support_queue(chats)
     base['chats']=chats
     if target_cid is not None and chat_id:
-        base['messages']={chat_id:[{'id':str(m['id']),'from':'client' if m['direction']=='in' else 'operator','text':m['text'] or '', 'time':fmt_dt(datetime.fromisoformat(m['created_at'])).split(' • ')[-1] if m['created_at'] else '', 'image_url':m['file_url'] or None,'operator':'Администратор' if m['direction']=='out' else None} for m in message_rows]}
+        base['messages']={chat_id:[{'id':str(m['id']),'from':'client' if m['direction']=='in' else 'operator','text':m['text'] or '', 'time':fmt_dt(datetime.fromisoformat(m['created_at'])).split(' • ')[-1] if m['created_at'] else '', 'image_url':m['file_url'] or None,'media_kind':str(m['kind'] or 'text'),'operator':'Администратор' if m['direction']=='out' else None} for m in message_rows]}
     return base
 
 
@@ -1963,7 +2032,7 @@ async def chat_thread_fast(chat_id: str, request: Request, after_id: int = 0, li
         reply = None
         if rr:
             reply = {'id':str(rr['id']),'from':'client' if rr['direction']=='in' else 'operator','text':str(rr['text'] or ('Фото' if rr['file_url'] else 'Сообщение'))[:180]}
-        messages.append({'id':str(m['id']),'from':'client' if m['direction']=='in' else 'operator','text':m['text'] or '','time':tm,'created_at':str(m['created_at'] or ''),'image_url':m['file_url'] or None,'operator':'Администратор' if m['direction']=='out' else None,'edited':bool(m['edited_at']) if 'edited_at' in m.keys() else False,'telegram_message_id':int(m['telegram_message_id']) if m['telegram_message_id'] is not None else None,'reply':reply})
+        messages.append({'id':str(m['id']),'from':'client' if m['direction']=='in' else 'operator','text':m['text'] or '','time':tm,'created_at':str(m['created_at'] or ''),'image_url':m['file_url'] or None,'media_kind':str(m['kind'] or 'text'),'operator':'Администратор' if m['direction']=='out' else None,'edited':bool(m['edited_at']) if 'edited_at' in m.keys() else False,'telegram_message_id':int(m['telegram_message_id']) if m['telegram_message_id'] is not None else None,'reply':reply})
     chat=None
     if r:
         try: tm=fmt_dt(datetime.fromisoformat(r['updated_at'])).split(' • ')[-1] if r['updated_at'] else ''
@@ -3310,6 +3379,50 @@ def apply_ui_settings_to_config(data: dict) -> None:
     if changed: save_config(cfg)
 
 
+_TX_NAMES: dict[int, str] = {}
+_TX_NAMES_AT = 0.0
+_TX_NAMES_LOCK = threading.RLock()
+
+
+def _tx_client_names(force: bool = False) -> dict[int, str]:
+    """chat_id -> имя клиента. Клиенты сайта пишутся в bot_users как «web»,
+    поэтому настоящее имя берём из web_users. Кэш на 30 секунд: список заявок
+    рендерится пачками по 3000 строк, запрос на каждую недопустим."""
+    global _TX_NAMES, _TX_NAMES_AT
+    tick = time.monotonic()
+    with _TX_NAMES_LOCK:
+        if not force and _TX_NAMES and tick - _TX_NAMES_AT < 30.0:
+            return _TX_NAMES
+    out: dict[int, str] = {}
+    try:
+        with _ui_read_conn() as c:
+            for r in c.execute("SELECT chat_id,COALESCE(first_name,'') nm FROM bot_users WHERE chat_id IS NOT NULL"):
+                nm = str(r["nm"] or "").strip()
+                if nm and nm.lower() != "web":
+                    out[int(r["chat_id"])] = nm[:64]
+            # Имя с сайта приоритетнее: оно актуальнее телеграмного.
+            for r in c.execute("SELECT chat_id,COALESCE(name,'') nm,COALESCE(username,'') un FROM web_users WHERE chat_id IS NOT NULL"):
+                nm = str(r["nm"] or "").strip() or ("@" + str(r["un"]).strip() if str(r["un"] or "").strip() else "")
+                if nm:
+                    out[int(r["chat_id"])] = nm[:64]
+    except Exception as exc:
+        print(f"[TX] names cache: {exc}", flush=True)
+        return _TX_NAMES
+    with _TX_NAMES_LOCK:
+        _TX_NAMES, _TX_NAMES_AT = out, tick
+    return out
+
+
+_TX_BK_TITLES = {"luxon": "Баланс LUXON"}
+
+
+def _tx_site_label(bookmaker: str) -> str:
+    bk = str(bookmaker or "").strip().lower()
+    if not bk:
+        return "Не выбран"
+    return _TX_BK_TITLES.get(bk, bk.upper())
+
+
 def _tx_to_front(row):
     kind = row["kind"]
     raw_status = str(row["status"] or "pending")
@@ -3329,6 +3442,19 @@ def _tx_to_front(row):
     display_amount=pay_amount if kind == "deposit" and pay_amount > 0 else amount
     request_no=int(row["request_no"] or row["id"] or 0)
     error_text = str(row["error"] or "").strip()
+    # Имя клиента: у заявок с сайта tg_username пустой или «web» — берём из профиля.
+    _chat_id = int(row["chat_id"] or 0)
+    _tx_name = str(row["tg_username"] or "").strip()
+    if not _tx_name or _tx_name.lower() == "web":
+        _tx_name = _tx_client_names().get(_chat_id, "")
+    if not _tx_name:
+        _tx_name = _mask_chat(_chat_id)
+    _tx_from_site = str(row["source_ip"] or "").strip().lower().startswith(("web", "balance"))
+    _tx_player = str(row["player_id"] or "").strip()
+    _tx_account = _tx_player or "—"
+    if str(row["bookmaker"] or "").strip().lower() == "luxon":
+        # У пополнения баланса в player_id лежит id аккаунта на сайте, а не игровой ID.
+        _tx_account = f"Аккаунт сайта #{_tx_player}" if _tx_player else "Баланс LUXON"
     attention = ""
     attention_reason = ""
     if ui_status == "problem":
@@ -3344,8 +3470,11 @@ def _tx_to_front(row):
         "account_id": str(row["player_id"] or ""),
         "kind": kind, "site": row["bookmaker"], "amount": amount,
         "pay_amount": pay_amount, "display_amount": display_amount, "status": ui_status, "raw_status": raw_status,
-        "client_id": f"tg-{row['chat_id']}", "telegram_name": row["tg_username"] or _mask_chat(row["chat_id"]),
-        "client_name": row["tg_username"] or _mask_chat(row["chat_id"]), "client_tg": str(row["chat_id"]),
+        "client_id": f"tg-{row['chat_id']}", "telegram_name": _tx_name, "client_name": _tx_name,
+        "client_tg": str(row["chat_id"]),
+        "site_label": _tx_site_label(row["bookmaker"]),
+        "account_label": _tx_account, "from_site": _tx_from_site,
+        "source_label": "Сайт" if _tx_from_site else "Телеграм",
         "bookmaker_id": str(row["player_id"] or ""),
         "code": str(row["withdraw_code"] or "") if "withdraw_code" in row.keys() else "",
         "withdraw_code": str(row["withdraw_code"] or "") if "withdraw_code" in row.keys() else "",
@@ -6383,8 +6512,19 @@ async def bot_event(request: Request):
     msg = d.get("message") or {}
     bot_name = "support" if d.get("event") == "support_message" else "main"
     local_file_url = str(d.get("file_url") or "")
+    # Тип вложения: бот присылает явно, иначе определяем по самому сообщению.
+    media_kind = str(d.get("media_kind") or "").strip().lower()
+    if not media_kind:
+        for key in ("photo", "voice", "video_note", "video", "audio", "document", "animation"):
+            if msg.get(key):
+                media_kind = key
+                break
+    if media_kind == "animation":
+        media_kind = "video"
+    if not media_kind:
+        media_kind = "text"
     if bot_name == "support" and local_file_url:
-        cached = await _localize_support_photo(local_file_url, chat_id)
+        cached = await _localize_support_media(local_file_url, chat_id, media_kind)
         if cached: local_file_url = cached
     support_case = d.get("support_case") if isinstance(d.get("support_case"), dict) else {}
     conn_factory = _ui_write_conn if bot_name == "support" else _db_conn
@@ -6411,7 +6551,7 @@ async def bot_event(request: Request):
                         raise HTTPException(404,"Заявка клиента не найдена")
                     if str(tx['status'] or '').lower() in {'success','credited','paid','completed'}:
                         raise HTTPException(409,"Успешная заявка не требует обращения в поддержку")
-                    attachment = local_file_url if msg.get('photo') else ''
+                    attachment = local_file_url or ''
                     c.execute("""
                       INSERT INTO support_chats(chat_id,opened,greeted,updated_at,current_rating,rated_at,issue_kind,issue_type,transaction_id,issue_text,issue_attachment_url,case_created_at)
                       VALUES(?,1,1,?,NULL,NULL,?,?,?,?,?,?)
@@ -6425,7 +6565,8 @@ async def bot_event(request: Request):
                     c.execute("INSERT INTO support_chats(chat_id,opened,greeted,updated_at) VALUES(?,1,1,?) ON CONFLICT(chat_id) DO UPDATE SET opened=1,greeted=1,updated_at=excluded.updated_at",(chat_id,stamp))
             else:
                 c.execute("INSERT INTO support_chats(chat_id,opened,greeted,updated_at) VALUES(?,1,1,?) ON CONFLICT(chat_id) DO UPDATE SET opened=1,greeted=1,updated_at=excluded.updated_at",(chat_id,stamp))
-        c.execute("INSERT INTO bot_messages(bot,chat_id,direction,telegram_message_id,kind,text,file_url,hidden,admin_read,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",(bot_name,chat_id,'in',msg.get('message_id'),'photo' if msg.get('photo') else 'text',msg.get('text') or msg.get('caption') or '',local_file_url,0,0,stamp))
+        row_kind = media_kind if (local_file_url and media_kind != "text") else "text"
+        c.execute("INSERT INTO bot_messages(bot,chat_id,direction,telegram_message_id,kind,text,file_url,hidden,admin_read,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",(bot_name,chat_id,'in',msg.get('message_id'),row_kind,msg.get('text') or msg.get('caption') or '',local_file_url,0,0,stamp))
     return {"ok": True}
 
 
@@ -11779,26 +11920,23 @@ async def web_support_send(request: Request):
     if "multipart/form-data" in ctype:
         form = await request.form()
         text = str(form.get("text") or "").strip()[:1500]
+        kind = str(form.get("kind") or "").strip().lower()
         if form.get("file") is not None:
             f = form.get("file")
             raw = await f.read()
             if raw:
-                raw, ext = _web_validate_image(raw, max_side=1600, quality=86)
-                folder = _WEB_UPLOADS / "chat"
-                folder.mkdir(parents=True, exist_ok=True)
-                name = f"{int(time.time()*1000)}_{secrets.token_hex(4)}{ext}"
-                (folder / name).write_bytes(raw)
-                file_url = f"/uploads/web/chat/{name}"
+                file_url, kind = _web_save_chat_media(raw, kind, str(getattr(f, "content_type", "") or ""))
     else:
         d = await request_json(request)
         text = str(d.get("text") or "").strip()[:1500]
+        kind = ""
     if not text and not file_url:
         raise HTTPException(400, "Пустое сообщение")
     stamp = now_iso()
     with _DB_LOCK, _db_conn() as c:
         c.execute("INSERT INTO support_chats(chat_id,opened,greeted,updated_at) VALUES(?,1,1,?) ON CONFLICT(chat_id) DO UPDATE SET opened=1,greeted=1,updated_at=excluded.updated_at", (chat_id, stamp))
         cur = c.execute("INSERT INTO bot_messages(bot,chat_id,direction,kind,text,file_url,hidden,admin_read,created_at) VALUES('support',?,'in',?,?,?,0,0,?)",
-                        (chat_id, "photo" if file_url else "text", text, file_url, stamp))
+                        (chat_id, (kind or "photo") if file_url else "text", text, file_url, stamp))
     try:
         _web_ensure_bot_user(chat_id, u["name"])
     except Exception:
@@ -11864,6 +12002,34 @@ def _web_validate_image(raw: bytes, max_side: int = 2400, quality: int = 92) -> 
     if not ok:
         raise HTTPException(400, "Не удалось обработать изображение")
     return buf.tobytes(), ".jpg"
+
+
+def _web_save_chat_media(raw: bytes, kind: str, ctype: str = "") -> tuple[str, str]:
+    """Вложение клиента в поддержку: фото, голосовое или видео.
+    Картинки перекодируем (заодно срезаем всё лишнее внутри файла),
+    аудио и видео проверяем по сигнатуре и сохраняем как есть."""
+    kind = str(kind or "").strip().lower()
+    if kind in ("voice", "audio", "video", "video_note"):
+        limit = _MEDIA_MAX.get(kind, 20 * 1024 * 1024)
+        if len(raw) > limit:
+            raise HTTPException(413, f"Файл больше {limit // (1024 * 1024)} МБ")
+        ext = _media_ext(raw, ctype, kind, strict=True)
+        allowed = {"voice": {".ogg", ".webm", ".m4a", ".mp3", ".wav", ".mp4"},
+                   "audio": {".ogg", ".webm", ".m4a", ".mp3", ".wav", ".mp4"},
+                   "video": {".mp4", ".webm", ".mov"}, "video_note": {".mp4", ".webm", ".mov"}}[kind]
+        if not ext or ext not in allowed:
+            raise HTTPException(400, "Файл повреждён или формат не поддерживается")
+        folder = _WEB_UPLOADS / "chat"
+        folder.mkdir(parents=True, exist_ok=True)
+        name = f"{int(time.time()*1000)}_{secrets.token_hex(4)}{ext}"
+        (folder / name).write_bytes(raw)
+        return f"/uploads/web/chat/{name}", ("voice" if kind in ("voice", "audio") else "video")
+    raw, ext = _web_validate_image(raw, max_side=1600, quality=86)
+    folder = _WEB_UPLOADS / "chat"
+    folder.mkdir(parents=True, exist_ok=True)
+    name = f"{int(time.time()*1000)}_{secrets.token_hex(4)}{ext}"
+    (folder / name).write_bytes(raw)
+    return f"/uploads/web/chat/{name}", "photo"
 
 
 def _web_fmt(value) -> str:
@@ -14002,7 +14168,10 @@ def _web_face_count(raw: bytes) -> int:
 # === LUX WEB v10.49: баланс LUXON, запросы в ЛС, приватность, устройства, QR-вход,
 #     правка/удаление сообщений (5 минут), уведомления (прочитано/удалить), QR профиля
 # =====================================================================================
-_LUX_WEB_VERSION = "10.71.0"
+# Версия кабинета клиента (/app). Должна совпадать с APP_VERSION в static/app/app.js —
+# по ней сайт решает, показывать ли «доступно обновление». Версия админки живёт
+# отдельно, в static/app.js.
+_LUX_WEB_VERSION = "10.67.1"
 _WEB_BALANCE_MIN, _WEB_BALANCE_MAX = 100, 500000
 
 

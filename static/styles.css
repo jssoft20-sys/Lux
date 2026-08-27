@@ -3675,3 +3675,57 @@ html[data-theme="dark"] .bank-choice-logo{background:#fff!important;border-color
  .lux-tiles-v1071{grid-template-columns:1fr 1fr}
  .lux-money-v1071{grid-template-columns:1fr;gap:11px}
 }
+
+/* ===== Правки вёрстки 10.72 ===== */
+/* Строка «подпись + переключатель». Правило потерялось при чистке — текст слипался. */
+.adm-grow-v1070{min-height:54px;display:flex;align-items:center;justify-content:space-between;gap:14px;border-top:1px solid #f0f3f4;padding:9px 0}
+.adm-grow-v1070:first-child,.adm-grow-v1070:first-of-type{border-top:0}
+.adm-grow-v1070>span{min-width:0;display:block}
+.adm-grow-v1070 b{display:block;font-size:13px;line-height:1.3}
+.adm-grow-v1070 small{display:block;font-size:10.5px;color:#8b98a2;margin-top:3px;line-height:1.35}
+.adm-grow-v1070 .switch{flex:0 0 auto}
+
+/* Экраны-обёртки */
+.adm-users-v1070,.adm-verify-v1070,.adm-sitechat-v1070,.lux-hub-v1071,.lux-stats-v1071,.lux-mail-v1071,.lux-card-v1071{padding-bottom:30px}
+.adm-balsheet-v1070{padding-bottom:20px}
+
+/* Одна кнопка не должна растягиваться на всю ширину */
+.adm-vbtns-v1070{display:flex;gap:8px;margin-top:10px}
+.adm-vbtns-v1070 .adm-btn-v1070{flex:1 1 0;min-width:0}
+.adm-vbtns-v1070 .adm-btn-v1070:only-child{flex:0 1 auto;max-width:56%}
+
+/* Блок «Доступ» в карточке клиента */
+.lux-block-v1071{padding:2px 14px 14px}
+.lux-block-v1071 .adm-grow-v1070{border-top:0;padding-top:12px}
+.lux-block-v1071 .adm-wsel-v1070{margin-top:4px;border-top:1px solid #f0f3f4;padding-top:12px}
+
+/* Заголовки блоков не липнут к предыдущей карточке */
+.lux-card-v1071 .adm-ver-v1070+.adm-vbtns-v1070{margin-top:9px}
+.lux-h-v1071:first-of-type{margin-top:16px}
+
+/* ===== Медиа в чатах поддержки ===== */
+.msg-voice-v1072{display:flex;align-items:center;gap:9px;min-width:210px;padding:2px 0}
+.msg-voice-ico-v1072{width:32px;height:32px;flex:0 0 auto;border-radius:50%;background:rgba(23,105,237,.12);color:var(--blue);display:grid;place-items:center}
+.message.operator .msg-voice-ico-v1072{background:rgba(255,255,255,.22);color:#fff}
+.msg-voice-v1072 audio{flex:1;min-width:0;height:36px;max-width:230px}
+.msg-video-v1072{max-width:240px;border-radius:12px;overflow:hidden;background:#000}
+.msg-video-v1072 video{display:block;width:100%;max-height:320px;border-radius:12px}
+.msg-video-v1072.round{width:180px;height:180px;border-radius:50%}
+.msg-video-v1072.round video{width:180px;height:180px;object-fit:cover;border-radius:50%}
+.message .message-text+.msg-voice-v1072,.message .msg-voice-v1072+.message-text,.message .msg-video-v1072+.message-text{margin-top:6px}
+
+/* Страница правки заявки */
+.lux-txedit-v1072{padding-bottom:30px}
+.lux-txhead-v1072{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:14px;margin-bottom:9px}
+.lux-txhead-v1072 b{display:block;font-size:15px}
+.lux-txhead-v1072 small{display:block;font-size:10.5px;color:#8b98a2;margin-top:3px}
+.lux-txhead-v1072 strong{font-size:20px;font-weight:850;letter-spacing:-.5px;text-align:right}
+.lux-txhead-v1072 strong.deposit{color:#049e68}
+.lux-txhead-v1072 strong.withdraw{color:#d82f2f}
+.lux-txhead-v1072 .status{grid-column:1/-1;justify-self:start}
+.lux-txclient-v1072{width:100%;display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:11px;align-items:center;padding:11px 13px;text-align:left;color:#8b98a2;margin-bottom:9px}
+.lux-txclient-v1072 b{display:block;font-size:13px;color:var(--ink)}
+.lux-txclient-v1072 small{display:block;font-size:10.5px;color:#8b98a2;margin-top:2px}
+.lux-txform-v1072{padding:14px 14px 4px}
+.lux-txhint-v1072{font-size:10.5px;color:#7d8a94;line-height:1.45;background:#f6f8f9;border-radius:12px;padding:9px 11px;margin:2px 0 12px}
+.lux-txedit-v1072 .adm-btn-v1070.wide{width:100%;margin-top:9px}
