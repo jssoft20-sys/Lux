@@ -13887,7 +13887,7 @@ def _web_face_count(raw: bytes) -> int:
 # === LUX WEB v10.49: баланс LUXON, запросы в ЛС, приватность, устройства, QR-вход,
 #     правка/удаление сообщений (5 минут), уведомления (прочитано/удалить), QR профиля
 # =====================================================================================
-_LUX_WEB_VERSION = "10.62.0"
+_LUX_WEB_VERSION = "10.63.0"
 _WEB_BALANCE_MIN, _WEB_BALANCE_MAX = 100, 500000
 
 
@@ -14931,6 +14931,9 @@ def _luxbot_init() -> None:
         mcols = {r["name"] for r in c.execute("PRAGMA table_info(lux_bot_messages)").fetchall()}
         if "buttons" not in mcols:
             c.execute("ALTER TABLE lux_bot_messages ADD COLUMN buttons TEXT DEFAULT ''")
+        if "callback" not in mcols:
+            # callback_data нажатой кнопки — для внешних скриптов (getUpdates)
+            c.execute("ALTER TABLE lux_bot_messages ADD COLUMN callback TEXT DEFAULT ''")
         if "builtin" not in bcols_pre(c):
             c.execute("ALTER TABLE lux_bots ADD COLUMN builtin TEXT DEFAULT ''")
         bcols = {r["name"] for r in c.execute("PRAGMA table_info(lux_bots)").fetchall()}
@@ -15404,6 +15407,39 @@ def _luxon_support() -> str:
         return "@help_lux_bot"
 
 
+def _luxon_bk_limits(bk_code: str) -> tuple[int, int]:
+    for b in _web_bookmakers(_web_cfg()):
+        if str(b.get("key")) == bk_code:
+            return int(b.get("deposit_min") or 35), int(b.get("deposit_max") or 500000)
+    return 35, 500000
+
+
+def _luxon_amount_kb(bk_code: str) -> list:
+    # Пресеты как в Telegram-боте: 50…10000, отфильтрованные лимитами БК
+    mn, mx = _luxon_bk_limits(bk_code)
+    values = [x for x in (50, 100, 200, 500, 1000, 2000, 5000, 10000) if mn <= x <= mx]
+    if mn not in values:
+        values.insert(0, mn)
+    values = sorted(set(values))[:8]
+    kb, row = [], []
+    for v in values:
+        row.append(_btn(f"{v:,}".replace(",", " "), f"amt:{v}", "g"))
+        if len(row) == 3:
+            kb.append(row); row = []
+    if row:
+        kb.append(row)
+    kb.append(_LUXON_CANCEL)
+    return kb
+
+
+def _luxon_amount_prompt(bk_code: str) -> str:
+    mn, mx = _luxon_bk_limits(bk_code)
+    return ("💰 Пополнение счета\n\n"
+            f"Минимум: {mn:,} KGS\n"
+            f"Максимум: {mx:,} KGS\n\n"
+            "Введите сумму пополнения:").replace(",", " ")
+
+
 def _luxon(c, u, text: str, cb: str) -> list:
     me = int(u["id"])
     lid = int(c.execute("SELECT id FROM lux_bots WHERE builtin='luxon'").fetchone()["id"])
@@ -15414,14 +15450,22 @@ def _luxon(c, u, text: str, cb: str) -> list:
     def clear():
         _bot_state_set(c, lid, me, "", {})
 
+    _bk_limits, _amount_kb, _amount_prompt = _luxon_bk_limits, _luxon_amount_kb, _luxon_amount_prompt
+
+    def _saved_ids(bk_code: str) -> list:
+        # Сохранённые игровые ID — из прошлых заявок, как в Telegram-боте
+        rows = c.execute("SELECT DISTINCT player_id FROM bot_transactions WHERE chat_id=? AND bookmaker=? "
+                         "AND player_id<>'' ORDER BY id DESC LIMIT 6", (int(u["chat_id"]), bk_code)).fetchall()
+        return [str(r["player_id"]) for r in rows]
+
     if act in ("/start", "start", "menu", "/help"):
         clear()
-        return [_msg(f"Привет, {u['name']} | LUX ON! ✅\n\n"
-                     "🟢 Пополнение | Вывод\n\n"
+        return [_msg(f"Привет, {u['name']}  | LUX ON! 🕒\n\n"
+                     "✅Пополнение | Вывод\n\n"
                      "📥 Пополнение — 0%\n"
                      "📤 Вывод — 0%\n"
-                     "🕐 Работаем 24/7\n\n"
-                     f"👨‍💻 Оператор: {_luxon_support()}\n\n"
+                     "🌐 Работаем 24/7\n\n"
+                     f"📞 Оператор: {_luxon_support()}\n\n"
                      "🛡 Финансовый контроль обеспечен личным отделом безопасности", _LUXON_MENU)]
 
     if act in ("/deposit", "dep"):
@@ -15444,9 +15488,18 @@ def _luxon(c, u, text: str, cb: str) -> list:
     if act.startswith("depbk:"):
         code = act.split(":", 1)[1]
         _bot_state_set(c, lid, me, "dep_id", {"bk": code})
-        return [_msg(f"🎰 Букмекер: {code.upper()}\n\n"
-                     "🆔 Пришлите игровой ID — он есть в личном кабинете БК.",
-                     [_LUXON_CANCEL])]
+        ids = _saved_ids(code)
+        if ids:
+            kb, row = [], []
+            for pid_ in ids:
+                row.append(_btn(pid_, f"pid:{pid_}", "g"))
+                if len(row) == 2:
+                    kb.append(row); row = []
+            if row:
+                kb.append(row)
+            kb.append(_LUXON_CANCEL)
+            return [_msg(f"Выберите ID {code.upper()} или отправьте новый ID цифрами:", kb)]
+        return [_msg(f"Отправьте ваш ID {code.upper()}", [_LUXON_CANCEL])]
 
     if act in ("/withdraw", "wd"):
         clear()
@@ -15478,32 +15531,48 @@ def _luxon(c, u, text: str, cb: str) -> list:
             lines.append(f"{mark} {kind} · {int(r['amount'] or 0)} сом · {str(r['bookmaker'] or '').upper()} · {r['public_id']}")
         return [_msg("📋 Последние заявки:\n\n" + "\n".join(lines), _LUXON_MENU)]
 
+    if act.startswith("canceltx:"):
+        clear()
+        pub = act.split(":", 1)[1][:32]
+        stamp = now_iso()
+        cur = c.execute("UPDATE bot_transactions SET status='rejected',error='Отменено клиентом',closed_at=?,updated_at=?,operator='Клиент' "
+                        "WHERE public_id=? AND chat_id=? AND kind='deposit' AND status='pending'",
+                        (stamp, stamp, pub, int(u["chat_id"])))
+        if cur.rowcount:
+            try:
+                _sync_bot_transactions_to_state()
+            except Exception:
+                pass
+            return [_msg("⏰ Пополнение отменено\n\n"
+                         "❌ Не переводите по старым реквизитам\n\n"
+                         "🔄 Начните заново, нажав на «Пополнить»", _LUXON_MENU)]
+        return [_msg("Заявка уже закрыта.", _LUXON_MENU)]
+
     if act.startswith("open:"):
         clear()
         return [_msg("Открываю…", [])]
 
     # ---- шаги ----
-    if step == "dep_id":
-        pid = re.sub(r"[^0-9A-Za-z]", "", t)[:32]
-        if len(pid) < 4:
-            return [_msg("⚠️ ID слишком короткий. Пришлите игровой ID из кабинета БК.")]
-        _bot_state_set(c, lid, me, "dep_amt", {"bk": data.get("bk"), "pid": pid})
-        return [_msg(f"🆔 ID: {pid}\n\n💰 Теперь сумма пополнения в сомах:",
-                     [[_btn("500", "amt:500", "g"), _btn("1000", "amt:1000", "g")],
-                      [_btn("3000", "amt:3000", "g"), _btn("5000", "amt:5000", "g")],
-                      _LUXON_CANCEL])]
+    if step == "dep_id" and (act.startswith("pid:") or (t and not act)):
+        pid = (act.split(":", 1)[1] if act.startswith("pid:") else re.sub(r"[^0-9A-Za-z]", "", t))[:32]
+        if not pid.isdigit() or int(pid) <= 0:
+            return [_msg("Введите корректный ID цифрами или нажмите «Отмена».", [_LUXON_CANCEL])]
+        # Проверка у букмекера идёт вне блокировки БД — эндпоинт перехватит маркер.
+        return [_msg("__VERIFY_ID__" + json.dumps({"bk": str(data.get("bk") or ""), "pid": pid}))]
 
     if step == "dep_amt" or act.startswith("amt:"):
         raw = act.split(":", 1)[1] if act.startswith("amt:") else t
-        amt = int(re.sub(r"[^0-9]", "", raw) or 0)
-        if amt < 50:
-            return [_msg("⚠️ Минимальная сумма — 50 сом. Пришлите сумму цифрами.")]
+        amt = int(re.sub(r"[^0-9]", "", raw.replace(" ", "")) or 0)
         bk, pid = str(data.get("bk") or ""), str(data.get("pid") or "")
+        mn, mx = _bk_limits(bk)
+        if amt < mn or amt > mx:
+            return [_msg((f"Для {bk.upper() or 'БК'} сумма должна быть от {mn:,} до {mx:,} KGS.").replace(",", " "),
+                         _amount_kb(bk))]
         clear()
         if not bk or not pid:
             return [_msg("⚠️ Что-то потерялось. Начнём заново.", _LUXON_MENU)]
         return [_msg(f"📝 Заявка на пополнение\n\n"
-                     f"🎰 БК: {bk.upper()}\n🆔 ID: {pid}\n💰 Сумма: {amt} сом\n\nСоздать?",
+                     f"🎰 БК: {bk.upper()}\n🆔 ID: {pid}\n💰 Сумма: {amt} KGS\n\nСоздать?",
                      [[_btn("✅ Создать заявку", f"go:{bk}:{pid}:{amt}", "g")], _LUXON_CANCEL])]
 
     if act.startswith("go:"):
@@ -15514,13 +15583,23 @@ def _luxon(c, u, text: str, cb: str) -> list:
     return [_msg("Выберите действие в меню. 👇", _LUXON_MENU)]
 
 
-def _luxbot_reply(bot_row, text: str) -> str:
-    """Ответ бота по правилам владельца: /start, /help и заданные команды."""
+def _luxbot_reply(bot_row, text: str, cb: str = "") -> str:
+    """Ответ бота по правилам владельца: /start, /help, заданные команды.
+    Нажатие инлайн-кнопки (cb) матчится на команду с тем же именем; если
+    совпадения нет — бот молчит, ответ придёт от внешнего скрипта владельца."""
     t = str(text or "").strip()
     try:
         cmds = json.loads(bot_row["commands_json"] or "[]")
     except Exception:
         cmds = []
+    if cb:
+        code = re.sub(r"[^a-z0-9_]", "", cb.lower().lstrip("/"))[:24]
+        if code == "start":
+            return str(bot_row["start_text"] or "Привет!")
+        for x in cmds:
+            if str(x.get("command") or "") == code:
+                return str(x.get("reply") or "Готово.")
+        return ""
     if t.startswith("/"):
         cmd = re.sub(r"[^a-z0-9_]", "", t[1:].split()[0].lower() if t[1:].split() else "")
         if cmd == "start":
@@ -15579,14 +15658,15 @@ async def lux_bot_chat_send(bid: int, request: Request):
     stamp = now_iso()
     shown = text or ("» " + label if label else cb)
     deposit_job = None
+    verify_job = None
     with _DB_LOCK, _db_conn() as c:
         b = c.execute("SELECT * FROM lux_bots WHERE id=? AND enabled=1", (int(bid),)).fetchone()
         if not b:
             raise HTTPException(404, "Бот не найден")
         first = c.execute("SELECT 1 FROM lux_bot_messages WHERE bot_id=? AND user_id=? LIMIT 1",
                           (int(bid), int(u["id"]))).fetchone()
-        cur = c.execute("INSERT INTO lux_bot_messages(bot_id,user_id,direction,kind,text,created_at) "
-                        "VALUES(?,?,'in','text',?,?)", (int(bid), int(u["id"]), _lux_enc(shown), stamp))
+        cur = c.execute("INSERT INTO lux_bot_messages(bot_id,user_id,direction,kind,text,callback,created_at) "
+                        "VALUES(?,?,'in','text',?,?,?)", (int(bid), int(u["id"]), _lux_enc(shown), cb, stamp))
         mine = {"id": int(cur.lastrowid), "mine": True, "kind": "text", "text": shown,
                 "file_url": "", "buttons": [], "created_at": stamp}
 
@@ -15596,7 +15676,7 @@ async def lux_bot_chat_send(bid: int, request: Request):
         elif kind == "luxon":
             answers = _luxon(c, u, text, cb)
         else:
-            a = _luxbot_reply(b, text or cb)
+            a = _luxbot_reply(b, text, cb)
             answers = [_msg(a)] if a else []
 
         replies = []
@@ -15608,6 +15688,12 @@ async def lux_bot_chat_send(bid: int, request: Request):
                 except Exception:
                     deposit_job = None
                 continue
+            if body.startswith("__VERIFY_ID__"):
+                try:
+                    verify_job = json.loads(body[len("__VERIFY_ID__"):])
+                except Exception:
+                    verify_job = None
+                continue
             ts = now_iso()
             cc = c.execute("INSERT INTO lux_bot_messages(bot_id,user_id,direction,kind,text,buttons,created_at) "
                            "VALUES(?,?,'out','text',?,?,?)",
@@ -15617,6 +15703,38 @@ async def lux_bot_chat_send(bid: int, request: Request):
                             "file_url": "", "buttons": a.get("buttons") or [], "created_at": ts})
         c.execute("UPDATE lux_bots SET msgs=COALESCE(msgs,0)+1"
                   + (", users=COALESCE(users,0)+1" if not first else "") + " WHERE id=?", (int(bid),))
+
+    # Проверка игрового ID у букмекера — как в Telegram-боте: вне блокировки БД.
+    if verify_job:
+        bk_, pid_ = str(verify_job.get("bk") or ""), str(verify_job.get("pid") or "")
+        try:
+            chk = await asyncio.to_thread(_lux_provider_check_player_v3, bk_, pid_)
+        except Exception as e:
+            chk = {"ok": False, "message": str(e)[:120]}
+        chk = chk if isinstance(chk, dict) else {"ok": False}
+        with _DB_LOCK, _db_conn() as c:
+            lid_ = int(c.execute("SELECT id FROM lux_bots WHERE builtin='luxon'").fetchone()["id"])
+            if chk.get("ok"):
+                pid_ok = str(chk.get("player_id") or pid_)
+                _bot_state_set(c, lid_, int(u["id"]), "dep_amt", {"bk": bk_, "pid": pid_ok})
+                prefix = ""
+                if chk.get("verified"):
+                    prefix = "✅ ID найден"
+                    fio = str(chk.get("name") or "").strip()
+                    if fio:
+                        prefix += "\n👤 " + fio
+                    prefix += "\n\n"
+                a = _msg(prefix + _luxon_amount_prompt(bk_), _luxon_amount_kb(bk_))
+            else:
+                a = _msg("❌ " + str(chk.get("message") or "ID не найден. Проверьте номер и попробуйте снова."),
+                         [_LUXON_CANCEL])
+            ts = now_iso()
+            cc = c.execute("INSERT INTO lux_bot_messages(bot_id,user_id,direction,kind,text,buttons,created_at) "
+                           "VALUES(?,?,'out','text',?,?,?)",
+                           (int(bid), int(u["id"]), _lux_enc(a["text"]),
+                            json.dumps(a.get("buttons") or [], ensure_ascii=False), ts))
+            replies.append({"id": int(cc.lastrowid), "mine": False, "kind": "text", "text": a["text"],
+                            "file_url": "", "buttons": a.get("buttons") or [], "created_at": ts})
 
     # Реальная заявка на пополнение создаётся тем же путём, что и в кассе.
     if deposit_job:
@@ -15628,11 +15746,13 @@ async def lux_bot_chat_send(bid: int, request: Request):
         except Exception as e:
             res = {"ok": False, "message": str(e)[:160]}
         if res.get("ok") and res.get("request_id"):
-            body = (f"✅ Заявка создана: {res['request_id']}\n\n"
-                    f"Оплатите точную сумму — как только платёж дойдёт, деньги упадут на игровой счёт. "
-                    f"QR и кнопки банков открываются в кассе.")
+            # Текст оплаты — тот же, что отправляет Telegram-бот (реквизиты, сумма, срок).
+            body = str(res.get("payment_text") or "").strip() or (
+                f"✅ Заявка создана: {res['request_id']}\n\n"
+                f"Оплатите точную сумму — как только платёж дойдёт, деньги упадут на игровой счёт.")
+            body += "\n\nQR и кнопки банков — в заявке ниже."
             btns = [[{"t": "🏦 Открыть заявку", "d": "open:tx:" + str(res["request_id"]), "c": "g"}],
-                    [{"t": "🏠 Меню", "d": "menu"}]]
+                    [{"t": "❌ Отменить пополнение", "d": "canceltx:" + str(res["request_id"]), "c": "r"}]]
         else:
             body = "⚠️ Не получилось создать заявку: " + str(res.get("message") or "попробуйте позже")
             btns = [[{"t": "🏠 Меню", "d": "menu"}]]
@@ -15679,31 +15799,98 @@ async def lux_bot_api_me(request: Request):
     return {"ok": True, "bot": _luxbot_row(_luxbot_by_token(request))}
 
 
+def _luxbot_api_buttons(raw) -> list:
+    """Инлайн-клавиатура из внешнего скрипта — формат как в кабинете:
+    [[{"t":"Текст","d":"callback","c":"g|r|b"}], ...], до 8 рядов по 4 кнопки."""
+    out = []
+    for row in (raw if isinstance(raw, list) else [])[:8]:
+        if not isinstance(row, list):
+            continue
+        r_ = []
+        for x in row[:4]:
+            if not isinstance(x, dict):
+                continue
+            t_ = str(x.get("t") or x.get("text") or "").strip()[:40]
+            d_ = str(x.get("d") or x.get("callback_data") or "").strip()[:120]
+            if not t_ or not d_:
+                continue
+            c_ = str(x.get("c") or x.get("color") or "")[:1]
+            r_.append(_btn(t_, d_, c_ if c_ in ("g", "r", "b") else ""))
+        if r_:
+            out.append(r_)
+    return out
+
+
 @app.post("/api/lux/bot/sendMessage")
 async def lux_bot_api_send(request: Request):
-    """Отправка сообщения пользователю от имени бота: {user_id, text}."""
+    """Отправка сообщения от имени бота: {user_id, text, buttons?}.
+    buttons — инлайн-кнопки, как в Telegram Bot API (см. _luxbot_api_buttons)."""
     b = _luxbot_by_token(request)
     d = await request_json(request)
     uid = int(d.get("user_id") or 0)
     text = str(d.get("text") or "").strip()[:2000]
     if not uid or not text:
         raise HTTPException(400, "Нужны user_id и text")
+    btns = _luxbot_api_buttons(d.get("buttons") or d.get("reply_markup"))
     stamp = now_iso()
     with _DB_LOCK, _db_conn() as c:
-        cur = c.execute("INSERT INTO lux_bot_messages(bot_id,user_id,direction,kind,text,created_at) VALUES(?,?,'out','text',?,?)",
-                        (int(b["id"]), uid, _lux_enc(text), stamp))
+        cur = c.execute("INSERT INTO lux_bot_messages(bot_id,user_id,direction,kind,text,buttons,created_at) VALUES(?,?,'out','text',?,?,?)",
+                        (int(b["id"]), uid, _lux_enc(text), json.dumps(btns, ensure_ascii=False), stamp))
     return {"ok": True, "message_id": int(cur.lastrowid)}
 
 
 @app.get("/api/lux/bot/updates")
 async def lux_bot_api_updates(request: Request, after_id: int = 0, limit: int = 50):
-    """Входящие сообщения боту — аналог getUpdates."""
+    """Входящие сообщения и нажатия кнопок — аналог getUpdates.
+    Кнопка приходит с callback_data в поле callback, текстовое сообщение — с text."""
     b = _luxbot_by_token(request)
     with _ui_read_conn() as c:
         rows = c.execute("SELECT * FROM lux_bot_messages WHERE bot_id=? AND direction='in' AND id>? ORDER BY id LIMIT ?",
                          (int(b["id"]), int(after_id), max(1, min(100, limit)))).fetchall()
+        keys0 = rows[0].keys() if rows else []
     return {"ok": True, "items": [{"id": int(r["id"]), "user_id": int(r["user_id"]), "text": _lux_dec(r["text"]),
+                                   "callback": (str(r["callback"] or "") if "callback" in keys0 else ""),
                                    "created_at": r["created_at"] or ""} for r in rows]}
+
+
+@app.post("/api/lux/bot/setCommands")
+async def lux_bot_api_set_commands(request: Request):
+    """Аналог setMyCommands: [{command, description, reply}] — reply бот отвечает сам."""
+    b = _luxbot_by_token(request)
+    d = await request_json(request)
+    raw = d.get("commands") or []
+    cmds = []
+    for x in (raw if isinstance(raw, list) else [])[:24]:
+        if not isinstance(x, dict):
+            continue
+        cmd = re.sub(r"[^a-z0-9_]", "", str(x.get("command") or "").lower().lstrip("/"))[:24]
+        if not cmd:
+            continue
+        cmds.append({"command": cmd, "description": str(x.get("description") or "")[:80],
+                     "reply": str(x.get("reply") or "")[:1000]})
+    with _DB_LOCK, _db_conn() as c:
+        c.execute("UPDATE lux_bots SET commands_json=?, updated_at=? WHERE id=?",
+                  (json.dumps(cmds, ensure_ascii=False), now_iso(), int(b["id"])))
+    return {"ok": True, "count": len(cmds)}
+
+
+@app.post("/api/lux/bot/setStart")
+async def lux_bot_api_set_start(request: Request):
+    """Текст приветствия по /start и описание бота: {start_text?, description?, about?}."""
+    b = _luxbot_by_token(request)
+    d = await request_json(request)
+    fields, params = [], []
+    for key, col, cut in (("start_text", "start_text", 1000), ("description", "description", 600), ("about", "about", 120)):
+        if key in d:
+            fields.append(f"{col}=?")
+            params.append(str(d.get(key) or "")[:cut])
+    if not fields:
+        raise HTTPException(400, "Нечего менять: передайте start_text, description или about")
+    fields.append("updated_at=?")
+    params += [now_iso(), int(b["id"])]
+    with _DB_LOCK, _db_conn() as c:
+        c.execute(f"UPDATE lux_bots SET {','.join(fields)} WHERE id=?", params)
+    return {"ok": True}
 # === /LuxFather ===
 
 

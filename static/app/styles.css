@@ -529,7 +529,7 @@ html.kb-on .gc-new{bottom:calc(58px)}
 .notif .ni{width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;background:var(--line2);color:var(--ink2)}
 .notif.success .ni{background:var(--green-soft);color:var(--green)}.notif.warn .ni{background:var(--red-soft);color:var(--red)}.notif.gift .ni{background:var(--amber-soft);color:var(--amber)}
 .notif .nt{flex:1;min-width:0}
-.notif .nt b{display:block;font-size:13.5px}.notif .nt span{display:block;font-size:12.5px;color:var(--ink2);white-space:pre-wrap;margin-top:2px}.notif .nt small{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+.notif .nt b{display:block;font-size:13.5px;overflow-wrap:anywhere}.notif .nt span{display:block;font-size:12.5px;color:var(--ink2);white-space:pre-wrap;margin-top:2px;overflow-wrap:anywhere}.notif .nt small{display:block;color:var(--muted);font-size:11px;margin-top:3px}
 .notif .nt img{border-radius:9px;margin-top:6px;max-height:150px}
 .notif .nd{position:absolute;right:10px;top:10px;width:7px;height:7px;border-radius:50%;background:var(--green)}
 /* toast */

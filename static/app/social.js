@@ -20,7 +20,7 @@ function _vvApply(){var vv=window.visualViewport;var de=document.documentElement
  de.style.setProperty('--kb',(typing?kb:0)+'px');
  de.classList.toggle('kb-on',typing&&kb>90);
  if(top>0&&!typing)window.scrollTo(0,0);}
-function _vvSettle(){_vvApply();[16,80,180,360,600].forEach(function(ms){setTimeout(_vvApply,ms);});}
+function _vvSettle(){_vvApply();[16,80,180,360,600,900,1300].forEach(function(ms){setTimeout(_vvApply,ms);});}
 function useVH(){useEffect(function(){var vv=window.visualViewport;
   if(_vvRefs++===0){
    _vvApply();
@@ -72,7 +72,10 @@ function blurComposer(e){var t=e&&e.target;
  var ae=document.activeElement;
  if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'))ae.blur();}
 function tokenHeader(){var hd={};try{var t=localStorage.getItem('luxon-web-token');if(t)hd['X-Web-Token']=t;}catch(e){}return hd;}
-function Av(p){return h('span',{className:'cav '+(p.className||''),style:p.size?{width:p.size,height:p.size,fontSize:p.size*.42}:null},p.src?h('img',{src:p.src,alt:''}):initial(p.name));}
+function avHue(n){var s=String(n||'?'),a=0;for(var i=0;i<s.length;i++)a=(a*31+s.charCodeAt(i))>>>0;return a%360;}
+function Av(p){var st=p.size?{width:p.size,height:p.size,fontSize:p.size*.42}:{};
+ if(!p.src){var hu=avHue(p.name);st=Object.assign({},st,{background:'linear-gradient(135deg,hsl('+hu+',58%,52%),hsl('+((hu+42)%360)+',58%,42%))',color:'#fff'});}
+ return h('span',{className:'cav '+(p.className||''),style:st},p.src?h('img',{src:p.src,alt:''}):initial(p.name));}
 
 L.P.crop=L.P.crop||'M6 2v14a2 2 0 0 0 2 2h14M2 6h14a2 2 0 0 1 2 2v14';
 /* ---------- Voice ---------- */
@@ -443,7 +446,7 @@ function GroupChat(p){var [msgs,setMsgs]=useState(null);var [fwd,setFwd]=useStat
  function older(){if(olderBusy.current)return;olderBusy.current=true;var b=box.current,ph=b?b.scrollHeight:0;api('/api/web/chat/messages?before_id='+firstId.current+'&limit=40').then(function(r){var items=r.items||[];if(!items.length){firstId.current=1;return;}firstId.current=items[0].id;setMsgs(function(prev){return items.concat(prev||[]);});setTimeout(function(){if(b)b.scrollTop=b.scrollHeight-ph;},20);}).catch(function(){}).then(function(){olderBusy.current=false;});}
  /* Как в ТГ: пузырь появляется сразу с часиками и заменяется настоящим,
     когда сервер ответил. Ожидание сети больше не видно. */
- function send(t,file,extra){setBusy(true);var tmp='t'+Date.now();
+ function send(t,file,extra){if(busy)return Promise.resolve(false);setBusy(true);var tmp='t'+Date.now();
   var ghost={id:tmp,pending:true,mine:true,user_id:(p.user&&p.user.id)||0,name:(p.user&&p.user.name)||'',kind:file?(extra&&extra.duration?'voice':'photo'):'text',text:t,file_url:file&&!extra?'':'',duration:(extra&&extra.duration)||0,reply:reply?{id:reply.id,name:reply.name,text:reply.text}:null,created_at:new Date().toISOString()};
   setMsgs(function(prev){return (prev||[]).concat([ghost]);});scrollBottom(true);vibrate(10);
   var body;if(file){body=new FormData();body.append('text',t);body.append('file',file,file.name||'voice.webm');if(reply)body.append('reply_to',reply.id);if(extra&&extra.duration)body.append('duration',String(extra.duration));if(extra&&extra.burn)body.append('burn',String(extra.burn));}else body={text:t,reply_to:reply?reply.id:null};
@@ -516,7 +519,7 @@ function DmThread(p){var peer=p.peerId;var saved=p.meId&&String(p.meId)===String
  function enrich(list,pname){list.forEach(function(m){if(!m.reply&&m.reply_to){var src=null;for(var k=0;k<list.length;k++){if(list[k].id===m.reply_to){src=list[k];break;}}m.reply={name:src?(src.mine?'Вы':(pname||'Сообщение')):'Сообщение',text:src?(src.text||''):'',kind:src?src.kind:'text'};}});return list;}
  useEffect(function(){alive.current=true;api('/api/web/dm/'+peer).then(function(r){var _cf=clearFloor();var items=enrich(dropHidden('dm'+peer,r.items||[]).filter(function(m){return !_cf||m.id>_cf;}),r.peer&&r.peer.name);setMsgs(items);setPinfo(r.peer);if(items.length){lastId.current=items[items.length-1].id;firstId.current=items[0].id;}scrollBottom(false);loop();}).catch(function(e){p.toast(e.message,'error');p.onBack();});return function(){alive.current=false;if(ctl.current)ctl.current.abort();};},[peer]);
  function loop(){if(!alive.current)return;var c=new AbortController();ctl.current=c;fetch('/api/web/dm/poll/'+peer+'?after_id='+lastId.current+'&wait=25',{credentials:'same-origin',signal:c.signal,headers:tokenHeader()}).then(function(r){return r.json();}).then(function(r){if(!alive.current)return;if(r&&r.items)merge(r.items);if(r&&r.read_upto){setMsgs(function(prev){var ch=false;var out=(prev||[]).map(function(m){if(m.mine&&!m.read&&typeof m.id==='number'&&m.id<=r.read_upto){ch=true;return Object.assign({},m,{read:true});}return m;});return ch?out:prev;});}if(r){setTyping(!!r.typing);setPinfo(function(pi){return pi?Object.assign({},pi,{online:!!r.online}):pi;});}setTimeout(loop,r&&r.items&&r.items.length?0:250);}).catch(function(){if(alive.current)setTimeout(loop,2500);});}
- function send(t,file,extra){setBusy(true);var tmp='t'+Date.now();
+ function send(t,file,extra){if(busy)return Promise.resolve(false);setBusy(true);var tmp='t'+Date.now();
   var ghost={id:tmp,pending:true,mine:true,from_id:0,kind:file?(extra&&extra.duration?'voice':'photo'):'text',text:t,file_url:'',duration:(extra&&extra.duration)||0,created_at:new Date().toISOString()};
   setMsgs(function(prev){return (prev||[]).concat([ghost]);});scrollBottom(true);vibrate(10);
   var body;if(file){body=new FormData();body.append('text',t);body.append('file',file,file.name||'voice.webm');if(reply)body.append('reply_to',reply.id);if(extra&&extra.duration)body.append('duration',String(extra.duration));if(extra&&extra.burn)body.append('burn',String(extra.burn));}else body={text:t,reply_to:reply?reply.id:null};
