@@ -317,6 +317,28 @@ function CallLayer(p){
  return h(CallScreen,Object.assign({},call,{onClose:function(){busy.current=false;setCall(null);}}));}
 
 /* ================= журнал звонков ================= */
+function CallRow(p){var x=p.x;var sx=useRef(0),sy=useRef(0),dx=useRef(0),sw=useRef(0),armed=useRef(false),el=useRef(null);
+ function host(){return el.current&&el.current.parentNode;}
+ function ts(e){var t=e.touches[0];sx.current=t.clientX;sy.current=t.clientY;dx.current=0;sw.current=0;armed.current=false;}
+ function tm(e){var t=e.touches[0];var xx=t.clientX-sx.current,yy=t.clientY-sy.current;
+  if(!sw.current&&xx<-14&&Math.abs(xx)>Math.abs(yy)*1.4)sw.current=1;
+  if(sw.current){if(e.cancelable)e.preventDefault();dx.current=Math.max(-104,Math.min(0,xx));
+   var pgs=Math.min(1,Math.abs(dx.current)/72);var hit=pgs>=1;
+   if(hit&&!armed.current){armed.current=true;vibrate(14);}
+   if(!hit)armed.current=false;
+   var n=el.current;if(n){n.style.transform='translateX('+dx.current+'px)';n.style.transition='none';}
+   var hs=host();if(hs){hs.style.setProperty('--sw',pgs.toFixed(2));hs.className='dm-sw'+(dx.current<-16?' l':'')+(hit?' go':'');}}}
+ function te(e){var d=dx.current;var n=el.current;if(n){n.style.transition='transform .24s var(--sp2,ease)';n.style.transform='';var hs=host();if(hs)setTimeout(function(){hs.className='dm-sw';hs.style.removeProperty('--sw');},230);}
+  if(sw.current){if(e&&e.cancelable)e.preventDefault();if(d<-66){vibrate(15);p.onDel();}sw.current=0;dx.current=0;return;}}
+ return h('div',{className:'dm-sw'},
+  h('span',{className:'sw-del'},h('i',{className:'swc'},h(I,{name:'trash',size:16})),h('em',null,'Удалить')),
+  h('button',{ref:el,className:'dm-row',onTouchStart:ts,onTouchMove:tm,onTouchEnd:te,onClick:function(e){if(sw.current){e.preventDefault();return;}p.onOpen();}},
+   h('span',{className:'dm-av'},h(Av,{src:x.peer.avatar,name:x.peer.name,size:44})),
+   h('span',{className:'t'},h('b',{className:p.miss?'miss':''},x.peer.name),
+    h('small',null,h(I,{name:p.miss?'callMiss':(x.outgoing?'callOut':'callIn'),size:12,className:'cdir'+(p.miss?' miss':'')}),' '+p.label)),
+   h('span',{className:'r'},h('small',null,L.fmtDate?L.fmtDate(x.created_at):''),
+    h('span',{className:'cs-again'},h(I,{name:'info',size:15})))));}
+
 function CallsPage(p){
  var [items,setItems]=useState(null);
  var [tab,setTab]=useState('all');
@@ -341,15 +363,9 @@ function CallsPage(p){
   h('div',{className:'sec'},h('h3',null,'Недавние звонки')),
   items===null?h('div',{className:'list'},[0,1,2].map(function(i){return h('div',{key:i,className:'skel skel-card'});})):
   (!list.length?h('div',{className:'empty-line'},h(I,{name:'phone',size:18}),tab==='miss'?'Пропущенных нет':'Звонков ещё не было'):
-   h('div',{className:'list'},list.map(function(x){
+   h('div',{className:'list tg'},list.map(function(x){
     var miss=x.reason==='missed'&&!x.outgoing;
-    return h('button',{key:x.id,className:'dm-row',onClick:function(){setSel(x);}},
-     h('span',{className:'dm-av'},h(Av,{src:x.peer.avatar,name:x.peer.name,size:44})),
-     h('span',{className:'t'},h('b',{className:miss?'miss':''},x.peer.name),
-      h('small',null,h(I,{name:miss?'callMiss':(x.outgoing?'callOut':'callIn'),size:12,className:'cdir'+(miss?' miss':'')}),
-       ' '+label(x)+(x.video?' · видео':''))),
-     h('span',{className:'r'},h('small',null,L.fmtDate?L.fmtDate(x.created_at):''),
-      h('span',{className:'cs-again'},h(I,{name:'info',size:15}))));}))),
+    return h(CallRow,{key:x.id,x:x,miss:miss,label:label(x)+(x.video?' · видео':''),onOpen:function(){setSel(x);},onDel:function(){del(x);}});}))),
   sel?h(L.Sheet,{title:sel.video?'Видеозвонок':'Звонок',sub:sel.peer.name,onClose:function(){setSel(null);},center:true},
    h(Av,{src:sel.peer.avatar,name:sel.peer.name,size:72,className:'big'}),
    h('b',{style:{fontSize:17,marginTop:8}},sel.peer.name),
@@ -357,7 +373,7 @@ function CallsPage(p){
    h('div',{className:'two-btn',style:{width:'100%',marginTop:14}},
     h('button',{className:'btn',onClick:function(){setSel(null);p.onCall&&p.onCall(sel.peer,false);}},h(I,{name:'phone',size:18}),'Позвонить'),
     h('button',{className:'btn ghost',onClick:function(){setSel(null);p.onCall&&p.onCall(sel.peer,true);}},h(I,{name:'cam',size:18}),'Видео')),
-   h('button',{className:'btn ghost danger mt8',style:{width:'100%'},onClick:function(){del(sel);}},h(I,{name:'trash',size:17}),'Удалить запись')):null);}
+   h('button',{className:'btn dangerfill mt8',style:{width:'100%'},onClick:function(){del(sel);}},h(I,{name:'trash',size:17}),'Удалить запись')):null);}
 
 Object.assign(L,{CallLayer:CallLayer,CallsPage:CallsPage,callDur:dur});
 })();

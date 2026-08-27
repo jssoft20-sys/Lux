@@ -1582,3 +1582,57 @@ html.kb-on .bot-kb{padding-bottom:8px}
 .cav.sys.img{padding:0;overflow:hidden;background:transparent}
 .cav.sys.img img{width:100%;height:100%;object-fit:cover;border-radius:inherit}
 .cav.sys.cts{background:var(--violet-soft);color:var(--violet)}
+
+/* ===== 10.66: полировка ===== */
+/* Кнопка в шапке страницы (Контакты) */
+.ph .ph-act{margin-left:auto;width:40px;height:40px;border-radius:50%;background:var(--card);box-shadow:var(--sh);display:flex;align-items:center;justify-content:center;color:var(--green)}
+.ph .ph-act:active{transform:scale(.9)}
+/* Чипы профиля — зелёные, запрет звонка — приглушён */
+.u-chips button{color:var(--green)}
+.u-chips button:active{background:var(--green-soft)}
+.u-chips button.off{color:var(--muted);opacity:.55}
+.row.uct{margin-top:10px;border-radius:14px}
+/* Логотипы БК на кнопках бота */
+.bt-logo{width:18px;height:18px;border-radius:5px;margin-right:6px;vertical-align:-4px;display:inline-block;background:#fff;object-fit:cover}
+/* Остановленный бот */
+.bot-start.restart{background:var(--blue);box-shadow:0 10px 26px rgba(37,99,235,.35)}
+.bot-stopped{position:relative;z-index:2;margin:8px 10px calc(10px + var(--safe-b));min-height:46px;border-radius:14px;background:var(--red-soft);color:var(--red);font-weight:700;font-size:13.5px;display:flex;align-items:center;justify-content:center;gap:8px}
+/* Красные кнопки: фон красный — текст белый, всегда */
+.btn.dangerfill{background:var(--red);color:#fff}
+.btn.dangerfill:active{filter:brightness(.92)}
+.btn.ghost.danger{background:var(--red-soft);color:var(--red)}
+/* Инпут не «плывёт»: без транзишенов на поле и панели ввода */
+.gc-send textarea{transition:none!important;transform:none!important}
+.gc-send{transition:none}
+/* Свайп-кнопки появляются плавно */
+.dm-sw .swc{transition:transform .16s cubic-bezier(.2,.8,.3,1.2),background .15s}
+.dm-sw em{transition:opacity .15s,transform .15s}
+/* Подпись в просмотрщике фото */
+.pv-cap{position:absolute;left:0;right:0;bottom:0;padding:14px 18px calc(16px + var(--safe-b));background:linear-gradient(transparent,rgba(0,0,0,.65));color:#fff;display:flex;flex-direction:column;gap:2px}
+.pv-cap b{font-size:15px}
+.pv-cap small{opacity:.75;font-size:12px}
+/* Разрешения */
+.perm-list{display:flex;flex-direction:column;gap:9px;width:100%}
+.perm{display:flex;align-items:center;gap:11px;background:var(--card2);border-radius:14px;padding:11px 13px;text-align:left}
+.perm .pi{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.perm .pi.mic{background:var(--green-soft);color:var(--green)}
+.perm .pi.cam{background:var(--blue-soft);color:var(--blue)}
+.perm .pi.bell{background:var(--amber-soft);color:var(--amber)}
+.perm b{display:block;font-size:14px}
+.perm small{color:var(--muted);font-size:12px}
+/* Бейджи установки приложения */
+.store-badges{display:flex;gap:9px;margin:4px 0 12px}
+.store-badges .sb{flex:1;display:flex;align-items:center;justify-content:center;gap:9px;background:#111;color:#fff;border-radius:14px;padding:10px 12px}
+.store-badges .sb small{display:block;font-size:9.5px;opacity:.7;text-align:left}
+.store-badges .sb b{display:block;font-size:14.5px;line-height:1.1;text-align:left}
+.store-badges .sb:active{transform:scale(.97)}
+[data-theme=dark] .store-badges .sb{background:#fff;color:#111}
+.inst-steps{width:100%;display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.inst-steps>b{font-size:14px}
+.ist{display:flex;align-items:center;gap:10px;background:var(--card2);border-radius:12px;padding:10px 12px;font-size:13.5px;text-align:left}
+.ist i{width:22px;height:22px;border-radius:50%;background:var(--green);color:#fff;font-style:normal;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.cav.sys.img.big{width:72px;height:72px;border-radius:22px;margin:0 auto 6px}
+/* Уведомление о зачислении — карточкой как в ТГ */
+.notif.success{background:linear-gradient(135deg,var(--green-soft),var(--card));border:1px solid rgba(34,163,90,.25)}
+.notif.success .nt em{display:inline-block;margin-top:5px;font-style:normal;font-weight:800;font-size:16px;color:var(--green-ink)}
+.notif.success .nt b{font-size:14px}

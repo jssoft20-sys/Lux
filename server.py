@@ -5938,6 +5938,22 @@ def _queue_main_success_replace(row: dict, processing_seconds: int = 1) -> bool:
         kind="replace_pending" if replace_current else "text",
         meta={"request_id": request_id, "final_status": "success", "replace_current": replace_current},
     )
+    # Веб-бот LuxOn: то же финальное сообщение приходит в чат бота в кабинете,
+    # чтобы заявка «менялась» после подтверждения, как в Telegram.
+    try:
+        with _DB_LOCK, _db_conn() as c:
+            wu = c.execute("SELECT id FROM web_users WHERE chat_id=?", (chat_id,)).fetchone()
+            lb = c.execute("SELECT id FROM lux_bots WHERE builtin='luxon'").fetchone()
+            if wu and lb:
+                started = c.execute("SELECT 1 FROM lux_bot_messages WHERE bot_id=? AND user_id=? LIMIT 1",
+                                    (int(lb["id"]), int(wu["id"]))).fetchone()
+                if started:
+                    c.execute("INSERT INTO lux_bot_messages(bot_id,user_id,direction,kind,text,buttons,created_at) "
+                              "VALUES(?,?,'out','text',?,?,?)",
+                              (int(lb["id"]), int(wu["id"]), _lux_enc(_main_success_text(row, processing_seconds)),
+                               json.dumps([[_btn("📥 Пополнить ещё", "dep", "g")]], ensure_ascii=False), now_iso()))
+    except Exception:
+        pass
     return True
 
 def public_id(prefix):
@@ -13922,7 +13938,7 @@ def _web_face_count(raw: bytes) -> int:
 # === LUX WEB v10.49: баланс LUXON, запросы в ЛС, приватность, устройства, QR-вход,
 #     правка/удаление сообщений (5 минут), уведомления (прочитано/удалить), QR профиля
 # =====================================================================================
-_LUX_WEB_VERSION = "10.65.0"
+_LUX_WEB_VERSION = "10.66.0"
 _WEB_BALANCE_MIN, _WEB_BALANCE_MAX = 100, 500000
 
 
@@ -15290,10 +15306,13 @@ def _btn(t: str, d: str, c: str = "", u: str = "") -> dict:
 _FATHER_MENU = [[_btn("🤖 Создать бота", "newbot", "g"), _btn("📋 Мои боты", "mybots")]]
 
 
-def _father_bot_menu(bid: int) -> list:
+def _father_bot_menu(bid: int, enabled: bool = True) -> list:
+    # «Команды» здесь нет: команды и кнопки владельцы задают со своих
+    # серверов по токену (setCommands / sendMessage), как в Telegram.
     return [
         [_btn("Имя", f"setname:{bid}"), _btn("Описание", f"setdesc:{bid}")],
-        [_btn("Команды", f"setcmds:{bid}"), _btn("Токен", f"token:{bid}")],
+        [_btn("Токен", f"token:{bid}"),
+         (_btn("⏸ Остановить", f"stopb:{bid}", "r") if enabled else _btn("▶️ Запустить", f"runb:{bid}", "g"))],
         [_btn("🗑 Удалить бота", f"del:{bid}", "r")],
         [_btn("« К списку", "mybots")],
     ]
@@ -15341,11 +15360,12 @@ def _father(c, u, text: str, cb: str) -> list:
         r = c.execute("SELECT * FROM lux_bots WHERE id=? AND owner_id=?", (bid, me)).fetchone()
         if not r:
             return [_msg("Бот не найден.", _FATHER_MENU)]
-        cmds = json.loads(r["commands_json"] or "[]")
         body = (f"{r['name']}\n@{r['username']}\n\n"
                 f"Описание: {r['description'] or '—'}\n"
-                f"Команд: {len(cmds)}\nПользователей: {int(r['users'] or 0)}")
-        return [_msg(body, _father_bot_menu(bid))]
+                f"Пользователей: {int(r['users'] or 0)}\n"
+                f"Статус: {'работает ✅' if r['enabled'] else 'остановлен ⏸'}\n\n"
+                "Команды и кнопки бот получает от вашего скрипта по токену.")
+        return [_msg(body, _father_bot_menu(bid, bool(r["enabled"])))]
 
     for pref, st, ask in (("setname:", "rename", "Пришлите новое имя бота."),
                           ("setdesc:", "redesc", "Пришлите новое описание — его увидят пользователи."),
@@ -15382,6 +15402,18 @@ def _father(c, u, text: str, cb: str) -> list:
                   (_luxbot_hash(tok), _lux_enc(tok), tok[:6] + "…" + tok[-4:], now_iso(), bid))
         return [_msg(f"Готово. Новый токен:\n\n{tok}\n\nСтарый больше не работает.",
                      [[_btn("Назад", f"bot:{bid}")]])]
+
+    if act.startswith("stopb:") or act.startswith("runb:"):
+        clear()
+        bid = int(act.split(":")[1])
+        on = act.startswith("runb:")
+        r = c.execute("SELECT id FROM lux_bots WHERE id=? AND owner_id=?", (bid, me)).fetchone()
+        if not r:
+            return [_msg("Бот не найден.", _FATHER_MENU)]
+        c.execute("UPDATE lux_bots SET enabled=?, updated_at=? WHERE id=?", (1 if on else 0, now_iso(), bid))
+        r2 = c.execute("SELECT * FROM lux_bots WHERE id=?", (bid,)).fetchone()
+        return [_msg("▶️ Бот запущен." if on else "⏸ Бот остановлен — пользователи увидят «Перезапустить бота».",
+                     _father_bot_menu(bid, on))]
 
     if act.startswith("del:"):
         bid = int(act.split(":")[1])
@@ -15466,8 +15498,6 @@ def _father(c, u, text: str, cb: str) -> list:
 # кнопки действий и букмекеров, красная «Отмена».
 _LUXON_MENU = [
     [_btn("📥 Пополнить", "dep", "g"), _btn("📤 Вывести", "wd", "g")],
-    [_btn("💳 Баланс", "bal"), _btn("📋 Мои заявки", "my")],
-    [_btn("👨‍💻 Тех поддержка", "open:support", "b")],
 ]
 
 _LUXON_CANCEL = [_btn("❌ Отмена", "menu", "r")]
@@ -15550,7 +15580,10 @@ def _luxon(c, u, text: str, cb: str) -> list:
             return [_msg("⚠️ Пополнение временно недоступно.", _LUXON_MENU)]
         kb, row = [], []
         for b in bks[:12]:
-            row.append(_btn(b.get("label") or b.get("key"), "depbk:" + str(b.get("key")), "g"))
+            bt = _btn(b.get("label") or b.get("key"), "depbk:" + str(b.get("key")), "g")
+            if b.get("logo"):
+                bt["i"] = str(b["logo"])
+            row.append(bt)
             if len(row) == 2:
                 kb.append(row); row = []
         if row:
@@ -15697,7 +15730,7 @@ def _luxbot_reply(bot_row, text: str, cb: str = "") -> str:
 async def lux_bot_chat(bid: int, request: Request, after_id: int = 0, limit: int = 60):
     u = _web_user_from_request(request)
     with _ui_read_conn() as c:
-        b = c.execute("SELECT * FROM lux_bots WHERE id=? AND enabled=1", (int(bid),)).fetchone()
+        b = c.execute("SELECT * FROM lux_bots WHERE id=?", (int(bid),)).fetchone()
         if not b:
             raise HTTPException(404, "Бот не найден")
         if after_id:
@@ -15715,7 +15748,9 @@ async def lux_bot_chat(bid: int, request: Request, after_id: int = 0, limit: int
         items.append({"id": int(r["id"]), "mine": r["direction"] == "in", "kind": r["kind"] or "text",
                       "text": _lux_dec(r["text"]), "file_url": r["file_url"] or "",
                       "buttons": btns, "created_at": r["created_at"] or ""})
-    return {"ok": True, "items": items, "bot": _luxbot_row(b)}
+    out_bot = _luxbot_row(b)
+    out_bot["own"] = int(b["owner_id"] or 0) == int(u["id"])
+    return {"ok": True, "items": items, "bot": out_bot}
 
 
 @app.post("/api/web/bots/{bid}/chat")
@@ -15734,9 +15769,11 @@ async def lux_bot_chat_send(bid: int, request: Request):
     deposit_job = None
     verify_job = None
     with _DB_LOCK, _db_conn() as c:
-        b = c.execute("SELECT * FROM lux_bots WHERE id=? AND enabled=1", (int(bid),)).fetchone()
+        b = c.execute("SELECT * FROM lux_bots WHERE id=?", (int(bid),)).fetchone()
         if not b:
             raise HTTPException(404, "Бот не найден")
+        if not b["enabled"]:
+            raise HTTPException(400, "Бот остановлен")
         first = c.execute("SELECT 1 FROM lux_bot_messages WHERE bot_id=? AND user_id=? LIMIT 1",
                           (int(bid), int(u["id"]))).fetchone()
         cur = c.execute("INSERT INTO lux_bot_messages(bot_id,user_id,direction,kind,text,callback,created_at) "

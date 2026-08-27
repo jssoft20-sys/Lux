@@ -2,7 +2,7 @@
 (function(){
 'use strict';
 var h=React.createElement,useState=React.useState,useEffect=React.useEffect,useRef=React.useRef,useCallback=React.useCallback,useMemo=React.useMemo;
-var APP_VERSION='10.65.0';
+var APP_VERSION='10.66.0';
 function applyTheme(t){document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');var m=document.querySelector('meta[name=theme-color]');if(m)m.setAttribute('content',t==='dark'?'#0f1419':'#ffffff');try{localStorage.setItem('luxon-theme',t);}catch(e){}}
 try{applyTheme(localStorage.getItem('luxon-theme')||'light');}catch(e){}
 
@@ -87,7 +87,11 @@ function Sheet(p){var [closing,setClosing]=useState(false);var startY=useRef(0),
  function ts(e){var t=e.touches[0];startY.current=t.clientY;dy.current=0;}
  function tm(e){var t=e.touches[0];dy.current=Math.max(0,t.clientY-startY.current);if(dy.current>0&&el.current){if(e.cancelable)e.preventDefault();el.current.style.transform='translateY('+dy.current+'px)';el.current.style.transition='none';}}
  function te(){if(!el.current)return;el.current.style.transition='transform .25s cubic-bezier(.2,.8,.2,1)';if(dy.current>110){close();}else el.current.style.transform='';dy.current=0;}
- return h(React.Fragment,null,h('div',{className:'sheet-bd'+(closing?' closing':''),onClick:close}),h('div',{className:'sheet'+(closing?' closing':''),ref:el},h('div',{className:'drag-zone',onTouchStart:ts,onTouchMove:tm,onTouchEnd:te},h('div',{className:'grab'}),h('div',{className:'head'},p.left?p.left:(p.onBack?h('button',{className:'bk',onClick:p.onBack},h(I,{name:'back',size:20})):h('span',{style:{width:40}})),h('div',{className:'tt'},h('b',null,p.title),p.sub?h('small',null,p.sub):null),h('button',{className:'x',onClick:close,'aria-label':'Закрыть'},h(I,{name:'close',size:20})))),h('div',{className:'body'+(p.center?' center':'')},p.children)));}
+ var bodyEl=useRef(null),bDrag=useRef(false);
+ function bts(e){var b=bodyEl.current;bDrag.current=!!(b&&b.scrollTop<=0);if(bDrag.current)ts(e);}
+ function btm(e){if(!bDrag.current)return;var t=e.touches[0];if(t.clientY-startY.current<0){bDrag.current=false;if(el.current){el.current.style.transform='';}return;}tm(e);}
+ function bte(){if(!bDrag.current)return;bDrag.current=false;te();}
+ return h(React.Fragment,null,h('div',{className:'sheet-bd'+(closing?' closing':''),onClick:close}),h('div',{className:'sheet'+(closing?' closing':''),ref:el},h('div',{className:'drag-zone',onTouchStart:ts,onTouchMove:tm,onTouchEnd:te},h('div',{className:'grab'}),h('div',{className:'head'},p.left?p.left:(p.onBack?h('button',{className:'bk',onClick:p.onBack},h(I,{name:'back',size:20})):h('span',{style:{width:40}})),h('div',{className:'tt'},h('b',null,p.title),p.sub?h('small',null,p.sub):null),h('button',{className:'x',onClick:close,'aria-label':'Закрыть'},h(I,{name:'close',size:20})))),h('div',{className:'body'+(p.center?' center':''),ref:bodyEl,onTouchStart:bts,onTouchMove:btm,onTouchEnd:bte},p.children)));}
 
 /* ---------- Toast ---------- */
 function Toast(p){useEffect(function(){var t=setTimeout(p.onClose,p.ms||3200);return function(){clearTimeout(t);};},[p.id]);return h('div',{className:'toast '+(p.type||'')},h(I,{name:p.type==='success'?'check':(p.type==='error'?'alert':'bell'),size:18}),h('span',null,p.text),h('button',{className:'x',onClick:p.onClose},h(I,{name:'close',size:16})));}

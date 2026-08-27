@@ -11,29 +11,33 @@ function PhotoViewer(p){var [scale,setScale]=useState(1);var start=useRef(null);
  function ts(e){if(e.touches.length===2){start.current={d:Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY),s:scale};}else start.current={y:e.touches[0].clientY};}
  function tm(e){if(e.touches.length===2&&start.current&&start.current.d){var d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);setScale(Math.max(1,Math.min(4,start.current.s*d/start.current.d)));}}
  function te(e){if(start.current&&start.current.y!==undefined&&e.changedTouches&&scale===1){var dy=e.changedTouches[0].clientY-start.current.y;if(Math.abs(dy)>90)p.onClose();}start.current=null;}
- return h('div',{className:'pv',onClick:function(){if(scale===1)p.onClose();},onTouchStart:ts,onTouchMove:tm,onTouchEnd:te},h('button',{className:'pv-x',onClick:function(e){e.stopPropagation();p.onClose();}},h(I,{name:'close',size:22})),h('img',{src:p.url,alt:'',style:{transform:'scale('+scale+')'},onDoubleClick:function(e){e.stopPropagation();setScale(scale>1?1:2.2);}}),h('a',{className:'pv-dl',href:p.url,target:'_blank',rel:'noopener',onClick:function(e){e.stopPropagation();}},h(I,{name:'ext',size:16}),'Открыть'));}
-L.openPhoto=function(url){try{window.dispatchEvent(new CustomEvent('luxon-photo',{detail:url}));}catch(e){}};
+ return h('div',{className:'pv',onClick:function(){if(scale===1)p.onClose();},onTouchStart:ts,onTouchMove:tm,onTouchEnd:te},h('button',{className:'pv-x',onClick:function(e){e.stopPropagation();p.onClose();}},h(I,{name:'close',size:22})),h('img',{src:p.url,alt:'',style:{transform:'scale('+scale+')'},onDoubleClick:function(e){e.stopPropagation();setScale(scale>1?1:2.2);}}),
+ (function(){var d='';var m=String(p.url||'').match(/(1[6-9]\d{8})\d{0,3}[._]/);if(m)d=fmtDate(new Date(parseInt(m[1],10)*1000).toISOString());
+  return (p.cap||d)?h('div',{className:'pv-cap'},p.cap?h('b',null,p.cap):null,d?h('small',null,d):null):null;})());}
+L.openPhoto=function(url,cap){try{window.dispatchEvent(new CustomEvent('luxon-photo',{detail:{url:url,cap:cap||''}}));}catch(e){}};
 
 /* ---------- Chats list ---------- */
 function ChatsList(p){var [items,setItems]=useState(null);var [online,setOnline]=useState(0);var [tab,setTab]=useState('all');var [q,setQ]=useState('');var [found,setFound]=useState(null);var [fmsgs,setFmsgs]=useState(null);var [peek,setPeek]=useState(null);var [folders,setFolders]=useState([]);var [fmanage,setFmanage]=useState(false);var [ask,setAsk]=useState(null);var alive=useRef(true),qt=useRef(0);
  function loadFolders(){api('/api/web/folders').then(function(r){if(alive.current)setFolders(r.items||[]);}).catch(function(){});}
+ var [sysBots,setSysBots]=useState({});
+ function loadSysBots(){api('/api/web/bots/directory?q=lux').then(function(r){var m={};(r.items||[]).forEach(function(b){if(b.username==='LuxFather')m.father=b;if(b.username==='LuxOn')m.luxon=b;});if(alive.current)setSysBots(m);}).catch(function(){});}
  /* Свайпы по строке чата: вправо — закрепить, влево — удалить у себя */
  function pinChat(it){api('/api/web/dm/'+it.peer.id+'/pinchat',{method:'POST',body:{}}).then(function(r){p.toast&&p.toast(r.pinned?'Чат закреплён':'Чат откреплён','success');load();}).catch(function(e){p.toast&&p.toast(e.message,'error');});}
  function hideChat(it){setAsk(it);}
  function load(){api('/api/web/dm').then(function(r){if(alive.current)setItems(r.items||[]);}).catch(function(){if(alive.current)setItems([]);});api('/api/web/chat/messages?limit=1').then(function(r){if(alive.current)setOnline(r.online||0);}).catch(function(){});}
- useEffect(function(){alive.current=true;load();loadFolders();var iv=setInterval(load,5000);return function(){alive.current=false;clearInterval(iv);};},[]);
+ useEffect(function(){alive.current=true;load();loadFolders();loadSysBots();var iv=setInterval(load,5000);return function(){alive.current=false;clearInterval(iv);};},[]);
  /* Глобальный поиск как в ТГ: контакты → люди → боты */
  useEffect(function(){var v=q.trim();if(v.length<2){setFound(null);setFmsgs(null);return;}var my=++qt.current;var tm=setTimeout(function(){api('/api/web/search?q='+encodeURIComponent(v)).then(function(r){if(my===qt.current)setFound(r);}).catch(function(){});api('/api/web/search/messages?q='+encodeURIComponent(v)).then(function(r){if(my===qt.current)setFmsgs(r.items||[]);}).catch(function(){});},280);return function(){clearTimeout(tm);};},[q]);
  var cf=tab.charAt(0)==='f'?folders.filter(function(x){return 'f'+x.id===tab;})[0]:null;
  var reqs=(items||[]).filter(function(x){return x.request;});var rest=(items||[]).filter(function(x){return !x.request&&(tab!=='unread'||x.unread>0)&&(!cf||(cf.peers||[]).indexOf(Number(x.peer.id))>=0);});
- function srow(cls,icon,title,sub,go,extra){return h('button',{className:'dm-row main',onClick:go},h('span',{className:'dm-av'},cls==='father'?h('span',{className:'cav sys img'},h('img',{src:'/static/app/bots/luxfather.png',alt:''})):h('span',{className:'cav sys '+cls},h(I,{name:icon,size:20})),extra||null),h('span',{className:'t'},h('b',null,title,(cls==='lux'||cls==='father'||cls==='news')?h('span',{className:'vbadge sm'},h(I,{name:'check',size:9,w:3})):null),h('small',null,sub)),h('span',{className:'r'},h(I,{name:'pin',size:13,className:'pinned'})));}
+ function srow(cls,img,title,sub,go,bot){return h('button',{className:'dm-row main',onClick:go},h('span',{className:'dm-av'},h('span',{className:'cav sys img'},h('img',{src:img,alt:''}))),h('span',{className:'t'},h('b',null,title,h('span',{className:'vbadge sm'},h(I,{name:'check',size:9,w:3})),bot?h('span',{className:'bot-tag'},'BOT'):null),h('small',null,sub)),h('span',{className:'r'},h(I,{name:'pin',size:13,className:'pinned'})));}
  function urow(x,kind){return h('button',{key:kind+x.id,className:'dm-row',onClick:function(){if(kind==='bot'){p.onBot&&p.onBot(x);}else p.onOpen(x.id);}},
    h('span',{className:'dm-av'},kind==='bot'?h('span',{className:'cav sys bot2'},x.avatar_url?h('img',{src:x.avatar_url,alt:''}):h(I,{name:'bot',size:19})):h(Av,{src:x.avatar,name:x.name,size:44}),x.online?h('i',{className:'on'}):null),
    h('span',{className:'t'},h('b',null,x.name,kind==='bot'?h('span',{className:'bot-tag'},'BOT'):(x.verified?h(I,{name:'check',size:11,w:3,className:'vf'}):null)),h('small',null,'@'+x.username+(kind==='bot'&&x.users>=100?' · '+x.users+' пользователей':''))),
    h(I,{name:'chev',size:18,className:'chev'}));}
  var searching=q.trim().length>=2;
  return h('div',{className:'page',key:'chats'},
-  h('div',{className:'ph'},h('button',{className:'pback',onClick:function(){if(p.onBack)p.onBack();else location.hash='#/home';}},h(I,{name:'back',size:22})),h('div',null,h('h1',{className:'h1'},'Чаты'),h('p',{className:'h1sub'},'Общий чат и личные сообщения'))),
+  h('div',{className:'ph'},h('button',{className:'pback',onClick:function(){if(p.onBack)p.onBack();else location.hash='#/home';}},h(I,{name:'back',size:22})),h('div',null,h('h1',{className:'h1'},'Чаты'),h('p',{className:'h1sub'},'Общий чат и личные сообщения')),h('button',{className:'ph-act',onClick:function(){p.onContacts&&p.onContacts();},'aria-label':'Контакты'},h(I,{name:'users',size:20}))),
   h('div',{className:'search'},h(I,{name:'search',size:18}),h('input',{placeholder:'Поиск: люди, @юзернеймы, боты',value:q,onChange:function(e){setQ(e.target.value);}}),q?h('button',{className:'sx',onClick:function(){setQ('');}},h(I,{name:'close',size:15})):null),
   searching?h(React.Fragment,null,
    found===null?h('div',{className:'center',style:{padding:24}},h('span',{className:'spin'})):h(React.Fragment,null,
@@ -49,11 +53,11 @@ function ChatsList(p){var [items,setItems]=useState(null);var [online,setOnline]
   tab==='bots'?h(BotsFolder,{toast:p.toast,onBot:p.onBot}):h(React.Fragment,null,
    h('div',{className:'list tg'},
     tab==='all'?h(React.Fragment,null,
-     srow('fav','cloud','Избранное','Заметки, файлы и пересланное — только для вас',function(){if(!p.meId){p.toast&&p.toast('Профиль ещё загружается','');return;}p.onOpen(String(p.meId));}),
-     srow('lux','chat',(p.brand||'LUXON')+' чат','в сети: '+online+' · общий чат клиентов',p.onGroup),
-     srow('news','bell','Новости','Официальные объявления '+(p.brand||'LUXON'),p.onNews),
-     srow('father','bot','LuxFather','Создание и настройка ваших ботов',p.onFather),
-     srow('cts','users','Контакты','Ваши люди — со своими именами',function(){p.onContacts&&p.onContacts();})):null,
+     srow('fav','/static/app/bots/fav.png','Избранное','Заметки, файлы и пересланное — только для вас',function(){if(!p.meId){p.toast&&p.toast('Профиль ещё загружается','');return;}p.onOpen(String(p.meId));}),
+     srow('lux','/static/app/bots/chat.png',(p.brand||'LUXON')+' чат','в сети: '+online+' · общий чат клиентов',p.onGroup),
+     srow('news','/static/app/bots/news.png','Новости','Официальные объявления '+(p.brand||'LUXON'),p.onNews),
+     srow('father','/static/app/bots/luxfather.png','LuxFather','Создание ваших ботов',function(){if(sysBots.father)p.onBot(sysBots.father);else p.onFather();},true),
+     srow('luxon','/static/app/bots/luxon.png','LUX ON','Пополнение и вывод — официальный бот',function(){if(sysBots.luxon)p.onBot(sysBots.luxon);},true)):null,
     reqs.length?reqs.map(function(it){return h(DmRow,{key:'r'+it.peer.id,it:it,onOpen:p.onOpen,onPeek:setPeek,req:true,onSwipePin:pinChat,onSwipeHide:hideChat});}):null,
     items===null?[0,1,2].map(function(i){return h('div',{key:'sk'+i,className:'dm-row'},h('span',{className:'skel',style:{width:44,height:44,borderRadius:14}}),h('span',{className:'t'},h('span',{className:'skel',style:{height:12,width:'40%',display:'block'}}),h('span',{className:'skel',style:{height:10,width:'62%',display:'block',marginTop:6}})));}):
     rest.map(function(it){return h(DmRow,{key:it.peer.id,it:it,onOpen:p.onOpen,onPeek:setPeek,onSwipePin:pinChat,onSwipeHide:hideChat});})),
@@ -65,7 +69,8 @@ function ChatsList(p){var [items,setItems]=useState(null);var [online,setOnline]
 
 /* Предпросмотр чата по зажатию — 1-в-1 как в Telegram: блюр, карточка переписки,
    контекстное меню под ней */
-function TgPeek(p){var it=p.it;var [msgs,setMsgs]=useState(null);
+function TgPeek(p){var it=p.it;var [msgs,setMsgs]=useState(null);var [inCt,setInCt]=useState(null);
+ useEffect(function(){api('/api/web/contacts/state/'+it.peer.id).then(function(r){setInCt(!!r.contact);}).catch(function(){setInCt(false);});},[it.peer.id]);
  useEffect(function(){
   api('/api/web/dm/'+it.peer.id+'?limit=10').then(function(r){setMsgs(r.items||[]);}).catch(function(){setMsgs([]);});
   var prev=document.body.style.overflow;document.body.style.overflow='hidden';
@@ -82,7 +87,7 @@ function TgPeek(p){var it=p.it;var [msgs,setMsgs]=useState(null);
    h('div',{className:'tgp-head'},h(Av,{src:it.peer.avatar,name:it.peer.name,size:30}),h('div',null,h('b',null,it.peer.name),h('small',null,it.peer.online?'в сети':'был(а) недавно'))),
    h('div',{className:'tgp-msgs'},body)),
   h('div',{className:'tgp-menu',onClick:function(e){e.stopPropagation();}},
-   mi('user','Добавить в контакты',function(){p.onContact(it);}),
+   inCt===false?mi('user','Добавить в контакты',function(){p.onContact(it);}):null,
    mi('folder','Добавить в папку',function(){p.onFolder(it);}),
    mi('check','Пометить прочитанным',function(){p.onRead(it);}),
    mi('pin',it.pinned?'Открепить':'Закрепить',function(){p.onPin(it);}),
@@ -103,6 +108,44 @@ function FoldersSheet(p){var [list,setList]=useState((p.folders||[]).map(functio
  return h(Sheet,{title:'Мои папки',sub:'до 6 папок со своим именем и иконкой',onClose:p.onClose},
   list.length?h('div',{className:'list'},list.map(function(f){return h('div',{key:f.id,className:'row frow'},h('span',{className:'i'},f.icon),h('span',{className:'t'},h('b',null,f.name),h('small',null,(f.peers||[]).length+' чат(ов)')),h('button',{className:'ic',onClick:function(){setEdit({id:f.id,name:f.name,icon:f.icon,peers:(f.peers||[]).slice()});}},h(I,{name:'edit2',size:16})),h('button',{className:'ic danger',onClick:function(){del(f);}},h(I,{name:'trash',size:16})));})):h('div',{className:'empty-line'},h(I,{name:'folder',size:18}),'Своих папок пока нет'),
   h('button',{className:'btn ghost mt12',disabled:list.length>=6,onClick:function(){setEdit({id:0,name:'',icon:'📁',peers:[]});}},h(I,{name:'spark',size:17}),list.length>=6?'Лимит 6 папок':'Новая папка'));}
+
+/* Разрешения — спрашиваем один раз после входа, как приложение */
+function PermsSheet(p){var [busy,setBusy]=useState(false);
+ function allow(){if(busy)return;setBusy(true);
+  var chain=Promise.resolve();
+  if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)
+   chain=chain.then(function(){return navigator.mediaDevices.getUserMedia({audio:true,video:true}).then(function(st){st.getTracks().forEach(function(t){t.stop();});}).catch(function(){});});
+  chain.then(function(){if(window.Notification&&Notification.requestPermission)return Notification.requestPermission();}).catch(function(){})
+   .then(function(){try{localStorage.setItem('lux-perms-asked','1');}catch(e){}setBusy(false);vibrate(20);p.toast&&p.toast('Готово — разрешения сохранены','success');p.onClose();});}
+ function later(){try{localStorage.setItem('lux-perms-asked','1');}catch(e){}p.onClose();}
+ return h(Sheet,{title:'Разрешения',sub:'нужны один раз',onClose:later,center:true},
+  h('div',{className:'perm-list'},
+   h('div',{className:'perm'},h('span',{className:'pi mic'},h(I,{name:'mic',size:18})),h('div',null,h('b',null,'Микрофон'),h('small',null,'Голосовые сообщения и звонки'))),
+   h('div',{className:'perm'},h('span',{className:'pi cam'},h(I,{name:'cam',size:18})),h('div',null,h('b',null,'Камера'),h('small',null,'Видеозвонки и фото'))),
+   h('div',{className:'perm'},h('span',{className:'pi bell'},h(I,{name:'bell',size:18})),h('div',null,h('b',null,'Уведомления'),h('small',null,'Сообщения и статусы заявок')))),
+  h('p',{className:'note'},'Браузер спросит подтверждение один раз — дальше звонки и голосовые работают сразу.'),
+  h('button',{className:'btn mt12',disabled:busy,onClick:allow},busy?h('span',{className:'spin w'}):h(I,{name:'check',size:18,w:2.6}),'Разрешить'),
+  h('button',{className:'btn ghost sm mt8',onClick:later},'Позже'));}
+
+/* Установка на телефон (PWA): бейджи как App Store / Google Play */
+function InstallSheet(p){var ios=/iPhone|iPad|iPod/i.test(navigator.userAgent);
+ var ev=window.__luxInstallEv;
+ function androidGo(){if(ev){ev.prompt();window.__luxInstallEv=null;p.onClose();return;}p.toast&&p.toast('Откройте меню Chrome (⋮) → «Установить приложение»','');}
+ return h(Sheet,{title:'Приложение на телефон',sub:'работает без магазинов — ставится с сайта',onClose:p.onClose,center:true},
+  h('span',{className:'cav sys img big'},h('img',{src:'/static/app/bots/luxon.png',alt:''})),
+  h('p',{className:'note',style:{textAlign:'center'}},'Иконка на рабочем столе, полный экран, уведомления — как обычное приложение.'),
+  ios||p.store==='ios'?h('div',{className:'inst-steps'},
+   h('b',null,'iPhone / iPad — 20 секунд:'),
+   h('div',{className:'ist'},h('i',null,'1'),h('span',null,'Откройте сайт в Safari')),
+   h('div',{className:'ist'},h('i',null,'2'),h('span',null,'Нажмите «Поделиться» — квадрат со стрелкой внизу')),
+   h('div',{className:'ist'},h('i',null,'3'),h('span',null,'Выберите «На экран “Домой”» и нажмите «Добавить»'))):
+  h('div',{className:'inst-steps'},
+   h('b',null,'Android:'),
+   ev?h('button',{className:'btn mt8',onClick:androidGo},h(I,{name:'spark',size:18}),'Установить приложение'):
+   h(React.Fragment,null,
+    h('div',{className:'ist'},h('i',null,'1'),h('span',null,'Откройте сайт в Chrome')),
+    h('div',{className:'ist'},h('i',null,'2'),h('span',null,'Меню ⋮ справа сверху')),
+    h('div',{className:'ist'},h('i',null,'3'),h('span',null,'«Установить приложение» / «Добавить на главный экран»')))));}
 
 /* Экран «Контакты» (12.1) */
 function ContactsPage(p){var [items,setItems]=useState(null);var [q,setQ]=useState('');
@@ -127,10 +170,9 @@ function BotsFolder(p){var [items,setItems]=useState(null);
    h('small',null,mine?('@'+b.username+' · '+b.users+' польз.'):((b.last&&b.last.text)||('@'+b.username)))),
    h(I,{name:'chev',size:18,className:'chev'}));}
  return h(React.Fragment,null,
-  started.length?h(React.Fragment,null,h('div',{className:'sec'},h('h3',null,'Запущенные боты'),
-   h('small',null,started.length)),h('div',{className:'list'},started.map(function(b){return brow(b,false);}))):null,
-  h('div',{className:'sec'},h('h3',null,'Ваши боты')),
-  items===null?h('div',{className:'center',style:{padding:20}},h('span',{className:'spin'})):(!items.length?h('div',{className:'empty-line'},h(I,{name:'bot',size:18}),'Ботов нет — создайте в LuxFather'):h('div',{className:'list'},items.map(function(b){return brow(b,true);}))));}
+  h('div',{className:'list tg'},
+   started.map(function(b){return brow(b,false);}),
+   items===null?null:items.map(function(b){return brow(b,true);})));}
 
 /* Долгое нажатие — предпросмотр; свайп вправо — закрепить, влево — удалить.
    Иконка-кнопка вырастает по мере движения, на пороге — хаптик и вспышка. */
@@ -193,7 +235,7 @@ function BotChat(p){var bid=p.botId;var [msgs,setMsgs]=useState(null);var [bot,s
  function send(t){if(!t.trim())return Promise.resolve(false);return push({text:t.trim()});}
  function tapBtn(bt){
   vibrate(10);
-  if(bt.u){var u2=bt.u.charAt(0)==='/'?(location.origin+bt.u):bt.u;if(L.openLink)L.openLink(u2);else window.open(u2,'_blank');return;}
+  if(bt.u){var u2=bt.u.charAt(0)==='/'?(location.origin+bt.u):bt.u;window.open(u2,'_blank','noopener');return;}
   var d=String(bt.d||'');
   if(d.indexOf('open:')===0){
    var what=d.slice(5);
@@ -211,7 +253,8 @@ function BotChat(p){var bid=p.botId;var [msgs,setMsgs]=useState(null);var [bot,s
  var cmds=(bot&&bot.commands)||[];
  /* Кнопки последнего сообщения бота — reply-клавиатурой снизу, как в Telegram */
  var kbMsg=null;
- for(var qi=(msgs||[]).length-1;qi>=0;qi--){var mm=msgs[qi];if(!mm.mine){if(mm.buttons&&mm.buttons.length)kbMsg=mm;break;}}
+ function hasUrl(b2){return (b2||[]).some(function(rw){return (rw||[]).some(function(x){return x.u;});});}
+ for(var qi=(msgs||[]).length-1;qi>=0;qi--){var mm=msgs[qi];if(!mm.mine){if(mm.buttons&&mm.buttons.length&&!hasUrl(mm.buttons))kbMsg=mm;break;}}
  useEffect(function(){scroll();},[kbMsg&&kbMsg.id]);
  return h('div',{className:'gchat fixed'},
   /* Тап по шапке открывает профиль бота — как в ТГ */
@@ -227,13 +270,14 @@ function BotChat(p){var bid=p.botId;var [msgs,setMsgs]=useState(null);var [bot,s
     h('div',{className:'bot-intro'},h('b',null,'Что умеет этот бот?'),
      h('p',null,(bot&&(bot.description||bot.about))||'Владелец пока не добавил описание.'),
      cmds.length?h('div',{className:'bi-links'},cmds.slice(0,8).map(function(c){return h('span',{key:c.command},'/'+c.command+(c.description?' — '+c.description:''));})):null)
-   ):msgs.map(function(m){return h('div',{key:m.id,className:'gm-wrap'},h('div',{className:'gm '+(m.mine?'mine':'')},h('div',{className:'gm-b'},m.file_url?h('img',{src:m.file_url,alt:'',className:'bot-qr',onClick:function(){L.openPhoto&&L.openPhoto(m.file_url);}}):null,m.text?h('span',{className:'gm-t'},botRich(m.text,send)):null,h('span',{className:'gm-meta'},fmtTime(m.created_at)))),(m.buttons&&m.buttons.length&&!(kbMsg&&m.id===kbMsg.id))?h('div',{className:'ikb'},m.buttons.map(function(row,ri){return h('div',{key:ri,className:'ikb-row'},(row||[]).map(function(bt,ci){return h('button',{key:ci,className:bt.c?('ikc-'+bt.c):'',onClick:function(){tapBtn(bt);}},bt.t);}));})):null);}))),
+   ):msgs.map(function(m){return h('div',{key:m.id,className:'gm-wrap'},h('div',{className:'gm '+(m.mine?'mine':'')},h('div',{className:'gm-b'},m.file_url?h('img',{src:m.file_url,alt:'',className:'bot-qr',onClick:function(){L.openPhoto&&L.openPhoto(m.file_url);}}):null,m.text?h('span',{className:'gm-t'},botRich(m.text,send)):null,h('span',{className:'gm-meta'},fmtTime(m.created_at)))),(m.buttons&&m.buttons.length&&!(kbMsg&&m.id===kbMsg.id))?h('div',{className:'ikb'},m.buttons.map(function(row,ri){return h('div',{key:ri,className:'ikb-row'},(row||[]).map(function(bt,ci){return h('button',{key:ci,className:bt.c?('ikc-'+bt.c):'',onClick:function(){tapBtn(bt);}},bt.i?h('img',{className:'bt-logo',src:bt.i,alt:''}):null,bt.t,bt.u?h(I,{name:'ext',size:12,className:'ext'}):null);}));})):null);}))),
   /* До запуска — кнопка Старт во всю ширину вместо поля, как в ТГ */
+  (bot&&bot.enabled===false)?(bot.own?h('button',{className:'bot-start restart',onClick:function(){api('/api/web/bots/'+bid,{method:'PUT',body:{enabled:true}}).then(function(){vibrate(20);load(true);p.toast('Бот запущен','success');}).catch(function(e){p.toast(e.message,'error');});}},h(I,{name:'refresh',size:18}),'Перезапустить бота'):h('div',{className:'bot-stopped'},h(I,{name:'alert',size:16}),'Бот остановлен владельцем')):
   !started&&msgs!==null?h('button',{className:'bot-start',onClick:function(){vibrate(15);send('/start');}},h(I,{name:'spark',size:18}),'Старт'):
   h(React.Fragment,null,
    kbMsg?null:h('div',{className:'bot-cmds'},['start','help'].concat(cmds.map(function(c){return c.command;})).filter(function(c,i,a){return c&&a.indexOf(c)===i;}).slice(0,10).map(function(c){return h('button',{key:c,onClick:function(){send('/'+c);}},'/'+c);})),
    h(L.Composer,{onSend:function(t){return send(t);},busy:busy,toast:p.toast,noMedia:true,noVoice:true,placeholder:'Сообщение боту'}),
-   kbMsg?h('div',{className:'bot-kb'},kbMsg.buttons.map(function(row,ri){return h('div',{key:ri,className:'bkb-row'},(row||[]).map(function(bt,ci){return h('button',{key:ci,className:bt.c?('ikc-'+bt.c):'',onClick:function(){vibrate(10);tapBtn(bt);}},bt.t);}));})):null),
+   kbMsg?h('div',{className:'bot-kb'},kbMsg.buttons.map(function(row,ri){return h('div',{key:ri,className:'bkb-row'},(row||[]).map(function(bt,ci){return h('button',{key:ci,className:bt.c?('ikc-'+bt.c):'',onClick:function(){vibrate(10);tapBtn(bt);}},bt.i?h('img',{className:'bt-logo',src:bt.i,alt:''}):null,bt.t);}));})):null),
   prof&&bot?h(BotProfileSheet,{bot:bot,toast:p.toast,onClose:function(){setProf(false);},onStart:function(){setProf(false);send('/start');}}):null);}
 
 /* /команды в тексте кликабельны — тап отправляет команду */
@@ -567,6 +611,6 @@ function InAppBrowser(p){var [loaded,setLoaded]=useState(false);var host='';try{
    h('iframe',{src:p.url,sandbox:'allow-scripts allow-same-origin allow-forms allow-popups',referrerPolicy:'no-referrer',onLoad:function(){setLoaded(true);}}),
    loaded?null:h('div',{className:'iab-hint'},h('span',{className:'spin'}),h('p',null,'Если страница не открылась — сайт запрещает встраивание. Нажмите «В браузере».'))));}
 
-Object.assign(L,{InAppBrowser:InAppBrowser,LuxFather:LuxFather,NewsPage:NewsPage,BotChat:BotChat,PhotoViewer:PhotoViewer,ChatsList:ChatsList,ContactsPage:ContactsPage,NotifPage:NotifPage,NotifSheet:NotifSheet,DevicesPage:DevicesPage,QrScanSheet:QrScanSheet,LinkApprove:LinkApprove,QrLogin:QrLogin,PrivacySheet:PrivacySheet,BalanceSheet:BalanceSheet});
+Object.assign(L,{PermsSheet:PermsSheet,InstallSheet:InstallSheet,InAppBrowser:InAppBrowser,LuxFather:LuxFather,NewsPage:NewsPage,BotChat:BotChat,PhotoViewer:PhotoViewer,ChatsList:ChatsList,ContactsPage:ContactsPage,NotifPage:NotifPage,NotifSheet:NotifSheet,DevicesPage:DevicesPage,QrScanSheet:QrScanSheet,LinkApprove:LinkApprove,QrLogin:QrLogin,PrivacySheet:PrivacySheet,BalanceSheet:BalanceSheet});
 L.P.phone2='M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1ZM11 18h2';L.P.link='M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1';
 })();
