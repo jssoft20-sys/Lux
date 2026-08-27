@@ -13022,7 +13022,7 @@ async def web_profile2(request: Request):
     d = await request_json(request)
     name = str(d.get("name") if d.get("name") is not None else u["name"]).strip()[:48]
     bio = str(d.get("bio") if d.get("bio") is not None else (u["bio"] or "")).strip()[:140]
-    theme = str(d.get("theme") or u["theme"] or "light")[:8]
+    theme = str(d.get("theme") or u["theme"] or "dark")[:8]
     if not name or len(name) < 2:
         raise HTTPException(400, "Имя — минимум 2 символа")
     if _web_is_ad(name) or _web_is_ad(bio):
@@ -13045,7 +13045,7 @@ def _web_public_user2(row) -> dict:
         "username_changed_at": row["username_changed_at"] if "username_changed_at" in keys else "",
         "balance": float(row["balance"] or 0) if "balance" in keys else 0.0,
         "bio": row["bio"] if "bio" in keys else "",
-        "theme": (row["theme"] if "theme" in keys else "") or "light",
+        "theme": (row["theme"] if "theme" in keys else "") or "dark",
         "priv_dm": (row["priv_dm"] if "priv_dm" in keys else "") or "all",
         "priv_seen": bool(row["priv_seen"]) if "priv_seen" in keys else True,
         "priv_calls": (row["priv_calls"] if "priv_calls" in keys else "") or "all",
@@ -13952,7 +13952,7 @@ def _web_face_count(raw: bytes) -> int:
 # === LUX WEB v10.49: баланс LUXON, запросы в ЛС, приватность, устройства, QR-вход,
 #     правка/удаление сообщений (5 минут), уведомления (прочитано/удалить), QR профиля
 # =====================================================================================
-_LUX_WEB_VERSION = "10.67.1"
+_LUX_WEB_VERSION = "10.68.0"
 _WEB_BALANCE_MIN, _WEB_BALANCE_MAX = 100, 500000
 
 
