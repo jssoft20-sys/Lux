@@ -103,20 +103,26 @@ function BotsFolder(p){var [items,setItems]=useState(null);
   h('div',{className:'sec'},h('h3',null,'Ваши боты')),
   items===null?h('div',{className:'center',style:{padding:20}},h('span',{className:'spin'})):(!items.length?h('div',{className:'empty-line'},h(I,{name:'bot',size:18}),'Ботов нет — создайте в LuxFather'):h('div',{className:'list'},items.map(function(b){return brow(b,true);}))));}
 
-/* Долгое нажатие — предпросмотр; свайп вправо — закрепить, влево — удалить (11.10) */
-function DmRow(p){var it=p.it;var lp=useRef(0),fired=useRef(false),sx=useRef(0),sy=useRef(0),dx=useRef(0),sw=useRef(0),el=useRef(null);
- function ts(e){var t=e.touches[0];sx.current=t.clientX;sy.current=t.clientY;dx.current=0;sw.current=0;fired.current=false;clearTimeout(lp.current);lp.current=setTimeout(function(){if(sw.current)return;fired.current=true;vibrate(20);p.onPeek&&p.onPeek(it);},380);}
+/* Долгое нажатие — предпросмотр; свайп вправо — закрепить, влево — удалить.
+   Иконка-кнопка вырастает по мере движения, на пороге — хаптик и вспышка. */
+function DmRow(p){var it=p.it;var lp=useRef(0),fired=useRef(false),sx=useRef(0),sy=useRef(0),dx=useRef(0),sw=useRef(0),armed=useRef(false),el=useRef(null);
+ function host(){return el.current&&el.current.parentNode;}
+ function ts(e){var t=e.touches[0];sx.current=t.clientX;sy.current=t.clientY;dx.current=0;sw.current=0;armed.current=false;fired.current=false;clearTimeout(lp.current);lp.current=setTimeout(function(){if(sw.current)return;fired.current=true;vibrate(20);p.onPeek&&p.onPeek(it);},380);}
  function tm(e){var t=e.touches[0];var x=t.clientX-sx.current,y=t.clientY-sy.current;
   if(!sw.current&&Math.abs(x)>14&&Math.abs(x)>Math.abs(y)*1.4){sw.current=1;clearTimeout(lp.current);}
   else if(!sw.current&&Math.abs(y)>8){clearTimeout(lp.current);return;}
-  if(sw.current){if(e.cancelable)e.preventDefault();dx.current=Math.max(-96,Math.min(96,x));var n=el.current;if(n){n.style.transform='translateX('+dx.current+'px)';n.style.transition='none';}
-   var host=n&&n.parentNode;if(host)host.className='dm-sw'+(dx.current>30?' r':(dx.current<-30?' l':''));}}
- function te(e){clearTimeout(lp.current);var d=dx.current;var n=el.current;if(n){n.style.transition='transform .22s var(--sp2,ease)';n.style.transform='';var host=n.parentNode;if(host)setTimeout(function(){host.className='dm-sw';},220);}
-  if(sw.current){if(e&&e.cancelable)e.preventDefault();if(d>64&&p.onSwipePin){vibrate(15);p.onSwipePin(it);}else if(d<-64&&p.onSwipeHide){vibrate(15);p.onSwipeHide(it);}sw.current=0;dx.current=0;return;}
+  if(sw.current){if(e.cancelable)e.preventDefault();dx.current=Math.max(-104,Math.min(104,x));
+   var pgs=Math.min(1,Math.abs(dx.current)/72);var hit=pgs>=1;
+   if(hit&&!armed.current){armed.current=true;vibrate(14);}
+   if(!hit)armed.current=false;
+   var n=el.current;if(n){n.style.transform='translateX('+dx.current+'px)';n.style.transition='none';}
+   var hs=host();if(hs){hs.style.setProperty('--sw',pgs.toFixed(2));hs.className='dm-sw'+(dx.current>16?' r':(dx.current<-16?' l':''))+(hit?' go':'');}}}
+ function te(e){clearTimeout(lp.current);var d=dx.current;var n=el.current;if(n){n.style.transition='transform .24s var(--sp2,ease)';n.style.transform='';var hs=host();if(hs)setTimeout(function(){hs.className='dm-sw';hs.style.removeProperty('--sw');},230);}
+  if(sw.current){if(e&&e.cancelable)e.preventDefault();if(d>66&&p.onSwipePin){p.onSwipePin(it);}else if(d<-66&&p.onSwipeHide){p.onSwipeHide(it);}sw.current=0;dx.current=0;armed.current=false;return;}
   if(fired.current){e.preventDefault();e.stopPropagation();}}
  return h('div',{className:'dm-sw'},
-  h('span',{className:'sw-pin'},h(I,{name:'pin',size:17}),it.pinned?'Открепить':'Закрепить'),
-  h('span',{className:'sw-del'},h(I,{name:'trash',size:17}),'Удалить'),
+  h('span',{className:'sw-pin'},h('i',{className:'swc'},h(I,{name:'pin',size:16})),h('em',null,it.pinned?'Открепить':'Закрепить')),
+  h('span',{className:'sw-del'},h('i',{className:'swc'},h(I,{name:'trash',size:16})),h('em',null,'Удалить')),
   h('button',{ref:el,className:'dm-row'+(p.req?' req':''),
   onTouchStart:ts,onTouchMove:tm,onTouchEnd:te,onContextMenu:function(e){e.preventDefault();},
   onClick:function(e){if(fired.current||sw.current){e.preventDefault();return;}p.onOpen(it.peer.id);}},h('span',{className:'dm-av'},h(Av,{src:it.peer.avatar,name:it.peer.name,size:44}),it.peer.online?h('i',{className:'on'}):null),h('span',{className:'t'},h('b',null,it.peer.name,it.peer.verified?h(I,{name:'check',size:11,w:3,className:'vf'}):null),h('small',null,p.req?'Хочет написать вам':h(React.Fragment,null,it.last.mine?h('span',{className:'ticks pv'+(it.last.read?' rd':'')},h(I,{name:'check',size:11,w:3}),it.last.read?h(I,{name:'check',size:11,w:3,className:'t2'}):null):null,(it.last.mine?'Вы: ':'')+it.last.text))),h('span',{className:'r'},h('small',null,fmtTime(it.last.created_at)),it.unread?h('b',{className:'cnt'},it.unread):(it.pinned?h(I,{name:'pin',size:13,className:'pinned'}):null))));}
@@ -173,6 +179,10 @@ function BotChat(p){var bid=p.botId;var [msgs,setMsgs]=useState(null);var [bot,s
  useEffect(function(){if(started)scroll();},[started]);
  useEffect(function(){if(msgs&&msgs.length)scroll();},[msgs&&msgs.length]);
  var cmds=(bot&&bot.commands)||[];
+ /* Кнопки последнего сообщения бота — reply-клавиатурой снизу, как в Telegram */
+ var kbMsg=null;
+ for(var qi=(msgs||[]).length-1;qi>=0;qi--){var mm=msgs[qi];if(!mm.mine){if(mm.buttons&&mm.buttons.length)kbMsg=mm;break;}}
+ useEffect(function(){scroll();},[kbMsg&&kbMsg.id]);
  return h('div',{className:'gchat fixed'},
   /* Тап по шапке открывает профиль бота — как в ТГ */
   h('div',{className:'gc-head'},h('button',{className:'gc-ic',onClick:p.onBack},h(I,{name:'back',size:20})),
@@ -187,12 +197,13 @@ function BotChat(p){var bid=p.botId;var [msgs,setMsgs]=useState(null);var [bot,s
     h('div',{className:'bot-intro'},h('b',null,'Что умеет этот бот?'),
      h('p',null,(bot&&(bot.description||bot.about))||'Владелец пока не добавил описание.'),
      cmds.length?h('div',{className:'bi-links'},cmds.slice(0,8).map(function(c){return h('span',{key:c.command},'/'+c.command+(c.description?' — '+c.description:''));})):null)
-   ):msgs.map(function(m){return h('div',{key:m.id,className:'gm-wrap'},h('div',{className:'gm '+(m.mine?'mine':'')},h('div',{className:'gm-b'},h('span',{className:'gm-t'},botRich(m.text,send)),h('span',{className:'gm-meta'},fmtTime(m.created_at)))),(m.buttons&&m.buttons.length)?h('div',{className:'ikb'},m.buttons.map(function(row,ri){return h('div',{key:ri,className:'ikb-row'},(row||[]).map(function(bt,ci){return h('button',{key:ci,className:bt.c?('ikc-'+bt.c):'',onClick:function(){tapBtn(bt);}},bt.t);}));})):null);}))),
+   ):msgs.map(function(m){return h('div',{key:m.id,className:'gm-wrap'},h('div',{className:'gm '+(m.mine?'mine':'')},h('div',{className:'gm-b'},h('span',{className:'gm-t'},botRich(m.text,send)),h('span',{className:'gm-meta'},fmtTime(m.created_at)))),(m.buttons&&m.buttons.length&&!(kbMsg&&m.id===kbMsg.id))?h('div',{className:'ikb'},m.buttons.map(function(row,ri){return h('div',{key:ri,className:'ikb-row'},(row||[]).map(function(bt,ci){return h('button',{key:ci,className:bt.c?('ikc-'+bt.c):'',onClick:function(){tapBtn(bt);}},bt.t);}));})):null);}))),
   /* До запуска — кнопка Старт во всю ширину вместо поля, как в ТГ */
   !started&&msgs!==null?h('button',{className:'bot-start',onClick:function(){vibrate(15);send('/start');}},h(I,{name:'spark',size:18}),'Старт'):
   h(React.Fragment,null,
-   h('div',{className:'bot-cmds'},['start','help'].concat(cmds.map(function(c){return c.command;})).filter(function(c,i,a){return c&&a.indexOf(c)===i;}).slice(0,10).map(function(c){return h('button',{key:c,onClick:function(){send('/'+c);}},'/'+c);})),
-   h(L.Composer,{onSend:function(t){return send(t);},busy:busy,toast:p.toast,noMedia:true,noVoice:true,placeholder:'Сообщение боту'})),
+   kbMsg?null:h('div',{className:'bot-cmds'},['start','help'].concat(cmds.map(function(c){return c.command;})).filter(function(c,i,a){return c&&a.indexOf(c)===i;}).slice(0,10).map(function(c){return h('button',{key:c,onClick:function(){send('/'+c);}},'/'+c);})),
+   h(L.Composer,{onSend:function(t){return send(t);},busy:busy,toast:p.toast,noMedia:true,noVoice:true,placeholder:'Сообщение боту'}),
+   kbMsg?h('div',{className:'bot-kb'},kbMsg.buttons.map(function(row,ri){return h('div',{key:ri,className:'bkb-row'},(row||[]).map(function(bt,ci){return h('button',{key:ci,className:bt.c?('ikc-'+bt.c):'',onClick:function(){vibrate(10);tapBtn(bt);}},bt.t);}));})):null),
   prof&&bot?h(BotProfileSheet,{bot:bot,toast:p.toast,onClose:function(){setProf(false);},onStart:function(){setProf(false);send('/start');}}):null);}
 
 /* /команды в тексте кликабельны — тап отправляет команду */

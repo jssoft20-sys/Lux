@@ -1415,13 +1415,18 @@ mark.hl{background:var(--amber-soft);color:var(--ink);border-radius:3px;padding:
 .fwd-prev.tap svg:last-child{flex:0 0 auto;color:var(--muted)}
 .fwd-prev.tap:active{transform:scale(.98);background:var(--card2)}
 
-/* ===== v10.62: свайпы по чатам, папки, контакты ===== */
+/* ===== Свайпы по чатам: иконка-кнопка растёт по мере движения ===== */
 .dm-sw{position:relative;overflow:hidden}
-.dm-sw .sw-pin,.dm-sw .sw-del{position:absolute;top:0;bottom:0;display:flex;align-items:center;gap:6px;padding:0 16px;font-size:12.5px;font-weight:800;color:#fff;opacity:0;transition:opacity .15s}
-.dm-sw .sw-pin{left:0;background:var(--green);border-radius:0}
-.dm-sw .sw-del{right:0;background:var(--red)}
+.dm-sw .sw-pin,.dm-sw .sw-del{position:absolute;top:0;bottom:0;width:104px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#fff;opacity:0;transition:opacity .12s}
+.dm-sw .sw-pin{left:0;background:linear-gradient(90deg,var(--green-2),var(--green));align-items:flex-start;padding-left:20px}
+.dm-sw .sw-del{right:0;background:linear-gradient(270deg,#c62f2d,var(--red));align-items:flex-end;padding-right:20px}
+.dm-sw .swc{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;transform:scale(calc(.3 + .7*var(--sw,0)));transition:transform .06s linear,background .15s}
+.dm-sw em{font-style:normal;font-size:10.5px;font-weight:800;letter-spacing:.02em;opacity:calc(var(--sw,0));transform:translateY(calc(4px - 4px*var(--sw,0)))}
 .dm-sw.r .sw-pin{opacity:1}
 .dm-sw.l .sw-del{opacity:1}
+.dm-sw.go .swc{background:rgba(255,255,255,.45);transform:scale(1.12)}
+.dm-sw.go.r .sw-pin{background:var(--green)}
+.dm-sw.go.l .sw-del{background:#e0201d}
 .dm-sw .dm-row{position:relative;z-index:1}
 .dm-row .r .pinned{color:var(--muted);margin-top:3px}
 .folders .fadd{display:flex;align-items:center;gap:4px}
@@ -1496,3 +1501,29 @@ mark.hl{background:var(--amber-soft);color:var(--ink);border-radius:3px;padding:
 .auth .field{height:52px;border-radius:15px}
 .auth .btn{height:52px;border-radius:15px}
 .auth.gate .mark{width:84px;height:84px;border-radius:26px}
+
+
+/* ===== Reply-клавиатура бота снизу, как в Telegram ===== */
+.bot-kb{position:relative;z-index:2;display:flex;flex-direction:column;gap:6px;padding:8px 10px calc(10px + var(--safe-b));background:var(--card);border-top:1px solid var(--line2);animation:riseIn .22s var(--sp2) both}
+html.kb-on .bot-kb{padding-bottom:8px}
+.bkb-row{display:flex;gap:6px}
+.bkb-row button{flex:1;min-height:44px;padding:10px 12px;border-radius:13px;background:var(--card2);border:1px solid var(--line2);color:var(--ink);font-size:14px;font-weight:700;transition:transform .09s,filter .12s}
+.bkb-row button:active{transform:scale(.96)}
+.bkb-row button.ikc-g{background:var(--green);border-color:var(--green);color:#fff;font-weight:800;box-shadow:0 4px 14px rgba(34,163,90,.25)}
+.bkb-row button.ikc-r{background:var(--red);border-color:var(--red);color:#fff;font-weight:800}
+.bkb-row button.ikc-b{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:800}
+.bkb-row button:active{filter:brightness(.93)}
+
+/* ===== Живой отклик: каждое нажатие чувствуется ===== */
+*{-webkit-tap-highlight-color:transparent}
+.row,.dm-row,.tx,.bk-item,.notif,.news{transition:transform .1s var(--sp,ease),background .15s}
+.row:active,.tx:active,.bk-item:active,.notif:active{transform:scale(.985)}
+.dm-row:active{transform:scale(.988)}
+.btn{transition:transform .1s,filter .15s,background .2s}
+.btn:active{transform:scale(.97);filter:brightness(.95)}
+.gc-ic:active,.pback:active,.ic:active,.iab-x:active,.pe-x:active{transform:scale(.88);transition:transform .09s}
+.ikb-row button{transition:transform .09s,filter .12s}
+.folders button{transition:transform .1s,background .18s,color .18s}
+.u-actions button:active,.two-btn .btn:active{transform:scale(.96)}
+.bot-cmds button:active,.fpick .dm-row:active{transform:scale(.95)}
+.gc-go:active{transform:scale(.9)}

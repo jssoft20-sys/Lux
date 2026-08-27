@@ -13887,7 +13887,7 @@ def _web_face_count(raw: bytes) -> int:
 # === LUX WEB v10.49: баланс LUXON, запросы в ЛС, приватность, устройства, QR-вход,
 #     правка/удаление сообщений (5 минут), уведомления (прочитано/удалить), QR профиля
 # =====================================================================================
-_LUX_WEB_VERSION = "10.63.0"
+_LUX_WEB_VERSION = "10.64.0"
 _WEB_BALANCE_MIN, _WEB_BALANCE_MAX = 100, 500000
 
 
@@ -15408,7 +15408,8 @@ def _luxon_support() -> str:
 
 
 def _luxon_bk_limits(bk_code: str) -> tuple[int, int]:
-    for b in _web_bookmakers(_web_cfg()):
+    # Лимиты сумм — из корневого config.json, как у кассы и Telegram-бота
+    for b in _web_bookmakers(reload_config()):
         if str(b.get("key")) == bk_code:
             return int(b.get("deposit_min") or 35), int(b.get("deposit_max") or 500000)
     return 35, 500000
@@ -15469,8 +15470,8 @@ def _luxon(c, u, text: str, cb: str) -> list:
                      "🛡 Финансовый контроль обеспечен личным отделом безопасности", _LUXON_MENU)]
 
     if act in ("/deposit", "dep"):
-        cfg = _web_cfg()
-        bks = [b for b in _web_bookmakers(cfg) if b.get("deposit")]
+        # Тот же источник, что у кассы и Telegram-бота: корневой config.json
+        bks = [b for b in _web_bookmakers(reload_config()) if b.get("deposit")]
         if not bks:
             clear()
             return [_msg("⚠️ Пополнение временно недоступно.", _LUXON_MENU)]
