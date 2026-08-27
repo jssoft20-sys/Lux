@@ -118,7 +118,7 @@ function App(){
  else if(page==='dms')body=h(L.ChatsList,{key:'chats',brand:me.brand,meId:u.id,toast:showToast,onBack:function(){go('home');},onGroup:function(){go('chat');},onOpen:function(id){go('dm',String(id));},onNews:function(){go('news');},onFather:function(){go('bots');},onBot:function(b){go('bot',String(b.id));},onContacts:function(){go('contacts');},onProfile:function(id){setSheet({kind:'user',id:id,scope:'dm'});}});
  else if(page==='dm')body=h(L.DmThread,{key:'dm'+arg,peerId:arg,meId:u.id,toast:showToast,onBack:function(){go('chats');},onUser:function(id){setSheet({kind:'user',id:id,scope:'dm'});}});
  else if(page==='bots')body=h(L.LuxFather,{key:'bots',toast:showToast,onBack:back});
- else if(page==='calls')body=h(L.CallsPage,{key:'calls',toast:showToast,onBack:back,onCall:function(peer,video){if(L.startCall)L.startCall(peer,video);}});
+ else if(page==='calls')body=h(L.CallsPage,{key:'calls',toast:showToast,onBack:back,onNew:function(){go('contacts');},onCall:function(peer,video){if(L.startCall)L.startCall(peer,video);}});
  else if(page==='news')body=h(L.NewsPage,{key:'news',brand:me.brand,onBack:back});
  else if(page==='contacts')body=h(L.ContactsPage,{key:'contacts',toast:showToast,onBack:function(){go('chats');},onOpen:function(id){go('dm',String(id));}});
  else if(page==='bot')body=h(L.BotChat,{key:'bot'+arg,botId:arg,toast:showToast,onBack:function(){go('chats');},onGo:function(pg){go(pg);},onBalance:function(){setSheet({kind:'balance'});},onTx:function(pid){openPay(pid);}});

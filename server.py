@@ -13152,9 +13152,25 @@ async def admin_chat_messages(request: Request, limit: int = 100, before_id: int
 
 
 # ---------- Личные сообщения ----------
-def _web_dm_row(r, users: dict, me: int) -> dict:
+def _web_dm_reactions(c, ids: list, me: int) -> dict:
+    """{msg_id: [{e, n, me}]} — сгруппированные реакции для пачки сообщений."""
+    if not ids:
+        return {}
+    out = {}
+    try:
+        qs = ",".join("?" * len(ids))
+        for r in c.execute(f"SELECT msg_id,emoji,COUNT(*) n,MAX(user_id=?) mine FROM web_dm_reactions "
+                           f"WHERE msg_id IN ({qs}) GROUP BY msg_id,emoji", [me] + list(ids)).fetchall():
+            out.setdefault(int(r["msg_id"]), []).append({"e": r["emoji"], "n": int(r["n"]), "me": bool(r["mine"])})
+    except Exception:
+        pass
+    return out
+
+
+def _web_dm_row(r, users: dict, me: int, reacts: dict | None = None) -> dict:
     fr = users.get(int(r["from_id"]), {})
-    return {"id": int(r["id"]), "from_id": int(r["from_id"]), "to_id": int(r["to_id"]), "mine": int(r["from_id"]) == me,
+    _rx = (reacts or {}).get(int(r["id"])) or []
+    return {"id": int(r["id"]), "reactions": _rx, "from_id": int(r["from_id"]), "to_id": int(r["to_id"]), "mine": int(r["from_id"]) == me,
             "name": fr.get("name") or "", "avatar": fr.get("avatar_url") or "", "kind": r["kind"] or "text",
             "text": "" if r["deleted"] else _lux_dec(r["text"]), "file_url": "" if r["deleted"] else (r["file_url"] or ""),
             "duration": float(r["duration"] or 0), "reply_to": r["reply_to"], "read": bool(r["read"]), "deleted": bool(r["deleted"]), "created_at": r["created_at"] or "",
@@ -13241,7 +13257,9 @@ async def web_dm_messages(peer_id: int, request: Request, after_id: int = 0, bef
     if not peer:
         raise HTTPException(404, "Пользователь не найден")
     seen = _WEB_PRESENCE.get(int(peer_id), 0)
-    return {"ok": True, "items": [_web_dm_row(r, users, me) for r in rows],
+    with _ui_read_conn() as c2:
+        reacts = _web_dm_reactions(c2, [int(r["id"]) for r in rows], me)
+    return {"ok": True, "items": [_web_dm_row(r, users, me, reacts) for r in rows],
             "peer": {"id": int(peer["id"]), "name": ("Избранное" if int(peer_id) == me else (alias or peer["name"])), "username": peer["username"] or "", "avatar": peer["avatar_url"] or "", "bio": peer["bio"] or "", "phone": phone,
                      "saved": int(peer_id) == me,
                      "verified": peer["verify_status"] == "approved", "online": time.time() - seen < 70, "last_seen": (datetime.fromtimestamp(seen, TZ).isoformat(timespec="seconds") if seen else ""),
@@ -13604,6 +13622,20 @@ async def web_calls_history(request: Request, limit: int = 40):
     return {"ok": True, "items": out}
 
 
+@app.delete("/api/web/calls/{cid}")
+async def web_call_delete(cid: int, request: Request):
+    """Удалить запись из журнала звонков (1.12) — только участник звонка."""
+    u = _web_user_from_request(request)
+    me = int(u["id"])
+    with _DB_LOCK, _db_conn() as c:
+        r = c.execute("SELECT id FROM web_calls WHERE id=? AND (from_id=? OR to_id=?)", (int(cid), me, me)).fetchone()
+        if not r:
+            raise HTTPException(404, "Запись не найдена")
+        c.execute("DELETE FROM web_calls WHERE id=?", (int(cid),))
+        c.execute("DELETE FROM web_call_ice WHERE call_id=?", (int(cid),))
+    return {"ok": True}
+
+
 @app.get("/api/web/dm/{peer_id}/search")
 async def web_dm_search(peer_id: int, request: Request, q: str = "", limit: int = 80):
     """Поиск по переписке (включая Избранное). Текст лежит зашифрованным,
@@ -13717,6 +13749,9 @@ async def web_dm_send(peer_id: int, request: Request):
         d = await request_json(request)
         text = str(d.get("text") or "").strip()[:1500]
         reply_to = d.get("reply_to")
+        # Стикер — крупное эмодзи отдельным типом, как в Telegram
+        if d.get("sticker") and text and len(text) <= 8:
+            kind = "sticker"
     if not text and not file_url:
         raise HTTPException(400, "Пустое сообщение")
     if text and len(_last) >= 3 and all(_lux_dec(r["text"]) == text for r in _last):
@@ -13887,7 +13922,7 @@ def _web_face_count(raw: bytes) -> int:
 # === LUX WEB v10.49: баланс LUXON, запросы в ЛС, приватность, устройства, QR-вход,
 #     правка/удаление сообщений (5 минут), уведомления (прочитано/удалить), QR профиля
 # =====================================================================================
-_LUX_WEB_VERSION = "10.64.1"
+_LUX_WEB_VERSION = "10.65.0"
 _WEB_BALANCE_MIN, _WEB_BALANCE_MAX = 100, 500000
 
 
@@ -14507,6 +14542,9 @@ def _lux_v1062_init() -> None:
         CREATE TABLE IF NOT EXISTS web_dm_hidden(
           user_id INTEGER, peer_id INTEGER, upto_id INTEGER DEFAULT 0, PRIMARY KEY(user_id,peer_id)
         );
+        CREATE TABLE IF NOT EXISTS web_dm_reactions(
+          msg_id INTEGER, user_id INTEGER, emoji TEXT, created_at TEXT, PRIMARY KEY(msg_id,user_id)
+        );
         """)
         ucols = {r["name"] for r in c.execute("PRAGMA table_info(web_users)").fetchall()}
         if "priv_phone" not in ucols:
@@ -14580,6 +14618,34 @@ async def web_dm_hide(peer_id: int, request: Request):
         c.execute("DELETE FROM web_dm_chatpins WHERE user_id=? AND peer_id=?", (me, int(peer_id)))
         c.execute("UPDATE web_dm SET read=1 WHERE to_id=? AND from_id=? AND read=0", (me, int(peer_id)))
     return {"ok": True}
+
+
+_WEB_REACTIONS = ("❤️", "👍", "🔥", "😂", "😮", "👎")
+
+
+@app.post("/api/web/dm/msg/{mid}/react")
+async def web_dm_react(mid: int, request: Request):
+    """Реакция на сообщение в ЛС — как в Telegram. Повторный тап той же —
+    снимает, другой — заменяет. {emoji}"""
+    u = _web_user_from_request(request)
+    me = int(u["id"])
+    d = await request_json(request)
+    emoji = str(d.get("emoji") or "")[:8]
+    if emoji not in _WEB_REACTIONS:
+        raise HTTPException(400, "Такой реакции нет")
+    with _DB_LOCK, _db_conn() as c:
+        r = c.execute("SELECT from_id,to_id FROM web_dm WHERE id=? AND deleted=0", (int(mid),)).fetchone()
+        if not r or me not in (int(r["from_id"]), int(r["to_id"])):
+            raise HTTPException(404, "Сообщение не найдено")
+        cur = c.execute("SELECT emoji FROM web_dm_reactions WHERE msg_id=? AND user_id=?", (int(mid), me)).fetchone()
+        if cur and cur["emoji"] == emoji:
+            c.execute("DELETE FROM web_dm_reactions WHERE msg_id=? AND user_id=?", (int(mid), me))
+        else:
+            c.execute("INSERT INTO web_dm_reactions(msg_id,user_id,emoji,created_at) VALUES(?,?,?,?) "
+                      "ON CONFLICT(msg_id,user_id) DO UPDATE SET emoji=excluded.emoji",
+                      (int(mid), me, emoji, now_iso()))
+        reacts = _web_dm_reactions(c, [int(mid)], me)
+    return {"ok": True, "reactions": reacts.get(int(mid)) or []}
 
 
 @app.post("/api/web/dm/msg/{mid}/burn")
@@ -15170,15 +15236,16 @@ def _luxbot_seed_builtin() -> None:
             return
         for name, code, about, desc in LUX_BUILTIN:
             row = c.execute("SELECT id FROM lux_bots WHERE builtin=?", (code,)).fetchone()
+            av = f"/static/app/bots/{'luxfather' if code == 'father' else 'luxon'}.png"
             if row:
-                c.execute("UPDATE lux_bots SET about=?, description=?, updated_at=? WHERE id=?",
-                          (about, desc, now_iso(), int(row["id"])))
+                c.execute("UPDATE lux_bots SET about=?, description=?, avatar_url=?, updated_at=? WHERE id=?",
+                          (about, desc, av, now_iso(), int(row["id"])))
                 continue
             try:
                 c.execute(
-                    "INSERT INTO lux_bots(owner_id,name,username,about,description,start_text,"
-                    "commands_json,enabled,builtin,created_at,updated_at) VALUES(0,?,?,?,?,?,?,1,?,?,?)",
-                    (name, name, about, desc, "", "[]", code, now_iso(), now_iso()))
+                    "INSERT INTO lux_bots(owner_id,name,username,about,description,avatar_url,start_text,"
+                    "commands_json,enabled,builtin,created_at,updated_at) VALUES(0,?,?,?,?,?,?,?,1,?,?,?)",
+                    (name, name, about, desc, av, "", "[]", code, now_iso(), now_iso()))
             except Exception:
                 pass
 
@@ -15201,15 +15268,21 @@ def _bot_state_set(c, bot_id: int, user_id: int, step: str, data: dict | None = 
               (int(bot_id), int(user_id), str(step or ""), json.dumps(data or {}, ensure_ascii=False), now_iso()))
 
 
-def _msg(text: str, buttons=None) -> dict:
-    return {"text": text, "buttons": buttons or []}
+def _msg(text: str, buttons=None, photo: str = "") -> dict:
+    out = {"text": text, "buttons": buttons or []}
+    if photo:
+        out["photo"] = photo
+    return out
 
 
-def _btn(t: str, d: str, c: str = "") -> dict:
-    """Инлайн-кнопка. c — цвет: 'g' зелёная, 'r' красная, 'b' синяя (как в LuxOn)."""
+def _btn(t: str, d: str, c: str = "", u: str = "") -> dict:
+    """Инлайн-кнопка. c — цвет ('g'/'r'/'b'), u — url: кнопка-ссылка, как
+    банковские кнопки в Telegram-боте."""
     out = {"t": t, "d": d}
     if c:
         out["c"] = c
+    if u:
+        out["u"] = u
     return out
 
 
@@ -15696,12 +15769,13 @@ async def lux_bot_chat_send(bid: int, request: Request):
                     verify_job = None
                 continue
             ts = now_iso()
-            cc = c.execute("INSERT INTO lux_bot_messages(bot_id,user_id,direction,kind,text,buttons,created_at) "
-                           "VALUES(?,?,'out','text',?,?,?)",
-                           (int(bid), int(u["id"]), _lux_enc(body),
+            ph = str(a.get("photo") or "")
+            cc = c.execute("INSERT INTO lux_bot_messages(bot_id,user_id,direction,kind,text,file_url,buttons,created_at) "
+                           "VALUES(?,?,'out',?,?,?,?,?)",
+                           (int(bid), int(u["id"]), ("photo" if ph else "text"), _lux_enc(body), ph,
                             json.dumps(a.get("buttons") or [], ensure_ascii=False), ts))
-            replies.append({"id": int(cc.lastrowid), "mine": False, "kind": "text", "text": body,
-                            "file_url": "", "buttons": a.get("buttons") or [], "created_at": ts})
+            replies.append({"id": int(cc.lastrowid), "mine": False, "kind": ("photo" if ph else "text"), "text": body,
+                            "file_url": ph, "buttons": a.get("buttons") or [], "created_at": ts})
         c.execute("UPDATE lux_bots SET msgs=COALESCE(msgs,0)+1"
                   + (", users=COALESCE(users,0)+1" if not first else "") + " WHERE id=?", (int(bid),))
 
@@ -15747,23 +15821,35 @@ async def lux_bot_chat_send(bid: int, request: Request):
         except Exception as e:
             res = {"ok": False, "message": str(e)[:160]}
         if res.get("ok") and res.get("request_id"):
-            # Текст оплаты — тот же, что отправляет Telegram-бот (реквизиты, сумма, срок).
+            # Как в Telegram-боте: QR-картинка, платёжный текст и банковские
+            # кнопки-ссылки (mbank/odengi/megapay/...), снизу — отмена.
             body = str(res.get("payment_text") or "").strip() or (
                 f"✅ Заявка создана: {res['request_id']}\n\n"
                 f"Оплатите точную сумму — как только платёж дойдёт, деньги упадут на игровой счёт.")
-            body += "\n\nQR и кнопки банков — в заявке ниже."
-            btns = [[{"t": "🏦 Открыть заявку", "d": "open:tx:" + str(res["request_id"]), "c": "g"}],
-                    [{"t": "❌ Отменить пополнение", "d": "canceltx:" + str(res["request_id"]), "c": "r"}]]
+            qr_photo = str(res.get("qr_photo_url") or "")
+            btns, row = [], []
+            for m_ in (res.get("payment_methods") or [])[:8]:
+                if not m_.get("url"):
+                    continue
+                row.append({"t": str(m_.get("name") or m_.get("id") or "Банк"), "d": "", "u": str(m_["url"])})
+                if len(row) == 2:
+                    btns.append(row); row = []
+            if row:
+                btns.append(row)
+            btns.append([{"t": "🏦 Открыть заявку", "d": "open:tx:" + str(res["request_id"]), "c": "g"}])
+            btns.append([{"t": "❌ Отменить пополнение", "d": "canceltx:" + str(res["request_id"]), "c": "r"}])
         else:
+            qr_photo = ""
             body = "⚠️ Не получилось создать заявку: " + str(res.get("message") or "попробуйте позже")
             btns = [[{"t": "🏠 Меню", "d": "menu"}]]
         ts = now_iso()
         with _DB_LOCK, _db_conn() as c:
-            cc = c.execute("INSERT INTO lux_bot_messages(bot_id,user_id,direction,kind,text,buttons,created_at) "
-                           "VALUES(?,?,'out','text',?,?,?)",
-                           (int(bid), int(u["id"]), _lux_enc(body), json.dumps(btns, ensure_ascii=False), ts))
-            replies.append({"id": int(cc.lastrowid), "mine": False, "kind": "text", "text": body,
-                            "file_url": "", "buttons": btns, "created_at": ts})
+            cc = c.execute("INSERT INTO lux_bot_messages(bot_id,user_id,direction,kind,text,file_url,buttons,created_at) "
+                           "VALUES(?,?,'out',?,?,?,?,?)",
+                           (int(bid), int(u["id"]), ("photo" if qr_photo else "text"), _lux_enc(body), qr_photo,
+                            json.dumps(btns, ensure_ascii=False), ts))
+            replies.append({"id": int(cc.lastrowid), "mine": False, "kind": ("photo" if qr_photo else "text"), "text": body,
+                            "file_url": qr_photo, "buttons": btns, "created_at": ts})
 
     return {"ok": True, "message": mine, "replies": replies, "reply": replies[0] if replies else None}
 
@@ -15813,10 +15899,13 @@ def _luxbot_api_buttons(raw) -> list:
                 continue
             t_ = str(x.get("t") or x.get("text") or "").strip()[:40]
             d_ = str(x.get("d") or x.get("callback_data") or "").strip()[:120]
-            if not t_ or not d_:
+            if not t_ or (not d_ and not (x.get("u") or x.get("url"))):
                 continue
             c_ = str(x.get("c") or x.get("color") or "")[:1]
-            r_.append(_btn(t_, d_, c_ if c_ in ("g", "r", "b") else ""))
+            u_ = str(x.get("u") or x.get("url") or "").strip()[:300]
+            if not u_.startswith(("http://", "https://", "/")):
+                u_ = ""
+            r_.append(_btn(t_, d_, c_ if c_ in ("g", "r", "b") else "", u_))
         if r_:
             out.append(r_)
     return out
@@ -15833,10 +15922,14 @@ async def lux_bot_api_send(request: Request):
     if not uid or not text:
         raise HTTPException(400, "Нужны user_id и text")
     btns = _luxbot_api_buttons(d.get("buttons") or d.get("reply_markup"))
+    photo = str(d.get("photo_url") or "").strip()[:300]
+    if photo and not photo.startswith(("http://", "https://", "/")):
+        photo = ""
     stamp = now_iso()
     with _DB_LOCK, _db_conn() as c:
-        cur = c.execute("INSERT INTO lux_bot_messages(bot_id,user_id,direction,kind,text,buttons,created_at) VALUES(?,?,'out','text',?,?,?)",
-                        (int(b["id"]), uid, _lux_enc(text), json.dumps(btns, ensure_ascii=False), stamp))
+        cur = c.execute("INSERT INTO lux_bot_messages(bot_id,user_id,direction,kind,text,file_url,buttons,created_at) VALUES(?,?,'out',?,?,?,?,?)",
+                        (int(b["id"]), uid, ("photo" if photo else "text"), _lux_enc(text), photo,
+                         json.dumps(btns, ensure_ascii=False), stamp))
     return {"ok": True, "message_id": int(cur.lastrowid)}
 
 

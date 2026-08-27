@@ -319,26 +319,45 @@ function CallLayer(p){
 /* ================= журнал звонков ================= */
 function CallsPage(p){
  var [items,setItems]=useState(null);
- useEffect(function(){api('/api/web/calls/history').then(function(r){setItems(r.items||[]);}).catch(function(){setItems([]);});},[]);
+ var [tab,setTab]=useState('all');
+ var [sel,setSel]=useState(null);
+ function load(){api('/api/web/calls/history').then(function(r){setItems(r.items||[]);}).catch(function(){setItems([]);});}
+ useEffect(load,[]);
  function label(x){
   if(x.reason==='missed')return x.outgoing?'Не ответили':'Пропущенный';
   if(x.reason==='declined')return 'Отклонён';
-  if(x.duration)return dur(x.duration);
-  return 'Отменён';}
+  if(x.duration)return (x.outgoing?'Исходящий':'Входящий')+' ('+dur(x.duration)+')';
+  return x.outgoing?'Исходящий · отменён':'Отменённый';}
+ function del(x){api('/api/web/calls/'+x.id,{method:'DELETE'}).then(function(){setSel(null);setItems(function(l){return (l||[]).filter(function(y){return y.id!==x.id;});});p.toast&&p.toast('Запись удалена','success');}).catch(function(e){p.toast&&p.toast(e.message,'error');});}
+ var list=(items||[]).filter(function(x){return tab!=='miss'||(x.reason==='missed'&&!x.outgoing);});
  return h('div',{className:'page'},
   h('div',{className:'ph'},h('button',{className:'pback',onClick:p.onBack},h(I,{name:'back',size:22})),
-   h('div',null,h('h1',{className:'h1'},'Звонки'),h('p',{className:'h1sub'},'История вызовов'))),
+   h('div',null,h('h1',{className:'h1'},'Звонки'),h('p',{className:'h1sub'},'Разговор идёт напрямую и шифруется')),
+   h('div',{className:'calls-tabs'},h('button',{className:tab==='all'?'on':'',onClick:function(){setTab('all');}},'Все'),h('button',{className:tab==='miss'?'on':'',onClick:function(){setTab('miss');}},'Пропущ.'))),
+  h('button',{className:'dm-row newcall',onClick:function(){p.onNew&&p.onNew();}},
+   h('span',{className:'dm-av'},h('span',{className:'cav sys nc'},h(I,{name:'phone',size:19}))),
+   h('span',{className:'t'},h('b',{className:'bl'},'Новый звонок'),h('small',null,'Выберите, кому позвонить')),
+   h(I,{name:'chev',size:18,className:'chev'})),
+  h('div',{className:'sec'},h('h3',null,'Недавние звонки')),
   items===null?h('div',{className:'list'},[0,1,2].map(function(i){return h('div',{key:i,className:'skel skel-card'});})):
-  (!items.length?h('div',{className:'empty-line'},h(I,{name:'phone',size:18}),'Звонков ещё не было'):
-   h('div',{className:'list'},items.map(function(x){
+  (!list.length?h('div',{className:'empty-line'},h(I,{name:'phone',size:18}),tab==='miss'?'Пропущенных нет':'Звонков ещё не было'):
+   h('div',{className:'list'},list.map(function(x){
     var miss=x.reason==='missed'&&!x.outgoing;
-    return h('button',{key:x.id,className:'dm-row',onClick:function(){p.onCall&&p.onCall(x.peer,x.video);}},
+    return h('button',{key:x.id,className:'dm-row',onClick:function(){setSel(x);}},
      h('span',{className:'dm-av'},h(Av,{src:x.peer.avatar,name:x.peer.name,size:44})),
      h('span',{className:'t'},h('b',{className:miss?'miss':''},x.peer.name),
       h('small',null,h(I,{name:miss?'callMiss':(x.outgoing?'callOut':'callIn'),size:12,className:'cdir'+(miss?' miss':'')}),
        ' '+label(x)+(x.video?' · видео':''))),
      h('span',{className:'r'},h('small',null,L.fmtDate?L.fmtDate(x.created_at):''),
-      h('span',{className:'cs-again'},h(I,{name:'phone',size:16}))));}))));}
+      h('span',{className:'cs-again'},h(I,{name:'info',size:15}))));}))),
+  sel?h(L.Sheet,{title:sel.video?'Видеозвонок':'Звонок',sub:sel.peer.name,onClose:function(){setSel(null);},center:true},
+   h(Av,{src:sel.peer.avatar,name:sel.peer.name,size:72,className:'big'}),
+   h('b',{style:{fontSize:17,marginTop:8}},sel.peer.name),
+   h('p',{className:'muted',style:{margin:'4px 0 2px',fontSize:13}},label(sel)+' · '+(L.fmtDate?L.fmtDate(sel.created_at):'')+' '+(L.fmtTime?L.fmtTime(sel.created_at):'')),
+   h('div',{className:'two-btn',style:{width:'100%',marginTop:14}},
+    h('button',{className:'btn',onClick:function(){setSel(null);p.onCall&&p.onCall(sel.peer,false);}},h(I,{name:'phone',size:18}),'Позвонить'),
+    h('button',{className:'btn ghost',onClick:function(){setSel(null);p.onCall&&p.onCall(sel.peer,true);}},h(I,{name:'cam',size:18}),'Видео')),
+   h('button',{className:'btn ghost danger mt8',style:{width:'100%'},onClick:function(){del(sel);}},h(I,{name:'trash',size:17}),'Удалить запись')):null);}
 
 Object.assign(L,{CallLayer:CallLayer,CallsPage:CallsPage,callDur:dur});
 })();
