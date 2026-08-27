@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 var L=window.__LUX,h=L.h,I=L.I,money=L.money,fmtDate=L.fmtDate,fmtTime=L.fmtTime,api=L.api,initial=L.initial,ding=L.ding,vibrate=L.vibrate,Sheet=L.Sheet,Av=L.Av,copyText=L.copyText;
-L.P.bot='M12 3v3M7 6h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2ZM9 11h.01M15 11h.01M9 15h6';L.P.folder=L.P.folder||'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z';L.P.eye='M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z';L.P.pause=L.P.pause||'M10 5v14M14 5v14';L.P.trash=L.P.trash||'M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13';
+L.P.bot='M12 3v3M7 6h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2ZM9 11h.01M15 11h.01M9 15h6';L.P.folder=L.P.folder||'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z';L.P.bellOff=L.P.bellOff||'M8 8a4 4 0 0 1 6-3M18 12v-1a6 6 0 0 0-.8-3M6 10v1c0 3-2 4-2 4h13M10 20a2 2 0 0 0 4 0M3 3l18 18';L.P.archive=L.P.archive||'M3 7h18v3H3zM5 10v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9M9 14h6';L.P.eye='M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z';L.P.pause=L.P.pause||'M10 5v14M14 5v14';L.P.trash=L.P.trash||'M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13';
 var useState=React.useState,useEffect=React.useEffect,useRef=React.useRef;
 function ago(iso){if(!iso)return '';var d=(Date.now()-new Date(iso))/1000;if(d<60)return 'только что';if(d<3600)return Math.floor(d/60)+' мин назад';if(d<86400)return Math.floor(d/3600)+' ч назад';return fmtDate(iso);}
 
@@ -17,19 +17,21 @@ function PhotoViewer(p){var [scale,setScale]=useState(1);var start=useRef(null);
 L.openPhoto=function(url,cap){try{window.dispatchEvent(new CustomEvent('luxon-photo',{detail:{url:url,cap:cap||''}}));}catch(e){}};
 
 /* ---------- Chats list ---------- */
-function ChatsList(p){var [items,setItems]=useState(null);var [online,setOnline]=useState(0);var [tab,setTab]=useState('all');var [q,setQ]=useState('');var [found,setFound]=useState(null);var [fmsgs,setFmsgs]=useState(null);var [peek,setPeek]=useState(null);var [folders,setFolders]=useState([]);var [fmanage,setFmanage]=useState(false);var [ask,setAsk]=useState(null);var alive=useRef(true),qt=useRef(0);
+function ChatsList(p){var [items,setItems]=useState(null);var [online,setOnline]=useState(0);var [tab,setTab]=useState('all');var [q,setQ]=useState('');var [found,setFound]=useState(null);var [fmsgs,setFmsgs]=useState(null);var [archN,setArchN]=useState(0);var [peek,setPeek]=useState(null);var [folders,setFolders]=useState([]);var [fmanage,setFmanage]=useState(false);var [ask,setAsk]=useState(null);var alive=useRef(true),qt=useRef(0);
  function loadFolders(){api('/api/web/folders').then(function(r){if(alive.current)setFolders(r.items||[]);}).catch(function(){});}
  var [sysBots,setSysBots]=useState({});
  function loadSysBots(){api('/api/web/bots/directory?q=lux').then(function(r){var m={};(r.items||[]).forEach(function(b){if(b.username==='LuxFather')m.father=b;if(b.username==='LuxOn')m.luxon=b;});if(alive.current)setSysBots(m);}).catch(function(){});}
  /* Свайпы по строке чата: вправо — закрепить, влево — удалить у себя */
  function pinChat(it){api('/api/web/dm/'+it.peer.id+'/pinchat',{method:'POST',body:{}}).then(function(r){p.toast&&p.toast(r.pinned?'Чат закреплён':'Чат откреплён','success');load();}).catch(function(e){p.toast&&p.toast(e.message,'error');});}
  function hideChat(it){setAsk(it);}
- function load(){api('/api/web/dm').then(function(r){if(alive.current)setItems(r.items||[]);}).catch(function(){if(alive.current)setItems([]);});api('/api/web/chat/messages?limit=1').then(function(r){if(alive.current)setOnline(r.online||0);}).catch(function(){});}
+ function muteChat(it){api('/api/web/dm/'+it.peer.id+'/mute',{method:'POST',body:{}}).then(function(r){p.toast&&p.toast(r.muted?'Уведомления выключены':'Уведомления включены','success');load();}).catch(function(e){p.toast&&p.toast(e.message,'error');});}
+ function archiveChat(it){api('/api/web/dm/'+it.peer.id+'/archive',{method:'POST',body:{}}).then(function(r){p.toast&&p.toast(r.archived?'Чат в архиве':'Возвращён из архива','success');load();}).catch(function(e){p.toast&&p.toast(e.message,'error');});}
+ function load(){api('/api/web/dm').then(function(r){if(alive.current){setItems(r.items||[]);setArchN(r.archived||0);}}).catch(function(){if(alive.current)setItems([]);});api('/api/web/chat/messages?limit=1').then(function(r){if(alive.current)setOnline(r.online||0);}).catch(function(){});}
  useEffect(function(){alive.current=true;load();loadFolders();loadSysBots();var iv=setInterval(load,5000);return function(){alive.current=false;clearInterval(iv);};},[]);
  /* Глобальный поиск как в ТГ: контакты → люди → боты */
  useEffect(function(){var v=q.trim();if(v.length<2){setFound(null);setFmsgs(null);return;}var my=++qt.current;var tm=setTimeout(function(){api('/api/web/search?q='+encodeURIComponent(v)).then(function(r){if(my===qt.current)setFound(r);}).catch(function(){});api('/api/web/search/messages?q='+encodeURIComponent(v)).then(function(r){if(my===qt.current)setFmsgs(r.items||[]);}).catch(function(){});},280);return function(){clearTimeout(tm);};},[q]);
  var cf=tab.charAt(0)==='f'?folders.filter(function(x){return 'f'+x.id===tab;})[0]:null;
- var reqs=(items||[]).filter(function(x){return x.request;});var rest=(items||[]).filter(function(x){return !x.request&&(tab!=='unread'||x.unread>0)&&(!cf||(cf.peers||[]).indexOf(Number(x.peer.id))>=0);});
+ var reqs=(items||[]).filter(function(x){return x.request&&!x.archived;});var rest=(items||[]).filter(function(x){return !x.request&&(tab==='archive'?x.archived:!x.archived)&&(tab!=='unread'||x.unread>0)&&(!cf||(cf.peers||[]).indexOf(Number(x.peer.id))>=0);});
  function srow(cls,img,title,sub,go,bot){return h('button',{className:'dm-row main',onClick:go},h('span',{className:'dm-av'},h('span',{className:'cav sys img'},h('img',{src:img,alt:''}))),h('span',{className:'t'},h('b',null,title,h('span',{className:'vbadge sm'},h(I,{name:'check',size:9,w:3})),bot?h('span',{className:'bot-tag'},'BOT'):null),h('small',null,sub)),h('span',{className:'r'},h(I,{name:'pin',size:13,className:'pinned'})));}
  function urow(x,kind){return h('button',{key:kind+x.id,className:'dm-row',onClick:function(){if(kind==='bot'){p.onBot&&p.onBot(x);}else p.onOpen(x.id);}},
    h('span',{className:'dm-av'},kind==='bot'?h('span',{className:'cav sys bot2'},x.avatar_url?h('img',{src:x.avatar_url,alt:''}):h(I,{name:'bot',size:19})):h(Av,{src:x.avatar,name:x.name,size:44}),x.online?h('i',{className:'on'}):null),
