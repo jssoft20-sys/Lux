@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#ffffff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="mobile-web-app-capable" content="yes">
+<title>LUXON — вход</title>
+<link rel="icon" href="/static/app/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/app/icon.svg">
+<link rel="manifest" href="/static/app/manifest.json">
+<link rel="stylesheet" href="/static/app/styles.css?v=10.61.0">
+</head>
+<body>
+<div id="root"></div>
+<script>
+/* Белый экран больше не молчит: любая ошибка загрузки или рендера печатается
+   прямо на странице, вместе с файлом и строкой. */
+(function(){
+ var shown=false;
+ function esc(x){return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+ function show(title,detail){
+  if(shown)return;shown=true;
+  var r=document.getElementById('root');if(!r)return;
+  r.innerHTML='<div style="font:14px/1.5 -apple-system,system-ui,sans-serif;padding:22px;'+
+   'color:#0f172a;background:#fff;min-height:100vh;-webkit-user-select:text;user-select:text">'+
+   '<div style="font-size:17px;font-weight:800;margin-bottom:10px">Не удалось запустить кабинет</div>'+
+   '<div style="font-weight:700;margin-bottom:6px">'+esc(title)+'</div>'+
+   '<pre style="white-space:pre-wrap;word-break:break-word;font-size:12px;background:#f1f5f9;'+
+   'padding:12px;border-radius:10px;margin:0 0 14px">'+esc(detail)+'</pre>'+
+   '<button onclick="location.reload()" style="width:100%;height:46px;border:0;border-radius:12px;'+
+   'background:#22a35a;color:#fff;font-size:15px;font-weight:700">Обновить страницу</button>'+
+   '<div style="margin-top:12px;font-size:12px;color:#64748b">Пришлите этот текст разработчику.</div></div>';
+ }
+ window.addEventListener('error',function(e){
+  if(e.target&&e.target.tagName==='SCRIPT'){show('Не загрузился файл',e.target.src||'');return;}
+  show(e.message||'Ошибка',(e.filename||'')+':'+(e.lineno||'')+':'+(e.colno||'')+
+   '\n'+((e.error&&e.error.stack)||''));
+ },true);
+ window.addEventListener('unhandledrejection',function(e){
+  var r=e.reason;show('Необработанная ошибка',(r&&(r.stack||r.message))||String(r));
+ });
+ setTimeout(function(){
+  var r=document.getElementById('root');
+  if(r&&!r.children.length)show('Приложение не отрисовалось',
+   'Страница пуста. Обычно это пустой index.html или старый кэш — '+
+   'закройте вкладку и откройте заново.');
+ },8000);
+})();
+</script>
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="/static/app/app.js?v=10.61.0"></script>
+<script src="/static/app/pages.js?v=10.61.0"></script>
+<script src="/static/app/social.js?v=10.61.0"></script>
+<script src="/static/app/social2.js?v=10.61.0"></script>
+<script src="/static/app/calls.js?v=10.61.0"></script>
+<script src="/static/app/main.js?v=10.61.0"></script>
+</body>
+</html>
