@@ -2,7 +2,7 @@
 (function(){
 'use strict';
 var h=React.createElement,useState=React.useState,useEffect=React.useEffect,useRef=React.useRef,useCallback=React.useCallback,useMemo=React.useMemo;
-var APP_VERSION='10.64.0';
+var APP_VERSION='10.64.1';
 function applyTheme(t){document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');var m=document.querySelector('meta[name=theme-color]');if(m)m.setAttribute('content',t==='dark'?'#0f1419':'#ffffff');try{localStorage.setItem('luxon-theme',t);}catch(e){}}
 try{applyTheme(localStorage.getItem('luxon-theme')||'light');}catch(e){}
 

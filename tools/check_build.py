@@ -6,14 +6,23 @@ root = sys.argv[1] if len(sys.argv) > 1 else '.'
 app = os.path.join(root, 'static', 'app')
 bad = []
 
-# 1. Ни одного файла нулевого размера
-for base, _dirs, files in os.walk(root):
-    if any(p in base for p in ('__pycache__', '.git')):
-        continue
-    for f in files:
-        full = os.path.join(base, f)
-        if os.path.getsize(full) == 0:
-            bad.append(f'ПУСТОЙ ФАЙЛ: {os.path.relpath(full, root)}')
+# 1. Ни одного файла нулевого размера — но только в том, что реально
+# едет в архиве. venv (py.typed, tests/__init__.py), storage, uploads,
+# данные и бэкапы app.bak.* содержат легитимно пустые файлы — их не трогаем.
+SKIP_DIRS = ('__pycache__', '.git', 'venv', 'node_modules', 'storage',
+             'uploads', 'data', '.bak')
+CHECK_ROOTS = [os.path.join(root, 'static', 'app'), os.path.join(root, 'tools')]
+for croot in CHECK_ROOTS:
+    for base, _dirs, files in os.walk(croot):
+        if any(p in base for p in SKIP_DIRS):
+            continue
+        for f in files:
+            full = os.path.join(base, f)
+            if os.path.getsize(full) == 0:
+                bad.append(f'ПУСТОЙ ФАЙЛ: {os.path.relpath(full, root)}')
+sp = os.path.join(root, 'server.py')
+if os.path.exists(sp) and os.path.getsize(sp) == 0:
+    bad.append('ПУСТОЙ ФАЙЛ: server.py')
 
 # 2. index.html жив и содержит корень
 idx_path = os.path.join(app, 'index.html')
