@@ -2017,3 +2017,8 @@ html,body{background:var(--bg);color:var(--ink);
 .gc-head .gc-ic{background:var(--card2)}
 /* Плашка «Сегодня» читаемее */
 .gc-day{background:rgba(0,0,0,.18);color:#fff}
+
+/* ---------- TG-шапка списковых экранов ---------- */
+.ph.tg-ph{padding:calc(9px + var(--safe-t)) 14px 8px}
+.ph-edit{background:none;color:var(--brand);font-size:16px;font-weight:400;flex:0 0 auto}
+.ph.tg-ph .h1{font-size:17px;font-weight:700}

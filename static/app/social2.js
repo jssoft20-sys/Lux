@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 var L=window.__LUX,h=L.h,I=L.I,money=L.money,fmtDate=L.fmtDate,fmtTime=L.fmtTime,api=L.api,initial=L.initial,ding=L.ding,vibrate=L.vibrate,Sheet=L.Sheet,Av=L.Av,copyText=L.copyText;
-L.P.bot='M12 3v3M7 6h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2ZM9 11h.01M15 11h.01M9 15h6';L.P.folder=L.P.folder||'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z';L.P.bellOff=L.P.bellOff||'M8 8a4 4 0 0 1 6-3M18 12v-1a6 6 0 0 0-.8-3M6 10v1c0 3-2 4-2 4h13M10 20a2 2 0 0 0 4 0M3 3l18 18';L.P.archive=L.P.archive||'M3 7h18v3H3zM5 10v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9M9 14h6';L.P.eye='M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z';L.P.pause=L.P.pause||'M10 5v14M14 5v14';L.P.trash=L.P.trash||'M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13';
+L.P.wallet=L.P.wallet||'M3 7h15a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a1 1 0 0 1-1-1V7Zm0 0V5a2 2 0 0 1 2-2h11v4M17 13h.01';L.P.bot='M12 3v3M7 6h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2ZM9 11h.01M15 11h.01M9 15h6';L.P.folder=L.P.folder||'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z';L.P.bellOff=L.P.bellOff||'M8 8a4 4 0 0 1 6-3M18 12v-1a6 6 0 0 0-.8-3M6 10v1c0 3-2 4-2 4h13M10 20a2 2 0 0 0 4 0M3 3l18 18';L.P.archive=L.P.archive||'M3 7h18v3H3zM5 10v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9M9 14h6';L.P.eye='M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z';L.P.pause=L.P.pause||'M10 5v14M14 5v14';L.P.trash=L.P.trash||'M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13';
 var useState=React.useState,useEffect=React.useEffect,useRef=React.useRef;
 function ago(iso){if(!iso)return '';var d=(Date.now()-new Date(iso))/1000;if(d<60)return 'только что';if(d<3600)return Math.floor(d/60)+' мин назад';if(d<86400)return Math.floor(d/3600)+' ч назад';return fmtDate(iso);}
 
@@ -39,7 +39,7 @@ function ChatsList(p){var [items,setItems]=useState(null);var [online,setOnline]
    h(I,{name:'chev',size:18,className:'chev'}));}
  var searching=q.trim().length>=2;
  return h('div',{className:'page',key:'chats'},
-  h('div',{className:'ph'},h('button',{className:'pback',onClick:function(){if(p.onBack)p.onBack();else location.hash='#/home';}},h(I,{name:'back',size:22})),h('div',null,h('h1',{className:'h1'},'Чаты'),h('p',{className:'h1sub'},'Общий чат и личные сообщения')),h('button',{className:'ph-act',onClick:function(){p.onContacts&&p.onContacts();},'aria-label':'Контакты'},h(I,{name:'users',size:20}))),
+  h('div',{className:'ph tg-ph'},h('button',{className:'ph-edit',onClick:function(){p.onContacts&&p.onContacts();}},'Контакты'),h('div',null,h('h1',{className:'h1'},'Чаты')),h('button',{className:'ph-act',onClick:function(){p.onBalance?p.onBalance():(location.hash='#/home');},'aria-label':'Касса'},h(I,{name:'wallet',size:19}))),
   h('div',{className:'search'},h(I,{name:'search',size:18}),h('input',{placeholder:'Поиск: люди, @юзернеймы, боты',value:q,onChange:function(e){setQ(e.target.value);}}),q?h('button',{className:'sx',onClick:function(){setQ('');}},h(I,{name:'close',size:15})):null),
   searching?h(React.Fragment,null,
    found===null?h('div',{className:'center',style:{padding:24}},h('span',{className:'spin'})):h(React.Fragment,null,
