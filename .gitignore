@@ -1,0 +1,11 @@
+node_modules/
+data/db.json
+data/*.json.tmp
+uploads/*
+!uploads/.gitkeep
+scripts/*.png
+npm-debug.log*
+.DS_Store
+*.log
+dist/
+telegram-app.zip
