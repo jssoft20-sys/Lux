@@ -42,7 +42,7 @@
       function setTab(t) { tab = t; tabsBar.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.t === t)); if (t === 'emoji') renderEmoji(); else if (t === 'stickers') renderStickers(); else renderGif(); }
 
       ['gif:GIF','stickers:Стикеры','emoji:Эмодзи'].forEach((s) => { const [t, label] = s.split(':'); tabsBar.appendChild(h('button', { dataset: { t }, class: t === tab ? 'active' : '', text: label, onClick: () => setTab(t) })); });
-      const bs = h('button', { class: 'picker-bs', html: Icons.close(), onClick: () => opts.onBackspace && opts.onBackspace() });
+      const bs = h('button', { class: 'picker-bs', html: Icons.backspace(), onClick: () => opts.onBackspace && opts.onBackspace() });
 
       container.appendChild(body);
       container.appendChild(h('div', { class: 'picker-foot' }, tabsBar, bs));

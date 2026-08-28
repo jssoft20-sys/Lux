@@ -52,7 +52,7 @@
         const info = [];
         if (user && user.bio) info.push(UI.cell({ title: user.bio, sub: 'О себе', chevron: false }));
         if (user && user.username) info.push(UI.cell({ titleHTML: '@' + user.username, sub: 'Имя пользователя', chevron: false, onClick: () => { navigator.clipboard && navigator.clipboard.writeText('@' + user.username); UI.toast('Скопировано'); } }));
-        if (user && user.phone && user.privacy && user.privacy.phone !== 'nobody') info.push(UI.cell({ title: user.phone, sub: 'Телефон', chevron: false }));
+        if (user && user.phone) info.push(UI.cell({ title: user.phone, sub: 'Телефон', chevron: false }));
         if (chat && chat.about) info.push(UI.cell({ title: chat.about, sub: 'Описание', chevron: false }));
         if (info.length) content.appendChild(h('div', { class: 'group', style: { marginTop: '10px' } }, info));
 

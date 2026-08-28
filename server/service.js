@@ -17,7 +17,8 @@ function publicUser(u) {
   if (!u) return null;
   return {
     id: u.id, name: u.name, lastName: u.lastName || '', username: u.username || '',
-    phone: u.phone || '', avatar: u.avatar || null, color: u.color, bio: u.bio || '',
+    phone: (u.privacy && u.privacy.phone === 'nobody') ? '' : (u.phone || ''),
+    avatar: u.avatar || null, color: u.color, bio: u.bio || '',
     birthday: u.birthday || '', online: !!u.online, lastSeen: u.lastSeen || 0,
     isBot: !!u.isBot, verified: !!u.verified, premium: !!u.premium,
     botInfo: u.botInfo || null,
@@ -113,6 +114,7 @@ function serializeMessage(m, meId, brief) {
     senderColor: sender ? sender.color : '#65aadd',
     senderAvatar: sender ? sender.avatar : null,
     text: m.text || '', entities: m.entities || [], media: m.media || null,
+    keyboard: m.keyboard || null,
     replyTo: m.replyTo || null, forwardFrom: m.forwardFrom || null,
     reactions: m.reactions || {}, views: m.views || 0, edited: !!m.edited,
     pinned: !!m.pinned, ts: m.ts, service: m.service || null,
@@ -158,6 +160,7 @@ function createMessage(chatId, senderId, draft) {
   const m = DB.insert('messages', {
     id: DB.id('m'), chatId, senderId,
     text: draft.text || '', entities: draft.entities || [], media: draft.media || null,
+    keyboard: draft.keyboard || null,
     replyTo: draft.replyTo || null, forwardFrom: draft.forwardFrom || null,
     reactions: {}, views: 0, edited: false, pinned: false, ts: now(),
     poll: null, service: draft.service || null, seenBy: [senderId],

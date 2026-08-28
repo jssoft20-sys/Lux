@@ -29,12 +29,12 @@
         validate();
         if (inp.value && obj === optionInputs[optionInputs.length - 1] && optionInputs.length < 10) addOption();
       });
-      optionInputs.push(obj); optsWrap.appendChild(inp); validate();
+      optionInputs.push(obj); optsWrap.appendChild(inp); renderOptionMarks(); validate();
     }
     addOption(); addOption();
 
     content.appendChild(h('div', { class: 'list-title', text: 'НАСТРОЙКИ' }));
-    const multiSwitch = UI.switchEl(false, (v) => { state.multiple = v; if (v) { state.quiz = false; quizSwitch.classList.remove('on'); renderOptionMarks(); } });
+    const multiSwitch = UI.switchEl(false, (v) => { state.multiple = v; if (v) { state.quiz = false; quizSwitch.classList.remove('on'); renderOptionMarks(); } validate(); });
     const quizSwitch = UI.switchEl(false, (v) => { state.quiz = v; if (v) { state.multiple = false; multiSwitch.classList.remove('on'); } renderOptionMarks(); validate(); });
     content.appendChild(UI.group([
       UI.cell({ title: 'Несколько ответов', chevron: false, right: multiSwitch }),

@@ -58,7 +58,8 @@
       root.appendChild(scroller);
       const typingRow = h('div', { class: 'msg-row typing-row hidden' }, h('div', { class: 'typing-bubble' }, h('i'), h('i'), h('i')));
 
-      function renderMessages() {
+      function renderMessages(forceScroll) {
+        const nearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 120;
         UI.clear(scroller);
         let lastDay = null, lastSender = null;
         state.messages.forEach((m, i) => {
@@ -71,7 +72,7 @@
           lastSender = m.senderId;
         });
         scroller.appendChild(typingRow);
-        scrollBottom();
+        if (forceScroll || nearBottom) scrollBottom();
       }
 
       function messageEl(m, isTail) {
@@ -103,7 +104,8 @@
           bubble.appendChild(t);
         }
         // inline keyboard (bot)
-        if (m.media && m.media.keyboard) bubble.appendChild(keyboardEl(m.media.keyboard, m));
+        if (m.keyboard) bubble.appendChild(keyboardEl(m.keyboard, m));
+        else if (m.media && m.media.keyboard) bubble.appendChild(keyboardEl(m.media.keyboard, m));
         // meta
         const meta = h('span', { class: 'm-meta' });
         if (m.edited) meta.appendChild(h('span', { class: 'edited', text: 'ред. ' }));
@@ -309,12 +311,13 @@
       }
 
       /* ---- attach sheet ---- */
+      // one reusable pair of hidden inputs, parented to the screen so they die with it
+      const fileInput = h('input', { type: 'file', accept: 'image/*,video/*', style: { display: 'none' } });
+      const anyInput = h('input', { type: 'file', style: { display: 'none' } });
+      fileInput.onchange = () => { uploadAndSend(fileInput.files[0]); fileInput.value = ''; };
+      anyInput.onchange = () => { uploadAndSend(anyInput.files[0], true); anyInput.value = ''; };
+      root.appendChild(fileInput); root.appendChild(anyInput);
       function attachSheet() {
-        const fileInput = h('input', { type: 'file', accept: 'image/*,video/*', style: { display: 'none' } });
-        const anyInput = h('input', { type: 'file', style: { display: 'none' } });
-        document.body.appendChild(fileInput); document.body.appendChild(anyInput);
-        fileInput.onchange = () => uploadAndSend(fileInput.files[0]);
-        anyInput.onchange = () => uploadAndSend(anyInput.files[0], true);
         UI.sheet({ actions: [
           { label: 'Галерея', icon: 'gallery', onClick: () => fileInput.click() },
           { label: 'Файл', icon: 'file', onClick: () => anyInput.click() },
@@ -354,7 +357,9 @@
         } else { pickerPanel.classList.add('hidden'); emojiBtn.innerHTML = Icons.smile(); }
       }
       function insertAtCursor(text) {
-        const s = input.selectionStart || input.value.length, e = input.selectionEnd || input.value.length;
+        // textarea selectionStart/End are always numeric (0 is valid) — use ?? not ||
+        const s = input.selectionStart == null ? input.value.length : input.selectionStart;
+        const e = input.selectionEnd == null ? input.value.length : input.selectionEnd;
         input.value = input.value.slice(0, s) + text + input.value.slice(e);
         input.selectionStart = input.selectionEnd = s + text.length;
         updateSendBtn(); autoGrow();
@@ -367,25 +372,28 @@
         startRecording();
       });
       async function startRecording() {
-        try {
-          const bar = h('div', { class: 'rec-bar' }, h('div', { class: 'rec-dot' }), h('div', { class: 'rec-time', text: '0:00' }),
-            h('div', { class: 'rec-slide', text: '‹ Проведите для отмены' }));
-          const cancelBtn = h('button', { class: 'nav-btn', style: { color: 'var(--danger)' }, html: Icons.trash() });
-          const doneBtn = h('button', { class: 'send-btn show', html: Icons.send() });
-          const recRow = h('div', { class: 'composer' }, cancelBtn, bar, doneBtn);
-          composer.replaceWith(recRow);
-          let sec = 0; const timer = setInterval(() => { sec++; bar.querySelector('.rec-time').textContent = UI.duration(sec); }, 1000);
-          recCtl = await window.Voice.start({});
-          const finish = async (send) => {
-            clearInterval(timer); recRow.replaceWith(composer);
-            if (send) { const { blob, duration, waveform } = await recCtl.stop(); const file = new File([blob], 'voice.webm', { type: blob.type });
-              try { const up = await App.upload(file); App.emit('message:send', { chatId, media: { kind: 'voice', url: up.url, duration, waveform } }); } catch (e) { UI.toast('Ошибка'); } }
-            else recCtl.cancel();
-            recCtl = null;
-          };
-          cancelBtn.onclick = () => finish(false);
-          doneBtn.onclick = () => finish(true);
-        } catch (e) { UI.toast('Нет доступа к микрофону'); }
+        // Acquire the mic FIRST — if it's denied/unsupported the composer is never
+        // swapped out, so the user can still type/send.
+        try { recCtl = await window.Voice.start({}); }
+        catch (e) { recCtl = null; UI.toast('Нет доступа к микрофону'); return; }
+        const bar = h('div', { class: 'rec-bar' }, h('div', { class: 'rec-dot' }), h('div', { class: 'rec-time', text: '0:00' }),
+          h('div', { class: 'rec-slide', text: '‹ Проведите для отмены' }));
+        const cancelBtn = h('button', { class: 'nav-btn', style: { color: 'var(--danger)' }, html: Icons.trash() });
+        const doneBtn = h('button', { class: 'send-btn show', html: Icons.send() });
+        const recRow = h('div', { class: 'composer' }, cancelBtn, bar, doneBtn);
+        composer.replaceWith(recRow);
+        let sec = 0; const timer = setInterval(() => { sec++; bar.querySelector('.rec-time').textContent = UI.duration(sec); }, 1000);
+        let finished = false;
+        const finish = async (send) => {
+          if (finished) return; finished = true;
+          clearInterval(timer); recRow.replaceWith(composer);
+          if (send) { const { blob, duration, waveform } = await recCtl.stop(); const file = new File([blob], 'voice.webm', { type: blob.type });
+            try { const up = await App.upload(file); App.emit('message:send', { chatId, media: { kind: 'voice', url: up.url, duration, waveform } }); } catch (e) { UI.toast('Ошибка'); } }
+          else recCtl.cancel();
+          recCtl = null;
+        };
+        cancelBtn.onclick = () => finish(false);
+        doneBtn.onclick = () => finish(true);
       }
 
       /* ---- misc header/profile ---- */
@@ -425,16 +433,17 @@
           chat = Object.assign(chat, c); App.upsertChat(chat);
           state.messages = messages; App.state.messages[chatId] = state.messages;
           chat.pinnedMessageId = pinnedMessageId;
-          renderHeader(); renderMessages(); renderPinned();
+          renderHeader(); renderMessages(true); renderPinned();
           // mark read
           App.emit('message:read', { chatId }); chat.unread = 0; App.bus.emit('chats:changed'); App.updateTabBadge();
         } catch (e) { console.warn(e); UI.toast('Не удалось загрузить чат'); }
       }
       load();
 
+      const prevActive = App.state.activeChatId;
       App.state.activeChatId = chatId;
       App.bindBus(root, {
-        'message:new': (p) => { if (p.chatId !== chatId) return; if (!state.messages.find((m) => m.id === p.message.id)) state.messages.push(p.message); renderMessages(); App.emit('message:read', { chatId }); },
+        'message:new': (p) => { if (p.chatId !== chatId) return; if (!state.messages.find((m) => m.id === p.message.id)) state.messages.push(p.message); renderMessages(p.message.senderId === App.state.me.id); App.emit('message:read', { chatId }); },
         'message:edit': (p) => { if (p.chatId !== chatId) return; const i = state.messages.findIndex((m) => m.id === p.message.id); if (i >= 0) state.messages[i] = p.message; renderMessages(); },
         'message:delete': (p) => { if (p.chatId !== chatId) return; state.messages = state.messages.filter((m) => m.id !== p.messageId); renderMessages(); },
         'message:react': (p) => { if (p.chatId !== chatId) return; const m = state.messages.find((x) => x.id === p.messageId); if (m) m.reactions = p.reactions; renderMessages(); },
@@ -445,7 +454,7 @@
         'presence': () => renderHeader(),
       });
       const prevTeardown = root._teardown;
-      root._teardown = () => { App.state.activeChatId = null; clearTimeout(typingTimer); prevTeardown && prevTeardown(); };
+      root._teardown = () => { App.state.activeChatId = prevActive; clearTimeout(typingTimer); prevTeardown && prevTeardown(); };
       updateSendBtn();
       return root;
     },

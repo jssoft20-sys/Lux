@@ -49,7 +49,7 @@
       let durTimer, dur = 0;
       const controller = {
         setStatus(t) { status.textContent = t; },
-        startTimer() { ring.remove(); durTimer = setInterval(() => { dur++; status.textContent = UI.duration(dur); }, 1000); renderControls('active'); },
+        startTimer() { if (durTimer) return; ring.remove(); durTimer = setInterval(() => { dur++; status.textContent = UI.duration(dur); }, 1000); renderControls('active'); },
         attachRemote(stream) { if (opts.video) { remoteVideo.srcObject = stream; } else { let a = overlay._remoteAudio; if (!a) { a = h('audio', { autoplay: true }); overlay.appendChild(a); overlay._remoteAudio = a; } a.srcObject = stream; } },
         attachLocal(stream) { if (opts.video) localVideo.srcObject = stream; },
         setIncoming(v) { renderControls(v ? 'incoming' : 'active'); },

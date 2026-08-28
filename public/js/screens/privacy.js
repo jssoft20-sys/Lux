@@ -63,7 +63,8 @@
       }
       async function save(key, value, cell) {
         privacy[key] = value;
-        cell.querySelector('.cell-right').textContent = OPTIONS[value];
+        const valSpan = cell.querySelector('.cell-right span');
+        if (valSpan) valSpan.textContent = OPTIONS[value];
         try { await App.api('PATCH', '/me/privacy', { [key]: value }); App.state.me.privacy = privacy; } catch (e) { UI.toast('Ошибка'); }
       }
       return root;

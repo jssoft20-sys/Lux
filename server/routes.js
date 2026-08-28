@@ -86,7 +86,7 @@ function register(app, io, hub) {
 
   app.get('/api/me', auth, (req, res) => {
     const u = req.me;
-    res.json({ user: Object.assign(S.publicUser(u), { privacy: u.privacy }) });
+    res.json({ user: Object.assign(S.publicUser(u), { privacy: u.privacy, phone: u.phone || '' }) });
   });
 
   app.patch('/api/me', auth, (req, res) => {
@@ -260,8 +260,15 @@ function register(app, io, hub) {
         current: s.token === token }));
     res.json({ sessions });
   });
+  // terminate ALL other (non-current) sessions
+  app.delete('/api/sessions', auth, (req, res) => {
+    const token = (req.headers.authorization || '').replace('Bearer ', '');
+    DB.remove('sessions', (s) => s.userId === req.me.id && s.token !== token);
+    res.json({ ok: true });
+  });
   app.delete('/api/sessions/:token', auth, (req, res) => {
-    DB.remove('sessions', (s) => s.userId === req.me.id && s.token.startsWith(req.params.token) && !s.current);
+    const token = (req.headers.authorization || '').replace('Bearer ', '');
+    DB.remove('sessions', (s) => s.userId === req.me.id && s.token !== token && s.token.startsWith(req.params.token));
     res.json({ ok: true });
   });
 

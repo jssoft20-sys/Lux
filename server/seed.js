@@ -73,6 +73,15 @@ function seed() {
   const people = [alice, boris, chloe, dan, eve];
   const bots = [echoBot, pollBot, botFather, stickerBot];
 
+  // Seeded "other device" sessions so the Devices screen shows real, terminable sessions.
+  const OTHER_SESSIONS = [
+    { device: 'Redmi Note 14 Pro', app: 'Telegram Android 12.10.1', ip: '10.0.0.4', location: 'Bishkek, Kyrgyzstan', ago: 2 * HOUR },
+    { device: 'MacBook Pro', app: 'Telegram macOS 11.2', ip: '10.0.0.7', location: 'Local network', ago: 26 * HOUR },
+  ];
+  for (const p of people) for (const s of OTHER_SESSIONS)
+    DB.insert('sessions', { token: 't_seed_' + DB.id('s'), userId: p.id, device: s.device,
+      app: s.app, ip: s.ip, location: s.location, ts: NOW - s.ago, current: false });
+
   // ---- Chats ----
   const C = (o) => DB.insert('chats', Object.assign({
     id: DB.id('c'), type: 'private', title: '', members: [], avatar: null,

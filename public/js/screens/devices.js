@@ -26,16 +26,17 @@
           currentWrap.appendChild(h('div', { class: 'list-title', text: 'ЭТО УСТРОЙСТВО' }));
           currentWrap.appendChild(h('div', { class: 'group' }, sessionCell(current)));
         }
-        // seeded demo sessions if only current
-        const list = others.length ? others : demoSessions();
-        othersWrap.appendChild(h('div', { class: 'group', style: { marginTop: '16px' } },
-          h('div', { class: 'cell tap danger', onClick: () => terminateAll() }, h('div', { class: 'cell-body' }, h('div', { class: 'cell-title', style: { color: 'var(--danger)' }, text: 'Завершить все другие сеансы' })),
-            )));
-        othersWrap.appendChild(h('div', { class: 'field-hint', text: 'Выйти на всех устройствах, кроме этого.' }));
-        othersWrap.appendChild(h('div', { class: 'list-title', text: 'АКТИВНЫЕ СЕАНСЫ', style: { marginTop: '16px' } }));
-        const g = h('div', { class: 'group' });
-        list.forEach((s) => g.appendChild(sessionCell(s, true)));
-        othersWrap.appendChild(g);
+        if (others.length) {
+          othersWrap.appendChild(h('div', { class: 'group', style: { marginTop: '16px' } },
+            h('div', { class: 'cell tap danger', onClick: () => terminateAll() }, h('div', { class: 'cell-body' }, h('div', { class: 'cell-title', style: { color: 'var(--danger)' }, text: 'Завершить все другие сеансы' })))));
+          othersWrap.appendChild(h('div', { class: 'field-hint', text: 'Выйти на всех устройствах, кроме этого.' }));
+          othersWrap.appendChild(h('div', { class: 'list-title', text: 'АКТИВНЫЕ СЕАНСЫ', style: { marginTop: '16px' } }));
+          const g = h('div', { class: 'group' });
+          others.forEach((s) => g.appendChild(sessionCell(s, true)));
+          othersWrap.appendChild(g);
+        } else {
+          othersWrap.appendChild(h('div', { class: 'field-hint', style: { marginTop: '16px' }, text: 'Других активных сеансов нет.' }));
+        }
       }
 
       function sessionCell(s, tappable) {
@@ -66,15 +67,10 @@
 
       async function terminateAll() {
         if (!(await UI.confirm({ title: 'Завершить все сеансы?', okLabel: 'Завершить', danger: true }))) return;
-        UI.toast('Все другие сеансы завершены'); load();
+        try { await App.api('DELETE', '/sessions'); UI.toast('Все другие сеансы завершены'); } catch (e) { UI.toast('Ошибка'); }
+        load();
       }
       function timeAgo(ts) { const d = Date.now() - ts; if (d < 3600000) return Math.max(1, Math.floor(d / 60000)) + ' мин назад'; if (d < 86400000) return Math.floor(d / 3600000) + ' ч назад'; return UI.dateShort(ts); }
-      function demoSessions() {
-        return [
-          { token: 'demo1', device: 'Redmi Note 14 Pro', app: 'Telegram Android 12.10.1', ip: '10.0.0.4', location: 'Bishkek, Kyrgyzstan', ts: Date.now() - 2 * 3600000 },
-          { token: 'demo2', device: 'MacBook Pro', app: 'Telegram macOS 11.2', ip: '10.0.0.7', location: 'Local network', ts: Date.now() - 26 * 3600000 },
-        ];
-      }
       load();
       return root;
     },

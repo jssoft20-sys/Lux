@@ -8,8 +8,12 @@
     return navigator.mediaDevices.getUserMedia({ audio: true, video: video ? { facingMode: 'user' } : false });
   }
 
-  function bindPc(pc, callId) {
-    pc.onicecandidate = (e) => { if (e.candidate) App.emit('call:ice', { callId, candidate: e.candidate }); };
+  function bindPc(pc) {
+    pc.onicecandidate = (e) => {
+      if (!e.candidate) return;
+      if (active && active.callId) App.emit('call:ice', { callId: active.callId, candidate: e.candidate });
+      else pendingLocalIce.push(e.candidate); // caller may not have a callId yet
+    };
     pc.ontrack = (e) => { if (active && active.ui) active.ui.attachRemote(e.streams[0]); };
     pc.onconnectionstatechange = () => { if (pc.connectionState === 'connected' && active && active.ui) { active.ui.setStatus('Соединение установлено'); active.ui.startTimer(); } };
   }
@@ -26,10 +30,10 @@
         onToggleMute: (m) => localStream.getAudioTracks().forEach((t) => t.enabled = !m),
         onToggleVideo: (v) => localStream.getVideoTracks().forEach((t) => t.enabled = v),
         onToggleSpeaker: () => {}, });
-      active = { pc, localStream, ui, peer, video, role: 'caller', callId: null };
+      active = { pc, localStream, ui, peer, video, role: 'caller', callId: null, cancelPending: false };
       ui.attachLocal(localStream);
       localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
-      bindPc(pc, null);
+      bindPc(pc);
       const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
       App.emit('call:invite', { toId: peer.id, video: !!video, sdp: offer });
       // callId assigned on ringing
@@ -59,18 +63,33 @@
     active.pc = pc; active.localStream = localStream;
     active.ui.attachLocal(localStream); active.ui.setIncoming(false); active.ui.setStatus('Соединение…');
     localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
-    bindPc(pc, active.callId);
+    bindPc(pc);
     await pc.setRemoteDescription(new RTCSessionDescription(active.offer));
     const answer = await pc.createAnswer(); await pc.setLocalDescription(answer);
     App.emit('call:answer', { callId: active.callId, sdp: answer });
     flushIce();
   }
 
-  const pendingIce = [];
+  const pendingIce = [];        // remote candidates awaiting remoteDescription
+  const pendingLocalIce = [];   // local candidates gathered before callId is known
   function flushIce() { if (!active || !active.pc) return; while (pendingIce.length) active.pc.addIceCandidate(new RTCIceCandidate(pendingIce.shift())).catch(() => {}); }
+  function flushLocalIce() { if (!active || !active.callId) return; while (pendingLocalIce.length) App.emit('call:ice', { callId: active.callId, candidate: pendingLocalIce.shift() }); }
 
   function hangup(reason) {
-    if (active && active.callId) App.emit('call:hangup', { callId: active.callId, reason });
+    if (!active) return;
+    if (active.callId) { App.emit('call:hangup', { callId: active.callId, reason }); teardown(); return; }
+    if (active.role === 'caller') {
+      // hung up before 'call:ringing' assigned a callId — stop media/UI now,
+      // but keep a minimal `active` so the ringing handler can still notify the server.
+      active.cancelPending = reason || 'ended';
+      try { active.pc && active.pc.close(); } catch (e) {}
+      try { active.localStream && active.localStream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+      if (active.ui) { active.ui.destroy(); active.ui = null; }
+      active.pc = null; active.localStream = null;
+      // safety: if ringing never arrives, drop the stale state so future calls work.
+      setTimeout(() => { if (active && active.cancelPending) teardown(); }, 6000);
+      return;
+    }
     teardown();
   }
   function teardown() {
@@ -80,10 +99,18 @@
     if (active.ui) active.ui.destroy();
     active = null;
     pendingIce.length = 0;
+    pendingLocalIce.length = 0;
   }
 
   // signaling listeners
-  App.bus.on('call:ringing', (p) => { if (active && active.role === 'caller') { active.callId = p.callId; active.ui.setStatus('Вызов…'); } });
+  App.bus.on('call:ringing', (p) => {
+    if (active && active.role === 'caller') {
+      active.callId = p.callId;
+      if (active.cancelPending) { App.emit('call:hangup', { callId: p.callId, reason: active.cancelPending }); teardown(); return; }
+      active.ui.setStatus('Вызов…');
+      flushLocalIce();
+    }
+  });
   App.bus.on('call:answered', async (p) => {
     if (!active || active.role !== 'caller') return;
     try { await active.pc.setRemoteDescription(new RTCSessionDescription(p.sdp)); active.ui.setStatus('Соединение…'); flushIce(); } catch (e) { console.warn(e); }

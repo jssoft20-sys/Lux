@@ -20,6 +20,7 @@
     // nav
     back: () => L('<path d="M15 5l-7 7 7 7"/>', { sw: 2.4 }),
     close: () => L('<path d="M6 6l12 12M18 6L6 18"/>', { sw: 2.2 }),
+    backspace: () => L('<path d="M21 5H9L3 12l6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z"/><path d="M17 9l-5 6M12 9l5 6" stroke-width="1.6"/>'),
     check: () => L('<path d="M4 12l6 6L20 5"/>', { sw: 2.6 }),
     plus: () => L('<path d="M12 5v14M5 12h14"/>', { sw: 2.2 }),
     edit: () => L('<path d="M4 20h4L20 8l-4-4L4 16v4z"/><path d="M14 6l4 4"/>'),

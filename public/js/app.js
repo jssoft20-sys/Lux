@@ -166,7 +166,8 @@
 
     /* ---------- convenience navigation ---------- */
     async openChat(chatId) {
-      this.state.activeChatId = chatId;
+      // activeChatId is managed by the chat screen's own lifecycle (set on render,
+      // restored to the previous value on teardown) so nested chats nest correctly.
       this.push('chat', { chatId });
     },
     async openChatWith(userIdOrName) {
