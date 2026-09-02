@@ -1,0 +1,32 @@
+# OnoiPay — FastAPI-бэкенд (админка + API для ботов).
+# Устанавливается в /etc/systemd/system/onoi-server.service (install.sh).
+#
+# Запуск от отдельного пользователя (рекомендуется после первой проверки):
+#   useradd -r -d /home/onoi -s /usr/sbin/nologin onoi
+#   chown -R onoi:onoi /home/onoi
+#   заменить ниже User=root на User=onoi и добавить Group=onoi,
+#   затем: systemctl daemon-reload && systemctl restart onoi-server
+[Unit]
+Description=OnoiPay server (FastAPI, 127.0.0.1:7030, prefix /onoipay)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/onoi
+Environment=PORT=7030
+Environment=HOST=127.0.0.1
+Environment=ONOI_URL_PREFIX=/onoipay
+Environment=ONOI_API_BASE=http://127.0.0.1:7030/onoipay/api
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/home/onoi/venv/bin/python /home/onoi/server.py
+Restart=always
+RestartSec=2
+LimitNOFILE=65536
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

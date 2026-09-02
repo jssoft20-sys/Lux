@@ -1,0 +1,31 @@
+# OnoiPay — не коммитить окружение и рабочие данные
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# рабочие данные сервера
+storage/*.sqlite3
+storage/*.sqlite3-*
+storage/state.json
+storage/sessions.json
+storage/statement_cache.json
+storage/push/
+storage/logs/
+storage/optima_direct_sessions/
+storage/.migrated_*
+data/*.sqlite3
+data/*.sqlite3-*
+
+# загруженные файлы (чеки, инструкции, аватары), кроме заглушек
+uploads/**
+!uploads/
+!uploads/*/
+!uploads/**/.gitkeep
+
+# архивы, бэкапы, мусор
+*.zip
+*.bak
+*.bak.*
+*.log
+.DS_Store

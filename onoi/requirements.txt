@@ -1,0 +1,15 @@
+# OnoiPay — зависимости бэкенда и ботов (Python 3.10+)
+fastapi>=0.110
+uvicorn[standard]>=0.29
+httpx>=0.27
+qrcode[pil]>=7.4
+pillow>=10
+opencv-python-headless>=4.9
+numpy>=1.26
+cryptography>=42
+python-multipart>=0.0.9
+# Web-push админки (опционально: если сборка http-ece падает, install.sh
+# ставит его обходным путём, а при неудаче продолжает без push).
+pywebpush>=2.0
+# Распознавание QR (опционально, в коде есть try/except ImportError).
+zxing-cpp>=2.2
