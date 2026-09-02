@@ -1,0 +1,14 @@
+onoi/venv/
+onoi/storage/*.sqlite3
+onoi/storage/*.sqlite3-*
+onoi/storage/state.json
+onoi/storage/sessions.json
+onoi/storage/statement_cache.json
+onoi/storage/push/
+onoi/storage/logs/
+onoi/data/*.sqlite3
+onoi/data/*.sqlite3-*
+onoi/uploads/**/*
+!onoi/uploads/**/.gitkeep
+__pycache__/
+*.pyc

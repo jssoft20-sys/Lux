@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#f4f7f8" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="robots" content="noindex,nofollow,noarchive,nosnippet,noimageindex" />
+  <title>LUX ON Admin</title>
+  <link rel="icon" href="/static/assets/payqr.svg" />
+  <link rel="stylesheet" href="/static/styles.css?v=luxon-v1040-local-theme-20260810" />
+<script id="lux-theme-boot">
+(function(){
+  try{
+    var saved=localStorage.getItem('lux-admin-theme-v1');
+    var mode=(saved==='dark'||saved==='light'||saved==='system')?saved:'system';
+    var dark=mode==='dark'||(mode==='system'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+    var theme=dark?'dark':'light';
+    document.documentElement.setAttribute('data-theme',theme);
+    document.documentElement.setAttribute('data-theme-mode',mode);
+    document.documentElement.style.colorScheme=theme;
+    var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',dark?'#0E1621':'#f4f7f8');
+  }catch(e){document.documentElement.setAttribute('data-theme','light');document.documentElement.setAttribute('data-theme-mode','system');}
+})();
+</script>
+<script id="lux-runtime-insets">
+(function(){
+  try{
+    var ua=String(navigator.userAgent||'');
+    var android=/Android/i.test(ua);
+    var webview=android && (/\bwv\b/i.test(ua) || /; wv\)/i.test(ua) || /LuxOn/i.test(ua));
+    if(webview) document.documentElement.classList.add('lux-android-webview');
+  }catch(e){}
+})();
+</script>
+<script id="lux-v1031-route-reset">
+(function(){try{if(localStorage.getItem('lux-ui-version')!=='10.40'){localStorage.removeItem('luxon-v92-route');localStorage.removeItem('luxon-v9-route');localStorage.removeItem('luxon-v1028-route');localStorage.setItem('lux-ui-version','10.40');}}catch(e){}})();
+</script>
+</head>
+<body>
+  <div id="app"></div>
+  <script src="/static/vendor/react.production.min.js"></script>
+  <script src="/static/vendor/react-dom.production.min.js"></script>
+  <script src="/static/app.js?v=luxon-v1040-local-theme-20260810"></script>
+</body>
+</html>

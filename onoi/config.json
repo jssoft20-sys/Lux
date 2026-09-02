@@ -1,0 +1,297 @@
+{
+  "version": "1.0.0",
+  "brand": "OnoiPay",
+  "admin_password": "AdyzeAYVFMlP98bziSAS8FswqzpexezB",
+  "internal_api_key": "TISevLMgjeMUTHz2IXRc-AGdxdyMhD5kPzVz0wNEax4",
+  "timezone": "Asia/Bishkek",
+  "public_url": "https://wwweeewww.fit",
+  "url_prefix": "/onoipay",
+  "server_ip": "",
+  "bot_paused": false,
+  "deposits_enabled": true,
+  "withdrawals_enabled": true,
+  "main_bot": {
+    "token": "8822484493:AAGOiTTnA3YTEb1zhlGKpPK_kZS-QZdSf2A",
+    "username": "OnoiPayBot",
+    "enabled": true,
+    "support_username": "",
+    "subscription": {
+      "enabled": false,
+      "channel_username": "",
+      "channel_id": ""
+    }
+  },
+  "support_bot": {
+    "token": "8553268491:AAGvN0lmGo2h2kRKXs9ZqwF2EXyu9s32ugI",
+    "username": "",
+    "enabled": true,
+    "greeting": "Здравствуйте, {name}! 👋\n\nЭто поддержка OnoiPay. Я отвечаю мгновенно, 24/7:\n• проверю статус пополнения или вывода\n• подскажу сроки и лимиты\n• помогу с QR-кодом и чеком\n\nВыберите, что нужно 👇",
+    "resolved_text": "✅ Обращение закрыто. Спасибо, что вы с OnoiPay!",
+    "reopen_hint": "Чтобы открыть меню поддержки, нажмите /start."
+  },
+  "withdraw_eta": {
+    "min_minutes": 5,
+    "typical_minutes": 30,
+    "max_hours": 24
+  },
+  "texts": {
+    "withdraw_address": "📍 Город: Бишкек\n📍 Улица: OnoiPay 24/7"
+  },
+  "macro": {
+    "enabled": true,
+    "auto_check_enabled": true,
+    "check_interval_seconds": 0.1,
+    "selection_mode": "fixed",
+    "active_requisite_id": "",
+    "fixed_requisite_id": "",
+    "random_tiyin": true,
+    "tiyin_min": 1,
+    "tiyin_max": 99,
+    "payment_timeout_seconds": 300,
+    "requisites": [],
+    "webhook_key": "7SDi2OUWEyM2p-vW6vww_vSAgylM0dVu1MY2tWj07j4",
+    "public_url": "https://wwweeewww.fit/onoipay/notifications",
+    "processor_workers": 32,
+    "amount_reuse_cooldown_seconds": 30,
+    "mode": "fixed"
+  },
+  "bank_links": [
+    {"id": "qr", "name": "QR-код", "enabled": true, "prefix": "", "kind": "qr"},
+    {"id": "mbank", "name": "MBank", "enabled": true, "prefix": "https://app.mbank.kg/qr/#", "kind": "link"},
+    {"id": "odengi", "name": "О!Деньги", "enabled": true, "prefix": "https://api.dengi.o.kg/#", "kind": "link"},
+    {"id": "megapay", "name": "MegaPay", "enabled": true, "prefix": "https://megapay.kg/get#", "kind": "link"},
+    {"id": "balance", "name": "Balance", "enabled": true, "prefix": "https://balance.kg/payment_qr/#", "kind": "link"},
+    {"id": "bakai", "name": "Bakai Bank", "enabled": true, "prefix": "https://bakai.app/#", "kind": "link"},
+    {"id": "optima", "name": "Optima Bank", "enabled": true, "prefix": "https://mobile.optima24.kg/my-qr/confirm-screen?qr-url=", "kind": "link"}
+  ],
+  "bookmakers": {
+    "1xbet": {
+      "label": "1XBET",
+      "enabled": true,
+      "deposit": true,
+      "withdraw": true,
+      "provider": "servcul",
+      "provider_key": "1xbet",
+      "provider_label": "Mobcash XBET",
+      "deposit_rate": 0.08,
+      "withdraw_rate": 0.02,
+      "deposit_min": 100,
+      "deposit_max": 100000
+    },
+    "melbet": {
+      "label": "MELBET",
+      "enabled": false,
+      "deposit": false,
+      "withdraw": false,
+      "provider": "servcul",
+      "provider_key": "melbet",
+      "provider_label": "Team Cash",
+      "deposit_rate": 0.08,
+      "withdraw_rate": 0.02,
+      "deposit_min": 100,
+      "deposit_max": 100000
+    },
+    "1win": {
+      "label": "1WIN",
+      "enabled": false,
+      "deposit": false,
+      "withdraw": false,
+      "provider": "xapi",
+      "provider_key": "1win",
+      "provider_label": "1WIN Cash",
+      "deposit_rate": 0.1,
+      "withdraw_rate": 0.02,
+      "deposit_min": 100,
+      "deposit_max": 100000
+    },
+    "888starz": {
+      "label": "888STARZ",
+      "enabled": false,
+      "deposit": false,
+      "withdraw": false,
+      "provider": "servcul",
+      "provider_key": "888starz",
+      "provider_label": "Mobcash 888Starz",
+      "deposit_rate": 0.08,
+      "withdraw_rate": 0.02,
+      "deposit_min": 100,
+      "deposit_max": 100000
+    },
+    "winwin": {
+      "label": "WINWIN",
+      "enabled": false,
+      "deposit": false,
+      "withdraw": false,
+      "provider": "servcul",
+      "provider_key": "winwin",
+      "provider_label": "WinWin Mobcash",
+      "deposit_rate": 0.08,
+      "withdraw_rate": 0.02,
+      "deposit_min": 100,
+      "deposit_max": 100000
+    },
+    "mostbet": {
+      "label": "MOSTBET",
+      "enabled": false,
+      "deposit": false,
+      "withdraw": false,
+      "provider": "servcul",
+      "provider_key": "mostbet",
+      "provider_label": "Mostbet Cash",
+      "deposit_rate": 0.08,
+      "withdraw_rate": 0.02,
+      "deposit_min": 700,
+      "deposit_max": 100000
+    }
+  },
+  "providers": {
+    "1xbet": {
+      "type": "servcul",
+      "label": "Mobcash XBET",
+      "base_url": "https://partners.servcul.com/CashdeskBotAPI",
+      "login": "zhenishbAd",
+      "cashierpass": "oiY84nUmvz",
+      "cashdeskid": "1388580",
+      "hash": "644fcef2db232828d749db42c199fbb154fc6abd679295ea777a4c74f008cc45",
+      "currency": "KGS",
+      "enabled": true,
+      "setup_note": "Касса 1XBET (Servcul, KRM 1388580). Данные меняются в Настройки → Кассы."
+    },
+    "melbet": {
+      "type": "servcul",
+      "label": "Team Cash",
+      "base_url": "https://partners.servcul.com/CashdeskBotAPI",
+      "login": "",
+      "cashierpass": "",
+      "cashdeskid": "",
+      "hash": "",
+      "currency": "KGS",
+      "enabled": false
+    },
+    "1win": {
+      "type": "xapi",
+      "label": "1WIN Cash",
+      "base_url": "https://api.1win.win",
+      "api_key": "",
+      "withdraw_payload": "user_id_code",
+      "withdrawal_id": 0,
+      "code_as_number": true,
+      "balance_supported": false,
+      "agent_balance_enabled": false,
+      "currency": "KGS",
+      "enabled": false
+    },
+    "888starz": {
+      "type": "servcul",
+      "label": "Mobcash 888Starz",
+      "base_url": "https://partners.servcul.com/CashdeskBotAPI",
+      "login": "",
+      "cashierpass": "",
+      "cashdeskid": "",
+      "hash": "",
+      "currency": "KGS",
+      "enabled": false
+    },
+    "winwin": {
+      "type": "servcul",
+      "label": "WinWin Mobcash",
+      "base_url": "https://partners.servcul.com/CashdeskBotAPI",
+      "login": "",
+      "cashierpass": "",
+      "cashdeskid": "",
+      "hash": "",
+      "currency": "KGS",
+      "enabled": false
+    },
+    "mostbet": {
+      "type": "servcul",
+      "label": "Mostbet Cash",
+      "base_url": "https://partners.servcul.com/CashdeskBotAPI",
+      "login": "",
+      "cashierpass": "",
+      "cashdeskid": "",
+      "hash": "",
+      "currency": "KGS",
+      "enabled": false
+    }
+  },
+  "instructions": {
+    "1xbet": {
+      "withdraw_id_photo": "",
+      "withdraw_code_photo": "",
+      "deposit_id_photo": "",
+      "text": "📌 Инструкция по выводу 1XBET\n\n1️⃣ Откройте «Вывести со счёта» в приложении или на сайте 1XBET\n2️⃣ Выберите способ «Наличные» (касса)\n3️⃣ Укажите сумму вывода\n4️⃣ Выберите кассу:\n📍 Город: Бишкек\n📍 Улица: OnoiPay 24/7\n5️⃣ Подтвердите операцию и получите код\n6️⃣ Отправьте код сюда\n\n⛔ Код одноразовый — используйте только свежий!"
+    }
+  },
+  "cashdesk_alerts": {
+    "enabled": false,
+    "auto_disable": false,
+    "low": 20000,
+    "critical": 1000,
+    "check_seconds": 120
+  },
+  "security": {
+    "max_login_attempts": 5,
+    "lock_minutes": 30,
+    "noindex": true,
+    "session_days": 0,
+    "internal_api_local_only": true
+  },
+  "ui": {
+    "poll_seconds": 3,
+    "page_size": 30,
+    "chat_poll_seconds": 2
+  },
+  "payment_verification": {
+    "mode": "macro",
+    "match_interval_seconds": 0.05,
+    "payment_pre_grace_seconds": 3,
+    "payment_post_grace_seconds": 3,
+    "statement_poll_seconds": 0.35
+  },
+  "optima_gateway": {
+    "enabled": false,
+    "selection_mode": "fixed",
+    "fixed_wallet_id": "",
+    "poll_seconds": 0.1,
+    "request_timeout_seconds": 3.0,
+    "cache_ttl_seconds": 0,
+    "default_days": 1,
+    "max_range_days": 90,
+    "page_size": 50,
+    "wallets": [],
+    "match_page_size": 100
+  },
+  "ai_support": {
+    "enabled": true,
+    "engine": "local",
+    "confidence_threshold": 0.8,
+    "vision_enabled": true,
+    "auto_close_success": true
+  },
+  "push": {
+    "enabled": true,
+    "contact": "mailto:admin@wwweeewww.fit",
+    "job_ttl_seconds": 900
+  },
+  "demir_mail": {
+    "enabled": true,
+    "imap_host": "imap.timeweb.ru",
+    "imap_port": 993,
+    "imap_ssl": true,
+    "folder": "INBOX",
+    "poll_seconds": 1.0,
+    "idle_enabled": true,
+    "idle_timeout_seconds": 240,
+    "lookback_minutes": 45,
+    "reconnect_seconds": 5,
+    "mark_seen": true,
+    "senders": ["demirbank.kg", "optimabank.kg", "mbank.kg"],
+    "subject_hints": [],
+    "amount_regex": "",
+    "bank_types": ["demir", "optima", "mbank"],
+    "watchers": 2,
+    "fast_poll_seconds": 0.2,
+    "burst_seconds": 6.0
+  }
+}

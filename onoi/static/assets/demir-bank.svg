@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 72" role="img" aria-label="DemirBank">
+  <rect width="240" height="72" rx="14" fill="#ffffff"/>
+  <g transform="translate(12 10)">
+    <rect width="52" height="52" rx="13" fill="#173b6d"/>
+    <path d="M14 13h13c10 0 17 5 17 13s-7 13-17 13H14V13zm10 8v10h4c4 0 7-2 7-5s-3-5-7-5h-4z" fill="#fff"/>
+    <path d="M15 42h28" stroke="#5cb4e6" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <text x="76" y="34" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#173b6d">DemirBank</text>
+  <text x="76" y="52" font-family="Arial,Helvetica,sans-serif" font-size="10" font-weight="600" fill="#6c7d91" letter-spacing="1.2">MOBILE BANKING</text>
+</svg>
