@@ -1,0 +1,23 @@
+[Unit]
+Description=OnoiPay client Telegram bot
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=onoi
+Group=onoi
+WorkingDirectory=/home/onoi/onoi
+EnvironmentFile=/home/onoi/onoi/.env
+ExecStart=/home/onoi/onoi/venv/bin/python -m onoibot.main_bot
+Restart=always
+RestartSec=3
+TimeoutStopSec=25
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths=/home/onoi/data /home/onoi/onoi
+StandardOutput=append:/home/onoi/logs/bot.log
+StandardError=append:/home/onoi/logs/bot.log
+
+[Install]
+WantedBy=multi-user.target

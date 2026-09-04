@@ -1,0 +1,17 @@
+# secrets and local data
+.env
+*.env
+!.env.example
+onoi/data/
+onoi/venv/
+onoi/logs/
+# python
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+# node
+node_modules/
+# os
+.DS_Store

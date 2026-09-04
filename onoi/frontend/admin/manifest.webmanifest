@@ -1,0 +1,10 @@
+{
+  "name": "OnoiPay Admin",
+  "short_name": "OnoiPay",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#e8187a",
+  "icons": [{"src": "brand/onoipay-logo.png", "sizes": "180x180", "type": "image/png"}]
+}

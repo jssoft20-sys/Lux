@@ -1,0 +1,25 @@
+[Unit]
+Description=OnoiPay backend (FastAPI, port 7030)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=onoi
+Group=onoi
+WorkingDirectory=/home/onoi/onoi
+EnvironmentFile=/home/onoi/onoi/.env
+ExecStart=/home/onoi/onoi/venv/bin/python -m onoipay.server
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/home/onoi/data /home/onoi/onoi
+StandardOutput=append:/home/onoi/logs/backend.log
+StandardError=append:/home/onoi/logs/backend.log
+
+[Install]
+WantedBy=multi-user.target

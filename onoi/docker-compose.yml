@@ -1,0 +1,92 @@
+# docker compose up -d  — PostgreSQL + backend + worker + оба бота.
+# Заполните .env (DATABASE_URL должен указывать на сервис db: postgresql+psycopg://onoi:${POSTGRES_PASSWORD}@db:5432/onoipay)
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: onoipay
+      POSTGRES_USER: onoi
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U onoi -d onoipay"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build: .
+    env_file: .env
+    environment:
+      DATA_DIR: /app/data
+    command: sh -c "alembic upgrade head && python -m onoipay.cli seed"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - appdata:/app/data
+
+  backend:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      DATA_DIR: /app/data
+    ports:
+      - "127.0.0.1:7030:7030"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - appdata:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:7030/healthz').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /app/data
+    command: python -m onoipay.workers.main
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - appdata:/app/data
+
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /app/data
+    command: python -m onoibot.main_bot
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - appdata:/app/data
+
+  support:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /app/data
+    command: python -m onoibot.support_bot
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - appdata:/app/data
+
+volumes:
+  pgdata:
+  appdata:

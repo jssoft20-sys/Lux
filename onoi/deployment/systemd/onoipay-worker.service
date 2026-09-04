@@ -1,0 +1,23 @@
+[Unit]
+Description=OnoiPay background worker (payments, expiry, cash monitor, push)
+After=network-online.target postgresql.service onoipay-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=onoi
+Group=onoi
+WorkingDirectory=/home/onoi/onoi
+EnvironmentFile=/home/onoi/onoi/.env
+ExecStart=/home/onoi/onoi/venv/bin/python -m onoipay.workers.main
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths=/home/onoi/data /home/onoi/onoi
+StandardOutput=append:/home/onoi/logs/worker.log
+StandardError=append:/home/onoi/logs/worker.log
+
+[Install]
+WantedBy=multi-user.target
