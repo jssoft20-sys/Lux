@@ -122,7 +122,8 @@
 
   /* ------------------------------------------------------------- router */
   function parseHash() { const parts = (location.hash || '#/dashboard').replace(/^#\/?/, '').split('/'); return { page: parts[0] || 'dashboard', id: parts[1] || null, sub: parts[2] || null }; }
-  window.addEventListener('hashchange', () => { state.route = parseHash(); render(); });
+  window.addEventListener('hashchange', () => { closeModals(); state.route = parseHash(); render(); });
+  function closeModals() { document.querySelectorAll('.modal-back').forEach((el) => el.remove()); document.body.style.overflow = ''; }
   const go = (hash) => { location.hash = hash; };
 
   /* ------------------------------------------------------------- shell */
@@ -176,12 +177,14 @@
         const prev = state.live;
         state.live = r;
         updateBadges();
+        const firstTick = !state.lastNotifId; // never toast history on (re)load
         for (const n of r.notifications.slice().reverse()) {
-          if (n.id > state.lastNotifId) {
-            if (state.lastNotifId) { toast(n.title + (n.body ? ' — ' + n.body.split('\n')[0] : ''), n.level === 'critical' ? 'crit' : '', 5000); beep(n.level === 'critical'); }
+          if (n.id > (state.lastNotifId > 0 ? state.lastNotifId : 0)) {
+            if (!firstTick && !n.acknowledged) { toast(n.title + (n.body ? ' — ' + n.body.split('\n')[0] : ''), n.level === 'critical' ? 'crit' : '', 5000); beep(n.level === 'critical'); }
             state.lastNotifId = Math.max(state.lastNotifId, n.id);
           }
         }
+        if (firstTick && !state.lastNotifId) state.lastNotifId = -1;
         if (prev && JSON.stringify(prev.revision) !== JSON.stringify(r.revision)) document.dispatchEvent(new CustomEvent('onoi:changed', { detail: r.revision }));
       } catch (e) { /* silent */ }
     };
