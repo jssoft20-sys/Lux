@@ -129,7 +129,7 @@ tr.active-row td:first-child{box-shadow:inset 3px 0 0 var(--blue)}
 .toast.ok{background:var(--green);color:#fff}.toast.err{background:var(--red);color:#fff}.toast.crit{background:var(--brand);color:#fff}
 /* chat */
 .chat{display:grid;grid-template-columns:320px 1fr;gap:12px;min-height:60vh}
-@media (max-width:900px){.chat{grid-template-columns:1fr}.chat.open .conv-list{display:none}.chat:not(.open) .conv-view{display:none}}
+@media (max-width:900px){.chat{grid-template-columns:1fr}.chat.open .conv-list{display:none}.chat:not(.open) .conv-view{display:none}.chat.open .conv-view{height:calc(100dvh - var(--nav-h) - 110px);min-height:320px}}
 .conv-list{display:flex;flex-direction:column;gap:6px;max-height:calc(100vh - 220px);overflow:auto}
 .conv{padding:10px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);cursor:pointer}
 .conv.active{border-color:var(--brand)}.conv b{display:block}.conv small{color:var(--muted)}
