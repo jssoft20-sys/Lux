@@ -78,8 +78,8 @@ def create_app() -> FastAPI:
             raise HTTPException(404)
         return FileResponse(str(path), media_type="application/manifest+json")
 
-    @prefixed.get("/", include_in_schema=False)
-    @prefixed.get("/{path:path}", include_in_schema=False)
+    @prefixed.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+    @prefixed.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     async def spa(path: str = ""):
         if path.startswith("api/") or path.startswith("static/") or path.startswith("uploads/"):
             raise HTTPException(404)
@@ -88,7 +88,7 @@ def create_app() -> FastAPI:
             return JSONResponse({"ok": False, "error": "frontend not installed"}, status_code=404)
         return FileResponse(str(index), headers={"Cache-Control": "no-store"})
 
-    @app.get("/healthz", include_in_schema=False)
+    @app.api_route("/healthz", methods=["GET", "HEAD"], include_in_schema=False)
     async def healthz():
         from .db import ping
 
