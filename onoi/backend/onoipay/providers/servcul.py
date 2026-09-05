@@ -4,7 +4,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import urllib.parse
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -21,6 +21,8 @@ from .base import (
     register,
     success,
 )
+
+UTC = timezone.utc
 
 DEFAULT_BASE_URL = "https://partners.servcul.com/CashdeskBotAPI"
 

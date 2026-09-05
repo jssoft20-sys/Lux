@@ -1,10 +1,7 @@
 """End-to-end client bot flows with a fake Telegram client (no network)."""
 from __future__ import annotations
 
-import os
-
 import pytest
-
 from onoipay.db import transaction
 from onoipay.models import Deposit, Notification, User, Withdrawal
 

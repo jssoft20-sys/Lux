@@ -1,7 +1,6 @@
 from decimal import Decimal
 
 import pytest
-
 from onoipay.db import transaction
 from onoipay.models import Deposit, Notification, PaymentCash, PaymentEvent, User
 from onoipay.services import deposits, payments

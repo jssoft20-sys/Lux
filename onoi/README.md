@@ -25,7 +25,7 @@ onoi/
 ## 1. Требования
 
 * Ubuntu 22.04/24.04 (или Debian 12), root-доступ
-* Python 3.11+
+* Python 3.10+ (Ubuntu 22.04 — 3.10, Ubuntu 24.04 — 3.12; установщик берёт самый новый)
 * PostgreSQL 14+ (рекомендуется 16)
 * nginx с HTTPS (Let's Encrypt) на домене `wwweeewww.fit`
 * Токены двух Telegram-ботов (BotFather), доступ к API кассы 1xBet (Servcul: логин, пароль кассира, cashdeskId, hash)
@@ -34,12 +34,13 @@ onoi/
 ## 2. Установка
 
 ```bash
-# распаковать архив и запустить установщик от root
-unzip onoi.zip -d /home/onoi/ && cd /home/onoi/onoi
+# архив лежит в /home/onoi.zip; распаковать в /home/onoi/onoi и запустить установщик от root
+apt install -y unzip
+unzip -o /home/onoi.zip -d /home/onoi/ && cd /home/onoi/onoi
 bash scripts/install.sh
 ```
 
-Скрипт создаёт пользователя `onoi`, каталоги `/home/onoi/{onoi,data,logs,backups}`, виртуальное окружение, PostgreSQL-базу `onoipay`, генерирует секреты в `.env`, применяет миграции, seed и ставит systemd-юниты. Повторный запуск безопасен.
+Скрипт ставит пакеты (Python, PostgreSQL, nginx), создаёт пользователя `onoi`, каталоги `/home/onoi/{onoi,data,logs,backups}`, виртуальное окружение, пользователя и базу PostgreSQL `onoipay` (пароль записывает в `.env`), генерирует секреты, если `.env` ещё нет (готовый `.env` из архива не трогает), применяет миграции, seed, ставит systemd-юниты и nginx-сниппеты. Повторный запуск безопасен.
 
 Ручная установка (если без скрипта):
 
@@ -122,20 +123,24 @@ Worker: сопоставление платежей, истечение неоп
 
 ## 10. Настройка домена
 
-Добавьте в существующий `server { listen 443 ssl; server_name wwweeewww.fit; ... }`:
+`install.sh` уже скопировал сниппеты в `/etc/nginx/snippets/onoipay*.conf` и зоны `limit_req` в `/etc/nginx/conf.d/onoipay-zones.conf`. Остаётся подключить префикс `/onoipay/` к домену.
+
+**Вариант А — у `wwweeewww.fit` уже есть `server {}` блок** (найти: `grep -rl wwweeewww.fit /etc/nginx/sites-enabled /etc/nginx/conf.d`). Внутрь блока с `listen 443 ssl` добавьте одну строку:
 
 ```nginx
 include /etc/nginx/snippets/onoipay.conf;
 ```
 
-и один раз в `http {}` (или перед server):
+**Вариант Б — конфигурации для домена ещё нет:**
 
-```nginx
-limit_req_zone $binary_remote_addr zone=onoipay_login:10m rate=10r/m;
-limit_req_zone $binary_remote_addr zone=onoipay_hook:10m rate=120r/m;
+```bash
+cp /home/onoi/onoi/deployment/nginx/onoipay-site-http.example.conf /etc/nginx/sites-available/wwweeewww.fit
+ln -sf /etc/nginx/sites-available/wwweeewww.fit /etc/nginx/sites-enabled/wwweeewww.fit
+nginx -t && systemctl reload nginx
+certbot --nginx -d wwweeewww.fit        # добавит HTTPS и редирект (см. раздел 11)
 ```
 
-Сниппеты копирует `install.sh` (`deployment/nginx/`). Проксируется только префикс `/onoipay/`, другие сервисы сервера не затрагиваются. Проверка: `nginx -t && systemctl reload nginx`.
+Проверка: `nginx -t && systemctl reload nginx`, затем `curl -sI https://wwweeewww.fit/onoipay/ | head -1` → `HTTP/2 200`. Проксируется только префикс `/onoipay/`, другие сервисы сервера не затрагиваются.
 
 Webhook подтверждений платежей (MacroDroid / банковский форвардер): `https://wwweeewww.fit/onoipay/api/webhooks/payments/<WEBHOOK_SECRET>` (POST текстом, JSON, формой или GET-параметрами; альтернатива — заголовок `X-Webhook-Key` или подпись `X-Signature` = HMAC-SHA256 тела).
 

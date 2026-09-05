@@ -120,7 +120,6 @@ def fake_provider(monkeypatch):
 @pytest.fixture
 def client(seeded):
     from fastapi.testclient import TestClient
-
     from onoipay.app import create_app
 
     app = create_app()

@@ -8,7 +8,7 @@ import json
 import os
 import secrets
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from .config import get_settings
 
-UTC = UTC
+UTC = timezone.utc
 _TZ_CACHE: dict[str, ZoneInfo] = {}
 
 TWO_PLACES = Decimal("0.01")

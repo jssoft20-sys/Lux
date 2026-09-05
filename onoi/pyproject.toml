@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "onoipay"
 version = "1.0.0"
 description = "OnoiPay — payment desk backend, Telegram bots and admin panel"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
@@ -49,7 +49,7 @@ filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]

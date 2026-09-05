@@ -12,9 +12,9 @@ from sqlalchemy import engine_from_config, pool
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "backend"))
 
+from onoipay import models  # noqa: E402,F401
 from onoipay.config import get_settings  # noqa: E402
 from onoipay.db import Base  # noqa: E402
-from onoipay import models  # noqa: E402,F401
 
 config = context.config
 if config.config_file_name is not None:
