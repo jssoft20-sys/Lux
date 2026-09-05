@@ -10,7 +10,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -27,8 +27,28 @@ def _find_env_file() -> str | None:
     return None
 
 
+def _strip_inline_comment(value: object) -> object:
+    """``KEY=value   # comment`` — systemd's EnvironmentFile keeps the comment as part of the value."""
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if text[:1] in ("'", '"'):
+        return value
+    head, sep, _ = text.partition(" #")
+    if not sep:
+        head, sep, _ = text.partition("\t#")
+    return head.rstrip() if sep else value
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=_find_env_file(), env_file_encoding="utf-8", extra="ignore")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _clean_env_values(cls, data: object) -> object:
+        if isinstance(data, dict):
+            return {k: _strip_inline_comment(v) for k, v in data.items()}
+        return data
 
     # --- runtime -----------------------------------------------------------
     app_env: str = Field(default="production", alias="APP_ENV")
