@@ -36,14 +36,14 @@ services:
       HOST: 0.0.0.0
       DATA_DIR: /app/data
     ports:
-      - "127.0.0.1:7030:7030"
+      - "127.0.0.1:7031:7031"
     depends_on:
       migrate:
         condition: service_completed_successfully
     volumes:
       - appdata:/app/data
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:7030/healthz').status==200 else 1)\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:7031/healthz').status==200 else 1)\""]
       interval: 15s
       timeout: 5s
       retries: 5

@@ -11,5 +11,5 @@ COPY alembic.ini ./
 RUN pip install --no-cache-dir -r requirements.txt zxing-cpp && pip install --no-cache-dir -e .
 RUN useradd -m onoi && mkdir -p /app/data && chown -R onoi /app
 USER onoi
-EXPOSE 7030
+EXPOSE 7031
 CMD ["python", "-m", "onoipay.server"]

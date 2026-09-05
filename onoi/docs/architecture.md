@@ -4,7 +4,7 @@
 
 | Процесс | Команда | Назначение |
 |---|---|---|
-| backend | `python -m onoipay.server` | HTTP API и админка на порту 7030 (uvicorn, 1 процесс; при необходимости — несколько инстансов за nginx) |
+| backend | `python -m onoipay.server` | HTTP API и админка на порту 7031 (uvicorn, 1 процесс; при необходимости — несколько инстансов за nginx) |
 | worker | `python -m onoipay.workers.main` | фоновые задачи: платежи, истечение заявок, зависшие зачисления, мониторинг касс, push, очередь jobs, IMAP |
 | bot | `python -m onoibot.main_bot` | клиентский Telegram-бот (long polling) + доставка уведомлений клиентам (`notifications.channel=telegram_user, bot=main`) |
 | support | `python -m onoibot.support_bot` | бот поддержки + доставка ответов операторов и Telegram-уведомлений админам |

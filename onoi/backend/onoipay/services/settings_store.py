@@ -61,6 +61,14 @@ DEFAULTS: dict[str, Any] = {
     "support_duplicate_window_seconds": 600,
     "support_escalation_cooldown_seconds": 300,
     "support_auto_resolve_hours": 48,
+    # operator quick replies (editable in the admin panel: Меню → Быстрые ответы)
+    "custom_quick_replies": [
+        {"id": "q1", "title": "Проверяю", "text": "Здравствуйте, {name}! Проверяю вашу заявку, ответ будет в течение нескольких минут."},
+        {"id": "q2", "title": "Зачислено", "text": "Средства зачислены на счёт ID {id}. Проверьте баланс в кассе. Спасибо, что вы с OnoiPay!"},
+        {"id": "q3", "title": "Нужен чек", "text": "Пришлите, пожалуйста, скриншот чека об оплате (сумма, время и номер операции), чтобы мы нашли платёж."},
+        {"id": "q4", "title": "Вывод в работе", "text": "Ваш вывод принят в обработку. Обычно это занимает от 5 минут до 24 часов — как только средства уйдут, придёт уведомление."},
+        {"id": "q5", "title": "Код не подходит", "text": "Код вывода не найден или уже использован. Создайте новый код в кассе (Город: Бишкек, Адрес: ул. OnoiPay 24/7) и отправьте его боту."},
+    ],
     # notifications
     "notify_new_deposit": True,
     "notify_deposit_success": False,

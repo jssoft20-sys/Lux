@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     app_env: str = Field(default="production", alias="APP_ENV")
     app_name: str = Field(default="OnoiPay", alias="APP_NAME")
     host: str = Field(default="127.0.0.1", alias="HOST")
-    port: int = Field(default=7030, alias="PORT")
+    port: int = Field(default=7031, alias="PORT")
     public_url: str = Field(default="https://wwweeewww.fit", alias="PUBLIC_URL")
     base_path: str = Field(default="/onoipay", alias="BASE_PATH")
     timezone: str = Field(default="Asia/Bishkek", alias="TIMEZONE")

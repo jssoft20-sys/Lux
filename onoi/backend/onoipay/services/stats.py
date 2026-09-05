@@ -32,6 +32,10 @@ def dashboard(db: Session) -> dict[str, Any]:
     dep_failed = db.execute(select(func.count(Deposit.id)).where(Deposit.status == "failed")).scalar() or 0
     wd_pending = db.execute(select(func.count(Withdrawal.id)).where(Withdrawal.status.in_(("created", "processing")))).scalar() or 0
     wd_attention = db.execute(select(func.count(Withdrawal.id)).where(Withdrawal.needs_attention.is_(True), Withdrawal.status.in_(("created", "processing", "failed")))).scalar() or 0
+    wd_deferred = db.execute(select(func.count(Withdrawal.id)).where(Withdrawal.status.in_(("created", "processing")), Withdrawal.deferred.is_(True))).scalar() or 0
+    support_deposit = db.execute(select(func.count(SupportConversation.id)).where(SupportConversation.status.in_(("waiting_operator", "operator")), SupportConversation.category == "deposit")).scalar() or 0
+    support_withdrawal = db.execute(select(func.count(SupportConversation.id)).where(SupportConversation.status.in_(("waiting_operator", "operator")), SupportConversation.category == "withdrawal")).scalar() or 0
+    support_closed = db.execute(select(func.count(SupportConversation.id)).where(SupportConversation.status.in_(("resolved", "closed")))).scalar() or 0
     support_waiting = db.execute(select(func.count(SupportConversation.id)).where(SupportConversation.status == "waiting_operator")).scalar() or 0
     support_open = db.execute(select(func.count(SupportConversation.id)).where(SupportConversation.status.in_(("waiting_operator", "operator")))).scalar() or 0
     users_total = db.execute(select(func.count(User.id))).scalar() or 0
@@ -56,8 +60,12 @@ def dashboard(db: Session) -> dict[str, Any]:
             "deposits_failed": int(dep_failed),
             "withdrawals_pending": int(wd_pending),
             "withdrawals_attention": int(wd_attention),
+            "withdrawals_deferred": int(wd_deferred),
             "support_waiting": int(support_waiting),
             "support_open": int(support_open),
+            "support_deposit": int(support_deposit),
+            "support_withdrawal": int(support_withdrawal),
+            "support_closed": int(support_closed),
             "notifications_unread": int(unread),
         },
         "cashes": cashes,

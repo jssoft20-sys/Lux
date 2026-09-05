@@ -1,6 +1,6 @@
 # OnoiPay
 
-Платёжная касса для Telegram: пополнение и вывод средств игроков через кассы букмекеров (сейчас активна **1xBet**, 1win перенесена и выключена), бот поддержки с автоматизацией, админ-панель `https://wwweeewww.fit/onoipay/`.
+Платёжная касса для Telegram: пополнение и вывод средств игроков через кассы букмекеров (сейчас активна **1xBet**, 1win перенесена и выключена), бот поддержки с автоматизацией, админ-панель `https://wwweeewww.fit/onoipay/` (мобильный интерфейс в стиле прежней панели: нижняя навигация Главная / История / Чат / Поиск / Меню, карточки заявок, плитки меню — Управление OnoiPay, Статистика, Кассы, Выписка, Платёжка, Рассылка, Безопасность, Быстрые ответы, Логи, Настройки, Первая линия).
 
 ```
 onoi/
@@ -18,7 +18,7 @@ onoi/
 └── README.md
 ```
 
-Процессы: **backend** (HTTP :7030), **worker** (фоновые задачи), **bot** (клиентский бот), **support** (бот поддержки). Все используют одну базу PostgreSQL и один `.env`.
+Процессы: **backend** (HTTP :7031), **worker** (фоновые задачи), **bot** (клиентский бот), **support** (бот поддержки). Все используют одну базу PostgreSQL и один `.env`.
 
 ---
 
@@ -59,7 +59,7 @@ nano .env                                       # вставьте секрет�
 chmod 600 .env
 ```
 
-Обязательные поля: `DATABASE_URL`, пять секретов, `MAIN_BOT_TOKEN`, `SUPPORT_BOT_TOKEN`, `PUBLIC_URL=https://wwweeewww.fit`, `BASE_PATH=/onoipay`, `PORT=7030`.
+Обязательные поля: `DATABASE_URL`, пять секретов, `MAIN_BOT_TOKEN`, `SUPPORT_BOT_TOKEN`, `PUBLIC_URL=https://wwweeewww.fit`, `BASE_PATH=/onoipay`, `PORT=7031`.
 `ADMIN_TELEGRAM_CHAT_IDS` — Telegram ID операторов для критических уведомлений через бота поддержки (узнать ID: написать боту, посмотреть в разделе «Пользователи»).
 Все секреты — только в `.env` (права 600), в Git и в коде их нет. Старые секреты из прежнего проекта не используются.
 
@@ -98,7 +98,7 @@ scripts/create_admin.sh --username admin --role owner      # пароль зап
 
 ```bash
 systemctl enable --now onoipay-backend
-curl -s http://127.0.0.1:7030/healthz        # {"ok": true, ...}
+curl -s http://127.0.0.1:7031/healthz        # {"ok": true, ...}
 ```
 
 Вручную (для отладки): `set -a; . ./.env; set +a; venv/bin/python -m onoipay.server`.
@@ -158,13 +158,13 @@ journalctl -u onoipay-backend -n 100
 tail -f /home/onoi/logs/backend.log
 ```
 
-Docker-вариант: `docker compose up -d` (PostgreSQL + все процессы, порт 7030 на 127.0.0.1).
+Docker-вариант: `docker compose up -d` (PostgreSQL + все процессы, порт 7031 на 127.0.0.1).
 
 ## 13. Health check
 
 ```bash
 scripts/healthcheck.sh                                   # backend, БД, все юниты
-curl -s http://127.0.0.1:7030/healthz                    # 200 / 503
+curl -s http://127.0.0.1:7031/healthz                    # 200 / 503
 curl -s https://wwweeewww.fit/onoipay/api/health         # версия, БД, наличие токенов
 ```
 

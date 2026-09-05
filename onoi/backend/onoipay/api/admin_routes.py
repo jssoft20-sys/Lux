@@ -756,9 +756,11 @@ def delete_bank_link(key: str, request: Request, principal: Principal = Depends(
 # ------------------------------------------------------------------------------ support
 
 @router.get("/support/conversations")
-def list_conversations(status: str = "open", q: str = "", page: int = 1, size: int = 0, principal: Principal = Depends(require("support")), db: Session = Depends(get_db)):
+def list_conversations(status: str = "open", q: str = "", category: str = "", page: int = 1, size: int = 0, principal: Principal = Depends(require("support")), db: Session = Depends(get_db)):
     page, size = _page(page, size, db)
     stmt = select(SupportConversation)
+    if category in {"deposit", "withdrawal"}:
+        stmt = stmt.where(SupportConversation.category == category)
     if status == "open":
         stmt = stmt.where(SupportConversation.status.in_(("waiting_operator", "operator")))
     elif status == "waiting":
@@ -777,7 +779,9 @@ def list_conversations(status: str = "open", q: str = "", page: int = 1, size: i
     total = db.execute(select(func.count()).select_from(stmt.order_by(None).subquery())).scalar() or 0
     order = [SupportConversation.status.desc(), SupportConversation.last_message_at.desc().nullslast()] if status == "open" else [SupportConversation.last_message_at.desc().nullslast()]
     rows = db.execute(stmt.order_by(*order).offset((page - 1) * size).limit(size)).scalars().all()
-    return {"ok": True, "items": [support_service.public_conversation(c) for c in rows], "total": int(total), "page": page, "size": size}
+    queues = stats.dashboard(db)["queues"]
+    counts = {"open": queues["support_open"], "waiting": queues["support_waiting"], "closed": queues["support_closed"], "deposit": queues["support_deposit"], "withdrawal": queues["support_withdrawal"]}
+    return {"ok": True, "items": [support_service.public_conversation(c) for c in rows], "total": int(total), "page": page, "size": size, "counts": counts}
 
 
 @router.get("/support/conversations/{conv_id}")
@@ -830,6 +834,32 @@ def set_conversation_status(conv_id: int, body: SupportStatusBody, request: Requ
     db.flush()
     audit(db, "support.status", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), entity_type="support", entity_id=conv.id, details={"status": body.status})
     return {"ok": True, "item": support_service.public_conversation(conv)}
+
+
+@router.get("/quick-replies")
+def quick_replies(principal: Principal = Depends(require("support")), db: Session = Depends(get_db)):
+    items = settings_store.get(db, "custom_quick_replies", []) or []
+    return {"ok": True, "items": [x for x in items if isinstance(x, dict)]}
+
+
+@router.post("/quick-replies")
+def save_quick_replies(body: EditBody, request: Request, principal: Principal = Depends(require("support")), db: Session = Depends(get_db)):
+    """Replace the whole list: {fields: {items: [{id,title,text}, ...]}}."""
+    raw = body.fields.get("items") if isinstance(body.fields, dict) else None
+    if not isinstance(raw, list):
+        raise HTTPException(400, "items must be a list")
+    items = []
+    for i, item in enumerate(raw[:100]):
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()[:80]
+        text = str(item.get("text") or "").strip()[:2000]
+        if not text:
+            continue
+        items.append({"id": str(item.get("id") or f"q{i + 1}")[:24], "title": title or text[:30], "text": text})
+    settings_store.set_many(db, {"custom_quick_replies": items}, principal.admin.username)
+    audit(db, "quick_replies.update", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), details={"count": len(items)})
+    return {"ok": True, "items": items}
 
 
 @router.post("/support/upload")
