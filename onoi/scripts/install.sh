@@ -3,6 +3,7 @@
 #   bash scripts/install.sh
 # Скрипт идемпотентен: повторный запуск обновляет зависимости и сервисы, не трогая .env и БД.
 set -euo pipefail
+trap 'echo "!! ошибка на шаге: $BASH_COMMAND (строка $LINENO)"; exit 1' ERR
 
 APP_USER=onoi
 APP_HOME=/home/onoi
@@ -67,12 +68,12 @@ chmod 600 "$APP_DIR/.env"
 echo "-- PostgreSQL"
 systemctl enable --now postgresql >/dev/null 2>&1 || true
 if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='onoi'" | grep -q 1; then
-  DB_PASS="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 28)"
+  DB_PASS="$("$PY" -c 'import secrets; print(secrets.token_hex(16))')"
   sudo -u postgres psql -qc "CREATE USER onoi WITH PASSWORD '$DB_PASS';"
   sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgresql+psycopg://onoi:$DB_PASS@127.0.0.1:5432/onoipay|" "$APP_DIR/.env"
   echo "   создан пользователь БД onoi (пароль записан в .env)"
 elif grep -q "CHANGE_ME_DB_PASSWORD" "$APP_DIR/.env"; then
-  DB_PASS="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 28)"
+  DB_PASS="$("$PY" -c 'import secrets; print(secrets.token_hex(16))')"
   sudo -u postgres psql -qc "ALTER USER onoi WITH PASSWORD '$DB_PASS';"
   sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgresql+psycopg://onoi:$DB_PASS@127.0.0.1:5432/onoipay|" "$APP_DIR/.env"
   echo "   пользователь БД onoi уже был — задан новый пароль, записан в .env"
