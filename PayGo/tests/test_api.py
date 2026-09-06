@@ -83,7 +83,8 @@ def test_cash_management(logged):
     r = logged.get(P + "/cashes")
     items = r.json()["items"]
     assert [c["key"] for c in items] == ["1xbet", "1win"]
-    assert items[0]["enabled"] and not items[1]["enabled"]
+    assert items[0]["enabled"] and items[1]["enabled"]  # 1xbet and 1win are both enabled by default
+    assert items[0]["emoji"] == "😎" and items[1]["emoji"] == "🥇"
     assert all(f["masked"] != "p" for f in items[0]["credentials"] if f["secret"])
     r = logged.patch(P + f"/cashes/{items[0]['id']}", json={"critical_balance_threshold": "2500", "low_balance_threshold": "30000", "ip_address": "1.2.3.4"})
     assert r.status_code == 200 and r.json()["item"]["critical_balance_threshold"] == "2500.00"

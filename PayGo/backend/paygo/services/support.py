@@ -476,14 +476,16 @@ def _answer(db: Session, user: User, conv: SupportConversation, intent: Intent, 
 
     if cat == "withdrawal":
         if name == "withdrawal_howto":
-            instr = str(settings_store.get(db, "withdraw_instruction") or "")
-            return Reply(instr, buttons=[[_btn("💸 Статус вывода", "sup:wd")]], resolved=True)
+            from .bot_texts import instruction, strip_html
+
+            return Reply(strip_html(instruction(db)), buttons=[[_btn("💸 Статус вывода", "sup:wd")]], resolved=True)
         if name == "withdrawal_cancel":
             if withdrawal and withdrawal.status in {"created", "processing"}:
                 return Reply(f"Заявка {withdrawal.public_id} ({money(withdrawal.amount)} {withdrawal.currency}) уже принята кассой — код использован. Отменить её самостоятельно нельзя, передал оператору: он свяжется здесь и решит вопрос.", escalate=True, category="withdrawal", subject=f"Отмена вывода {withdrawal.public_id}")
             return Reply(withdrawal_status_text(db, withdrawal, lang), buttons=op_button)
         if name == "withdrawal_code":
-            return Reply("Код вывода одноразовый и действует ограниченное время. Если касса пишет «неверный код» — закажите новый вывод в кассе букмекера (город Бишкек, адрес ул. PayGo 24/7) и отправьте свежий код в основном боте. Если код уже был принят — смотрите статус ниже.", buttons=[[_btn("💸 Статус вывода", "sup:wd")], *op_button])
+            city, address = str(settings_store.get(db, "withdraw_city") or ""), str(settings_store.get(db, "withdraw_address") or "")
+            return Reply(f"Код вывода одноразовый и действует ограниченное время. Если касса пишет «неверный код» — закажите новый вывод в кассе букмекера (город {city}, адрес {address}) и отправьте свежий код в основном боте. Если код уже был принят — смотрите статус ниже.", buttons=[[_btn("💸 Статус вывода", "sup:wd")], *op_button])
         status = withdrawal_status_text(db, withdrawal, lang)
         if withdrawal and withdrawal.status in {"created", "processing"}:
             waiting_hours = (utcnow() - as_utc(withdrawal.created_at)).total_seconds() / 3600

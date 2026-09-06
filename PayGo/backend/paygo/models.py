@@ -176,6 +176,17 @@ class PaymentCash(TimestampMixin, Base):
     instructions_text: Mapped[str] = mapped_column(Text, default="", nullable=False)
     instruction_photo: Mapped[str] = mapped_column(String(300), default="", nullable=False)
     notes: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    # bot presentation: emoji in site buttons, step photos with captions (editable in the admin panel)
+    emoji: Mapped[str] = mapped_column(String(16), default="", nullable=False)
+    custom_emoji_id: Mapped[str] = mapped_column(String(32), default="", nullable=False)
+    deposit_photo: Mapped[str] = mapped_column(String(300), default="", nullable=False)
+    deposit_photo_text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    withdraw_photo: Mapped[str] = mapped_column(String(300), default="", nullable=False)
+    withdraw_photo_text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    code_photo: Mapped[str] = mapped_column(String(300), default="", nullable=False)
+    code_photo_text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    withdraw_city: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    withdraw_address: Mapped[str] = mapped_column(String(128), default="", nullable=False)
 
 
 class PaymentRequisite(TimestampMixin, Base):
@@ -219,6 +230,8 @@ class Deposit(TimestampMixin, Base):
     qr_payload: Mapped[str] = mapped_column(Text, default="", nullable=False)
     payment_event_id: Mapped[int | None] = mapped_column(ForeignKey("payment_events.id", ondelete="SET NULL"))
     payment_source: Mapped[str] = mapped_column(String(24), default="", nullable=False)
+    receipt_file: Mapped[str] = mapped_column(String(300), default="", nullable=False)  # client's payment screenshot
+    receipt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     credited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     provider_ref: Mapped[str] = mapped_column(String(128), default="", nullable=False)

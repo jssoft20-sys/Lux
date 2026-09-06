@@ -48,3 +48,23 @@ def test_branded_qr_decodes():
     assert results and results[0].text == value
     small = img.resize((240, 240))
     assert zxing.read_barcodes(small)[0].text == value
+
+
+def test_pay_card_with_overlay_decodes():
+    """The client-facing card (watermark + translucent diagonal text) must scan."""
+    zxing = pytest.importorskip("zxingcpp")
+    import io
+
+    from paygo.services import elqr, qr
+    from PIL import Image
+
+    payload = elqr.inject_amount("00020101021132710013QR.Optima.C2B01032031016109182123435011811112149664:1:1120211130212331500112149664:1:15204999953034175904ELQR", "1500.37")
+    value = elqr.qr_image_value(payload)
+    png = qr.render_pay_card(value, title="ОТСКАНИРУЙТЕ QR", subtitle="В любом банке", overlay="ПОПОЛНЕНИЯ ДЛЯ ОНЛАЙН КАЗИНО", watermark="PAYGO")
+    img = Image.open(io.BytesIO(png))
+    assert img.size == (880, 1100)
+    results = zxing.read_barcodes(img)
+    assert results and results[0].text == value
+    # phone-sized preview (Telegram compresses photos) still decodes
+    small = img.resize((440, 550), Image.LANCZOS)
+    assert zxing.read_barcodes(small)[0].text == value

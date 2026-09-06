@@ -20,7 +20,9 @@ EDITABLE_FIELDS = {
     "deposit_enabled", "withdraw_enabled", "deposit_min", "deposit_max", "withdraw_min", "withdraw_max",
     "deposit_fee_pct", "withdraw_fee_pct", "auto_disable_enabled", "low_balance_threshold",
     "critical_balance_threshold", "auto_enable_threshold", "max_daily_limit", "instructions_text", "notes",
+    "emoji", "custom_emoji_id", "deposit_photo_text", "withdraw_photo_text", "code_photo_text", "withdraw_city", "withdraw_address",
 }
+PHOTO_FIELDS = {"deposit": "deposit_photo", "withdraw": "withdraw_photo", "code": "code_photo", "instruction": "instruction_photo"}
 MONEY_FIELDS = {
     "deposit_min", "deposit_max", "withdraw_min", "withdraw_max", "low_balance_threshold",
     "critical_balance_threshold", "auto_enable_threshold", "max_daily_limit",
@@ -139,6 +141,16 @@ def public_cash(cash: PaymentCash, *, include_secret_shape: bool = True) -> dict
         "status": status_of(cash),
         "instructions_text": cash.instructions_text,
         "instruction_photo": cash.instruction_photo,
+        "emoji": cash.emoji,
+        "custom_emoji_id": cash.custom_emoji_id,
+        "deposit_photo": cash.deposit_photo,
+        "deposit_photo_text": cash.deposit_photo_text,
+        "withdraw_photo": cash.withdraw_photo,
+        "withdraw_photo_text": cash.withdraw_photo_text,
+        "code_photo": cash.code_photo,
+        "code_photo_text": cash.code_photo_text,
+        "withdraw_city": cash.withdraw_city,
+        "withdraw_address": cash.withdraw_address,
         "notes": cash.notes,
         "credentials": shape,
         "created_at": iso(cash.created_at),

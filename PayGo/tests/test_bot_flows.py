@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 from paygo.db import transaction
-from paygo.models import Deposit, Notification, User, Withdrawal
+from paygo.models import Deposit, Notification, Withdrawal
 
 
 class FakeTelegram:
@@ -26,11 +26,11 @@ class FakeTelegram:
         self.calls.append(("photo", caption, kw.get("markup")))
         return self._msg()
 
-    def edit_text(self, chat_id, message_id, text, markup=None):
+    def edit_text(self, chat_id, message_id, text, markup=None, **kw):
         self.calls.append(("edit", text, markup))
         return True
 
-    def edit_caption(self, chat_id, message_id, caption, markup=None):
+    def edit_caption(self, chat_id, message_id, caption, markup=None, **kw):
         self.calls.append(("edit_caption", caption, markup))
         return True
 
@@ -75,6 +75,15 @@ class FakeTelegram:
         markup = self.last[2] or {}
         return [b["callback_data"] for row in markup.get("inline_keyboard", []) for b in row if "callback_data" in b]
 
+    def last_of(self, kind):
+        for k, text, markup in reversed(self.calls):
+            if k == kind:
+                return text, markup
+        return "", None
+
+    def deleted(self):
+        return [text for k, text, _ in self.calls if k == "delete"]
+
 
 @pytest.fixture
 def bot(seeded, fake_provider, monkeypatch):
@@ -112,34 +121,54 @@ def photo(bot):
     bot.handle_update({"update_id": 3, "message": {"message_id": 9, "chat": {"id": CHAT, "type": "private"}, "from": FROM, "photo": [{"file_id": "small"}, {"file_id": "big"}]}})
 
 
-def test_start_shows_inline_menu_only(bot):
+def pick_cash(bot, key="1xbet"):
+    from paygo.services.cashes import get_cash
+
+    with transaction() as db:
+        cash_id = get_cash(db, key).id
+    tap(bot, f"cash:{cash_id}")
+
+
+def state_of():
+    from paygo.services import bot_state
+
+    with transaction() as db:
+        return bot_state.get_state(db, "main", CHAT)
+
+
+def test_start_shows_greeting_with_reply_keyboard(bot):
     text(bot, "/start")
     kind, body, markup = bot.client.last
-    assert kind == "send" and "Али" in body
-    assert "keyboard" not in (markup or {}) and bot.client.buttons() == ["act:deposit", "act:withdraw", "profile", "ref"]
+    assert kind == "send" and "Али" in body and "PayGo" in body
+    labels = [b["text"] for row in markup["keyboard"] for b in row]
+    assert labels == ["📥 Пополнить", "📤 Вывести", "✉️ Помощь"] and "inline_keyboard" not in markup
+    assert state_of()[0] == "idle"
 
 
 def test_deposit_flow_with_currency_mismatch_then_success(bot, fake_provider):
     text(bot, "/start")
-    tap(bot, "act:deposit")  # single enabled cash → straight to ID
-    assert "ID" in bot.client.last[1]
+    text(bot, "Пополнить")  # reply keyboard press → site selection (two enabled cashes)
+    assert "Выберите сайт для пополнения" in bot.client.last[1]
+    assert len([b for b in bot.client.buttons() if b.startswith("cash:")]) == 2
+    pick_cash(bot)
+    assert "Введите ваш ID" in bot.client.last[1] and "1xbet" in bot.client.last[1]
     fake_provider["behaviour"]["lookup_currency"] = "USD"
     text(bot, "123456")
     assert "Валюта аккаунта (USD)" in bot.client.last[1]
     fake_provider["behaviour"]["lookup_currency"] = "KGS"
     text(bot, "654321")  # new ID continues automatically
-    assert "Введите сумму" in bot.client.last[1]
+    assert "Введите сумму пополнения" in bot.client.last[1] and "Минимум: 100" in bot.client.last[1]
     text(bot, "1000")
-    kind, caption, markup = bot.client.last
-    assert kind == "photo" and "К оплате: 1000." in caption and any(b.startswith("cancel:") for b in bot.client.buttons())
+    caption, markup = bot.client.last_of("photo")
+    assert "Ваш ID: 654321" in caption and "Сумма к оплате: 1000." in caption and "5 минут" in caption
+    assert any("cancel:" in b.get("callback_data", "") for row in markup["inline_keyboard"] for b in row)
+    assert "скриншот чека" in bot.client.last[1]  # receipt prompt follows the card
     with transaction() as db:
         dep = db.query(Deposit).one()
         assert dep.player_id == "654321" and dep.status == "created"
-        from paygo.services import bot_state
-
-        state, data, _ = bot_state.get_state(db, "main", CHAT)
-        assert state == "wait_payment" and data["request_id"] == dep.public_id
-    # payment confirmation → success message replaces the card
+    state, data, panel = state_of()
+    assert state == "wait_payment" and data["request_id"] == dep.public_id and data["receipt_prompt_id"] and panel
+    # payment confirmation → success message replaces the card, prompt is removed
     from paygo.services import payments
 
     with transaction() as db:
@@ -149,53 +178,110 @@ def test_deposit_flow_with_currency_mismatch_then_success(bot, fake_provider):
     assert payments.process_event(event_id)["ok"]
     bot.deliver_outbox()
     kind, body, _ = bot.client.last
-    assert kind == "send" and "успешно зачислено" in body
+    assert kind == "send" and "Пополнено" in body and "654321" in body
+    assert str(panel) in bot.client.deleted() and str(data["receipt_prompt_id"]) in bot.client.deleted()
+    assert state_of()[0] == "idle"
     with transaction() as db:
-        from paygo.services import bot_state
-
-        assert bot_state.get_state(db, "main", CHAT)[0] == "idle"
         assert db.query(Notification).filter_by(event="deposit_success").one().status == "sent"
 
 
-def test_withdraw_flow_saves_and_reuses_last_qr(bot, fake_provider):
+def test_expired_deposit_card_is_replaced_by_cancel_notice(bot, fake_provider):
+    from datetime import timedelta
+
+    from paygo.services import deposits as deposit_service
+    from paygo.utils import utcnow
+
     text(bot, "/start")
-    tap(bot, "act:withdraw")
+    text(bot, "Пополнить")
+    pick_cash(bot)
     text(bot, "123456")
-    assert "QR" in bot.client.last[1] and "qr:last" not in bot.client.buttons()
+    text(bot, "500")
+    _, _, panel = state_of()
+    with transaction() as db:
+        dep = db.query(Deposit).one()
+        dep.expires_at = utcnow() - timedelta(seconds=1)
+    with transaction() as db:
+        assert len(deposit_service.expire_deposits(db)) == 1
+    bot.deliver_outbox()
+    kind, body, _ = bot.client.last
+    assert kind == "send" and "Пополнение отменено" in body and "Не переводите по старым реквизитам" in body
+    assert str(panel) in bot.client.deleted()
+    assert state_of()[0] == "idle"
+
+
+def test_receipt_photo_is_stored_for_active_deposit(bot, fake_provider):
+    text(bot, "/start")
+    text(bot, "Пополнить")
+    pick_cash(bot)
+    text(bot, "123456")
+    text(bot, "700")
     photo(bot)
-    assert "код вывода" in bot.client.last[1].lower()
+    assert "Чек получен" in bot.client.last[1]
+    with transaction() as db:
+        dep = db.query(Deposit).one()
+        assert dep.receipt_file.startswith("uploads/receipts/") and dep.receipt_at is not None
+        assert db.query(Notification).filter_by(event="deposit_receipt").count() == 1
+    assert state_of()[0] == "wait_payment"
+
+
+def test_withdraw_flow_qr_then_id_then_code(bot, fake_provider):
+    text(bot, "/start")
+    text(bot, "Вывести")
+    assert "Выберите сайт для вывода" in bot.client.last[1]
+    pick_cash(bot)
+    assert "Отправьте QR код" in bot.client.last[1] and "qr:last" not in bot.client.buttons()
+    photo(bot)
+    assert "Введите ваш ID для вывода" in bot.client.last[1]
+    text(bot, "123456")
+    assert "Введите код для вывода" in bot.client.last[1] and "instr" in bot.client.buttons()
     text(bot, "CODE1234")
-    assert "принята" in bot.client.last[1]
+    body = bot.client.last[1]
+    assert "Заявка на вывод принята" in body and "5300.00" in body and "123456" in body
     with transaction() as db:
         w = db.query(Withdrawal).one()
         assert str(w.amount) == "5300.00" and w.qr_file_url.endswith("/big")
     # second withdrawal offers the last QR
-    tap(bot, "act:withdraw")
-    text(bot, "123456")
+    text(bot, "Вывести")
+    pick_cash(bot)
     assert "Использовать последний QR" in bot.client.last[1] and "qr:last" in bot.client.buttons()
     tap(bot, "qr:last")
-    assert "код вывода" in bot.client.last[1].lower()
+    assert "Введите ваш ID для вывода" in bot.client.last[1]
+    text(bot, "123456")
     fake_provider["behaviour"]["withdraw_ok"] = False
     text(bot, "WRONG123")
-    assert "Неверный код" in bot.client.last[1]
+    assert "Введены неверные данные для вывода" in bot.client.last[1]
+    assert state_of()[0] == "wait_code"
     with transaction() as db:
         assert db.query(Withdrawal).count() == 1
 
 
-def test_profile_and_referral(bot):
+def test_help_profile_and_referral(bot):
     text(bot, "/start")
+    text(bot, "Помощь")
+    assert "Оператор" in bot.client.last[1] and "@PayOperator_bot" in bot.client.last[1]
+    assert bot.client.buttons() == ["instr", "profile", "ref"]
+    tap(bot, "instr")
+    assert "Город: Бишкек" in bot.client.last[1] and "ул. PayGo Online" in bot.client.last[1]
+    tap(bot, "help")
     tap(bot, "profile")
     assert "Профиль" in bot.client.last[1] and "profile:email" in bot.client.buttons()
     tap(bot, "ref")
     assert "start=ref_" in bot.client.last[1]
-    tap(bot, "profile:lang")
-    assert "профили" in bot.client.last[1]  # switched to Kyrgyz labels
+
+
+def test_paused_bot_answers_with_paused_text(bot):
+    from paygo.services import settings_store
+
     with transaction() as db:
-        assert db.query(User).filter_by(telegram_id=CHAT).one().language == "kg"
+        settings_store.set_many(db, {"bot_paused": True}, "test")
+    text(bot, "/start")
+    text(bot, "Пополнить")
+    assert bot.client.last[1] == "Бот временно выключен"
 
 
 def test_stale_button_is_ignored(bot):
     text(bot, "/start")
+    text(bot, "Пополнить")
     before = len(bot.client.calls)
-    bot.handle_update({"update_id": 7, "callback_query": {"id": "old", "data": "act:deposit", "from": FROM, "message": {"message_id": 1, "chat": {"id": CHAT}}}})
+    bot.handle_update({"update_id": 7, "callback_query": {"id": "old", "data": "cash:1", "from": FROM, "message": {"message_id": 1, "chat": {"id": CHAT}}}})
     assert len(bot.client.calls) == before  # no screen change

@@ -21,20 +21,66 @@ DEFAULTS: dict[str, Any] = {
     "withdrawals_enabled": True,
     "brand_name": "PayGo",
     "support_username": "@PayOperator_bot",
-    "greeting_text": "👋 Привет, {name}!\n\n💳 Пополнение и вывод средств\n💸 Комиссия — 0%\n🕐 Работаем 24/7\n🔐 Операции защищены\n\n💬 Поддержка: {support}",
-    "withdraw_instruction": (
+    # ---- bot texts (editable: Меню → Настройки → Тексты бота). Placeholders: {name} {support} {cash} {emoji}
+    #      {player} {amount} {cur} {min} {max} {minutes} {reason} {sla} {city} {address} {have} {need}.
+    #      HTML allowed (<b>, <i>, <blockquote>); premium emoji: [emoji:ID]😎
+    "greeting_text": "👋 Привет {name} в PayGo!\n\n⚡️ Пополнение: 1-5 сек\n💰 Быстрые выводы\n👩‍💻 Работаем: 24/7\n\n<blockquote>🔝 Лучший сервис для пополнений и выводов</blockquote>\n\n💬 Оператор: {support}",
+    "text_help": "💬 Оператор: {support}\n\nИнструкция, профиль и реферальная программа — кнопки ниже.",
+    "text_paused": "Бот временно выключен",
+    "text_blocked": "⛔ Аккаунт заблокирован. Напишите оператору: {support}",
+    "menu_deposit_label": "📥 Пополнить",
+    "menu_withdraw_label": "📤 Вывести",
+    "menu_help_label": "✉️ Помощь",
+    "text_choose_site_deposit": "👍 Выберите сайт для пополнения:",
+    "text_choose_site_withdraw": "👍 Выберите сайт для вывода:",
+    "text_enter_id_deposit": "Введите ваш ID от {emoji} {cash}",
+    "text_enter_amount": "Введите сумму пополнения:\nМинимум: {min} сом\nМаксимум: {max} сом",
+    "text_pay_card": "📌 Ваш ID: {player}\n💵 Сумма к оплате: {amount}\n⏰ Оплатите в течении {minutes} минут",
+    "text_send_receipt": "Отправьте скриншот чека после оплаты 🖼",
+    "text_receipt_ok": "✅ Чек получен. Зачисление произойдёт автоматически после поступления платежа.",
+    "text_deposit_cancelled": "❌ Пополнение отменено\nℹ️ Не переводите по старым реквизитам. Создайте новую заявку нажав на пополнить.",
+    "text_deposit_success": "✅ Пополнено\n💸 {amount} {cur}\n🆔 {player}",
+    "text_deposit_rejected": "❌ Заявка на пополнение отклонена.\n{reason}",
+    "text_send_qr": "Отправьте QR код вашего кошелька",
+    "text_enter_id_withdraw": "Введите ваш ID для вывода",
+    "text_enter_code": "Введите код для вывода",
+    "text_bad_withdraw": "💬 Введены неверные данные для вывода",
+    "text_withdraw_accepted": "✅ Заявка на вывод принята\n💸 {amount} {cur}\n🆔 {player}\n\n{sla}",
+    "text_withdraw_problem": "⚠️ Код принят кассой, но сумма не получена. Заявка передана оператору — повторно код отправлять не нужно.\n🆔 {player}",
+    "text_withdraw_processing": "⏳ Ваш вывод {amount} {cur} взят в обработку оператором.",
+    "text_withdraw_done": "✅ Вывод выполнен\n💸 {amount} {cur}\n🆔 {player}\n\nДеньги отправлены на ваш кошелёк.",
+    "text_withdraw_failed": "❌ Заявка на вывод отклонена.\n{reason}",
+    "text_id_not_found": "ID не найден. Проверьте номер и введите ещё раз",
+    "text_currency_mismatch": "❌ Валюта аккаунта ({have}) не совпадает с валютой кассы ({need}).\nВведите другой ID — счёт в {need}.",
+    "instruction_text": (
         "📌 Инструкция по выводу\n\n"
         "1. Откройте кассу букмекера и выберите «Вывести со счёта»\n"
         "2. Укажите сумму вывода\n"
-        "3. Город: Бишкек\n"
-        "4. Адрес: ул. PayGo 24/7\n"
+        "3. Город: {city}\n"
+        "4. Адрес: {address}\n"
         "5. Подтвердите операцию и получите код\n"
         "6. Отправьте код сюда\n\n"
         "⛔️ Код одноразовый — используйте только свежий."
     ),
+    "instruction_photo": "",
     "withdraw_city": "Бишкек",
-    "withdraw_address": "ул. PayGo 24/7",
+    "withdraw_address": "ул. PayGo Online",
     "withdraw_sla_text": "Вывод обычно занимает от 5 минут до 24 часов.",
+    # bot behaviour
+    "receipt_request_enabled": True,
+    "premium_emoji_enabled": False,
+    "button_styles_enabled": True,
+    "deposit_presets": "500,1000,2000,3000,5000,10000",
+    # QR card (photo sent to the client)
+    "qr_card_title": "ОТСКАНИРУЙТЕ QR",
+    "qr_card_subtitle": "В любом банке",
+    "qr_overlay_text": "ПОПОЛНЕНИЯ ДЛЯ ОНЛАЙН КАЗИНО",
+    "qr_watermark_text": "PAYGO",
+    # requisites: random — случайный из включённых, priority — по приоритету (один основной)
+    "requisite_mode": "random",
+    # webhook protection (in addition to the secret in the URL)
+    "webhook_ip_allowlist": "",
+    "webhook_require_signature": False,
     # deposits
     "payment_timeout_seconds": 300,
     "random_tiyin": True,

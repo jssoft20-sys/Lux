@@ -36,6 +36,12 @@ class TelegramError(Exception):
         return "message is not modified" in self.description.lower()
 
     @property
+    def parse_error(self) -> bool:
+        """Markup rejected (bad HTML, custom emoji not allowed for this bot, button icon/style unsupported)."""
+        low = self.description.lower()
+        return self.code == 400 and any(x in low for x in ("can't parse", "cant parse", "entities", "custom emoji", "custom_emoji", "icon", "style", "button_text", "unsupported"))
+
+    @property
     def cant_edit(self) -> bool:
         low = self.description.lower()
         return "message to edit not found" in low or "message can't be edited" in low or "there is no text in the message" in low or "message is too old" in low
@@ -107,14 +113,18 @@ class TelegramClient:
             payload["parse_mode"] = parse_mode
         return self.call("sendMessage", payload)
 
-    def edit_text(self, chat_id: int, message_id: int, text: str, *, markup: dict | None = None) -> dict[str, Any] | bool:
+    def edit_text(self, chat_id: int, message_id: int, text: str, *, markup: dict | None = None, parse_mode: str | None = None) -> dict[str, Any] | bool:
         payload: dict[str, Any] = {"chat_id": int(chat_id), "message_id": int(message_id), "text": text[:4096], "disable_web_page_preview": True}
         payload["reply_markup"] = markup if markup is not None else {"inline_keyboard": []}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
         return self.call("editMessageText", payload, retries=0)
 
-    def edit_caption(self, chat_id: int, message_id: int, caption: str, *, markup: dict | None = None) -> Any:
+    def edit_caption(self, chat_id: int, message_id: int, caption: str, *, markup: dict | None = None, parse_mode: str | None = None) -> Any:
         payload: dict[str, Any] = {"chat_id": int(chat_id), "message_id": int(message_id), "caption": caption[:1024]}
         payload["reply_markup"] = markup if markup is not None else {"inline_keyboard": []}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
         return self.call("editMessageCaption", payload, retries=0)
 
     def edit_markup(self, chat_id: int, message_id: int, markup: dict | None) -> Any:
@@ -127,12 +137,14 @@ class TelegramClient:
         except TelegramError:
             return False
 
-    def send_photo(self, chat_id: int, photo: str | bytes | Path, *, caption: str = "", markup: dict | None = None, protect: bool = False, filename: str = "photo.png") -> dict[str, Any]:
+    def send_photo(self, chat_id: int, photo: str | bytes | Path, *, caption: str = "", markup: dict | None = None, protect: bool = False, filename: str = "photo.png", parse_mode: str | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {"chat_id": int(chat_id), "caption": caption[:1024]}
         if markup is not None:
             payload["reply_markup"] = markup
         if protect:
             payload["protect_content"] = True
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
         if isinstance(photo, (bytes, bytearray)):
             return self.call("sendPhoto", payload, files={"photo": (filename, bytes(photo), "image/png")})
         if isinstance(photo, Path):
@@ -194,10 +206,39 @@ def inline_keyboard(*rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {"inline_keyboard": [list(row) for row in rows if row]}
 
 
-def button(text: str, callback: str | None = None, *, url: str | None = None) -> dict[str, Any]:
+def reply_keyboard(*rows: list[dict[str, Any] | str], placeholder: str = "", one_time: bool = False) -> dict[str, Any]:
+    """Persistent bottom keyboard (Пополнить / Вывести / Помощь)."""
+    keyboard = [[{"text": b} if isinstance(b, str) else b for b in row] for row in rows if row]
+    markup: dict[str, Any] = {"keyboard": keyboard, "resize_keyboard": True, "is_persistent": True, "one_time_keyboard": bool(one_time)}
+    if placeholder:
+        markup["input_field_placeholder"] = placeholder[:64]
+    return markup
+
+
+def remove_keyboard() -> dict[str, Any]:
+    return {"remove_keyboard": True}
+
+
+def button(text: str, callback: str | None = None, *, url: str | None = None, icon: str = "", style: str = "") -> dict[str, Any]:
+    """Inline or reply button. ``icon`` is a custom-emoji id, ``style`` one of primary/success/danger (Bot API 9.4+)."""
     item: dict[str, Any] = {"text": text}
     if url:
         item["url"] = url
-    else:
+    elif callback is not None:
         item["callback_data"] = (callback or "noop")[:64]
+    if icon:
+        item["icon_custom_emoji_id"] = str(icon)
+    if style:
+        item["style"] = style
     return item
+
+
+def strip_button_extras(markup: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Drop icon/style fields (fallback when the Bot API rejects them)."""
+    if not markup:
+        return markup
+    out = {k: v for k, v in markup.items() if k not in {"inline_keyboard", "keyboard"}}
+    for key in ("inline_keyboard", "keyboard"):
+        if key in markup:
+            out[key] = [[{k: v for k, v in b.items() if k not in {"icon_custom_emoji_id", "style"}} for b in row] for row in markup[key]]
+    return out

@@ -14,6 +14,7 @@ from ..providers import ProviderResult
 from ..utils import iso, money, new_public_id, utcnow
 from . import cashes as cash_service
 from . import elqr, settings_store
+from .bot_texts import render as render_text
 from .logs import log_event
 from .notifications import admin_event, notify_user
 from .users import display_name, touch_qr
@@ -164,18 +165,9 @@ def create_withdrawal(
             level="critical" if not result.ok else None,
         )
         if result.ok:
-            message = (
-                "✅ Заявка на вывод принята.\n\n"
-                f"🎰 Касса: {cash_snapshot.name}\n"
-                f"🆔 ID: {player_id}\n"
-                f"💰 Сумма: {row.amount} {row.currency}\n\n"
-                + str(settings_store.get(db, "withdraw_sla_text") or "")
-            )
+            message = render_text(db, "text_withdraw_accepted", player=player_id, amount=money(row.amount), cur=row.currency, cash=cash_snapshot.name, emoji=cash_snapshot.emoji)
         else:
-            message = (
-                "⚠️ Код принят кассой, но сумма не получена. Заявка передана оператору — повторно код отправлять не нужно.\n\n"
-                f"🎰 Касса: {cash_snapshot.name}\n🆔 ID: {player_id}"
-            )
+            message = render_text(db, "text_withdraw_problem", player=player_id, cash=cash_snapshot.name, emoji=cash_snapshot.emoji)
         return {"ok": True, "withdrawal": public_withdrawal(row), "message": message, "problem": not result.ok}
 
 
@@ -193,7 +185,7 @@ def take(db: Session, w: Withdrawal, operator_id: int | None) -> bool:
     w.processing_started_at = utcnow()
     w.operator_id = operator_id
     db.flush()
-    notify_user(db, db.get(User, w.user_id), event="withdrawal_processing", event_key=f"withdrawal_processing:{w.id}", text=f"⏳ Ваш вывод {w.amount} {w.currency} взят в обработку оператором.", data={"request_id": w.public_id, "kind": "withdraw"})
+    notify_user(db, db.get(User, w.user_id), event="withdrawal_processing", event_key=f"withdrawal_processing:{w.id}", text=render_text(db, "text_withdraw_processing", player=w.player_id, amount=money(w.amount), cur=w.currency), data={"request_id": w.public_id, "kind": "withdraw"})
     log_event(db, "Вывод взят в обработку", w.public_id, category="withdrawals", entity_type="withdrawal", entity_id=w.public_id)
     return True
 
@@ -211,7 +203,7 @@ def complete(db: Session, w: Withdrawal, operator_id: int | None) -> bool:
     w.error = ""
     db.flush()
     cash = db.get(PaymentCash, w.cash_id)
-    _final_notify(db, w, f"✅ Вывод выполнен!\n\n🎰 Касса: {cash.name if cash else ''}\n🆔 ID: {w.player_id}\n💰 Сумма: {money(w.amount)} {w.currency}\n\nДеньги отправлены на ваш банковский счёт.", "success")
+    _final_notify(db, w, render_text(db, "text_withdraw_done", player=w.player_id, amount=money(w.amount), cur=w.currency, cash=cash.name if cash else "", emoji=cash.emoji if cash else ""), "success")
     log_event(db, "Вывод выполнен", f"{w.public_id} • {money(w.amount)} {w.currency}", category="withdrawals", entity_type="withdrawal", entity_id=w.public_id)
     admin_event(db, "withdrawal_status", f"withdrawal_success:{w.id}", "✅ Вывод выполнен", f"{cash.name if cash else ''} • {money(w.amount)} {w.currency} • ID {w.player_id}", {"withdrawal_id": w.id, "url": f"#/withdrawals/{w.id}"})
     return True
@@ -227,7 +219,7 @@ def fail(db: Session, w: Withdrawal, operator_id: int | None, reason: str, *, ca
     w.needs_attention = False
     w.deferred = False
     db.flush()
-    _final_notify(db, w, "❌ Заявка на вывод отклонена." + (f"\nПричина: {reason}" if reason else " Если нужна проверка — напишите в поддержку."), "cancelled" if cancel else "failed")
+    _final_notify(db, w, render_text(db, "text_withdraw_failed", reason=(f"Причина: {reason}" if reason else "Если нужна проверка — напишите оператору."), player=w.player_id, amount=money(w.amount), cur=w.currency), "cancelled" if cancel else "failed")
     log_event(db, "Вывод отклонён" if cancel else "Ошибка вывода", f"{w.public_id} • {reason}", level="warning", category="withdrawals", entity_type="withdrawal", entity_id=w.public_id)
     admin_event(db, "withdrawal_status", f"withdrawal_{w.status}:{w.id}", "❌ Вывод отклонён", f"{w.public_id} • {reason}", {"withdrawal_id": w.id, "url": f"#/withdrawals/{w.id}"})
     return True

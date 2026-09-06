@@ -19,6 +19,7 @@ from ..models import BankLink, Deposit, PaymentCash, PaymentEvent, PaymentRequis
 from ..utils import as_utc, iso, money, new_public_id, utcnow
 from . import cashes as cash_service
 from . import elqr, settings_store
+from .bot_texts import render as render_text
 from .logs import log_event
 from .notifications import admin_event, notify_user
 from .users import apply_referral_reward, display_name
@@ -223,7 +224,7 @@ def expire_deposits(db: Session) -> list[Deposit]:
             deposit.user_id and db.get(User, deposit.user_id),
             event="deposit_expired",
             event_key=f"deposit_expired:{deposit.id}",
-            text="⏰ Время оплаты истекло, заявка на пополнение закрыта.\n\n❌ Не переводите деньги по старым реквизитам.\nНажмите «Пополнить», чтобы создать новую заявку.",
+            text=render_text(db, "text_deposit_cancelled", player=deposit.player_id, amount=money(deposit.pay_amount), cur=deposit.currency),
             data={"request_id": deposit.public_id, "final": "expired", "replace": True},
         )
     db.flush()
@@ -262,13 +263,7 @@ def _finalize_success(db: Session, deposit_id: int, result_data: Any, reference:
     seconds = max(1, int((now - as_utc(deposit.processing_started_at or now)).total_seconds()))
     user = db.get(User, deposit.user_id)
     cash = db.get(PaymentCash, deposit.cash_id)
-    text = (
-        "✅ Пополнение успешно зачислено!\n\n"
-        f"🎰 Касса: {cash.name if cash else ''}\n"
-        f"🆔 ID: {deposit.player_id}\n"
-        f"💰 Зачислено: {money(deposit.pay_amount)} {deposit.currency}\n\n"
-        f"⏱ Обработка: {seconds} сек"
-    )
+    text = render_text(db, "text_deposit_success", player=deposit.player_id, amount=money(deposit.pay_amount), cur=deposit.currency, cash=cash.name if cash else "", emoji=cash.emoji if cash else "", seconds=seconds)
     notify_user(
         db,
         user,
@@ -384,7 +379,7 @@ def mark_success_manual(db: Session, deposit: Deposit, operator_id: int | None, 
         db.get(User, deposit.user_id),
         event="deposit_success",
         event_key=f"deposit_success:{deposit.id}",
-        text=f"✅ Пополнение зачислено!\n\n🎰 Касса: {cash.name if cash else ''}\n🆔 ID: {deposit.player_id}\n💰 Зачислено: {money(deposit.pay_amount)} {deposit.currency}",
+        text=render_text(db, "text_deposit_success", player=deposit.player_id, amount=money(deposit.pay_amount), cur=deposit.currency, cash=cash.name if cash else "", emoji=cash.emoji if cash else ""),
         data={"request_id": deposit.public_id, "final": "success", "replace": True},
     )
     log_event(db, "Пополнение подтверждено вручную", f"{deposit.public_id} • {reason}", category="deposits", entity_type="deposit", entity_id=deposit.public_id)
@@ -404,7 +399,7 @@ def reject_deposit(db: Session, deposit: Deposit, operator_id: int | None, reaso
         db.get(User, deposit.user_id),
         event="deposit_rejected",
         event_key=f"deposit_rejected:{deposit.id}",
-        text="❌ Заявка на пополнение отклонена." + (f"\nПричина: {reason}" if reason else " Если нужна проверка — напишите в поддержку."),
+        text=render_text(db, "text_deposit_rejected", reason=(f"Причина: {reason}" if reason else "Если нужна проверка — напишите оператору."), player=deposit.player_id, amount=money(deposit.pay_amount), cur=deposit.currency),
         data={"request_id": deposit.public_id, "final": "cancelled", "replace": True},
     )
     log_event(db, "Пополнение отклонено", f"{deposit.public_id} • {reason}", level="warning", category="deposits", entity_type="deposit", entity_id=deposit.public_id)
