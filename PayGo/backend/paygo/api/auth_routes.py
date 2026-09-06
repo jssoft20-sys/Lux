@@ -10,7 +10,16 @@ from ..models import Admin
 from ..services import auth as auth_service
 from ..services.logs import audit
 from ..utils import iso
-from .deps import CSRF_COOKIE, SESSION_COOKIE, Principal, client_ip, current_principal, get_db, require
+from .deps import (
+    CSRF_COOKIE,
+    SESSION_COOKIE,
+    Principal,
+    client_ip,
+    current_principal,
+    enforce_admin_allowlist,
+    get_db,
+    require,
+)
 from .schemas import AdminCreateBody, AdminUpdateBody, LoginBody, PasswordChangeBody
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -55,6 +64,7 @@ def principal_payload(principal: Principal) -> dict:
 
 @router.post("/login")
 def login(body: LoginBody, request: Request, response: Response, db: Session = Depends(get_db)):
+    enforce_admin_allowlist(request)
     ip = client_ip(request)
     try:
         admin, session, token = auth_service.login(db, body.username, body.password, ip, request.headers.get("user-agent", ""))

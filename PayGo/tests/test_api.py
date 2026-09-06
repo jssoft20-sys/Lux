@@ -194,14 +194,14 @@ def test_deposit_amount_edit_regenerates_qr_and_notifies(logged, user, fake_prov
 
 def test_requisite_mode_random_rotates(logged, user):
     from paygo.db import transaction
-    from paygo.models import PaymentCash, PaymentRequisite, User
+    from paygo.models import PaymentCash, PaymentRequisite
     from paygo.services import deposits as deposit_service
     from paygo.services import settings_store
 
     with transaction() as db:
         db.add(PaymentRequisite(name="Second", bank_type="optima", bank_name="Optima Bank", enabled=True, priority=200, payload="00020101021132710013QR.Optima.C2B01032031016109182123435011811112149664:1:1120211130212331500112149664:1:15204999953034175904ELQR", account="2", holder="2"))
     seen = set()
-    for i in range(30):
+    for _ in range(30):
         with transaction() as db:
             cash = db.query(PaymentCash).filter_by(key="1xbet").one()
             seen.add(deposit_service.choose_requisite(db, cash).name)
@@ -209,7 +209,7 @@ def test_requisite_mode_random_rotates(logged, user):
     with transaction() as db:
         settings_store.set_many(db, {"requisite_mode": "priority"}, "test")
     seen = set()
-    for i in range(10):
+    for _ in range(10):
         with transaction() as db:
             cash = db.query(PaymentCash).filter_by(key="1xbet").one()
             seen.add(deposit_service.choose_requisite(db, cash).name)
@@ -240,3 +240,20 @@ def test_webhook_ip_allowlist_and_signature_policy(client, logged, user):
     assert r.status_code == 200 and r.json()["url"].endswith(secret) and r.json()["recent"]
     r = logged.post(P + "/webhook-info/test")
     assert r.status_code == 200 and r.json()["event"]["source"] == "test" and r.json()["event"]["status"] in {"unmatched", "received", "processing"}
+
+
+def test_admin_ip_allowlist(client, admin, monkeypatch):
+    from paygo.config import reset_settings_cache
+
+    monkeypatch.setenv("ADMIN_IP_ALLOWLIST", "203.0.113.0/24")
+    reset_settings_cache()
+    try:
+        r = client.post(P + "/auth/login", json={"username": admin["username"], "password": admin["password"]})
+        assert r.status_code == 403 and r.json()["error"] == "IP_NOT_ALLOWED"
+        r = client.get(P + "/live")
+        assert r.status_code == 403
+    finally:
+        monkeypatch.delenv("ADMIN_IP_ALLOWLIST")
+        reset_settings_cache()
+    r = client.post(P + "/auth/login", json={"username": admin["username"], "password": admin["password"]})
+    assert r.status_code == 200

@@ -29,6 +29,35 @@ def get_db() -> Iterator[Session]:
         session.close()
 
 
+def ip_in_list(ip: str, allowlist: str) -> bool:
+    """Comma/space separated IPs or CIDR networks; empty list allows everyone."""
+    import ipaddress
+
+    entries = [x.strip() for x in str(allowlist or "").replace(";", ",").split(",") if x.strip()]
+    if not entries:
+        return True
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    for entry in entries:
+        try:
+            if "/" in entry:
+                if addr in ipaddress.ip_network(entry, strict=False):
+                    return True
+            elif addr == ipaddress.ip_address(entry):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def enforce_admin_allowlist(request: Request) -> None:
+    allowlist = get_settings().admin_ip_allowlist
+    if allowlist and not ip_in_list(client_ip(request), allowlist):
+        raise HTTPException(status_code=403, detail="IP_NOT_ALLOWED")
+
+
 def client_ip(request: Request) -> str:
     settings = get_settings()
     if settings.trust_proxy:
@@ -78,6 +107,7 @@ def _principal_from_request(request: Request, db: Session, *, touch: bool = True
 
 
 def current_principal(request: Request, db: Session = Depends(get_db)) -> Principal:
+    enforce_admin_allowlist(request)
     principal = _principal_from_request(request, db)
     if principal is None:
         raise HTTPException(status_code=401, detail="UNAUTHORIZED")

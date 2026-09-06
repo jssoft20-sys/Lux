@@ -1,166 +1,121 @@
 # PayGo
 
-Платёжная касса для Telegram: пополнение и вывод средств игроков через кассы букмекеров (сейчас активна **1xBet**, 1win перенесена и выключена), бот поддержки с автоматизацией, админ-панель `https://wwweeewww.fit/paygo/` (мобильный интерфейс в стиле прежней панели: нижняя навигация Главная / История / Чат / Поиск / Меню, карточки заявок, плитки меню — Управление PayGo, Статистика, Кассы, Выписка, Платёжка, Рассылка, Безопасность, Быстрые ответы, Логи, Настройки, Первая линия).
+Платёжная касса для Telegram: пополнение и вывод средств игроков через кассы букмекеров (**1xbet** и **1win** включены), бот поддержки с автоматизацией, мобильная админ-панель `https://wwweeewww.fit/paygo/`.
 
 ```
-paygo/
-├── backend/paygo/     FastAPI-бэкенд: API, сервисы, провайдеры касс, воркеры
-├── bot/paygobot/         Telegram-боты: основной (@PayGoXBot) и поддержка (@PayOperator_bot)
-├── frontend/admin/      Админ-панель (статический SPA без сборки)
-├── database/            Справочная схема PostgreSQL, примеры seed
-├── migrations/          Alembic-миграции
-├── deployment/          systemd-юниты, nginx
-├── scripts/             install, migrate, create_admin, backup, restore, update, healthcheck
-├── docs/                Архитектура, безопасность, поддержка, API, эксплуатация
-├── tests/               pytest (SQLite и PostgreSQL)
-├── .env.example         Шаблон переменных окружения
-├── docker-compose.yml   Альтернативный запуск в Docker
-└── README.md
+/home/PayGo/                 ← весь проект в одном каталоге
+├── backend/paygo/          FastAPI-бэкенд: API, сервисы, провайдеры касс, воркеры, тексты бота
+├── bot/paygobot/           Telegram-боты: клиентский (@PayGoXBot) и оператор (@PayOperator_bot)
+├── frontend/admin/         Админ-панель (статический SPA без сборки)
+├── migrations/             Alembic-миграции
+├── deployment/             systemd-юниты, nginx
+├── scripts/                install, migrate, create_admin, backup, restore, update, healthcheck
+├── docs/                   Архитектура, безопасность, поддержка, API, эксплуатация
+├── tests/                  pytest (SQLite и PostgreSQL)
+├── venv/ data/ logs/ backups/   создаются установщиком
+└── .env                    все секреты и токены (права 600)
 ```
 
-Процессы: **backend** (HTTP :7035), **worker** (фоновые задачи), **bot** (клиентский бот), **support** (бот поддержки). Все используют одну базу PostgreSQL и один `.env`.
+Процессы: **backend** (HTTP :7035), **worker** (фоновые задачи), **bot** (клиентский бот), **support** (бот-оператор). Все используют одну базу PostgreSQL и один `.env`.
 
 ---
 
 ## 1. Требования
 
 * Ubuntu 22.04/24.04 (или Debian 12), root-доступ
-* Python 3.10+ (Ubuntu 22.04 — 3.10, Ubuntu 24.04 — 3.12; установщик берёт самый новый)
-* PostgreSQL 14+ (рекомендуется 16)
-* nginx с HTTPS (Let's Encrypt) на домене `wwweeewww.fit`
-* Токены двух Telegram-ботов (BotFather), доступ к API кассы 1xBet (Servcul: логин, пароль кассира, cashdeskId, hash)
-* Почта Timeweb для SMTP (необязательно, нужна для подтверждения e-mail)
+* Python 3.10+ (установщик выбирает самый новый из 3.10–3.12)
+* PostgreSQL 14+ (ставится установщиком)
+* nginx с HTTPS на домене `wwweeewww.fit` (уже есть — подключается одной строкой)
+* Токены ботов уже в `.env` из архива; доступ к API касс (1xbet: Servcul — логин, пароль кассира, cashdeskId, hash; 1win: API-ключ)
+* MacroDroid на телефоне с приложением банка — для подтверждений платежей
 
 ## 2. Установка
 
-```bash
-# архив лежит в /home/PayGo.zip; распаковать в /home/PayGo и запустить установщик от root
-apt install -y unzip
-unzip -o /home/paygo.zip -d /home/ && cd /home/PayGo
-bash scripts/install.sh
-```
-
-Скрипт ставит пакеты (Python, PostgreSQL, nginx), создаёт пользователя `paygo`, каталоги `/home/PayGo/{paygo,data,logs,backups}`, виртуальное окружение, пользователя и базу PostgreSQL `paygo` (пароль записывает в `.env`), генерирует секреты, если `.env` ещё нет (готовый `.env` из архива не трогает), применяет миграции, seed, ставит systemd-юниты и nginx-сниппеты. Повторный запуск безопасен.
-
-Ручная установка (если без скрипта):
+Архив `paygo.zip` содержит папку `PayGo/`. Загрузите его в `/home/` и выполните от root:
 
 ```bash
-useradd -m -s /bin/bash paygo
-mkdir -p /home/PayGo/{data,logs,backups}
-cp -r paygo /home/PayGo && chown -R paygo:paygo /home/PayGo
-sudo -u paygo bash -c 'cd /home/PayGo && python3 -m venv venv && venv/bin/pip install -r requirements.txt zxing-cpp && venv/bin/pip install -e .'
+apt install -y unzip sudo
+unzip -o /home/paygo.zip -d /home/
+cd /home/PayGo && bash scripts/install.sh
 ```
 
-## 3. Создание .env
+Скрипт ставит пакеты (Python, PostgreSQL, nginx), создаёт пользователя `paygo` с домашним каталогом `/home/PayGo`, виртуальное окружение, пользователя и базу PostgreSQL `paygo` (пароль записывает в `.env`), применяет миграции и seed (кассы 1xbet и 1win, кнопки банков), ставит systemd-юниты `paygo-*` и nginx-сниппеты. Готовый `.env` из архива не трогает; повторный запуск безопасен.
+
+## 3. .env
+
+Уже заполнен: секреты, токены ботов, `PORT=7035`, `BASE_PATH=/paygo`, `PUBLIC_URL=https://wwweeewww.fit`. Проверить/дополнить:
 
 ```bash
-cp .env.example .env
-venv/bin/python -m paygo.cli gen-secrets     # печатает SECRET_KEY, JWT_SECRET, SESSION_SECRET, WEBHOOK_SECRET, ENCRYPTION_KEY, VAPID_*
-nano .env                                       # вставьте секреты, токены ботов, DATABASE_URL, SMTP_*
-chmod 600 .env
+nano /home/PayGo/.env
 ```
 
-Обязательные поля: `DATABASE_URL`, пять секретов, `MAIN_BOT_TOKEN`, `SUPPORT_BOT_TOKEN`, `PUBLIC_URL=https://wwweeewww.fit`, `BASE_PATH=/paygo`, `PORT=7035`.
-`ADMIN_TELEGRAM_CHAT_IDS` — Telegram ID операторов для критических уведомлений через бота поддержки (узнать ID: написать боту, посмотреть в разделе «Пользователи»).
-Все секреты — только в `.env` (права 600), в Git и в коде их нет. Старые секреты из прежнего проекта не используются.
+* `SMTP_USER`, `SMTP_PASSWORD` — почта Timeweb для подтверждения e-mail (необязательно).
+* `ADMIN_TELEGRAM_CHAT_IDS` — Telegram ID операторов для критических уведомлений через бота-оператора.
+* `ADMIN_IP_ALLOWLIST` — при желании ограничить вход в панель адресами офиса/VPN.
 
-## 4. Создание БД
+Все секреты — только в `.env` (права 600), в Git и в коде их нет. Комментарии в `.env` — только отдельными строками (systemd передаёт строку целиком).
+
+## 4. База данных
+
+Создаётся установщиком: пользователь `paygo`, база `paygo`, `DATABASE_URL=postgresql+psycopg://paygo:<пароль>@127.0.0.1:5432/paygo`. Вручную:
 
 ```bash
 sudo -u postgres psql -c "CREATE USER paygo WITH PASSWORD 'СИЛЬНЫЙ_ПАРОЛЬ';"
 sudo -u postgres psql -c "CREATE DATABASE paygo OWNER paygo;"
-# в .env: DATABASE_URL=postgresql+psycopg://paygo:СИЛЬНЫЙ_ПАРОЛЬ@127.0.0.1:5432/paygo
-```
-
-База создаётся чистой. Старая база LUXON не используется. Перенос касс 1xBet/1win и банковских QR-реквизитов из старого `config.json` (пароли/токены старой панели не переносятся):
-
-```bash
-scripts/import_legacy.sh /path/to/old/config.json --enable 1xbet
 ```
 
 ## 5. Миграции
 
 ```bash
-scripts/migrate.sh              # = alembic upgrade head
-venv/bin/python -m paygo.cli seed   # кассы 1xBet (вкл) и 1win (выкл), кнопки банков — идемпотентно
+cd /home/PayGo && scripts/migrate.sh            # = alembic upgrade head
+venv/bin/python -m paygo.cli seed               # кассы и кнопки банков — идемпотентно
 ```
 
-Новая миграция после изменения моделей: `venv/bin/alembic revision --autogenerate -m "..."`.
-
-## 6. Создание администратора
+## 6. Администратор
 
 ```bash
-scripts/create_admin.sh --username admin --role owner      # пароль запросит интерактивно
+sudo -u paygo /home/PayGo/scripts/create_admin.sh --username admin --role owner
 ```
 
-Роли: `viewer` (просмотр), `operator` (заявки, поддержка, пользователи), `admin` (+ кассы, настройки, логи), `owner` (+ администраторы, безопасность). Пароль: минимум 10 символов, буквы разного регистра и цифра.
+Команду запускайте одну — пароль спрашивается интерактивно (≥10 символов, буквы разного регистра и цифра). Роли: `viewer`, `operator` (заявки, поддержка, клиенты), `admin` (+ кассы, настройки, логи), `owner` (+ администраторы, безопасность).
 
-## 7. Запуск backend
+## 7–9. Запуск backend, ботов и worker
 
 ```bash
-systemctl enable --now paygo-backend
-curl -s http://127.0.0.1:7035/healthz        # {"ok": true, ...}
+systemctl restart paygo-backend paygo-worker paygo-bot paygo-support
+systemctl is-active paygo-backend paygo-worker paygo-bot paygo-support
+curl -s http://127.0.0.1:7035/healthz          # {"ok":true,...}
 ```
 
-Вручную (для отладки): `set -a; . ./.env; set +a; venv/bin/python -m paygo.server`.
+Боты работают по long polling (webhook Telegram не нужен). Вручную для отладки: `set -a; . ./.env; set +a; venv/bin/python -m paygo.server`.
 
-## 8. Запуск бота
+## 10. Домен
 
-```bash
-systemctl enable --now paygo-bot        # клиентский бот @PayGoXBot
-systemctl enable --now paygo-support    # бот поддержки @PayOperator_bot
-```
-
-Боты работают через long polling (webhook Telegram не нужен), состояние диалогов хранится в БД, кнопки inline-only.
-
-## 9. Запуск workers
-
-```bash
-systemctl enable --now paygo-worker
-```
-
-Worker: сопоставление платежей, истечение неоплаченных заявок, восстановление зависших зачислений, мониторинг балансов касс с автоотключением, Web Push/Telegram-уведомления админам, очередь задач, автозакрытие тихих обращений, необязательный IMAP-источник платежей.
-
-## 10. Настройка домена
-
-`install.sh` уже скопировал сниппеты в `/etc/nginx/snippets/paygo*.conf` и зоны `limit_req` в `/etc/nginx/conf.d/paygo-zones.conf`. Остаётся подключить префикс `/paygo/` к домену.
-
-**Вариант А — у `wwweeewww.fit` уже есть `server {}` блок** (найти: `grep -rl wwweeewww.fit /etc/nginx/sites-enabled /etc/nginx/conf.d`). Внутрь блока с `listen 443 ssl` добавьте одну строку:
+Сниппеты уже в `/etc/nginx/snippets/paygo*.conf`, зоны limit_req — в `/etc/nginx/conf.d/paygo-zones.conf`. В файл домена (`/etc/nginx/sites-enabled/wwweeewww.fit`) внутрь блока `server { listen 443 ssl; ... }` добавьте одну строку:
 
 ```nginx
 include /etc/nginx/snippets/paygo.conf;
 ```
 
-**Вариант Б — конфигурации для домена ещё нет:**
-
 ```bash
-cp /home/PayGo/deployment/nginx/paygo-site-http.example.conf /etc/nginx/sites-available/wwweeewww.fit
-ln -sf /etc/nginx/sites-available/wwweeewww.fit /etc/nginx/sites-enabled/wwweeewww.fit
 nginx -t && systemctl reload nginx
-certbot --nginx -d wwweeewww.fit        # добавит HTTPS и редирект (см. раздел 11)
+curl -s -o /dev/null -w "%{http_code}\n" https://wwweeewww.fit/paygo/     # 200
 ```
 
-Проверка: `nginx -t && systemctl reload nginx`, затем `curl -sI https://wwweeewww.fit/paygo/ | head -1` → `HTTP/2 200`. Проксируется только префикс `/paygo/`, другие сервисы сервера не затрагиваются.
+Проксируется только префикс `/paygo/`; другие проекты, порты и `location` того же домена не затрагиваются. Если конфигурации домена нет — `deployment/nginx/paygo-site-http.example.conf` + `certbot --nginx -d wwweeewww.fit`.
 
-Webhook подтверждений платежей (MacroDroid / банковский форвардер): `https://wwweeewww.fit/paygo/api/webhooks/payments/<WEBHOOK_SECRET>` (POST текстом, JSON, формой или GET-параметрами; альтернатива — заголовок `X-Webhook-Key` или подпись `X-Signature` = HMAC-SHA256 тела).
+## 11. HTTPS
 
-## 11. Настройка HTTPS
+Сертификат домена уже используется. Приложение за прокси доверяет `X-Forwarded-Proto` (`TRUST_PROXY=true`), cookie ставятся `Secure; HttpOnly; SameSite=Strict`, HSTS включён. Заходить в панель только по HTTPS-домену.
 
-```bash
-apt install certbot python3-certbot-nginx
-certbot --nginx -d wwweeewww.fit
-```
+## 12. systemd
 
-Приложение за прокси доверяет `X-Forwarded-Proto` (`TRUST_PROXY=true`), cookie ставятся с `Secure`, `HttpOnly`, `SameSite=Strict`; HSTS включён.
-
-## 12. systemd / deployment
-
-Юниты: `deployment/systemd/paygo-{backend,worker,bot,support}.service` (пользователь `paygo`, `Restart=always`, логи в `/home/PayGo/logs/*.log`).
+Юниты `paygo-backend`, `paygo-worker`, `paygo-bot`, `paygo-support` (пользователь `paygo`, `Restart=always`, логи `/home/PayGo/logs/*.log`).
 
 ```bash
-systemctl status paygo-backend paygo-worker paygo-bot paygo-support
+systemctl status paygo-backend paygo-worker paygo-bot paygo-support --no-pager
 journalctl -u paygo-backend -n 100
-tail -f /home/PayGo/logs/backend.log
+tail -f /home/PayGo/logs/backend.log /home/PayGo/logs/bot.log
 ```
 
 Docker-вариант: `docker compose up -d` (PostgreSQL + все процессы, порт 7035 на 127.0.0.1).
@@ -168,47 +123,57 @@ Docker-вариант: `docker compose up -d` (PostgreSQL + все процес�
 ## 13. Health check
 
 ```bash
-scripts/healthcheck.sh                                   # backend, БД, все юниты
-curl -s http://127.0.0.1:7035/healthz                    # 200 / 503
-curl -s https://wwweeewww.fit/paygo/api/health         # версия, БД, наличие токенов
+/home/PayGo/scripts/healthcheck.sh                   # backend, БД, все юниты
+curl -s http://127.0.0.1:7035/healthz
+curl -s https://wwweeewww.fit/paygo/api/health       # версия, БД, наличие токенов
 ```
 
 ## 14. Backup
 
 ```bash
-scripts/backup.sh          # /home/PayGo/backups/paygo-YYYYmmdd-HHMM.tar.gz (pg_dump + data/ + .env), хранит 14 копий
-crontab -u paygo -e         # 0 3 * * * /home/PayGo/scripts/backup.sh
+/home/PayGo/scripts/backup.sh                        # /home/PayGo/backups/paygo-YYYYmmdd-HHMM.tar.gz (pg_dump + data/ + .env), 14 копий
+(crontab -u paygo -l 2>/dev/null; echo "0 3 * * * /home/PayGo/scripts/backup.sh") | crontab -u paygo -
 ```
 
 ## 15. Rollback
 
 ```bash
 systemctl stop paygo-bot paygo-support paygo-worker paygo-backend
-scripts/restore.sh /home/PayGo/backups/paygo-YYYYmmdd-HHMM.tar.gz
-venv/bin/alembic downgrade -1        # только если нужно откатить схему на предыдущую версию кода
+/home/PayGo/scripts/restore.sh /home/PayGo/backups/paygo-YYYYmmdd-HHMM.tar.gz
 systemctl start paygo-backend paygo-worker paygo-bot paygo-support
 ```
 
-## 16. Обновление проекта
+## 16. Обновление
 
 ```bash
-scripts/update.sh /path/to/new/paygo   # backup → остановка ботов/воркера → rsync → pip → alembic upgrade → рестарт → healthcheck
+unzip -o /home/paygo.zip -d /tmp/paygo-new
+/home/PayGo/scripts/update.sh /tmp/paygo-new/PayGo    # backup → стоп ботов → rsync → pip → миграции → рестарт → healthcheck
 ```
 
-При ошибке миграции скрипт останавливается, восстановление — `scripts/restore.sh` из только что созданного бэкапа.
+`.env`, `data/`, `venv/` при обновлении не затрагиваются.
 
 ---
+
+## После установки: настройка в панели
+
+1. **Кассы** → 1xbet → Изменить: учётные данные Servcul, «Проверить» (статус «Онлайн», баланс). 1win → API-ключ. Здесь же: эмодзи кнопки, **фото и тексты шагов** (скриншот «где взять ID» для пополнения, «ID для вывода», «код вывода»), город/адрес вывода для кассы, лимиты и пороги автоотключения.
+2. **Платёжка** → Добавить реквизит: фото QR вашего банка или строка ELQR. Режим выбора: **Случайный** (реквизиты чередуются) или **Один основной** (по приоритету). Кнопки банков под QR включаются переключателями.
+3. **MacroDroid** → скопировать адрес webhook (ключ показывается по кнопке), настроить макрос: триггер «Уведомление получено» от приложения банка → действие «HTTP-запрос» POST, Content-Type `application/json`, тело `{"text":"{not_text}","title":"{not_title}","app":"{not_app}"}`. Кнопка «Тест» проверяет связку. Белый список IP и режим «только с подписью» — там же.
+4. **Настройки → Тексты**: все сообщения бота (приветствие, шаги, подпись под QR, «Пополнение отменено», «Пополнено», тексты вывода). Подстановки: `{name} {support} {cash} {emoji} {player} {amount} {cur} {min} {max} {minutes} {reason} {sla} {city} {address}`. Premium-эмодзи: `[emoji:ID:😎]` при включённом переключателе.
+5. **Настройки → Выводы**: город `Бишкек`, адрес `ул. PayGo Online`, сроки, общая инструкция с фото. **Пополнения**: время на оплату, уникальные тыйыны, кнопки сумм, просьба прислать чек, надписи карточки QR.
+6. **Безопасность**: сменить пароль, проверить сессии; **Push** — включить уведомления на телефоне.
+
+Бот: `/start` показывает приветствие и клавиатуру Пополнить / Вывести / Помощь. Заявка на пополнение живёт `payment_timeout_seconds` (5 мин): после истечения QR удаляется, клиент получает «Пополнение отменено… Создайте новую заявку», при оплате — «✅ Пополнено». Поддержка решает проблемы из панели: изменить сумму к оплате (QR пересобирается), ID игрока, зачислить через API, отклонить, посмотреть чек клиента.
 
 ## Разработка и тесты
 
 ```bash
 python3 -m venv venv && venv/bin/pip install -r requirements-dev.txt && venv/bin/pip install -e .
 cp .env.example .env    # APP_ENV=dev, DATABASE_URL=sqlite:///./data/dev.sqlite3
-venv/bin/ruff check backend bot
+venv/bin/alembic upgrade head && venv/bin/python -m paygo.cli seed && venv/bin/python -m paygo.cli create-admin
 venv/bin/pytest -q                                        # SQLite
 TEST_DATABASE_URL=postgresql+psycopg://paygo:pw@127.0.0.1/paygo_test venv/bin/pytest -q   # PostgreSQL
+venv/bin/ruff check backend bot tests
 ```
-
-Тесты покрывают: создание/оплату/ошибку пополнения, повторный webhook (идемпотентность), вывод и дубли кода, QR (генерация и декодирование), несовпадение валют, последний QR, поддержку и антифлуд, админские действия, авторизацию (CSRF, RBAC, brute force), уведомления без дублей, диспетчер кнопок бота.
 
 Документация: `docs/architecture.md`, `docs/security.md`, `docs/support-bot.md`, `docs/api.md`, `docs/operations.md`, `docs/migration-from-luxon.md`.

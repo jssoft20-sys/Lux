@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default=PROJECT_ROOT / "data", alias="DATA_DIR")
     frontend_dir: Path = Field(default=PROJECT_ROOT / "frontend" / "admin", alias="FRONTEND_DIR")
     trust_proxy: bool = Field(default=True, alias="TRUST_PROXY")
+    # optional: only these IPs/CIDRs may use the admin panel and API (empty = no restriction)
+    admin_ip_allowlist: str = Field(default="", alias="ADMIN_IP_ALLOWLIST")
 
     # --- database ----------------------------------------------------------
     database_url: str = Field(default="sqlite:///./data/paygo.sqlite3", alias="DATABASE_URL")
