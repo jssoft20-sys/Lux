@@ -630,3 +630,5 @@ class BankLink(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
     encode_payload: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    emoji: Mapped[str] = mapped_column(String(16), default="", nullable=False)
+    custom_emoji_id: Mapped[str] = mapped_column(String(32), default="", nullable=False)

@@ -93,7 +93,7 @@ def unique_pay_amount(db: Session, requested: Decimal) -> Decimal:
 def bank_link_rows(db: Session) -> list[dict[str, Any]]:
     rows = db.execute(select(BankLink).order_by(BankLink.priority.asc())).scalars().all()
     return [
-        {"key": r.key, "name": r.name, "prefix": r.prefix, "kind": r.kind, "enabled": r.enabled, "priority": r.priority, "encode_payload": r.encode_payload}
+        {"key": r.key, "name": r.name, "prefix": r.prefix, "kind": r.kind, "enabled": r.enabled, "priority": r.priority, "encode_payload": r.encode_payload, "emoji": r.emoji, "custom_emoji_id": r.custom_emoji_id}
         for r in rows
     ]
 

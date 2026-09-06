@@ -86,6 +86,16 @@ class BankLinkBody(BaseModel):
     enabled: bool | None = None
     priority: int | None = None
     encode_payload: bool | None = None
+    emoji: str | None = None
+    custom_emoji_id: str | None = None
+
+
+class SettingsResetBody(BaseModel):
+    keys: list[str]
+
+
+class PremiumTestBody(BaseModel):
+    chat_id: int | str | None = None
 
 
 class SettingsBody(BaseModel):

@@ -156,6 +156,7 @@ class MainBot:
         self.username = settings.main_bot_username
         self._locks: dict[int, threading.RLock] = {}
         self._locks_guard = threading.Lock()
+        self.premium_blocked = False  # set when Telegram rejects custom emoji for this bot (no Fragment username)
         self.dispatcher = Dispatcher(self.client, self.handle_update, name="main", workers=48, offset_store=self._offset_store)
 
     # ------------------------------------------------------------ infra
@@ -212,6 +213,8 @@ class MainBot:
             if not exc.parse_error:
                 raise
             logger.info("markup rejected (%s) — sending plain", exc.description)
+            if "custom emoji" in exc.description.lower() or "custom_emoji" in exc.description.lower():
+                self.premium_blocked = True
             plain, plain_markup = bot_texts.strip_html(text), strip_button_extras(markup)
             if photo is not None:
                 return self.client.send_photo(chat_id, photo, caption=plain, markup=plain_markup, protect=protect)
@@ -443,6 +446,7 @@ class MainBot:
         """Greeting + persistent reply keyboard. An active payment card stays on screen."""
         active = self.active_deposit_id(ctx)
         old, old_kind = ctx.panel_id, str(ctx.data.get("panel_kind") or "text")
+        self.send_greeting_sticker(ctx)
         self.safe_send(ctx.chat_id, self.greeting(ctx, note), self.menu_kb(), protect=True)
         if active:
             data = {**ctx.idle_data(), **{k: ctx.data[k] for k in DEPOSIT_KEYS if k in ctx.data}}
@@ -452,6 +456,25 @@ class MainBot:
         ctx.save("idle", ctx.idle_data(), 0)
         if old and old_kind != "receipt":
             self.delete_later(ctx.chat_id, old)
+
+    def send_greeting_sticker(self, ctx: Ctx) -> None:
+        """One big premium emoji before the greeting (only when the bot may use custom emoji)."""
+        with transaction() as db:
+            premium = settings_store.get_bool(db, "premium_emoji_enabled")
+            token = str(settings_store.get(db, "greeting_sticker") or "").strip()
+        if not premium or not token or self.premium_blocked:
+            return
+        text = bot_texts.render_template(token, premium=True)
+        if "<tg-emoji" not in text:
+            return
+        try:
+            self.client.send_message(ctx.chat_id, text, parse_mode="HTML")
+        except TelegramError as exc:
+            if exc.parse_error:
+                self.premium_blocked = True
+                logger.warning("premium emoji are not available for this bot: %s", exc.description)
+            elif exc.fatal_for_chat:
+                raise
 
     def show_help(self, ctx: Ctx) -> None:
         if ctx.state in FLOW_STATES:
@@ -520,7 +543,7 @@ class MainBot:
             out = []
             for cash in rows:
                 reason = cash_service.deposit_available(db, cash) if action == "deposit" else cash_service.withdraw_available(db, cash)
-                out.append({"id": cash.id, "key": cash.key, "name": cash.name, "emoji": cash.emoji, "custom_emoji_id": cash.custom_emoji_id, "currency": cash.currency, "reason": reason})
+                out.append({"id": cash.id, "key": cash.key, "name": cash.name, "emoji": cash.emoji, "custom_emoji_id": cash.custom_emoji_id, "emoji_token": bot_texts.cash_emoji(cash), "currency": cash.currency, "reason": reason})
             return out
 
     def begin(self, ctx: Ctx, action: str) -> None:
@@ -556,7 +579,7 @@ class MainBot:
 
     def _cash_info(self, cash: PaymentCash) -> dict[str, Any]:
         return {
-            "cash_id": cash.id, "cash_key": cash.key, "cash_name": cash.name, "cash_emoji": cash.emoji, "currency": cash.currency,
+            "cash_id": cash.id, "cash_key": cash.key, "cash_name": cash.name, "cash_emoji": bot_texts.cash_emoji(cash), "currency": cash.currency,
             "dep_min": str(money(cash.deposit_min)), "dep_max": str(money(cash.deposit_max)),
             "deposit_photo": cash.deposit_photo, "deposit_photo_text": cash.deposit_photo_text,
             "withdraw_photo": cash.withdraw_photo, "withdraw_photo_text": cash.withdraw_photo_text,
@@ -705,7 +728,7 @@ class MainBot:
             "player_id": deposit.player_id,
             "cash_id": deposit.cash_id,
             "cash_name": deposit.cash.name if deposit.cash else "",
-            "cash_emoji": deposit.cash.emoji if deposit.cash else "",
+            "cash_emoji": bot_texts.cash_emoji(deposit.cash) if deposit.cash else "",
             "deadline": expires.timestamp() if expires else time.time() + 300,
             "minutes": minutes,
             "qr_payload": deposit.qr_payload,
@@ -724,8 +747,10 @@ class MainBot:
     def card_kb(self, ctx: Ctx, info: dict[str, Any]) -> dict:
         rows = []
         methods = list(info.get("methods") or [])
+        with transaction() as db:
+            premium = settings_store.get_bool(db, "premium_emoji_enabled")
         for i in range(0, len(methods), 2):
-            rows.append([button(m["name"] + " ↗", url=m["url"]) for m in methods[i : i + 2]])
+            rows.append([button((m.get("emoji") + " " if m.get("emoji") and not (premium and m.get("custom_emoji_id")) else "") + m["name"] + " ↗", url=m["url"], icon=str(m.get("custom_emoji_id") or "") if premium else "") for m in methods[i : i + 2]])
         rows.append([button(ctx.T("cancel_deposit"), f"cancel:{info.get('request_id')}")])
         return inline_keyboard(*rows)
 

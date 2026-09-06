@@ -59,3 +59,44 @@ def test_user_upsert_idempotent(seeded):
         a = get_or_create(db, {"id": 5, "username": "u1", "first_name": "A"})
         b = get_or_create(db, {"id": 5, "username": "u2", "first_name": "A"})
         assert a.id == b.id and b.username == "u2" and len(b.referral_code) == 8
+
+
+
+def test_bot_texts_premium_tokens_and_escaping(seeded):
+    from paygo.db import transaction
+    from paygo.services import bot_texts, settings_store
+    from paygo.services.cashes import get_cash
+
+    tpl = "[emoji:5199885118214255386:👋] Привет {name} в PayGo! [emoji:5375410291184002717:👍] {emoji} {cash}"
+    with transaction() as db:
+        cash = get_cash(db, "1win")
+        assert cash.custom_emoji_id == "5247144889640056462"
+        html = bot_texts.render_template(tpl, premium=True, name="<b>Али</b>", emoji=bot_texts.cash_emoji(cash), cash=cash.name)
+        plain = bot_texts.render_template(tpl, premium=False, name="Али", emoji=bot_texts.cash_emoji(cash), cash=cash.name)
+        assert '<tg-emoji emoji-id="5199885118214255386">👋</tg-emoji>' in html and '<tg-emoji emoji-id="5247144889640056462">🥇</tg-emoji>' in html
+        assert "&lt;b&gt;Али&lt;/b&gt;" in html  # user data is escaped, template markup is not
+        assert plain == "👋 Привет Али в PayGo! 👍 🥇 1win"
+        assert settings_store.get_bool(db, "premium_emoji_enabled")
+        greeting = bot_texts.render(db, "greeting_text", name="Али")
+        assert greeting.count("<tg-emoji") == 6 and "@PayOperator_bot" in greeting
+        assert bot_texts.strip_html(greeting).startswith("👋 Привет Али в PayGo!")
+
+
+def test_seed_fills_missing_emoji_on_existing_rows(seeded):
+    from paygo.db import transaction
+    from paygo.models import BankLink, PaymentCash
+    from paygo.seed import seed_defaults
+
+    with transaction() as db:
+        cash = db.query(PaymentCash).filter_by(key="1xbet").one()
+        cash.custom_emoji_id = ""
+        link = db.query(BankLink).filter_by(key="mbank").one()
+        link.custom_emoji_id = ""
+        other = db.query(BankLink).filter_by(key="odengi").one()
+        other.custom_emoji_id = "1"  # operator's own value must survive
+    with transaction() as db:
+        seed_defaults(db)
+    with transaction() as db:
+        assert db.query(PaymentCash).filter_by(key="1xbet").one().custom_emoji_id == "5240186449915039482"
+        assert db.query(BankLink).filter_by(key="mbank").one().custom_emoji_id == "4949565894398314191"
+        assert db.query(BankLink).filter_by(key="odengi").one().custom_emoji_id == "1"

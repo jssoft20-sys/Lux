@@ -242,7 +242,7 @@ def bank_links(payload: str, links: list[dict]) -> list[dict]:
         if not prefix:
             continue
         value = encoded if link.get("encode_payload") else clean
-        out.append({"id": link.get("key"), "name": link.get("name"), "url": prefix + value})
+        out.append({"id": link.get("key"), "name": link.get("name"), "url": prefix + value, "emoji": str(link.get("emoji") or ""), "custom_emoji_id": str(link.get("custom_emoji_id") or "")})
     return out
 
 

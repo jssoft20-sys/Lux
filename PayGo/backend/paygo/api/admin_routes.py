@@ -45,9 +45,11 @@ from .schemas import (
     CashBody,
     EditBody,
     ManualPaymentBody,
+    PremiumTestBody,
     PushSubscribeBody,
     RequisiteBody,
     SettingsBody,
+    SettingsResetBody,
     SupportReplyBody,
     SupportStatusBody,
     UserUpdateBody,
@@ -742,7 +744,7 @@ def upsert_bank_link(body: BankLinkBody, request: Request, principal: Principal 
     if row is None:
         row = BankLink(key=body.key[:24], name=body.name or body.key, prefix=body.prefix or "", kind=body.kind or "link")
         db.add(row)
-    for field in ("name", "prefix", "kind", "enabled", "priority", "encode_payload"):
+    for field in ("name", "prefix", "kind", "enabled", "priority", "encode_payload", "emoji", "custom_emoji_id"):
         value = getattr(body, field)
         if value is not None:
             setattr(row, field, value)
@@ -1157,3 +1159,48 @@ def webhook_test(request: Request, principal: Principal = Depends(require("setti
     fresh = db.get(PaymentEvent, event.id)
     audit(db, "webhook.test", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), details={"event_id": event.id})
     return {"ok": True, "event": payments.public_event(fresh), "result": result}
+
+
+# ------------------------------------------------------------------------ texts reset / premium emoji check
+
+@router.post("/settings/reset")
+def reset_settings(body: SettingsResetBody, request: Request, principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
+    """Return the listed settings (or all bot texts when the list is ["texts"]) to their built-in defaults."""
+    keys = settings_store.TEXT_KEYS if body.keys == ["texts"] else [k for k in body.keys if k in settings_store.DEFAULTS]
+    removed = settings_store.reset_keys(db, keys)
+    audit(db, "settings.reset", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), details={"keys": removed})
+    return {"ok": True, "reset": removed, "values": settings_store.all_settings(db, fresh=True)}
+
+
+@router.post("/settings/premium-test")
+def premium_emoji_test(body: PremiumTestBody, request: Request, principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
+    """Send one message with a custom emoji through the client bot and report whether Telegram accepted it.
+
+    Custom (premium) emoji can only be used by bots that own a collectible username
+    from Fragment; this check tells the operator plainly whether that is the case.
+    """
+    import httpx
+
+    from ..services.bot_texts import render_template
+
+    settings = get_settings()
+    chat_id = body.chat_id or (settings.admin_chat_ids[0] if settings.admin_chat_ids else None)
+    if not chat_id:
+        raise HTTPException(400, "Укажите Telegram ID чата для теста (или заполните ADMIN_TELEGRAM_CHAT_IDS в .env)")
+    if not settings.main_bot_token:
+        raise HTTPException(400, "MAIN_BOT_TOKEN не задан")
+    text = render_template("[emoji:5199885118214255386:👋] Проверка premium-эмодзи PayGo: если вы видите анимированную руку — всё работает.", premium=True)
+    try:
+        response = httpx.post(f"{settings.telegram_api_base}/bot{settings.main_bot_token}/sendMessage", json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"}, timeout=15)
+        data = response.json()
+    except Exception as exc:
+        raise HTTPException(502, f"Telegram недоступен: {str(exc)[:120]}")
+    ok = bool(data.get("ok"))
+    description = str(data.get("description") or "")
+    hint = ""
+    if not ok and ("custom emoji" in description.lower() or "custom_emoji" in description.lower() or "entities" in description.lower()):
+        hint = "Telegram не разрешает этому боту premium-эмодзи. Нужно купить коллекционный username для бота на fragment.com и назначить его боту в BotFather (Bot Settings → Usernames), после чего повторить тест."
+    elif not ok and "chat not found" in description.lower():
+        hint = "Чат не найден: сначала напишите боту /start с этого аккаунта."
+    audit(db, "settings.premium_test", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), details={"ok": ok, "description": description[:200]})
+    return {"ok": True, "sent": ok, "description": description, "hint": hint}

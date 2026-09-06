@@ -257,3 +257,15 @@ def test_admin_ip_allowlist(client, admin, monkeypatch):
         reset_settings_cache()
     r = client.post(P + "/auth/login", json={"username": admin["username"], "password": admin["password"]})
     assert r.status_code == 200
+
+
+def test_settings_reset_and_premium_test_validation(logged):
+    r = logged.post(P + "/settings", json={"values": {"greeting_text": "custom", "text_help": "h"}})
+    assert r.status_code == 200 and r.json()["values"]["greeting_text"] == "custom"
+    r = logged.post(P + "/settings/reset", json={"keys": ["texts"]})
+    assert r.status_code == 200 and set(r.json()["reset"]) == {"greeting_text", "text_help"}
+    assert r.json()["values"]["greeting_text"].startswith("[emoji:")
+    r = logged.post(P + "/settings/premium-test", json={})
+    assert r.status_code == 400  # no chat id and no ADMIN_TELEGRAM_CHAT_IDS in tests
+    r = logged.post(P + "/bank-links", json={"key": "mbank", "custom_emoji_id": "777"})
+    assert r.status_code == 200 and next(x for x in r.json()["items"] if x["key"] == "mbank")["custom_emoji_id"] == "777"

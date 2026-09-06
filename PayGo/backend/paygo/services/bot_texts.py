@@ -97,3 +97,16 @@ def match_menu(db: Session, text: str) -> str:
         if key in words:
             return action
     return ""
+
+
+def emoji_token(emoji: str, custom_emoji_id: str = "") -> str:
+    """Emoji for a template value: a premium token when the id is known (rendered by ``render``), else the plain emoji."""
+    emoji = str(emoji or "").strip()
+    custom_emoji_id = str(custom_emoji_id or "").strip()
+    if emoji and custom_emoji_id.isdigit():
+        return f"[emoji:{custom_emoji_id}:{emoji}]"
+    return emoji
+
+
+def cash_emoji(cash: Any) -> str:
+    return emoji_token(getattr(cash, "emoji", ""), getattr(cash, "custom_emoji_id", ""))

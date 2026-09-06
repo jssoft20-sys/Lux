@@ -14,6 +14,7 @@ set -a; . ./.env; set +a
 if ! venv/bin/alembic upgrade head; then
   echo "!! миграция не прошла — откат: scripts/restore.sh <последний backup>"; exit 1
 fi
+venv/bin/python -m paygo.cli seed >/dev/null || true
 systemctl restart paygo-backend
 sleep 2
 scripts/healthcheck.sh || { echo "!! backend не поднялся, смотрите /home/PayGo/logs/backend.log"; exit 1; }

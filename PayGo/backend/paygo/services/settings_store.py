@@ -24,21 +24,22 @@ DEFAULTS: dict[str, Any] = {
     # ---- bot texts (editable: Меню → Настройки → Тексты бота). Placeholders: {name} {support} {cash} {emoji}
     #      {player} {amount} {cur} {min} {max} {minutes} {reason} {sla} {city} {address} {have} {need}.
     #      HTML allowed (<b>, <i>, <blockquote>); premium emoji: [emoji:ID]😎
-    "greeting_text": "👋 Привет {name} в PayGo!\n\n⚡️ Пополнение: 1-5 сек\n💰 Быстрые выводы\n👩‍💻 Работаем: 24/7\n\n<blockquote>🔝 Лучший сервис для пополнений и выводов</blockquote>\n\n💬 Оператор: {support}",
-    "text_help": "💬 Оператор: {support}\n\nИнструкция, профиль и реферальная программа — кнопки ниже.",
+    "greeting_text": "[emoji:5199885118214255386:👋] Привет {name} в PayGo!\n\n[emoji:5258203794772085854:⚡️] Пополнение: 1-5 сек\n[emoji:5278467510604160626:💰] Быстрые выводы\n[emoji:5269617636001460986:👩‍💻] Работаем: 24/7\n\n<blockquote>[emoji:5409015472517553802:🔝] Лучший сервис для пополнений и выводов</blockquote>\n\n[emoji:5443038326535759644:💬] Оператор: {support}",
+    "greeting_sticker": "[emoji:5278702045883292456:🛍]",
+    "text_help": "[emoji:5443038326535759644:💬] Оператор: {support}\n\nИнструкция, профиль и реферальная программа — кнопки ниже.",
     "text_paused": "Бот временно выключен",
     "text_blocked": "⛔ Аккаунт заблокирован. Напишите оператору: {support}",
     "menu_deposit_label": "📥 Пополнить",
     "menu_withdraw_label": "📤 Вывести",
     "menu_help_label": "✉️ Помощь",
-    "text_choose_site_deposit": "👍 Выберите сайт для пополнения:",
-    "text_choose_site_withdraw": "👍 Выберите сайт для вывода:",
+    "text_choose_site_deposit": "[emoji:5375410291184002717:👍] Выберите сайт для пополнения:",
+    "text_choose_site_withdraw": "[emoji:5375410291184002717:👍] Выберите сайт для вывода:",
     "text_enter_id_deposit": "Введите ваш ID от {emoji} {cash}",
     "text_enter_amount": "Введите сумму пополнения:\nМинимум: {min} сом\nМаксимум: {max} сом",
-    "text_pay_card": "📌 Ваш ID: {player}\n💵 Сумма к оплате: {amount}\n⏰ Оплатите в течении {minutes} минут",
+    "text_pay_card": "[emoji:5397782960512444700:📌] Ваш ID: {player}\n[emoji:5255981634527704754:💵] Сумма к оплате: {amount}\n[emoji:5370844655049008958:⏰] Оплатите в течении {minutes} минут",
     "text_send_receipt": "Отправьте скриншот чека после оплаты 🖼",
     "text_receipt_ok": "✅ Чек получен. Зачисление произойдёт автоматически после поступления платежа.",
-    "text_deposit_cancelled": "❌ Пополнение отменено\nℹ️ Не переводите по старым реквизитам. Создайте новую заявку нажав на пополнить.",
+    "text_deposit_cancelled": "[emoji:5384234898494088007:❌] Пополнение отменено\n[emoji:5879785854284599288:ℹ️] Не переводите по старым реквизитам. Создайте новую заявку нажав на пополнить.",
     "text_deposit_success": "✅ Пополнено\n💸 {amount} {cur}\n🆔 {player}",
     "text_deposit_rejected": "❌ Заявка на пополнение отклонена.\n{reason}",
     "text_send_qr": "Отправьте QR код вашего кошелька",
@@ -68,7 +69,7 @@ DEFAULTS: dict[str, Any] = {
     "withdraw_sla_text": "Вывод обычно занимает от 5 минут до 24 часов.",
     # bot behaviour
     "receipt_request_enabled": True,
-    "premium_emoji_enabled": False,
+    "premium_emoji_enabled": True,
     "button_styles_enabled": True,
     "deposit_presets": "500,1000,2000,3000,5000,10000",
     # QR card (photo sent to the client)
@@ -222,3 +223,21 @@ def invalidate() -> None:
     global _CACHE_AT
     with _LOCK:
         _CACHE_AT = 0.0
+
+
+def reset_keys(db: Session, keys: list[str]) -> list[str]:
+    """Drop stored overrides so the built-in defaults apply again."""
+    global _CACHE_AT
+    removed: list[str] = []
+    for key in keys:
+        row = db.get(SystemSetting, key)
+        if row is not None:
+            db.delete(row)
+            removed.append(key)
+    db.flush()
+    with _LOCK:
+        _CACHE_AT = 0.0
+    return removed
+
+
+TEXT_KEYS = [k for k in DEFAULTS if k.startswith("text_") or k in {"greeting_text", "greeting_sticker", "instruction_text", "menu_deposit_label", "menu_withdraw_label", "menu_help_label"}]
