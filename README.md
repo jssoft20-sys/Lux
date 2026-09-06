@@ -1,5 +1,3 @@
 # Lux
 
-Test
-
-Проект OnoiPay находится в каталоге [`onoi/`](onoi/) (см. `onoi/README.md`). Готовый архив: `dist/onoi.zip`.
+Проект PayGo находится в каталоге [`PayGo/`](PayGo/) (см. `PayGo/README.md`). Готовый архив: `dist/paygo.zip`.

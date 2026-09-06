@@ -1,0 +1,10 @@
+{
+  "name": "PayGo Admin",
+  "short_name": "PayGo",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#e8187a",
+  "icons": [{"src": "brand/paygo-logo.png", "sizes": "180x180", "type": "image/png"}]
+}
