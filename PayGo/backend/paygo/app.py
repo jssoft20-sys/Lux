@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import IntegrityError
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from . import __version__
@@ -62,6 +63,16 @@ def create_app() -> FastAPI:
     @prefixed.exception_handler(HTTPException)
     async def _http_error(request: Request, exc: HTTPException):
         return JSONResponse({"ok": False, "error": exc.detail}, status_code=exc.status_code, headers=getattr(exc, "headers", None))
+
+    @prefixed.exception_handler(IntegrityError)
+    async def _integrity_error(request: Request, exc: IntegrityError):
+        logger.warning("integrity error on %s: %s", request.url.path, str(exc.orig)[:300])
+        return JSONResponse({"ok": False, "error": "Конфликт данных: запись с такими значениями уже есть или ссылается на несуществующий объект"}, status_code=400)
+
+    @prefixed.exception_handler(Exception)
+    async def _unhandled(request: Request, exc: Exception):
+        logger.exception("unhandled error on %s", request.url.path)
+        return JSONResponse({"ok": False, "error": f"Внутренняя ошибка сервера ({type(exc).__name__}) — подробности в logs/backend.log"}, status_code=500)
 
     @prefixed.get("/sw.js", include_in_schema=False)
     async def service_worker():

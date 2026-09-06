@@ -269,3 +269,13 @@ def test_settings_reset_and_premium_test_validation(logged):
     assert r.status_code == 400  # no chat id and no ADMIN_TELEGRAM_CHAT_IDS in tests
     r = logged.post(P + "/bank-links", json={"key": "mbank", "custom_emoji_id": "777"})
     assert r.status_code == 200 and next(x for x in r.json()["items"] if x["key"] == "mbank")["custom_emoji_id"] == "777"
+
+
+def test_requisite_for_all_cashes_and_optima_c2c_link(logged):
+    src = "https://optimabank.kg/index.php?lang=ru#00020101021132620013QR.Optima.C2C010310010129967070007271106emir%20a1202111302125204999953034175906emir%20a63047838"
+    r = logged.post(P + "/requisites", json={"name": "Rus", "source": src, "priority": 100, "cash_id": 0, "notes": ""})
+    assert r.status_code == 200, r.text
+    item = r.json()["item"]
+    assert item["cash_id"] is None and item["bank_name"] == "Optima Bank" and item["account"] == "996707000727"
+    r = logged.patch(P + f"/requisites/{item['id']}", json={"cash_id": 0, "priority": 5})
+    assert r.status_code == 200 and r.json()["item"]["cash_id"] is None and r.json()["item"]["priority"] == 5

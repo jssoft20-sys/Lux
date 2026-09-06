@@ -668,7 +668,7 @@ def create_requisite(body: RequisiteBody, request: Request, principal: Principal
         meta = elqr.bank_meta(body.source)
     except Exception as exc:
         raise HTTPException(400, f"QR не распознан: {exc}")
-    row = PaymentRequisite(name=(body.name or meta["bank_name"])[:64], bank_type=meta["bank_name"].lower().split()[0], bank_name=meta["bank_name"], enabled=body.enabled if body.enabled is not None else True, priority=body.priority or 100, payload=meta["payload"], account=meta["account"][:64], holder=meta["holder"][:128], cash_id=body.cash_id, notes=body.notes or "")
+    row = PaymentRequisite(name=(body.name or meta["bank_name"])[:64], bank_type=(meta["bank_name"].lower().split() or ["bank"])[0], bank_name=meta["bank_name"], enabled=body.enabled if body.enabled is not None else True, priority=body.priority or 100, payload=meta["payload"], account=meta["account"][:64], holder=meta["holder"][:128], cash_id=body.cash_id or None, notes=body.notes or "")
     db.add(row)
     db.flush()
     audit(db, "requisite.create", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), entity_type="requisite", entity_id=row.id)
