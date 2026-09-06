@@ -16,7 +16,14 @@ if ! venv/bin/alembic upgrade head; then
 fi
 venv/bin/python -m paygo.cli seed >/dev/null || true
 systemctl restart paygo-backend
-sleep 2
-scripts/healthcheck.sh || { echo "!! backend не поднялся, смотрите /home/PayGo/logs/backend.log"; exit 1; }
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  curl -fsS "http://127.0.0.1:${PORT:-7035}/healthz" >/dev/null 2>&1 && break
+  sleep 1
+done
+if ! curl -fsS "http://127.0.0.1:${PORT:-7035}/healthz" >/dev/null 2>&1; then
+  echo "!! backend не поднялся, смотрите /home/PayGo/logs/backend.log (боты и worker не запущены)"; exit 1
+fi
 systemctl start paygo-worker paygo-bot paygo-support
+sleep 2
+scripts/healthcheck.sh || { echo "!! часть сервисов не поднялась: systemctl status paygo-worker paygo-bot paygo-support"; exit 1; }
 echo "update: done"

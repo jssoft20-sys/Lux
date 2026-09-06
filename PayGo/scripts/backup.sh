@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 set -a; [ -f .env ] && . ./.env; set +a
-BACKUP_DIR="${BACKUP_DIR:-$HOME/backups}"
+BACKUP_DIR="${BACKUP_DIR:-$(pwd)/backups}"
 mkdir -p "$BACKUP_DIR"
 STAMP="$(date +%Y%m%d-%H%M)"
 TMP="$(mktemp -d)"
