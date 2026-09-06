@@ -128,3 +128,115 @@ def test_security_headers_and_spa(client):
     assert "content-security-policy" in r.headers
     r = client.get("/paygo/api/health")
     assert r.headers["cache-control"] == "no-store"
+
+
+def _png_bytes():
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (40, 40), (200, 30, 30)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_cash_photo_upload_and_private_files(logged, client):
+    r = logged.get(P + "/cashes")
+    cash_id = r.json()["items"][0]["id"]
+    r = logged.post(P + f"/cashes/{cash_id}/photo", data={"kind": "deposit"}, files={"file": ("id.png", _png_bytes(), "image/png")})
+    assert r.status_code == 200, r.text
+    rel = r.json()["path"]
+    assert rel.startswith("uploads/cash/1xbet-deposit-") and r.json()["item"]["deposit_photo"] == rel
+    # served only to signed-in staff
+    r = logged.get(P + "/files/" + rel[len("uploads/"):])
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+    from fastapi.testclient import TestClient
+
+    with TestClient(logged.app) as anon_client:
+        anon = anon_client.get(P + "/files/" + rel[len("uploads/"):])
+    assert anon.status_code in (401, 403)
+    r = logged.get(P + "/files/%2e%2e/%2e%2e/.env")
+    assert r.status_code == 404 and r.headers["content-type"].startswith("application/json")
+    r = logged.post(P + f"/cashes/{cash_id}/photo", data={"kind": "code"}, files={"file": ("x.txt", b"hello", "text/plain")})
+    assert r.status_code == 400
+
+
+def test_deposit_amount_edit_regenerates_qr_and_notifies(logged, user, fake_provider):
+    from paygo.db import transaction
+    from paygo.models import Deposit, Notification, PaymentCash, User
+    from paygo.services import deposits as deposit_service
+    from paygo.services import elqr
+
+    with transaction() as db:
+        cash = db.query(PaymentCash).filter_by(key="1xbet").one()
+        dep, _ = deposit_service.create_deposit(db, user=db.get(User, user), cash=cash, player_id="123456", amount="1000", idempotency_key="edit-1")
+        dep_id, old_pay = dep.id, str(dep.pay_amount)
+    r = logged.post(P + f"/deposits/{dep_id}/edit", json={"fields": {"pay_amount": "1000.00"}})
+    assert r.status_code == 200, r.text
+    item = r.json()["item"]
+    assert item["pay_amount"] == "1000.00" and item["pay_amount"] != old_pay
+    with transaction() as db:
+        d = db.get(Deposit, dep_id)
+        assert elqr.amount_from_payload(d.qr_payload) == d.pay_amount
+        note = db.query(Notification).filter_by(event="deposit_updated").one()
+        assert note.data["refresh_card"] and note.data["request_id"] == d.public_id
+    # amount that another active request already uses is refused
+    from paygo.services.users import get_or_create
+
+    with transaction() as db:
+        cash = db.query(PaymentCash).filter_by(key="1xbet").one()
+        second = get_or_create(db, {"id": 999888777, "first_name": "Second"})
+        other, _ = deposit_service.create_deposit(db, user=second, cash=cash, player_id="654321", amount="500", idempotency_key="edit-3")
+        busy = str(other.pay_amount)
+    r = logged.post(P + f"/deposits/{dep_id}/edit", json={"fields": {"pay_amount": busy}})
+    assert r.status_code == 400 and "занята" in r.json()["error"]
+
+
+def test_requisite_mode_random_rotates(logged, user):
+    from paygo.db import transaction
+    from paygo.models import PaymentCash, PaymentRequisite, User
+    from paygo.services import deposits as deposit_service
+    from paygo.services import settings_store
+
+    with transaction() as db:
+        db.add(PaymentRequisite(name="Second", bank_type="optima", bank_name="Optima Bank", enabled=True, priority=200, payload="00020101021132710013QR.Optima.C2B01032031016109182123435011811112149664:1:1120211130212331500112149664:1:15204999953034175904ELQR", account="2", holder="2"))
+    seen = set()
+    for i in range(30):
+        with transaction() as db:
+            cash = db.query(PaymentCash).filter_by(key="1xbet").one()
+            seen.add(deposit_service.choose_requisite(db, cash).name)
+    assert seen == {"Optima", "Second"}  # random mode uses both
+    with transaction() as db:
+        settings_store.set_many(db, {"requisite_mode": "priority"}, "test")
+    seen = set()
+    for i in range(10):
+        with transaction() as db:
+            cash = db.query(PaymentCash).filter_by(key="1xbet").one()
+            seen.add(deposit_service.choose_requisite(db, cash).name)
+    assert seen == {"Optima"}  # priority mode: lowest number only
+
+
+def test_webhook_ip_allowlist_and_signature_policy(client, logged, user):
+    import os
+
+    from paygo.db import transaction
+    from paygo.services import settings_store
+
+    secret = os.environ["WEBHOOK_SECRET"]
+    with transaction() as db:
+        settings_store.set_many(db, {"webhook_ip_allowlist": "10.0.0.0/8, 203.0.113.7"}, "test")
+    r = client.post(P + f"/webhooks/payments/{secret}", json={"text": "Пополнение 100.50 сом"})
+    assert r.status_code == 403  # testclient address is not in the list
+    with transaction() as db:
+        settings_store.set_many(db, {"webhook_ip_allowlist": "", "webhook_require_signature": True}, "test")
+    r = client.post(P + f"/webhooks/payments/{secret}", json={"text": "Пополнение 100.50 сом"})
+    assert r.status_code == 401
+    with transaction() as db:
+        settings_store.set_many(db, {"webhook_require_signature": False}, "test")
+    r = client.post(P + f"/webhooks/payments/{secret}", json={"text": "Пополнение 100.50 сом"})
+    assert r.status_code == 200 and r.json()["accepted"]
+    # admin helper page data + synthetic test event
+    r = logged.get(P + "/webhook-info")
+    assert r.status_code == 200 and r.json()["url"].endswith(secret) and r.json()["recent"]
+    r = logged.post(P + "/webhook-info/test")
+    assert r.status_code == 200 and r.json()["event"]["source"] == "test" and r.json()["event"]["status"] in {"unmatched", "received", "processing"}

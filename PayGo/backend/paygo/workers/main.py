@@ -45,7 +45,7 @@ def _loop(name: str, fn: Callable[[], None], interval: float) -> None:
         except Exception:
             logger.exception("worker loop %s failed", name)
         elapsed = time.monotonic() - started
-        STOP.wait(max(0.2, interval - elapsed))
+        STOP.wait(max(0.1, interval - elapsed))
 
 
 # ------------------------------------------------------------------- payment events
@@ -278,7 +278,7 @@ def main() -> None:
     logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     on_start()
     loops = [
-        ("payment_events", tick_payment_events, max(0.5, settings.worker_poll_seconds)),
+        ("payment_events", tick_payment_events, max(0.25, settings.worker_poll_seconds)),
         ("expiry", tick_expiry, 1.0),
         ("stuck", tick_stuck, 15.0),
         ("cash_monitor", tick_cash_monitor, 10.0),

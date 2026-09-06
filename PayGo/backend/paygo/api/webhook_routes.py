@@ -15,7 +15,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
 from ..config import get_settings
 from ..db import transaction
-from ..services import payments
+from ..services import payments, settings_store
 from ..utils import constant_time_equal, hmac_hex
 from .deps import client_ip
 
@@ -66,16 +66,47 @@ async def _extract(request: Request) -> tuple[str, dict[str, Any], bytes]:
     return raw_text.strip(), payload, body
 
 
+def ip_allowed(ip: str, allowlist: str) -> bool:
+    """``allowlist`` — comma/space separated IPs or CIDR networks; empty = everyone (the secret still applies)."""
+    import ipaddress
+
+    entries = [x.strip() for x in str(allowlist or "").replace(";", ",").replace("\n", ",").split(",") if x.strip()]
+    if not entries:
+        return True
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    for entry in entries:
+        try:
+            if "/" in entry:
+                if addr in ipaddress.ip_network(entry, strict=False):
+                    return True
+            elif addr == ipaddress.ip_address(entry):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def _authorize(request: Request, path_key: str, body: bytes) -> None:
     settings = get_settings()
     expected = settings.webhook_secret
     if not expected:
         raise HTTPException(503, "WEBHOOK_NOT_CONFIGURED")
+    with transaction() as db:
+        allowlist = str(settings_store.get(db, "webhook_ip_allowlist") or "")
+        require_signature = settings_store.get_bool(db, "webhook_require_signature")
+    if not ip_allowed(client_ip(request), allowlist):
+        logger.warning("webhook from a non-allowlisted address %s", client_ip(request))
+        raise HTTPException(403, "IP_NOT_ALLOWED")
     signature = request.headers.get("x-signature", "")
     if signature:
         if hmac.compare_digest(signature.lower(), hmac_hex(expected, body.decode("utf-8", "ignore"))):
             return
         raise HTTPException(401, "BAD_SIGNATURE")
+    if require_signature:
+        raise HTTPException(401, "SIGNATURE_REQUIRED")
     supplied = path_key or request.headers.get("x-webhook-key", "") or request.query_params.get("key", "")
     if not supplied or not constant_time_equal(supplied, expected):
         raise HTTPException(401, "BAD_KEY")

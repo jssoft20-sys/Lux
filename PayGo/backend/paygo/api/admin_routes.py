@@ -5,7 +5,7 @@ import io
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -234,6 +234,13 @@ def deposit_edit(deposit_id: int, body: EditBody, request: Request, principal: P
     if "player_name" in fields:
         deposit.player_name = str(fields["player_name"])[:160]
         changes["player_name"] = deposit.player_name
+    if "amount" in fields or "pay_amount" in fields:
+        try:
+            changes.update(deposit_service.edit_amount(db, deposit, amount=fields.get("amount"), pay_amount=fields.get("pay_amount"), operator_id=principal.id))
+        except deposit_service.DepositError as exc:
+            raise HTTPException(400, exc.message)
+        except Exception as exc:
+            raise HTTPException(400, f"Некорректная сумма: {str(exc)[:80]}")
     if not changes:
         raise HTTPException(400, "Нет изменяемых полей")
     deposit.operator_id = principal.id
@@ -988,3 +995,165 @@ def push_test(principal: Principal = Depends(current_principal), db: Session = D
 
     rows = notify_admins(db, event="test", event_key=f"push_test:{principal.id}:{int(utcnow().timestamp())}", title="🔔 Тестовое уведомление", body=f"Push работает • {principal.name}", level="normal", telegram=False)
     return {"ok": True, "queued": len(rows)}
+
+
+# ------------------------------------------------------------------------ files / photos
+
+IMAGE_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif"}
+
+
+def _store_image(raw: bytes, filename: str, folder: str, stem: str) -> str:
+    """Save an uploaded image under DATA_DIR/uploads/<folder>/ and return the relative path."""
+    if len(raw) > 10 * 1024 * 1024:
+        raise HTTPException(400, "Файл слишком большой (до 10 МБ)")
+    ext = (filename or "").rsplit(".", 1)[-1].lower() if "." in (filename or "") else "jpg"
+    if ext not in IMAGE_TYPES:
+        raise HTTPException(400, "Только изображения: jpg, png, webp")
+    head = raw[:12]
+    if not (head.startswith(b"\xff\xd8") or head.startswith(b"\x89PNG") or head[:4] == b"RIFF" or head.startswith(b"GIF8")):
+        raise HTTPException(400, "Файл не похож на изображение")
+    target = get_settings().uploads_dir() / folder
+    target.mkdir(parents=True, exist_ok=True)
+    name = f"{stem}-{sha256_hex(raw)[:10]}.{ext}"
+    (target / name).write_bytes(raw)
+    return f"uploads/{folder}/{name}"
+
+
+def _remove_file(rel: str) -> None:
+    rel = str(rel or "").lstrip("/")
+    if not rel.startswith("uploads/"):
+        return
+    path = get_settings().data_dir / rel
+    try:
+        if path.is_file():
+            path.unlink()
+    except OSError:
+        pass
+
+
+@router.get("/files/{path:path}")
+def serve_file(path: str, principal: Principal = Depends(current_principal)):
+    """Uploads (support photos, receipts, cash desk instruction photos) — only for signed-in staff."""
+    base = get_settings().uploads_dir().resolve()
+    target = (base / path.lstrip("/")).resolve()
+    if base not in target.parents or not target.is_file():
+        raise HTTPException(404, "NOT_FOUND")
+    ext = target.suffix.lstrip(".").lower()
+    return Response(content=target.read_bytes(), media_type=IMAGE_TYPES.get(ext, "application/octet-stream"), headers={"Cache-Control": "private, max-age=3600"})
+
+
+@router.post("/cashes/{cash_id}/photo")
+async def upload_cash_photo(cash_id: int, request: Request, kind: str = Form(...), file: UploadFile = File(...), principal: Principal = Depends(require("cashes")), db: Session = Depends(get_db)):
+    """Step photo of a cash desk: kind = deposit (enter ID), withdraw (enter ID for payout), code (enter payout code), instruction."""
+    cash = db.get(PaymentCash, cash_id)
+    if cash is None:
+        raise HTTPException(404, "NOT_FOUND")
+    field = cash_service.PHOTO_FIELDS.get(kind)
+    if not field:
+        raise HTTPException(400, "kind: deposit | withdraw | code | instruction")
+    raw = await file.read()
+    rel = _store_image(raw, file.filename or "", "cash", f"{cash.key}-{kind}")
+    _remove_file(getattr(cash, field))
+    setattr(cash, field, rel)
+    db.flush()
+    audit(db, "cash.photo", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), entity_type="cash", entity_id=cash.id, details={"kind": kind})
+    return {"ok": True, "item": cash_service.public_cash(cash), "path": rel}
+
+
+@router.delete("/cashes/{cash_id}/photo/{kind}")
+def delete_cash_photo(cash_id: int, kind: str, request: Request, principal: Principal = Depends(require("cashes")), db: Session = Depends(get_db)):
+    cash = db.get(PaymentCash, cash_id)
+    field = cash_service.PHOTO_FIELDS.get(kind)
+    if cash is None or not field:
+        raise HTTPException(404, "NOT_FOUND")
+    _remove_file(getattr(cash, field))
+    setattr(cash, field, "")
+    db.flush()
+    audit(db, "cash.photo_delete", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), entity_type="cash", entity_id=cash.id, details={"kind": kind})
+    return {"ok": True, "item": cash_service.public_cash(cash)}
+
+
+SETTING_PHOTOS = {"instruction_photo"}
+
+
+@router.post("/settings/photo")
+async def upload_setting_photo(request: Request, key: str = Form(...), file: UploadFile = File(...), principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
+    if key not in SETTING_PHOTOS:
+        raise HTTPException(400, "Неизвестный ключ")
+    raw = await file.read()
+    rel = _store_image(raw, file.filename or "", "settings", key)
+    _remove_file(str(settings_store.get(db, key) or ""))
+    settings_store.set_many(db, {key: rel}, principal.admin.username)
+    audit(db, "settings.photo", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), details={"key": key})
+    return {"ok": True, "path": rel}
+
+
+@router.delete("/settings/photo/{key}")
+def delete_setting_photo(key: str, request: Request, principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
+    if key not in SETTING_PHOTOS:
+        raise HTTPException(400, "Неизвестный ключ")
+    _remove_file(str(settings_store.get(db, key) or ""))
+    settings_store.set_many(db, {key: ""}, principal.admin.username)
+    return {"ok": True}
+
+
+@router.get("/deposits/{deposit_id}/receipt")
+def deposit_receipt(deposit_id: int, principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+    """The client's payment screenshot (stored locally, or fetched through the bot API without exposing the token)."""
+    import httpx
+
+    deposit = db.get(Deposit, deposit_id)
+    if deposit is None or not deposit.receipt_file:
+        raise HTTPException(404, "NOT_FOUND")
+    ref = deposit.receipt_file
+    if ref.startswith("tg:"):
+        settings = get_settings()
+        try:
+            meta = httpx.get(f"{settings.telegram_api_base}/bot{settings.main_bot_token}/getFile", params={"file_id": ref[3:]}, timeout=15).json()
+            file_path = (meta.get("result") or {}).get("file_path")
+            response = httpx.get(f"{settings.telegram_api_base}/file/bot{settings.main_bot_token}/{file_path}", timeout=20)
+            response.raise_for_status()
+        except Exception:
+            raise HTTPException(502, "Фото недоступно")
+        return Response(content=response.content, media_type=response.headers.get("content-type", "image/jpeg"), headers={"Cache-Control": "private, max-age=600"})
+    path = get_settings().data_dir / ref.lstrip("/")
+    if not path.is_file():
+        raise HTTPException(404, "NOT_FOUND")
+    return Response(content=path.read_bytes(), media_type=IMAGE_TYPES.get(path.suffix.lstrip(".").lower(), "image/jpeg"), headers={"Cache-Control": "private, max-age=3600"})
+
+
+# ------------------------------------------------------------------------ webhook (MacroDroid) helper
+
+@router.get("/webhook-info")
+def webhook_info(principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
+    settings = get_settings()
+    base = f"{settings.public_url.rstrip('/')}{settings.base_path}/api/webhooks/payments"
+    rows = db.execute(select(PaymentEvent).order_by(PaymentEvent.id.desc()).limit(15)).scalars().all()
+    since = utcnow() - timedelta(hours=24)
+    counts = {status: int(db.execute(select(func.count(PaymentEvent.id)).where(PaymentEvent.received_at >= since, PaymentEvent.status == status)).scalar() or 0) for status in ("matched", "unmatched", "failed", "received", "processing")}
+    return {
+        "ok": True,
+        "url": f"{base}/{settings.webhook_secret}",
+        "url_masked": f"{base}/{settings.webhook_secret[:4]}…{settings.webhook_secret[-3:]}",
+        "header_url": base,
+        "header_name": "X-Webhook-Key",
+        "ip_allowlist": str(settings_store.get(db, "webhook_ip_allowlist") or ""),
+        "require_signature": settings_store.get_bool(db, "webhook_require_signature"),
+        "requisite_mode": str(settings_store.get(db, "requisite_mode") or "random"),
+        "recent": [payments.public_event(e) for e in rows],
+        "counts_24h": counts,
+        "sample_body": {"text": "{not_text}", "title": "{not_title}", "app": "{not_app}"},
+    }
+
+
+@router.post("/webhook-info/test")
+def webhook_test(request: Request, principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
+    """Push a synthetic confirmation through the same pipeline (never matches a real request)."""
+    from decimal import Decimal
+
+    event, created = payments.ingest_event(db, source="test", amount=Decimal("0.01"), raw_text=f"Тест из панели • {principal.admin.username} • {utcnow():%H:%M:%S}", sender_ip=client_ip(request), event_key=f"test:{principal.id}:{int(utcnow().timestamp())}")
+    db.commit()
+    result = payments.process_event(event.id)
+    fresh = db.get(PaymentEvent, event.id)
+    audit(db, "webhook.test", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), details={"event_id": event.id})
+    return {"ok": True, "event": payments.public_event(fresh), "result": result}

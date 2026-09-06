@@ -57,8 +57,7 @@ def create_app() -> FastAPI:
     if frontend.exists():
         prefixed.mount("/static", StaticFiles(directory=frontend / "static"), name="static")
         prefixed.mount("/brand", StaticFiles(directory=frontend / "brand"), name="brand")
-    uploads = settings.uploads_dir()
-    prefixed.mount("/uploads", StaticFiles(directory=uploads), name="uploads")
+    settings.uploads_dir()  # uploads are served only through the authenticated /api/files/{path} route
 
     @prefixed.exception_handler(HTTPException)
     async def _http_error(request: Request, exc: HTTPException):

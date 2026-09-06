@@ -40,6 +40,13 @@ class DepositError(Exception):
 # ----------------------------------------------------------------------------- helpers
 
 def choose_requisite(db: Session, cash: PaymentCash) -> PaymentRequisite | None:
+    """Pick the bank QR that receives this deposit.
+
+    ``requisite_mode`` = ``random``: any enabled requisite, uniformly (rotation);
+    ``priority``: the enabled requisite with the lowest priority number (one main
+    requisite, the rest are reserves). Requisites pinned to the cash desk win over
+    global ones in both modes.
+    """
     rows = db.execute(
         select(PaymentRequisite).where(PaymentRequisite.enabled.is_(True)).order_by(PaymentRequisite.priority.asc(), PaymentRequisite.id.asc())
     ).scalars().all()
@@ -47,6 +54,9 @@ def choose_requisite(db: Session, cash: PaymentCash) -> PaymentRequisite | None:
         return None
     pinned = [r for r in rows if r.cash_id == cash.id]
     pool = pinned or [r for r in rows if r.cash_id is None] or list(rows)
+    mode = str(settings_store.get(db, "requisite_mode") or "random").lower()
+    if mode == "random":
+        return random.SystemRandom().choice(pool)
     top = pool[0].priority
     best = [r for r in pool if r.priority == top]
     return random.SystemRandom().choice(best)
@@ -196,6 +206,56 @@ def create_deposit(
         )
         return deposit, True
     raise DepositError("Не удалось подобрать уникальную сумму, попробуйте ещё раз.", "AMOUNT_BUSY") from last_error
+
+
+def edit_amount(db: Session, deposit: Deposit, *, amount: Any = None, pay_amount: Any = None, operator_id: int | None = None) -> dict[str, Any]:
+    """Operator changes the requested and/or exact payable amount (support fixes a mistyped or partial payment).
+
+    Allowed while the request is not credited. The QR is regenerated from the
+    requisite; an active request also gets a fresh card in the client's chat.
+    """
+    if deposit.status in {"success", "processing"}:
+        raise DepositError("Сумму нельзя менять у зачисленной или обрабатываемой заявки", "LOCKED")
+    changes: dict[str, Any] = {}
+    new_amount = money(amount) if amount not in (None, "") else money(deposit.amount)
+    new_pay = money(pay_amount) if pay_amount not in (None, "") else None
+    if new_pay is None and amount not in (None, ""):
+        new_pay = new_amount + (money(deposit.pay_amount) - money(deposit.amount)) if money(deposit.pay_amount) >= money(deposit.amount) else new_amount
+    if new_pay is None:
+        new_pay = money(deposit.pay_amount)
+    if new_amount <= 0 or new_pay <= 0:
+        raise DepositError("Сумма должна быть больше нуля", "BAD_AMOUNT")
+    if deposit.status == "created" and new_pay != money(deposit.pay_amount):
+        clash = db.execute(select(Deposit).where(Deposit.pay_amount == new_pay, Deposit.status.in_(ACTIVE), Deposit.id != deposit.id)).scalars().first()
+        if clash:
+            raise DepositError(f"Сумма {new_pay} уже занята активной заявкой {clash.public_id}", "AMOUNT_BUSY")
+    if new_amount != money(deposit.amount):
+        changes["amount"] = [str(money(deposit.amount)), str(new_amount)]
+        deposit.amount = new_amount
+    if new_pay != money(deposit.pay_amount):
+        changes["pay_amount"] = [str(money(deposit.pay_amount)), str(new_pay)]
+        deposit.pay_amount = new_pay
+        requisite = db.get(PaymentRequisite, deposit.requisite_id) if deposit.requisite_id else None
+        if requisite is not None:
+            try:
+                deposit.qr_payload = elqr.inject_amount(requisite.payload, new_pay)
+            except Exception as exc:
+                raise DepositError(f"Не удалось пересобрать QR: {str(exc)[:120]}", "QR_ERROR")
+    if not changes:
+        return changes
+    deposit.operator_id = operator_id
+    db.flush()
+    log_event(db, "Сумма заявки изменена оператором", f"{deposit.public_id} • {changes}", category="deposits", entity_type="deposit", entity_id=deposit.public_id)
+    if deposit.status == "created" and "pay_amount" in changes:
+        notify_user(
+            db,
+            db.get(User, deposit.user_id),
+            event="deposit_updated",
+            event_key=f"deposit_updated:{deposit.id}:{utcnow().timestamp():.0f}",
+            text=f"✏️ Оператор изменил сумму заявки: <b>{money(deposit.pay_amount)} {deposit.currency}</b>. Оплатите ровно эту сумму по новому QR.",
+            data={"request_id": deposit.public_id, "refresh_card": True},
+        )
+    return changes
 
 
 def cancel_deposit(db: Session, deposit: Deposit, *, reason: str = "user_cancelled", actor: str = "user", operator_id: int | None = None) -> bool:
@@ -440,6 +500,8 @@ def public_deposit(db: Session, deposit: Deposit, *, full: bool = False) -> dict
         "user_name": display_name(user) if user else "",
         "username": user.username if user else "",
         "payment_source": deposit.payment_source,
+        "has_receipt": bool(deposit.receipt_file),
+        "receipt_at": iso(deposit.receipt_at),
         "provider_ref": deposit.provider_ref,
         "error": deposit.error,
         "source": deposit.source,
