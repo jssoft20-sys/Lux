@@ -195,3 +195,28 @@ button,input,textarea,select{font:inherit;color:inherit}button{border:0;backgrou
 .tag-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:8px 6px;border-bottom:1px solid #eef1f4;text-align:left;vertical-align:middle}th{font-size:10px;color:#8b98a8;text-transform:uppercase;letter-spacing:.05em}
 @media (min-width:900px){:root{--shell:520px}}
+
+/* ---- PayGo additions: no iOS zoom on focus, live buttons, photo fields, settings tabs ---- */
+@media (hover:none) and (pointer:coarse){.input,.select,.textarea,input,select,textarea{font-size:16px}}
+html{-webkit-text-size-adjust:100%}
+.action-btn,.outline-btn,.primary-btn,.menu-tile,.seg button,.nav-item,.tx-card,.chat-row,.row-card,.wallet-card,.header-btn,.refresh-btn{transition:transform .08s ease,background .16s,box-shadow .16s,border-color .16s}
+.action-btn:active,.outline-btn:active,.primary-btn:active,.menu-tile:active,.seg button:active,.header-btn:active,.refresh-btn:active{transform:scale(.97)}
+.tx-card:active,.chat-row:active,.row-card:active,.wallet-card:active{background:#f7f9fb}
+.outline-btn:hover{border-color:#c9d3da}.outline-btn:disabled,.action-btn:disabled{opacity:.55;pointer-events:none}
+.primary-btn.busy,.action-btn.busy{opacity:.7;pointer-events:none}
+.primary-btn.busy::after,.action-btn.busy::after{content:"";width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .7s linear infinite;margin-left:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.refresh-btn.spin svg{animation:spin .9s linear infinite}
+.photo-field{margin:4px 0 12px}.photo-head b{display:block;font-size:12px}.photo-head small{color:var(--muted);font-size:11px;display:block}
+.photo-row{display:flex;gap:10px;align-items:center;margin-top:8px}
+.photo-thumb{width:64px;height:64px;border-radius:12px;object-fit:cover;border:1px solid #e3e9ee;background:#fff;flex:0 0 64px}
+.photo-thumb.blank{display:grid;place-items:center;color:#9aa8b8;background:#f3f6f9}
+.settings-tabs{display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none;-webkit-overflow-scrolling:touch}.settings-tabs::-webkit-scrollbar{display:none}
+.settings-tabs button{flex:0 0 auto;min-height:36px;padding:0 14px;border-radius:12px;background:#fff;border:1px solid #e4eaee;font-size:12px;font-weight:800;color:#66758b}
+.settings-tabs button.active{background:var(--blue);border-color:var(--blue);color:#fff;box-shadow:0 6px 16px rgba(23,105,237,.2)}
+.receipt-img{width:100%;max-width:360px;border-radius:14px;border:1px solid #e7ecef;display:block;margin:0 auto}
+.code-box{background:#f4f7f9;border:1px solid #e3e9ee;border-radius:12px;padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;word-break:break-all;white-space:pre-wrap;margin:6px 0}
+.placeholder-list{display:flex;flex-wrap:wrap;gap:5px}.placeholder-list code{background:#eef2f6;border-radius:8px;padding:2px 7px;font-size:11px}
+.steps{margin:0;padding-left:18px;font-size:12px;line-height:1.5}.steps li{margin-bottom:6px}
+.stat-card .v{font-variant-numeric:tabular-nums}
+.setting-row small{display:block;color:var(--muted);font-size:10.5px;margin-top:2px}

@@ -43,6 +43,7 @@
     if (!res.ok || data.ok === false) throw new Error(data.error || data.detail || ('Ошибка ' + res.status));
     return data;
   }
+  function fileUrl(u) { u = String(u || ''); if (u.startsWith('/uploads/')) return API + '/files/' + u.slice(9); if (u.startsWith('uploads/')) return API + '/files/' + u.slice(8); if (u.startsWith('/')) return BASE + u; return u; }
   function toast(text, kind, ms) { const el = h('div', { class: 'toast ' + (kind || '') }, text); $('#toasts').appendChild(el); setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .2s'; setTimeout(() => el.remove(), 220); }, ms || (kind === 'err' ? 4200 : 2400)); }
   const err = (e) => toast(e && e.message ? e.message : String(e), 'err');
   function copy(text) { navigator.clipboard && navigator.clipboard.writeText(String(text)).then(() => toast('Скопировано', 'ok', 1200)).catch(() => {}); }
@@ -74,7 +75,7 @@
   function editable(value, opts) {
     const wrap = h('span', { class: 'editable' });
     const show = () => { wrap.innerHTML = ''; wrap.appendChild(h('span', null, opts.render ? opts.render(value) : (value === '' || value === null || value === undefined ? '—' : String(value)))); if (!opts.readonly) wrap.appendChild(h('button', { class: 'pen', title: 'Изменить', onclick: edit }, svg('edit', 13))); };
-    const edit = () => { const input = opts.options ? h('select', { class: 'select' }, opts.options.map(([v, l]) => h('option', { value: v, selected: String(v) === String(value) }, l))) : h('input', { class: 'input', value: value === null || value === undefined ? '' : value, type: opts.type || 'text' }); const save = async () => { try { const v = input.value; await opts.save(v); value = v; toast('Сохранено', 'ok', 1300); show(); } catch (e) { err(e); } }; wrap.innerHTML = ''; wrap.appendChild(h('span', { class: 'inline' }, input, h('button', { class: 'outline-btn blue', onclick: save }, '✓'), h('button', { class: 'outline-btn', onclick: show }, '✕'))); input.focus(); input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') show(); }); };
+    const edit = () => { const input = opts.options ? h('select', { class: 'select' }, opts.options.map(([v, l]) => h('option', { value: v, selected: String(v) === String(value) }, l))) : h('input', { class: 'input', value: value === null || value === undefined ? '' : value, type: opts.type || 'text' }); const save = async () => { try { const v = input.value; const res = await opts.save(v); value = res === undefined || res === null ? v : res; toast('Сохранено', 'ok', 1300); show(); } catch (e) { err(e); } }; wrap.innerHTML = ''; wrap.appendChild(h('span', { class: 'inline' }, input, h('button', { class: 'outline-btn blue', onclick: save }, '✓'), h('button', { class: 'outline-btn', onclick: show }, '✕'))); input.focus(); input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') show(); }); };
     show(); return wrap;
   }
   function kv(rows) { return h('dl', { class: 'kv' }, rows.filter(Boolean).map(([k, v]) => [h('dt', null, k), h('dd', null, v === undefined || v === null || v === '' ? '—' : v)])); }
@@ -109,7 +110,7 @@
     const noNav = page === 'chats' && !!state.route.id;
     const shell = h('div', { class: 'shell ' + (noNav ? 'no-nav' : '') });
     app.appendChild(shell);
-    const views = { home: homeView, history: historyView, chats: chatsView, search: searchView, menu: menuView, manage: manageView, stats: statsView, cashes: cashesView, events: eventsView, gateway: gatewayView, broadcast: broadcastView, security: securityView, quick: quickView, logs: logsView, settings: settingsView, firstline: firstLineView, deposits: (m) => txDetailView(m, 'deposits', state.route.id), withdrawals: (m) => txDetailView(m, 'withdrawals', state.route.id), users: (m) => userDetailView(m, state.route.id), push: pushView, env: envView };
+    const views = { home: homeView, history: historyView, chats: chatsView, search: searchView, menu: menuView, manage: manageView, stats: statsView, cashes: cashesView, events: eventsView, gateway: gatewayView, broadcast: broadcastView, security: securityView, quick: quickView, logs: logsView, settings: settingsView, instruction: (m) => settingsView(m, 'withdraw'), macrodroid: macrodroidView, firstline: firstLineView, deposits: (m) => txDetailView(m, 'deposits', state.route.id), withdrawals: (m) => txDetailView(m, 'withdrawals', state.route.id), users: (m) => userDetailView(m, state.route.id), push: pushView, env: envView };
     (views[page] || homeView)(shell);
     if (!noNav) shell.appendChild(bottomNav(page));
   }
@@ -161,7 +162,7 @@
     const counts = () => { const q = (state.live && state.live.queues) || {}; return { actual: (q.deposits_pending || 0) + (q.deposits_failed || 0) + Math.max(0, (q.withdrawals_pending || 0) - (q.withdrawals_deferred || 0)), deferred: q.withdrawals_deferred || 0 }; };
     const drawTop = () => { const c = counts(); top.innerHTML = ''; top.appendChild(segEl([['actual', 'Актуальные', c.actual], ['deferred', 'Отложенные', c.deferred]], state.homeTab, (k) => { state.homeTab = k; load(); })); top.appendChild(refresh); };
     async function load(manual) {
-      drawTop(); refresh.disabled = true; if (!listBox.children.length) listBox.appendChild(loader());
+      drawTop(); refresh.disabled = true; refresh.classList.add('spin'); if (!listBox.children.length) listBox.appendChild(loader());
       try {
         let items;
         if (state.homeTab === 'deferred') { const w = await api('/withdrawals?status=deferred&size=100'); items = w.items; }
@@ -172,7 +173,7 @@
         else listBox.appendChild(txGroups(items));
         if (manual) toast('Обновлено', 'ok', 1000);
       } catch (e) { listBox.innerHTML = ''; listBox.appendChild(empty('Не удалось загрузить', e.message)); }
-      refresh.disabled = false;
+      refresh.disabled = false; refresh.classList.remove('spin');
     }
     load(); watchChanges(screen, () => load()); watchLive(screen, drawTop);
   }
@@ -271,7 +272,7 @@
         screen.appendChild(head);
         if (ctx.deposit || ctx.withdrawal) { const t = ctx.withdrawal && c.category !== 'deposit' ? ctx.withdrawal : ctx.deposit; const dep = t === ctx.deposit; screen.appendChild(h('button', { class: 'case-card', style: { textAlign: 'left', width: 'calc(100% - 20px)' }, onclick: () => openTxSheet(dep ? 'deposit' : 'withdraw', t.id) }, h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, h('i', { class: 'kind-badge ' + (dep ? 'deposit' : 'withdraw') }, dep ? 'ПП' : 'ВВ'), h('b', null, (dep ? 'Пополнение ' : 'Вывод ') + t.public_id), h('span', { style: { flex: 1 } }), statusEl(t.status, t.status_label)), h('small', null, t.cash + ' • ID ' + t.player_id + ' • ' + money(t.amount) + ' ' + t.currency + ' • ' + fmtDate(t.created_at)), t.error ? h('small', { style: { color: '#bd344a' } }, t.error) : null)); }
         const feed = h('div', { class: 'chat-feed' });
-        const bubble = (m) => h('div', { class: 'bubble ' + (m.direction === 'out' ? 'out ' : '') + m.sender }, m.file_url ? h('img', { src: m.file_url.startsWith('/') ? BASE + m.file_url : m.file_url, alt: '' }) : null, m.text, h('small', null, (m.sender === 'user' ? 'клиент' : m.sender === 'bot' ? 'авто' : m.sender === 'operator' ? 'оператор' : 'система') + ' · ' + fmtTime(m.created_at)));
+        const bubble = (m) => h('div', { class: 'bubble ' + (m.direction === 'out' ? 'out ' : '') + m.sender }, m.file_url ? h('img', { src: fileUrl(m.file_url), alt: '' }) : null, m.text, h('small', null, (m.sender === 'user' ? 'клиент' : m.sender === 'bot' ? 'авто' : m.sender === 'operator' ? 'оператор' : 'система') + ' · ' + fmtTime(m.created_at)));
         r.messages.forEach((m) => { feed.appendChild(bubble(m)); lastId = Math.max(lastId, m.id); });
         if (!r.messages.length) feed.appendChild(empty('Сообщений нет', 'Сообщения клиента появятся здесь.', 'chat'));
         screen.appendChild(feed);
@@ -307,7 +308,7 @@
   }
   function txRows(tx) {
     const dep = tx.kind === 'deposit';
-    return [['Статус', h('span', { style: { display: 'inline-flex', gap: '5px', flexWrap: 'wrap' } }, txStatus(tx), tx.deferred ? h('span', { class: 'pill amber' }, 'отложен') : null)], ['Сумма', h('b', null, money(dep ? tx.pay_amount : tx.amount) + ' ' + tx.currency, dep && tx.amount !== tx.pay_amount ? h('span', { class: 'muted small' }, ' (запрос ' + money(tx.amount) + ')') : null)], ['Касса', tx.cash_name], ['ID игрока', h('span', { class: 'copy mono', onclick: () => copy(tx.player_id) }, tx.player_id, tx.player_name ? ' · ' + tx.player_name : '')], ['Клиент', h('a', { href: '#/users/' + tx.user_id, style: { color: 'var(--blue)' } }, tx.user_name, tx.username ? ' @' + tx.username : '')], ['Telegram ID', h('span', { class: 'copy mono', onclick: () => copy(tx.telegram_id) }, tx.telegram_id)], ['Номер', h('span', { class: 'copy mono', onclick: () => copy(tx.public_id) }, tx.public_id)], ['Создано', fmtDate(tx.created_at)], dep ? ['Истекает', tx.expires_at ? fmtDate(tx.expires_at) : '—'] : ['Выполнено', fmtDate(tx.completed_at)], dep ? ['Оплачено', fmtDate(tx.paid_at)] : ['Референс кассы', tx.provider_ref ? h('span', { class: 'copy mono', onclick: () => copy(tx.provider_ref) }, tx.provider_ref) : '—'], dep ? ['Источник платежа', tx.payment_source || '—'] : null, tx.error ? ['Комментарий', h('span', { style: { color: '#bd344a' } }, tx.error)] : null];
+    return [['Статус', h('span', { style: { display: 'inline-flex', gap: '5px', flexWrap: 'wrap' } }, txStatus(tx), tx.deferred ? h('span', { class: 'pill amber' }, 'отложен') : null)], ['Сумма', h('b', null, money(dep ? tx.pay_amount : tx.amount) + ' ' + tx.currency, dep && tx.amount !== tx.pay_amount ? h('span', { class: 'muted small' }, ' (запрос ' + money(tx.amount) + ')') : null)], ['Касса', tx.cash_name], ['ID игрока', h('span', { class: 'copy mono', onclick: () => copy(tx.player_id) }, tx.player_id, tx.player_name ? ' · ' + tx.player_name : '')], ['Клиент', h('a', { href: '#/users/' + tx.user_id, style: { color: 'var(--blue)' } }, tx.user_name, tx.username ? ' @' + tx.username : '')], ['Telegram ID', h('span', { class: 'copy mono', onclick: () => copy(tx.telegram_id) }, tx.telegram_id)], ['Номер', h('span', { class: 'copy mono', onclick: () => copy(tx.public_id) }, tx.public_id)], ['Создано', fmtDate(tx.created_at)], dep ? ['Истекает', tx.expires_at ? fmtDate(tx.expires_at) : '—'] : ['Выполнено', fmtDate(tx.completed_at)], dep ? ['Оплачено', fmtDate(tx.paid_at)] : ['Референс кассы', tx.provider_ref ? h('span', { class: 'copy mono', onclick: () => copy(tx.provider_ref) }, tx.provider_ref) : '—'], dep ? ['Источник платежа', tx.payment_source || '—'] : null, dep ? ['Чек клиента', tx.has_receipt ? h('span', { class: 'pill green' }, 'получен ' + fmtDate(tx.receipt_at)) : '—'] : null, tx.error ? ['Комментарий', h('span', { style: { color: '#bd344a' } }, tx.error)] : null];
   }
   async function openTxSheet(kind, id) {
     const path = kind === 'deposit' ? 'deposits' : 'withdrawals';
@@ -316,6 +317,7 @@
       const r = await api('/' + path + '/' + id); const tx = r.item;
       const body = h('div', null, (tx.status === 'failed' || tx.needs_attention) && tx.error ? h('div', { class: 'hint-card err' }, tx.error) : null, kv(txRows(tx)), h('div', { class: 'section-title' }, h('h2', null, 'История')), timeline(r.history));
       if (kind === 'withdraw' && tx.has_generated_qr) body.appendChild(h('div', { class: 'qr-box' }, h('img', { src: API + '/withdrawals/' + tx.id + '/qr.png?kind=generated', alt: 'QR' }), h('div', { class: 'small muted' }, 'QR с суммой для перевода клиенту')));
+      if (kind === 'deposit' && tx.has_receipt) body.appendChild(h('div', { class: 'qr-box' }, h('img', { class: 'receipt-img', src: API + '/deposits/' + tx.id + '/receipt', alt: 'чек' }), h('div', { class: 'small muted' }, 'Чек клиента · ' + fmtDate(tx.receipt_at))));
       s.setBody(body);
       const actions = [h('button', { class: 'action-btn', onclick: () => { s.close(); go('#/' + path + '/' + tx.id); } }, 'Открыть страницу')];
       if (can('operations')) ACTIONS[kind](tx).forEach(([a, label, cls]) => actions.push(h('button', { class: 'action-btn ' + cls, onclick: () => runAction(kind, tx, a, () => { s.close(); openTxSheet(kind, id); }) }, label)));
@@ -331,14 +333,15 @@
       try {
         const r = await api('/' + path + '/' + id); const tx = r.item; box.innerHTML = '';
         const locked = tx.status === 'success' || !can('operations');
-        const editField = (label, field, value, opts) => [label, editable(value, Object.assign({ readonly: locked, save: async (v) => { const rr = await api('/' + path + '/' + tx.id + '/edit', { method: 'POST', body: { fields: { [field]: v } } }); Object.assign(tx, rr.item); } }, opts || {}))];
+        const editField = (label, field, value, opts) => [label, editable(value, Object.assign({ readonly: locked, save: async (v) => { const rr = await api('/' + path + '/' + tx.id + '/edit', { method: 'POST', body: { fields: { [field]: v } } }); Object.assign(tx, rr.item); if (field === 'amount' || field === 'pay_amount') setTimeout(draw, 300); return rr.item[field]; } }, opts || {}))];
         const editRows = [editField('ID игрока', 'player_id', tx.player_id)];
         if (kind === 'withdraw') editRows.push(editField('Сумма', 'amount', tx.amount, { type: 'number', render: (v) => money(v) + ' ' + tx.currency }));
-        if (kind === 'deposit') editRows.push(editField('Имя игрока', 'player_name', tx.player_name));
+        if (kind === 'deposit') { const amountLocked = locked || tx.status === 'processing'; editRows.push(editField('Сумма к оплате', 'pay_amount', tx.pay_amount, { type: 'number', readonly: amountLocked, render: (v) => money(v) + ' ' + tx.currency })); editRows.push(editField('Запрошено клиентом', 'amount', tx.amount, { type: 'number', readonly: amountLocked, render: (v) => money(v) + ' ' + tx.currency })); editRows.push(editField('Имя игрока', 'player_name', tx.player_name)); }
         editRows.push(editField('Комментарий', 'error', tx.error, { readonly: !can('operations') }));
         if (kind === 'withdraw') editRows.push(['Отложен', switchEl(tx.deferred, async (v) => { await api('/' + path + '/' + tx.id + '/edit', { method: 'POST', body: { fields: { deferred: v } } }); })]);
         box.appendChild(h('div', { class: 'card section-card' }, (tx.status === 'failed' || tx.needs_attention) && tx.error ? h('div', { class: 'hint-card err' }, tx.error) : null, kv(txRows(tx).filter((x) => x && !['ID игрока', 'Комментарий'].includes(x[0])))));
-        box.appendChild(h('div', { class: 'card section-card' }, h('h2', null, 'Редактирование'), h('div', { class: 'small muted', style: { marginBottom: '8px' } }, 'Нажмите иконку рядом с полем'), kv(editRows)));
+        box.appendChild(h('div', { class: 'card section-card' }, h('h2', null, 'Редактирование'), h('div', { class: 'small muted', style: { marginBottom: '8px' } }, kind === 'deposit' ? 'Нажмите ✎ рядом с полем. Изменение суммы к оплате пересобирает QR и обновляет карточку у клиента.' : 'Нажмите ✎ рядом с полем'), kv(editRows)));
+        if (kind === 'deposit' && tx.has_receipt) box.appendChild(h('div', { class: 'card section-card' }, h('h2', null, 'Чек клиента'), h('img', { class: 'receipt-img', src: API + '/deposits/' + tx.id + '/receipt', alt: 'чек' }), h('div', { class: 'small muted', style: { textAlign: 'center', marginTop: '6px' } }, 'получен ' + fmtDate(tx.receipt_at))));
         if (can('operations') && ACTIONS[kind](tx).length) box.appendChild(h('div', { class: 'card section-card' }, h('h2', null, 'Действия'), h('div', { class: 'stat-grid', style: { marginBottom: 0 } }, ACTIONS[kind](tx).map(([a, label, cls]) => h('button', { class: 'action-btn ' + cls, onclick: () => runAction(kind, tx, a, draw) }, label)))));
         if (kind === 'deposit' && tx.qr_payload) box.appendChild(h('div', { class: 'card section-card' }, h('h2', null, 'QR для оплаты'), h('div', { class: 'qr-box' }, h('img', { src: API + '/deposits/' + tx.id + '/qr.png', alt: 'QR' })), r.payment_event ? h('div', { class: 'hint-card' }, 'Платёж: ' + r.payment_event.source + ' · ' + money(r.payment_event.amount) + ' · ' + fmtDate(r.payment_event.received_at)) : null));
         if (kind === 'withdraw') box.appendChild(h('div', { class: 'card section-card' }, h('h2', null, 'Реквизиты клиента'), tx.has_generated_qr ? h('div', { class: 'qr-box' }, h('img', { src: API + '/withdrawals/' + tx.id + '/qr.png?kind=generated', alt: 'QR' }), h('div', { class: 'small muted' }, 'QR с суммой ' + money(tx.amount) + ' ' + tx.currency)) : null, tx.qr_file_url ? h('div', { class: 'qr-box' }, h('img', { src: API + '/withdrawals/' + tx.id + '/photo', alt: 'Фото QR' }), h('div', { class: 'small muted' }, 'Фото QR от клиента' + (tx.qr_payload ? '' : ' (не распознан автоматически)'))) : h('div', { class: 'small muted' }, 'QR не прикреплён'), r.payment_links && r.payment_links.length ? h('div', { class: 'tag-row' }, r.payment_links.map((l) => h('a', { class: 'outline-btn', href: l.url, target: '_blank', rel: 'noopener' }, l.name))) : null, kv([['Код вывода', h('span', { class: 'mono copy', onclick: () => copy(tx.code) }, tx.code || '—')]])));
@@ -373,7 +376,7 @@
   }
 
   /* ------------------------------------------------------------- menu */
-  const MENU = [['manage', 'shield', 'Управление PayGo', 'green', 'view'], ['stats', 'stats', 'Статистика', 'blue', 'view'], ['cashes', 'wallet', 'Кассы', 'green', 'cashes'], ['events', 'calendar', 'Выписка', 'violet', 'operations'], ['gateway', 'qr', 'Платёжка', 'purple', 'settings'], ['broadcast', 'send', 'Рассылка', 'teal', 'settings'], ['security', 'shield', 'Безопасность', 'teal', 'view'], ['quick', 'bolt', 'Быстрые ответы', 'yellow', 'support'], ['logs', 'terminal', 'Логи', 'red', 'logs'], ['settings', 'settings', 'Настройки', 'gray', 'settings'], ['firstline', 'chat', 'Первая линия', 'blue', 'settings']];
+  const MENU = [['manage', 'shield', 'Управление PayGo', 'green', 'view'], ['stats', 'stats', 'Статистика', 'blue', 'view'], ['cashes', 'wallet', 'Кассы', 'green', 'cashes'], ['events', 'calendar', 'Выписка', 'violet', 'operations'], ['gateway', 'qr', 'Платёжка', 'purple', 'settings'], ['broadcast', 'send', 'Рассылка', 'teal', 'settings'], ['security', 'shield', 'Безопасность', 'teal', 'view'], ['quick', 'bolt', 'Быстрые ответы', 'yellow', 'support'], ['logs', 'terminal', 'Логи', 'red', 'logs'], ['settings', 'settings', 'Настройки', 'gray', 'settings'], ['firstline', 'chat', 'Первая линия', 'blue', 'settings'], ['macrodroid', 'bolt', 'MacroDroid', 'yellow', 'settings'], ['instruction', 'note', 'Инструкция', 'violet', 'settings']];
   function menuView(shell) {
     const screen = h('section', { class: 'screen' }); shell.appendChild(screen);
     screen.appendChild(h('div', { class: 'card account-card', style: { marginTop: '18px' } }, h('span', null, svg('user', 22)), h('div', null, h('b', null, 'Мой аккаунт'), h('small', null, (state.admin.name || state.admin.username) + ' · ' + ({ owner: 'Владелец', admin: 'Администратор платформы', operator: 'Оператор', viewer: 'Просмотр' }[state.admin.role] || state.admin.role)))));
@@ -432,20 +435,45 @@
     } catch (e) { box.innerHTML = ''; box.appendChild(empty('Ошибка', e.message)); }
   }
   function cashForm(c) {
-    const isNew = !c; c = c || { provider_type: 'servcul', enabled: false, priority: 100, currency: 'KGS', deposit_enabled: true, withdraw_enabled: true, deposit_min: 100, deposit_max: 100000, auto_disable_enabled: true, low_balance_threshold: 20000, critical_balance_threshold: 1000, auto_enable_threshold: 5000, credentials: [] };
+    const isNew = !c; c = c || { provider_type: 'servcul', enabled: false, priority: 100, currency: 'KGS', emoji: '', custom_emoji_id: '', deposit_enabled: true, withdraw_enabled: true, deposit_min: 100, deposit_max: 100000, auto_disable_enabled: true, low_balance_threshold: 20000, critical_balance_threshold: 1000, auto_enable_threshold: 5000, credentials: [] };
     const f = {};
-    const field = (label, key, type, opts) => { const el = type === 'select' ? h('select', { class: 'select' }, opts.map(([v, l]) => h('option', { value: v, selected: String(v) === String(c[key]) }, l))) : type === 'textarea' ? h('textarea', { class: 'textarea' }, c[key] || '') : h('input', { class: 'input', type: type || 'text', value: c[key] === undefined || c[key] === null ? '' : c[key], placeholder: (opts && opts.placeholder) || '' }); f[key] = el; return h('label', { class: 'field' }, h('span', null, label), el); };
+    const field = (label, key, type, opts) => { const el = type === 'select' ? h('select', { class: 'select' }, opts.map(([v, l]) => h('option', { value: v, selected: String(v) === String(c[key]) }, l))) : type === 'textarea' ? h('textarea', { class: 'textarea', placeholder: (opts && opts.placeholder) || '' }, c[key] || '') : h('input', { class: 'input', type: type || 'text', value: c[key] === undefined || c[key] === null ? '' : c[key], placeholder: (opts && opts.placeholder) || '' }); f[key] = el; return h('label', { class: 'field' }, h('span', null, label), el); };
     const bool = (label, key) => { const sw = switchEl(!!c[key], async (v) => { f[key].value = v ? '1' : '0'; }); f[key] = h('input', { type: 'hidden', value: c[key] ? '1' : '0' }); return h('div', { class: 'setting-row' }, h('div', null, h('b', null, label)), sw, f[key]); };
+    const title = (text) => h('div', { class: 'section-title' }, h('h2', null, text));
     const credBox = h('div');
-    const drawCreds = () => { credBox.innerHTML = ''; const type = state.types.find((t) => t.type === (f.provider_type ? f.provider_type.value : c.provider_type)) || { fields: [] }; credBox.appendChild(h('div', { class: 'section-title' }, h('h2', null, 'Учётные данные (шифруются)'))); type.fields.forEach((fd) => { const cur = (c.credentials || []).find((x) => x.key === fd.key); const el = h('input', { class: 'input', type: fd.secret ? 'password' : 'text', placeholder: cur && cur.set ? (fd.secret ? 'задано ' + cur.masked + ' — пусто = не менять' : cur.masked) : (fd.required ? 'обязательно' : 'необязательно'), value: cur && !fd.secret && cur.set ? cur.masked : '' }); el.dataset.cred = fd.key; credBox.appendChild(h('label', { class: 'field' }, h('span', null, fd.label), el)); }); };
-    const body = h('div', null, isNew ? field('Ключ (латиницей, напр. 1xbet)', 'key') : null, field('Название', 'name'), isNew ? field('Тип', 'provider_type', 'select', state.types.map((t) => [t.type, t.label])) : h('label', { class: 'field' }, h('span', null, 'Тип'), h('input', { class: 'input', value: c.provider_type, disabled: true })), field('Приоритет (меньше — выше)', 'priority', 'number'), field('Валюта кассы', 'currency'), field('ID валют игрока (через запятую, пусто — не проверять)', 'accepted_currency_ids', 'text', { placeholder: 'KGS,417' }), field('IP сервера / белый список', 'ip_address'), field('Base URL API', 'base_url'),
+    const drawCreds = () => { credBox.innerHTML = ''; const type = state.types.find((t) => t.type === (f.provider_type ? f.provider_type.value : c.provider_type)) || { fields: [] }; credBox.appendChild(title('Учётные данные (шифруются)')); type.fields.forEach((fd) => { const cur = (c.credentials || []).find((x) => x.key === fd.key); const el = h('input', { class: 'input', type: fd.secret ? 'password' : 'text', placeholder: cur && cur.set ? (fd.secret ? 'задано ' + cur.masked + ' — пусто = не менять' : cur.masked) : (fd.required ? 'обязательно' : 'необязательно'), value: cur && !fd.secret && cur.set ? cur.masked : '' }); el.dataset.cred = fd.key; credBox.appendChild(h('label', { class: 'field' }, h('span', null, fd.label), el)); }); };
+    const photoField = (kind, label, hint) => {
+      const wrap = h('div', { class: 'photo-field' });
+      const key = kind === 'instruction' ? 'instruction_photo' : kind + '_photo';
+      const draw = () => {
+        wrap.innerHTML = ''; wrap.appendChild(h('div', { class: 'photo-head' }, h('b', null, label), h('small', null, hint)));
+        if (isNew) { wrap.appendChild(h('div', { class: 'small muted' }, 'Сохраните кассу, затем загрузите фото')); return; }
+        const rel = c[key]; const input = h('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
+        input.onchange = async () => { if (!input.files[0]) return; const fd = new FormData(); fd.append('kind', kind); fd.append('file', input.files[0]); try { const rr = await api('/cashes/' + c.id + '/photo', { method: 'POST', body: fd }); Object.assign(c, rr.item); toast('Фото загружено', 'ok'); draw(); } catch (ex) { err(ex); } };
+        wrap.appendChild(h('div', { class: 'photo-row' }, rel ? h('img', { class: 'photo-thumb', src: fileUrl('/' + rel), alt: '' }) : h('div', { class: 'photo-thumb blank' }, svg('image', 18)), h('div', { class: 'btn-row', style: { margin: 0 } }, h('button', { class: 'outline-btn blue', type: 'button', onclick: () => input.click() }, svg('image', 14), rel ? 'Заменить' : 'Загрузить'), rel ? h('button', { class: 'outline-btn danger', type: 'button', onclick: async () => { if (await confirmDialog('Удалить фото?', 'Удалить', true)) { try { const rr = await api('/cashes/' + c.id + '/photo/' + kind, { method: 'DELETE' }); Object.assign(c, rr.item); draw(); } catch (ex) { err(ex); } } } }, svg('trash', 13)) : null, input)));
+      };
+      draw(); return wrap;
+    };
+    const body = h('div', null,
+      isNew ? field('Ключ (латиницей, напр. 1xbet)', 'key') : null, field('Название (как в кнопке бота)', 'name'), isNew ? field('Тип', 'provider_type', 'select', state.types.map((t) => [t.type, t.label])) : h('label', { class: 'field' }, h('span', null, 'Тип'), h('input', { class: 'input', value: c.provider_type, disabled: true })),
+      h('div', { class: 'stat-grid' }, field('Эмодзи в кнопке', 'emoji', 'text', { placeholder: '😎' }), field('ID premium-эмодзи', 'custom_emoji_id', 'text', { placeholder: 'необязательно' })),
+      field('Приоритет (меньше — выше)', 'priority', 'number'), field('Валюта кассы', 'currency'), field('ID валют игрока (через запятую, пусто — не проверять)', 'accepted_currency_ids', 'text', { placeholder: 'KGS,417' }), field('IP сервера / белый список', 'ip_address'), field('Base URL API', 'base_url'),
       h('div', { class: 'card section-card' }, bool('Касса включена', 'enabled'), bool('Пополнение', 'deposit_enabled'), bool('Вывод', 'withdraw_enabled')),
       h('div', { class: 'stat-grid' }, field('Мин. пополнение', 'deposit_min', 'number'), field('Макс. пополнение', 'deposit_max', 'number'), field('Комиссия ПП, %', 'deposit_fee_pct', 'number'), field('Комиссия ВВ, %', 'withdraw_fee_pct', 'number')),
-      h('div', { class: 'section-title' }, h('h2', null, 'Автоотключение по балансу')), h('div', { class: 'card section-card' }, bool('Автоматически отключать пополнения', 'auto_disable_enabled')),
+      title('Автоотключение по балансу'), h('div', { class: 'card section-card' }, bool('Автоматически отключать пополнения', 'auto_disable_enabled')),
       field('Порог «мало» (уведомление)', 'low_balance_threshold', 'number'), field('Критический порог (стоп)', 'critical_balance_threshold', 'number'), field('Порог автовключения', 'auto_enable_threshold', 'number'),
-      credBox, field('Инструкция по выводу для клиентов', 'instructions_text', 'textarea'), field('Заметки', 'notes', 'textarea'));
+      credBox,
+      title('Шаги бота: фото и тексты'),
+      h('div', { class: 'hint-card' }, svg('image', 16), 'Фото показывается клиенту вместе с текстом шага (например, скриншот, где искать ID). Пустой текст = общий текст из Настроек → Тексты.'),
+      photoField('deposit', 'Пополнение → «Введите ваш ID»', 'скриншот, где найти ID в кассе'), field('Текст шага (пополнение, ID)', 'deposit_photo_text', 'textarea', { placeholder: 'Введите ваш ID от {emoji} {cash}' }),
+      photoField('withdraw', 'Вывод → «Введите ваш ID»', 'скриншот профиля с ID'), field('Текст шага (вывод, ID)', 'withdraw_photo_text', 'textarea', { placeholder: 'Введите ваш ID для вывода' }),
+      photoField('code', 'Вывод → «Введите код»', 'скриншот детализации с кодом'), field('Текст шага (вывод, код)', 'code_photo_text', 'textarea', { placeholder: 'Введите код для вывода' }),
+      title('Инструкция по выводу для этой кассы'),
+      h('div', { class: 'stat-grid' }, field('Город', 'withdraw_city', 'text', { placeholder: 'пусто = общий' }), field('Адрес', 'withdraw_address', 'text', { placeholder: 'пусто = общий' })),
+      photoField('instruction', 'Фото инструкции', 'показывается по кнопке «Инструкция»'), field('Текст инструкции ({city}, {address})', 'instructions_text', 'textarea', { placeholder: 'пусто = общая инструкция из Настроек → Выводы' }),
+      field('Заметки', 'notes', 'textarea'));
     drawCreds(); if (f.provider_type) f.provider_type.onchange = drawCreds;
-    const s = sheet({ title: isNew ? 'Новая касса' : c.name, body, actions: [h('button', { class: 'action-btn', onclick: () => s.close() }, 'Отмена'), h('button', { class: 'action-btn primary', onclick: async (e) => { e.currentTarget.disabled = true; const payload = {}; for (const [k, el] of Object.entries(f)) payload[k] = el.type === 'hidden' ? el.value === '1' : el.value; const creds = {}; credBox.querySelectorAll('input[data-cred]').forEach((el) => { if (el.value && el.value !== el.placeholder) creds[el.dataset.cred] = el.value; }); payload.credentials = creds; try { if (isNew) await api('/cashes', { method: 'POST', body: payload }); else await api('/cashes/' + c.id, { method: 'PATCH', body: payload }); toast('Сохранено', 'ok'); s.close(); go('#/cashes'); render(); } catch (ex) { err(ex); e.target.disabled = false; } } }, 'Сохранить')] });
+    const s = sheet({ title: isNew ? 'Новая касса' : c.name, body, actions: [h('button', { class: 'action-btn', onclick: () => s.close() }, 'Отмена'), h('button', { class: 'action-btn primary', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; b.classList.add('busy'); const payload = {}; for (const [k, el] of Object.entries(f)) payload[k] = el.type === 'hidden' ? el.value === '1' : el.value; const creds = {}; credBox.querySelectorAll('input[data-cred]').forEach((el) => { if (el.value && el.value !== el.placeholder) creds[el.dataset.cred] = el.value; }); payload.credentials = creds; try { const rr = isNew ? await api('/cashes', { method: 'POST', body: payload }) : await api('/cashes/' + c.id, { method: 'PATCH', body: payload }); toast('Сохранено', 'ok'); s.close(); if (isNew && rr.item) { history.replaceState(null, '', '#/cashes/' + rr.item.id); } go('#/cashes'); render(); } catch (ex) { err(ex); b.disabled = false; b.classList.remove('busy'); } } }, 'Сохранить')] });
   }
 
   /* ------------------------------------------------------------- events (Выписка) */
@@ -471,17 +499,56 @@
     const box = page(shell, 'Платёжка');
     const draw = async () => {
       try {
-        const [rq, bl] = await Promise.all([api('/requisites'), api('/bank-links')]); box.innerHTML = '';
+        const [rq, bl, info, cashes] = await Promise.all([api('/requisites'), api('/bank-links'), api('/webhook-info'), api('/cashes')]); box.innerHTML = '';
         box.appendChild(h('div', { class: 'hint-card' }, svg('qr', 16), 'Реквизит — QR вашего банка, на который клиенты платят пополнения. В него подставляется точная сумма с тыйынами.'));
-        box.appendChild(h('div', { class: 'section-title' }, h('h2', null, 'Реквизиты'), h('button', { class: 'outline-btn blue', onclick: addRequisite }, svg('plus', 14), 'Добавить')));
+        box.appendChild(h('div', { class: 'section-title' }, h('h2', null, 'Режим выбора реквизита')));
+        box.appendChild(h('div', { style: { marginBottom: '10px' } }, segEl([['random', 'Случайный'], ['priority', 'Один основной']], info.requisite_mode, async (k) => { try { await api('/settings', { method: 'POST', body: { values: { requisite_mode: k } } }); toast(k === 'random' ? 'Реквизиты чередуются случайно' : 'Используется реквизит с наименьшим приоритетом', 'ok'); draw(); } catch (ex) { err(ex); } }, 'light')));
+        box.appendChild(h('div', { class: 'small muted', style: { marginBottom: '10px' } }, info.requisite_mode === 'random' ? 'Каждая заявка получает случайный включённый реквизит — нагрузка распределяется.' : 'Все заявки идут на реквизит с наименьшим числом приоритета; остальные — резерв.'));
+        box.appendChild(h('div', { class: 'section-title' }, h('h2', null, 'Реквизиты · ' + rq.items.filter((q) => q.enabled).length + ' вкл.'), h('button', { class: 'outline-btn blue', onclick: () => requisiteForm(null) }, svg('plus', 14), 'Добавить')));
         if (!rq.items.length) box.appendChild(empty('Реквизитов нет', 'Без реквизита пополнения недоступны', 'qr'));
-        rq.items.forEach((q) => box.appendChild(h('div', { class: 'card wallet-card' }, h('span', { class: 'ico' }, svg('qr', 20)), h('div', { style: { minWidth: 0 } }, h('b', null, q.name), h('small', null, q.bank_name + ' · ' + q.account + (q.holder ? ' · ' + q.holder : '')), h('div', { class: 'tag-row' }, editable(q.priority, { type: 'number', render: (v) => 'приоритет ' + v, save: (v) => api('/requisites/' + q.id, { method: 'PATCH', body: { priority: Number(v) } }) }), h('button', { class: 'outline-btn danger', onclick: async () => { if (await confirmDialog('Удалить реквизит ' + q.name + '?', 'Удалить', true)) { await api('/requisites/' + q.id, { method: 'DELETE' }); draw(); } } }, svg('trash', 13)))), switchEl(q.enabled, async (v) => { await api('/requisites/' + q.id, { method: 'PATCH', body: { enabled: v } }); }))));
+        rq.items.forEach((q) => { const cashName = (cashes.items.find((c) => c.id === q.cash_id) || {}).name; box.appendChild(h('div', { class: 'card wallet-card', style: { opacity: q.enabled ? 1 : 0.6 } }, h('span', { class: 'ico' }, svg('qr', 20)), h('div', { style: { minWidth: 0 } }, h('b', null, q.name), h('small', null, q.bank_name + ' · ' + q.account + (q.holder ? ' · ' + q.holder : '')), h('div', { class: 'tag-row' }, h('span', { class: 'pill ' + (q.enabled ? 'green' : '') }, q.enabled ? 'включён' : 'выключен'), h('span', { class: 'pill' }, 'приоритет ' + q.priority), cashName ? h('span', { class: 'pill blue' }, cashName) : h('span', { class: 'pill' }, 'все кассы')), h('div', { class: 'btn-row' }, h('button', { class: 'outline-btn', onclick: () => requisiteForm(q) }, svg('edit', 13), 'Изменить'), h('button', { class: 'outline-btn danger', onclick: async () => { if (await confirmDialog('Удалить реквизит ' + q.name + '?', 'Удалить', true)) { try { await api('/requisites/' + q.id, { method: 'DELETE' }); toast('Удалено', 'ok'); draw(); } catch (ex) { err(ex); } } } }, svg('trash', 13)))), switchEl(q.enabled, async (v) => { await api('/requisites/' + q.id, { method: 'PATCH', body: { enabled: v } }); setTimeout(draw, 200); }))); });
         box.appendChild(h('div', { class: 'section-title' }, h('h2', null, 'Кнопки банков под QR')));
         bl.items.forEach((l) => box.appendChild(h('div', { class: 'card wallet-card' }, h('span', { class: 'ico' }, svg('bank', 20)), h('div', { style: { minWidth: 0 } }, h('b', null, l.name), h('small', null, l.prefix || 'показ QR-картинки')), switchEl(l.enabled, async (v) => { await api('/bank-links', { method: 'POST', body: { key: l.key, enabled: v } }); }))));
+        box.appendChild(h('div', { class: 'section-title' }, h('h2', null, 'Подтверждения платежей')));
+        box.appendChild(h('button', { class: 'card row-card', onclick: () => go('#/macrodroid') }, h('span', { class: 'avatar mini' }, svg('bolt', 16)), h('div', null, h('b', null, 'MacroDroid / webhook'), h('small', null, 'Адрес, ключ, защита и последние платежи')), svg('chevron', 16)));
+        function requisiteForm(q) {
+          const isNew = !q; q = q || { name: '', priority: 100, enabled: true, notes: '', cash_id: null };
+          const name = h('input', { class: 'input', placeholder: 'Название (напр. Optima основной)', value: q.name });
+          const priority = h('input', { class: 'input', type: 'number', value: q.priority });
+          const cashSel = h('select', { class: 'select' }, h('option', { value: '', selected: !q.cash_id }, 'Все кассы'), cashes.items.map((c) => h('option', { value: c.id, selected: c.id === q.cash_id }, c.name)));
+          const notes = h('input', { class: 'input', placeholder: 'Заметка (для себя)', value: q.notes || '' });
+          const src = h('textarea', { class: 'textarea', placeholder: isNew ? 'ELQR (000201…) или ссылка банка' : 'Пусто = оставить текущий QR' });
+          const file = h('input', { type: 'file', accept: 'image/*', class: 'input' });
+          file.onchange = async () => { const fd = new FormData(); fd.append('file', file.files[0]); try { const rr = await api('/requisites/upload', { method: 'POST', body: fd }); src.value = rr.source; toast('QR распознан: ' + rr.meta.bank_name, 'ok'); } catch (ex) { err(ex); } };
+          const s = sheet({ title: isNew ? 'Новый реквизит' : q.name, body: h('div', null, h('label', { class: 'field' }, h('span', null, 'Название'), name), h('div', { class: 'stat-grid' }, h('label', { class: 'field' }, h('span', null, 'Приоритет'), priority), h('label', { class: 'field' }, h('span', null, 'Касса'), cashSel)), h('label', { class: 'field' }, h('span', null, 'Заметка'), notes), h('label', { class: 'field' }, h('span', null, isNew ? 'QR / ссылка' : 'Заменить QR / ссылку'), src), h('label', { class: 'field' }, h('span', null, 'или изображение QR'), file)), actions: [h('button', { class: 'action-btn', onclick: () => s.close() }, 'Отмена'), h('button', { class: 'action-btn primary', onclick: async () => { const body = { name: name.value, priority: Number(priority.value || 100), cash_id: cashSel.value ? Number(cashSel.value) : 0, notes: notes.value }; if (src.value.trim()) body.source = src.value.trim(); try { if (isNew) { if (!body.source) return toast('Укажите QR или ссылку', 'err'); await api('/requisites', { method: 'POST', body }); } else await api('/requisites/' + q.id, { method: 'PATCH', body }); toast('Сохранено', 'ok'); s.close(); draw(); } catch (ex) { err(ex); } } }, 'Сохранить')] });
+        }
       } catch (e) { box.innerHTML = ''; box.appendChild(empty('Ошибка', e.message)); }
     };
-    function addRequisite() { const name = h('input', { class: 'input', placeholder: 'Название (напр. Optima основной)' }); const src = h('textarea', { class: 'textarea', placeholder: 'ELQR (000201…) или ссылка банка' }); const file = h('input', { type: 'file', accept: 'image/*', class: 'input' }); file.onchange = async () => { const fd = new FormData(); fd.append('file', file.files[0]); try { const rr = await api('/requisites/upload', { method: 'POST', body: fd }); src.value = rr.source; toast('QR распознан: ' + rr.meta.bank_name, 'ok'); } catch (ex) { err(ex); } }; const s = sheet({ title: 'Новый реквизит', body: h('div', null, h('label', { class: 'field' }, h('span', null, 'Название'), name), h('label', { class: 'field' }, h('span', null, 'QR / ссылка'), src), h('label', { class: 'field' }, h('span', null, 'или изображение QR'), file)), actions: [h('button', { class: 'action-btn', onclick: () => s.close() }, 'Отмена'), h('button', { class: 'action-btn primary', onclick: async () => { try { await api('/requisites', { method: 'POST', body: { name: name.value, source: src.value } }); toast('Добавлено', 'ok'); s.close(); draw(); } catch (ex) { err(ex); } } }, 'Добавить')] }); }
     draw();
+  }
+
+  /* ------------------------------------------------------------- MacroDroid / webhook */
+  async function macrodroidView(shell) {
+    const box = page(shell, 'MacroDroid');
+    let revealed = false;
+    const draw = async () => {
+      box.innerHTML = ''; box.appendChild(loader());
+      try {
+        const r = await api('/webhook-info'); box.innerHTML = '';
+        box.appendChild(h('div', { class: 'hint-card' }, svg('bolt', 16), 'Банк присылает push о зачислении → MacroDroid пересылает его сюда → система находит заявку по точной сумме и зачисляет её в кассу через API. Обычно 1–3 секунды.'));
+        const urlEl = h('div', { class: 'code-box' }, revealed ? r.url : r.url_masked);
+        box.appendChild(h('div', { class: 'card section-card' }, h('h2', null, 'Адрес для MacroDroid'), urlEl, h('div', { class: 'btn-row' }, h('button', { class: 'outline-btn', onclick: () => { revealed = !revealed; urlEl.textContent = revealed ? r.url : r.url_masked; } }, revealed ? 'Скрыть ключ' : 'Показать ключ'), h('button', { class: 'outline-btn blue', onclick: () => copy(r.url) }, svg('copy', 14), 'Копировать адрес'), h('button', { class: 'outline-btn green', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; try { const rr = await api('/webhook-info/test', { method: 'POST' }); toast('Тест прошёл: событие #' + rr.event.id + ' (' + rr.event.status + ')', 'ok', 4000); draw(); } catch (ex) { err(ex); } b.disabled = false; } }, svg('bolt', 14), 'Тест')), h('div', { class: 'small muted', style: { marginTop: '8px' } }, 'Ключ — часть адреса. Без него запросы отклоняются. Никому не пересылайте полный адрес.')));
+        box.appendChild(h('div', { class: 'card section-card' }, h('h2', null, 'Настройка макроса'), h('ol', { class: 'steps' }, h('li', null, h('b', null, 'Триггер:'), ' «Уведомление получено» → выберите приложение банка (MBank, Optima, O!Деньги…).'), h('li', null, h('b', null, 'Действие:'), ' «HTTP-запрос» → метод POST → вставьте адрес выше.'), h('li', null, h('b', null, 'Content-Type:'), ' application/json. Тело запроса:'), h('div', { class: 'code-box' }, JSON.stringify(r.sample_body)), h('li', null, 'Нажмите «Тест» выше — событие появится в списке ниже. Реальный платёж будет «Зачислен», если сумма совпала с заявкой.')), h('div', { class: 'small muted' }, 'Альтернатива без ключа в адресе: POST на ' + r.header_url + ' с заголовком ' + r.header_name + '.')));
+        const ipInput = h('textarea', { class: 'textarea', placeholder: 'пусто — принимать с любого IP (ключ обязателен в любом случае)', style: { minHeight: '60px' } }, r.ip_allowlist || '');
+        box.appendChild(h('div', { class: 'card section-card' }, h('h2', null, 'Защита'), h('label', { class: 'field' }, h('span', null, 'Белый список IP (через запятую, можно CIDR 10.0.0.0/8)'), ipInput), h('div', { class: 'setting-row' }, h('div', null, h('b', null, 'Требовать подпись X-Signature'), h('small', null, 'HMAC-SHA256 тела запроса ключом; MacroDroid так не умеет — только для своих скриптов')), switchEl(r.require_signature, async (v) => { await api('/settings', { method: 'POST', body: { values: { webhook_require_signature: v } } }); })), h('button', { class: 'primary-btn', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; try { await api('/settings', { method: 'POST', body: { values: { webhook_ip_allowlist: ipInput.value.trim() } } }); toast('Сохранено', 'ok'); } catch (ex) { err(ex); } b.disabled = false; } }, svg('check', 16), 'Сохранить белый список')));
+        const c = r.counts_24h || {};
+        box.appendChild(h('div', { class: 'stat-grid', style: { marginBottom: '12px' } }, h('div', { class: 'card stat-card green' }, h('div', { class: 'v' }, c.matched || 0), h('div', { class: 'l' }, 'зачислено за 24 ч')), h('div', { class: 'card stat-card blue' }, h('div', { class: 'v' }, c.unmatched || 0), h('div', { class: 'l' }, 'без заявки')), h('div', { class: 'card stat-card red' }, h('div', { class: 'v' }, c.failed || 0), h('div', { class: 'l' }, 'ошибки')), h('div', { class: 'card stat-card' }, h('div', { class: 'v' }, (c.received || 0) + (c.processing || 0)), h('div', { class: 'l' }, 'в обработке'))));
+        box.appendChild(h('div', { class: 'section-title' }, h('h2', null, 'Последние платежи'), h('button', { class: 'outline-btn', onclick: () => go('#/events') }, 'Вся выписка')));
+        if (!r.recent.length) box.appendChild(empty('Платежей ещё не было', 'Нажмите «Тест», чтобы проверить связку.', 'calendar'));
+        r.recent.forEach((ev) => box.appendChild(h('div', { class: 'card row-card', style: { cursor: 'default' } }, h('span', { class: 'dot ' + (ev.status === 'matched' ? 'green' : ev.status === 'failed' ? 'red' : ev.status === 'unmatched' ? 'amber' : 'blue') }), h('div', null, h('b', null, money(ev.amount) + ' ' + (ev.currency || 'KGS') + ' · ' + ev.source), h('small', null, fmtDate(ev.received_at) + (ev.sender_ip ? ' · ' + ev.sender_ip : '') + ' · ' + (ev.raw_text || '').slice(0, 60))), statusEl(ev.status === 'matched' ? 'success' : ev.status === 'failed' ? 'failed' : ev.status === 'unmatched' ? 'pending' : 'processing', ev.status === 'matched' ? 'Зачислен' : ev.status === 'failed' ? 'Ошибка' : ev.status === 'unmatched' ? 'Не найден' : 'Обработка'))));
+      } catch (e) { box.innerHTML = ''; box.appendChild(empty('Ошибка', e.message)); }
+    };
+    draw(); watchChanges(box, draw);
   }
 
   /* ------------------------------------------------------------- broadcast (Рассылка) */
@@ -585,44 +652,85 @@
   }
 
   /* ------------------------------------------------------------- settings (Настройки) */
-  const SETTINGS_GROUPS = [
-    ['Бот и тексты', [['brand_name', 'Название бренда'], ['support_username', 'Username поддержки'], ['greeting_text', 'Приветствие ({name}, {support})', 'textarea'], ['withdraw_instruction', 'Инструкция по выводу', 'textarea'], ['withdraw_city', 'Город для вывода'], ['withdraw_address', 'Адрес для вывода'], ['withdraw_sla_text', 'Текст о сроках вывода']]],
-    ['Режим работы', [['bot_paused', 'Пауза бота', 'bool'], ['deposits_enabled', 'Пополнения включены', 'bool'], ['withdrawals_enabled', 'Выводы включены', 'bool'], ['subscription_enabled', 'Требовать подписку на канал', 'bool'], ['subscription_channel', 'Канал (@username или id)'], ['phone_required', 'Требовать номер телефона', 'bool']]],
-    ['Пополнения', [['payment_timeout_seconds', 'Таймаут оплаты, сек', 'number'], ['random_tiyin', 'Уникальные тыйыны', 'bool'], ['tiyin_min', 'Тыйын мин', 'number'], ['tiyin_max', 'Тыйын макс', 'number'], ['amount_reuse_cooldown_seconds', 'Не переиспользовать сумму, сек', 'number'], ['payment_event_max_age_minutes', 'Ждать платёж после истечения, мин', 'number'], ['deposit_max_active_per_user', 'Активных заявок на клиента', 'number']]],
-    ['Выводы и рефералы', [['withdraw_code_min_length', 'Мин. длина кода вывода', 'number'], ['withdraw_processing_timeout_minutes', 'Таймаут обработки вывода, мин', 'number'], ['referral_bonus_pct', 'Реферальный бонус, %', 'number'], ['referral_withdraw_min', 'Мин. вывод реферального баланса', 'number']]],
-    ['Мониторинг касс', [['cash_monitor_enabled', 'Автопроверка балансов', 'bool'], ['cash_monitor_interval_seconds', 'Интервал проверки, сек', 'number']]],
-    ['Уведомления', [['notify_new_deposit', 'Новое пополнение', 'bool'], ['notify_deposit_success', 'Успешное пополнение', 'bool'], ['notify_deposit_failed', 'Ошибка пополнения', 'bool'], ['notify_new_withdrawal', 'Новый вывод', 'bool'], ['notify_withdrawal_status', 'Статус вывода', 'bool'], ['notify_cash_critical', 'Критические ошибки касс', 'bool'], ['notify_support_operator', 'Обращения оператору', 'bool'], ['ui_poll_seconds', 'Опрос панели, сек', 'number'], ['ui_page_size', 'Размер страницы', 'number']]],
+  const NOTIFY_GROUP = ['Уведомления', [['notify_new_deposit', 'Новое пополнение', 'bool'], ['notify_deposit_success', 'Успешное пополнение', 'bool'], ['notify_deposit_failed', 'Ошибка пополнения', 'bool'], ['notify_new_withdrawal', 'Новый вывод', 'bool'], ['notify_withdrawal_status', 'Статус вывода', 'bool'], ['notify_cash_critical', 'Критические ошибки касс', 'bool'], ['notify_support_operator', 'Обращения оператору', 'bool']]];
+  const SETTINGS_TABS = [
+    ['bot', 'Бот', [
+      ['Режим работы', [['bot_paused', 'Пауза бота (клиенты видят «Бот временно выключен»)', 'bool'], ['deposits_enabled', 'Пополнения включены', 'bool'], ['withdrawals_enabled', 'Выводы включены', 'bool']]],
+      ['Бренд и оператор', [['brand_name', 'Название бренда'], ['support_username', 'Username оператора (показывается клиентам)']]],
+      ['Кнопки меню', [['menu_deposit_label', 'Кнопка «Пополнить»'], ['menu_withdraw_label', 'Кнопка «Вывести»'], ['menu_help_label', 'Кнопка «Помощь»'], ['button_styles_enabled', 'Цветные кнопки (Bot API 9.4+)', 'bool'], ['premium_emoji_enabled', 'Premium-эмодзи в текстах ([emoji:ID:😎])', 'bool']]],
+      ['Доступ', [['subscription_enabled', 'Требовать подписку на канал', 'bool'], ['subscription_channel', 'Канал (@username или id)'], ['phone_required', 'Требовать номер телефона', 'bool']]],
+      ['Рефералы', [['referral_bonus_pct', 'Реферальный бонус, %', 'number'], ['referral_withdraw_min', 'Мин. вывод реферального баланса', 'number']]],
+    ]],
+    ['texts', 'Тексты', [
+      ['Главное меню', [['greeting_text', 'Приветствие после /start', 'textarea'], ['text_help', 'Ответ на «Помощь»', 'textarea'], ['text_paused', 'Бот на паузе'], ['text_blocked', 'Клиент заблокирован', 'textarea']]],
+      ['Пополнение', [['text_choose_site_deposit', 'Выбор сайта'], ['text_enter_id_deposit', 'Введите ID', 'textarea'], ['text_enter_amount', 'Введите сумму', 'textarea'], ['text_pay_card', 'Подпись под QR', 'textarea'], ['text_send_receipt', 'Просьба прислать чек'], ['text_receipt_ok', 'Чек получен', 'textarea'], ['text_deposit_cancelled', 'Заявка отменена / истекла', 'textarea'], ['text_deposit_success', 'Пополнено', 'textarea'], ['text_deposit_rejected', 'Отклонено оператором', 'textarea']]],
+      ['Вывод', [['text_choose_site_withdraw', 'Выбор сайта'], ['text_send_qr', 'Отправьте QR кошелька'], ['text_enter_id_withdraw', 'Введите ID'], ['text_enter_code', 'Введите код'], ['text_bad_withdraw', 'Неверные данные'], ['text_withdraw_accepted', 'Заявка принята', 'textarea'], ['text_withdraw_problem', 'Сумма не получена', 'textarea'], ['text_withdraw_processing', 'Взят в обработку'], ['text_withdraw_done', 'Вывод выполнен', 'textarea'], ['text_withdraw_failed', 'Вывод отклонён', 'textarea']]],
+      ['Проверка ID', [['text_id_not_found', 'ID не найден'], ['text_currency_mismatch', 'Валюта не совпадает', 'textarea']]],
+    ]],
+    ['withdraw', 'Выводы', [
+      ['Адрес для вывода (подставляется в инструкцию)', [['withdraw_city', 'Город'], ['withdraw_address', 'Адрес'], ['withdraw_sla_text', 'Сроки вывода (клиенту)']]],
+      ['Инструкция по выводу', [['instruction_text', 'Текст ({city}, {address})', 'textarea']]],
+      ['Правила', [['withdraw_code_min_length', 'Мин. длина кода вывода', 'number'], ['withdraw_processing_timeout_minutes', 'Таймаут обработки вывода, мин', 'number']]],
+    ]],
+    ['deposit', 'Пополнения', [
+      ['Заявка', [['payment_timeout_seconds', 'Время на оплату, сек', 'number'], ['deposit_max_active_per_user', 'Активных заявок на клиента', 'number'], ['deposit_presets', 'Кнопки сумм (через запятую)'], ['receipt_request_enabled', 'Просить скриншот чека', 'bool']]],
+      ['Уникальная сумма', [['random_tiyin', 'Уникальные тыйыны', 'bool'], ['tiyin_min', 'Тыйын мин', 'number'], ['tiyin_max', 'Тыйын макс', 'number'], ['amount_reuse_cooldown_seconds', 'Не переиспользовать сумму, сек', 'number'], ['payment_event_max_age_minutes', 'Ждать платёж после истечения, мин', 'number']]],
+      ['Карточка QR (фото клиенту)', [['qr_card_title', 'Заголовок'], ['qr_card_subtitle', 'Подзаголовок'], ['qr_overlay_text', 'Надпись поверх QR (пусто — без надписи)'], ['qr_watermark_text', 'Водяной знак']]],
+      ['Реквизиты', [['requisite_mode', 'Выбор реквизита', 'select', [['random', 'Случайный из включённых'], ['priority', 'Один основной (по приоритету)']]]]],
+    ]],
+    ['notify', 'Уведомления', [NOTIFY_GROUP, ['Мониторинг касс', [['cash_monitor_enabled', 'Автопроверка балансов', 'bool'], ['cash_monitor_interval_seconds', 'Интервал проверки, сек', 'number']]], ['Панель', [['ui_poll_seconds', 'Опрос панели, сек', 'number'], ['ui_page_size', 'Размер страницы', 'number']]]]],
+    ['system', 'Система', []],
   ];
   const SUPPORT_GROUPS = [
     ['Автоответчик', [['support_greeting', 'Приветствие поддержки', 'textarea'], ['support_auto_resolve_hours', 'Автозакрытие тихих диалогов, ч', 'number']]],
     ['Антифлуд', [['support_rate_limit_messages', 'Сообщений в окне', 'number'], ['support_rate_limit_window_seconds', 'Окно, сек', 'number'], ['support_cooldown_seconds', 'Cooldown при превышении, сек', 'number'], ['support_debounce_seconds', 'Объединять сообщения, сек', 'number'], ['support_duplicate_window_seconds', 'Окно повторов, сек', 'number'], ['support_escalation_cooldown_seconds', 'Пауза между эскалациями, сек', 'number']]],
   ];
-  function settingsForm(box, groups, values, extraTop) {
+  function settingsForm(box, groups, values, extraTop, extraBottom) {
     const inputs = {};
     box.innerHTML = '';
     if (extraTop) box.appendChild(extraTop);
     groups.forEach(([title, fields]) => {
       const card = h('div', { class: 'card section-card' }, h('h2', null, title));
-      fields.forEach(([key, label, type]) => {
+      fields.forEach(([key, label, type, options]) => {
         if (!(key in values)) return;
         if (type === 'bool') { const hidden = h('input', { type: 'hidden', value: values[key] ? '1' : '0' }); inputs[key] = hidden; card.appendChild(h('div', { class: 'setting-row' }, h('div', null, h('b', null, label), h('small', null, key)), switchEl(!!values[key], async (v) => { hidden.value = v ? '1' : '0'; }), hidden)); return; }
-        const el = type === 'textarea' ? h('textarea', { class: 'textarea' }, values[key] === null || values[key] === undefined ? '' : String(values[key])) : h('input', { class: 'input', type: type || 'text', step: type === 'number' ? 'any' : undefined, value: values[key] === null || values[key] === undefined ? '' : values[key] });
+        const el = type === 'select' ? h('select', { class: 'select' }, (options || []).map(([v, l]) => h('option', { value: v, selected: String(v) === String(values[key]) }, l))) : type === 'textarea' ? h('textarea', { class: 'textarea' }, values[key] === null || values[key] === undefined ? '' : String(values[key])) : h('input', { class: 'input', type: type || 'text', step: type === 'number' ? 'any' : undefined, value: values[key] === null || values[key] === undefined ? '' : values[key] });
         inputs[key] = el; card.appendChild(h('label', { class: 'field' }, h('span', null, label), el));
       });
-      box.appendChild(card);
+      if (card.childNodes.length > 1) box.appendChild(card);
     });
-    box.appendChild(h('button', { class: 'primary-btn', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; const payload = {}; for (const [k, el] of Object.entries(inputs)) payload[k] = el.type === 'hidden' ? el.value === '1' : el.value; try { await api('/settings', { method: 'POST', body: { values: payload } }); toast('Настройки сохранены', 'ok'); } catch (ex) { err(ex); } b.disabled = false; } }, svg('check', 16), 'Сохранить'));
+    if (extraBottom) box.appendChild(extraBottom);
+    if (Object.keys(inputs).length) box.appendChild(h('button', { class: 'primary-btn', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; b.classList.add('busy'); const payload = {}; for (const [k, el] of Object.entries(inputs)) payload[k] = el.type === 'hidden' ? el.value === '1' : el.value; try { await api('/settings', { method: 'POST', body: { values: payload } }); toast('Настройки сохранены', 'ok'); } catch (ex) { err(ex); } b.disabled = false; b.classList.remove('busy'); } }, svg('check', 16), 'Сохранить'));
     return inputs;
   }
-  async function settingsView(shell) {
+  function settingPhoto(key, values, label, hint) {
+    const wrap = h('div', { class: 'card section-card' }); const draw = () => {
+      wrap.innerHTML = ''; wrap.appendChild(h('h2', null, label)); const rel = values[key]; const input = h('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
+      input.onchange = async () => { if (!input.files[0]) return; const fd = new FormData(); fd.append('key', key); fd.append('file', input.files[0]); try { const rr = await api('/settings/photo', { method: 'POST', body: fd }); values[key] = rr.path; toast('Фото загружено', 'ok'); draw(); } catch (ex) { err(ex); } };
+      wrap.appendChild(h('div', { class: 'photo-row' }, rel ? h('img', { class: 'photo-thumb', src: fileUrl('/' + rel), alt: '' }) : h('div', { class: 'photo-thumb blank' }, svg('image', 18)), h('div', null, h('div', { class: 'small muted', style: { marginBottom: '6px' } }, hint), h('div', { class: 'btn-row', style: { margin: 0 } }, h('button', { class: 'outline-btn blue', type: 'button', onclick: () => input.click() }, svg('image', 14), rel ? 'Заменить' : 'Загрузить'), rel ? h('button', { class: 'outline-btn danger', type: 'button', onclick: async () => { if (await confirmDialog('Удалить фото?', 'Удалить', true)) { try { await api('/settings/photo/' + key, { method: 'DELETE' }); values[key] = ''; draw(); } catch (ex) { err(ex); } } } }, svg('trash', 13)) : null, input))));
+    }; draw(); return wrap;
+  }
+  async function settingsView(shell, forcedTab) {
+    const tab0 = forcedTab || state.route.id || 'bot';
     const box = page(shell, 'Настройки');
     try {
-      const r = await api('/settings');
-      const links = h('div', { class: 'list', style: { marginBottom: '12px' } },
-        h('button', { class: 'card row-card', onclick: () => go('#/gateway') }, h('span', { class: 'avatar mini' }, svg('qr', 16)), h('div', null, h('b', null, 'Платёжка'), h('small', null, 'Реквизиты QR и кнопки банков')), svg('chevron', 16)),
-        h('button', { class: 'card row-card', onclick: () => go('#/push') }, h('span', { class: 'avatar mini' }, svg('bell', 16)), h('div', null, h('b', null, 'Push-уведомления'), h('small', null, 'Подписка этого устройства и тест')), svg('chevron', 16)),
-        h('button', { class: 'card row-card', onclick: () => go('#/env') }, h('span', { class: 'avatar mini' }, svg('terminal', 16)), h('div', null, h('b', null, 'Окружение'), h('small', null, 'Домен, webhook, SMTP, боты (из .env)')), svg('chevron', 16)));
-      settingsForm(box, SETTINGS_GROUPS, r.values, links);
+      const r = await api('/settings'); const values = r.values;
+      const tabsBar = h('div', { class: 'settings-tabs' }); const body = h('div');
+      const drawTab = (key) => {
+        tabsBar.innerHTML = ''; SETTINGS_TABS.forEach(([k, label]) => tabsBar.appendChild(h('button', { class: k === key ? 'active' : '', onclick: () => { history.replaceState(null, '', '#/settings/' + k); state.route.id = k; drawTab(k); } }, label)));
+        const tab = SETTINGS_TABS.find((t) => t[0] === key) || SETTINGS_TABS[0];
+        if (tab[0] === 'system') {
+          body.innerHTML = '';
+          [['#/gateway', 'qr', 'Платёжка', 'Реквизиты QR, режим выбора, кнопки банков'], ['#/macrodroid', 'bolt', 'MacroDroid / webhook', 'Адрес, ключ, белый список IP, тест'], ['#/cashes', 'wallet', 'Кассы', 'Данные касс, фото шагов, лимиты'], ['#/firstline', 'chat', 'Первая линия', 'Автоответчик и антифлуд поддержки'], ['#/push', 'bell', 'Push-уведомления', 'Подписка этого устройства и тест'], ['#/security', 'shield', 'Безопасность', 'Пароль, сессии, администраторы'], ['#/env', 'terminal', 'Окружение', 'Домен, порт, SMTP, боты (из .env)']].forEach(([href, icon, title, sub]) => body.appendChild(h('button', { class: 'card row-card', onclick: () => go(href) }, h('span', { class: 'avatar mini' }, svg(icon, 16)), h('div', null, h('b', null, title), h('small', null, sub)), svg('chevron', 16))));
+          return;
+        }
+        let top = null, bottom = null;
+        if (tab[0] === 'texts') top = h('div', { class: 'card section-card' }, h('h2', null, 'Подстановки'), h('div', { class: 'small muted', style: { marginBottom: '6px' } }, 'Можно использовать HTML: <b>, <i>, <blockquote>. Premium-эмодзи: [emoji:ID:😎]'), h('div', { class: 'placeholder-list' }, ['{name}', '{support}', '{brand}', '{cash}', '{emoji}', '{player}', '{amount}', '{cur}', '{min}', '{max}', '{minutes}', '{left}', '{reason}', '{sla}', '{city}', '{address}', '{have}', '{need}'].map((x) => h('code', null, x))));
+        if (tab[0] === 'withdraw') bottom = settingPhoto('instruction_photo', values, 'Фото инструкции', 'Показывается клиенту при вводе кода вывода (если у кассы нет своего фото) и по кнопке «Инструкция»');
+        settingsForm(body, tab[2], values, top, bottom);
+      };
+      box.innerHTML = ''; box.appendChild(tabsBar); box.appendChild(body);
+      drawTab(SETTINGS_TABS.some((t) => t[0] === tab0) ? tab0 : 'bot');
     } catch (e) { box.innerHTML = ''; box.appendChild(empty('Ошибка', e.message)); }
   }
 
