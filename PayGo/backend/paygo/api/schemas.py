@@ -130,6 +130,7 @@ class BroadcastBody(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
     photo_url: str = ""
     only_active_days: int = 0
+    bot: str = "main"  # main | support
 
 
 class ManualPaymentBody(BaseModel):

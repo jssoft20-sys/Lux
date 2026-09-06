@@ -255,18 +255,26 @@ def test_withdraw_flow_qr_then_id_then_code(bot, fake_provider):
         assert db.query(Withdrawal).count() == 1
 
 
-def test_help_profile_and_referral(bot):
+def test_help_shows_only_the_operator(bot):
     text(bot, "/start")
     text(bot, "Помощь")
-    assert "Оператор" in bot.client.last[1] and "@PayOperator_bot" in bot.client.last[1]
-    assert bot.client.buttons() == ["instr", "profile", "ref"]
+    kind, body, markup = bot.client.last
+    assert kind == "send" and "Оператор" in body and "@PayOperator_bot" in body
+    assert not markup  # no profile / referral buttons
+    assert state_of()[0] == "idle"
+
+
+def test_instruction_at_code_step_uses_city_and_address(bot, fake_provider):
+    text(bot, "/start")
+    text(bot, "Вывести")
+    pick_cash(bot)
+    photo(bot)
+    assert "9" in bot.client.deleted()  # client's QR photo is removed once processed
+    text(bot, "123456")
     tap(bot, "instr")
-    assert "Город: Бишкек" in bot.client.last[1] and "ул. PayGo Online" in bot.client.last[1]
-    tap(bot, "help")
-    tap(bot, "profile")
-    assert "Профиль" in bot.client.last[1] and "profile:email" in bot.client.buttons()
-    tap(bot, "ref")
-    assert "start=ref_" in bot.client.last[1]
+    assert "Город: Бишкек" in bot.client.last[1] and "ул. PayGo Online" in bot.client.last[1] and "back_code" in bot.client.buttons()
+    tap(bot, "back_code")
+    assert "Введите код для вывода" in bot.client.last[1]
 
 
 def test_paused_bot_answers_with_paused_text(bot):

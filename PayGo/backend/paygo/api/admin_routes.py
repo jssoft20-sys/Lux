@@ -64,6 +64,15 @@ def _page(page: int, size: int, db: Session | None = None) -> tuple[int, int]:
     return max(1, page), size
 
 
+def _operator_name(db: Session, operator_id: int | None) -> str:
+    if not operator_id:
+        return "Система"
+    from ..models import Admin
+
+    admin = db.get(Admin, operator_id)
+    return (admin.name or admin.username) if admin else "Система"
+
+
 def _parse_day(value: str, end: bool = False) -> datetime | None:
     if not value:
         return None
@@ -175,7 +184,7 @@ def get_deposit(deposit_id: int, principal: Principal = Depends(current_principa
     payment_event = db.get(PaymentEvent, deposit.payment_event_id) if deposit.payment_event_id else None
     return {
         "ok": True,
-        "item": deposit_service.public_deposit(db, deposit, full=True),
+        "item": {**deposit_service.public_deposit(db, deposit, full=True), "operator_name": _operator_name(db, deposit.operator_id)},
         "history": events,
         "payment_event": payments.public_event(payment_event) if payment_event else None,
         "user": public_user(deposit.user, user_summary(db, deposit.user)),
@@ -313,7 +322,7 @@ def get_withdrawal(withdrawal_id: int, principal: Principal = Depends(current_pr
         raise HTTPException(404, "NOT_FOUND")
     return {
         "ok": True,
-        "item": withdrawal_service.public_withdrawal(w, full=True),
+        "item": {**withdrawal_service.public_withdrawal(w, full=True), "operator_name": _operator_name(db, w.operator_id)},
         "history": support_service.recent_events(db, "withdrawal", w.public_id, limit=30),
         "user": public_user(w.user, user_summary(db, w.user)),
         "payment_links": elqr.bank_links(w.generated_qr_payload, deposit_service.bank_link_rows(db)) if w.generated_qr_payload else [],
@@ -568,7 +577,7 @@ def broadcast(body: BroadcastBody, request: Request, principal: Principal = Depe
     users = db.execute(stmt).scalars().all()
     stamp = int(utcnow().timestamp())
     for user in users:
-        notify_user(db, user, event="broadcast", event_key=f"broadcast:{stamp}:{user.id}", text=body.text, photo_url=body.photo_url, data={"broadcast": True})
+        notify_user(db, user, event="broadcast", event_key=f"broadcast:{stamp}:{user.id}", text=body.text, photo_url=body.photo_url, data={"broadcast": True}, bot="support" if body.bot == "support" else "main")
     audit(db, "broadcast.sent", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), details={"recipients": len(users)})
     return {"ok": True, "recipients": len(users)}
 

@@ -23,11 +23,10 @@ from typing import Any
 
 from paygo.config import get_settings
 from paygo.db import transaction
-from paygo.models import BotSession, Deposit, Notification, PaymentCash, QrRecord, User, Withdrawal
+from paygo.models import BotSession, Deposit, Notification, PaymentCash, QrRecord, User
 from paygo.services import bot_state, bot_texts, elqr, settings_store
 from paygo.services import cashes as cash_service
 from paygo.services import deposits as deposit_service
-from paygo.services import email as email_service
 from paygo.services import users as user_service
 from paygo.services import withdrawals as withdrawal_service
 from paygo.services.logs import log_event
@@ -44,9 +43,9 @@ from .texts import t
 logger = logging.getLogger("paygobot.main")
 BOT = "main"
 STOP = threading.Event()
-FLOW_STATES = {"choose_cash", "choose_id", "wait_id", "wait_amount", "wait_qr_choice", "wait_qr", "wait_code", "wait_email", "wait_email_code", "wait_profile_qr", "wait_phone"}
+FLOW_STATES = {"choose_cash", "choose_id", "wait_id", "wait_amount", "wait_qr_choice", "wait_qr", "wait_code", "wait_phone"}
 PERSIST_KEYS = ("name", "panel_kind")
-DEPOSIT_KEYS = ("request_id", "deposit_id", "deadline", "cash_id", "cash_name", "cash_emoji", "player_id", "pay_amount", "currency", "minutes", "methods", "receipt_prompt_id")
+DEPOSIT_KEYS = ("request_id", "deposit_id", "deadline", "cash_id", "cash_name", "cash_emoji", "player_id", "pay_amount", "currency", "minutes", "methods", "receipt_prompt_id", "receipt_note_id")
 
 
 def esc(value: Any) -> str:
@@ -130,6 +129,7 @@ class Ctx:
         old = self.panel_id
         old_kind = str(self.data.get("panel_kind") or "text")
         prompt = int(self.data.get("receipt_prompt_id") or 0)
+        note = int(self.data.get("receipt_note_id") or 0)
         sent = self.bot.safe_send(self.chat_id, text, markup, protect=True)
         data = self.idle_data()
         if keep_data:
@@ -141,8 +141,9 @@ class Ctx:
                 self.bot.delete_later(self.chat_id, old)
             else:
                 self.bot.strip_buttons_later(self.chat_id, old)
-        if prompt:
-            self.bot.delete_later(self.chat_id, prompt)
+        for extra in (prompt, note):
+            if extra:
+                self.bot.delete_later(self.chat_id, extra)
         return int(sent.get("message_id") or 0)
 
 
@@ -246,9 +247,6 @@ class MainBot:
             [button(labels["help"])],
         )
 
-    def help_kb(self, ctx: Ctx) -> dict:
-        return inline_keyboard([button(ctx.T("menu_instruction"), "instr")], [button(ctx.T("menu_profile"), "profile"), button(ctx.T("menu_ref"), "ref")])
-
     def text(self, key: str, **values: Any) -> str:
         with transaction() as db:
             return bot_texts.render(db, key, **values)
@@ -321,10 +319,6 @@ class MainBot:
             command = text.split()[0].lower().split("@")[0]
             if command == "/help":
                 self.show_help(ctx)
-            elif command == "/profile":
-                self.show_profile(ctx)
-            elif command == "/ref":
-                self.show_referrals(ctx)
             else:
                 self.show_menu(ctx)
             return
@@ -337,16 +331,12 @@ class MainBot:
             "wait_id": self.on_id,
             "wait_amount": self.on_amount,
             "wait_code": self.on_code,
-            "wait_email": self.on_email,
-            "wait_email_code": self.on_email_code,
         }
         handler = handlers.get(ctx.state)
         if handler:
             handler(ctx, text)
         elif ctx.state == "wait_qr":
             ctx.panel(self.text("text_send_qr") + "\n\n❌ " + ctx.T("qr_photo_only"), self.cancel_kb(ctx))
-        elif ctx.state == "wait_profile_qr":
-            ctx.panel(ctx.T("profile_qr_prompt") + "\n\n❌ " + ctx.T("qr_photo_only"), inline_keyboard([button(ctx.T("back"), "profile")]))
         elif ctx.state == "wait_payment":
             self.delete_later(chat_id, message_id)  # the card stays; stray text is removed
         else:
@@ -360,7 +350,7 @@ class MainBot:
         data = str(query.get("data") or "")
         pressed = int(((query.get("message") or {}).get("message_id")) or 0)
         callback_id = str(query.get("id") or "")
-        if pressed and ctx.panel_id and pressed != ctx.panel_id and not data.startswith(("hist", "noop", "instr", "profile", "ref", "menu", "act:", "open_active")):
+        if pressed and ctx.panel_id and pressed != ctx.panel_id and not data.startswith(("noop", "instr", "menu", "act:", "open_active", "help")):
             self.strip_buttons_later(chat_id, pressed)  # button on an old screen
             return
         if data == "noop":
@@ -399,25 +389,6 @@ class MainBot:
             self.show_active_deposit(ctx)
         elif data == "help":
             self.show_help(ctx)
-        elif data == "profile":
-            self.show_profile(ctx)
-        elif data == "profile:history":
-            self.show_history(ctx, 0)
-        elif data.startswith("hist:"):
-            self.show_history(ctx, int(data.split(":", 1)[1] or 0))
-        elif data.startswith("histitem:"):
-            _, kind, item_id = data.split(":", 2)
-            self.show_history_item(ctx, kind, int(item_id))
-        elif data == "profile:email":
-            ctx.panel(ctx.T("enter_email"), inline_keyboard([button(ctx.T("back"), "profile")]), state="wait_email")
-        elif data == "profile:qr":
-            ctx.panel(ctx.T("profile_qr_prompt"), inline_keyboard([button(ctx.T("back"), "profile")]), state="wait_profile_qr")
-        elif data == "ref":
-            self.show_referrals(ctx)
-        elif data == "ref:payout":
-            self.referral_payout(ctx)
-        elif data == "email:resend":
-            self.on_email(ctx, str(ctx.data.get("email") or ""))
         elif data == "back_code":
             if ctx.state == "wait_code":
                 self.ask_code(ctx, ctx.data)
@@ -477,9 +448,8 @@ class MainBot:
                 raise
 
     def show_help(self, ctx: Ctx) -> None:
-        if ctx.state in FLOW_STATES:
-            ctx.save("idle", ctx.idle_data())
-        ctx.panel(self.text("text_help"), self.help_kb(ctx), state="idle" if ctx.state != "wait_payment" else "wait_payment", keep_previous=ctx.state == "wait_payment")
+        """«Помощь» = только контакт оператора (как в образце)."""
+        self.safe_send(ctx.chat_id, self.text("text_help"), None, protect=False)
 
     def cancel_flow(self, ctx: Ctx) -> None:
         if ctx.state == "wait_payment":
@@ -834,8 +804,11 @@ class MainBot:
         prompt = int(ctx.data.get("receipt_prompt_id") or 0)
         if prompt:
             self.delete_later(ctx.chat_id, prompt)
-            ctx.save(data={**ctx.data, "receipt_prompt_id": 0})
-        self.safe_send(ctx.chat_id, self.text("text_receipt_ok"), None, protect=False)
+        old_note = int(ctx.data.get("receipt_note_id") or 0)
+        if old_note:
+            self.delete_later(ctx.chat_id, old_note)
+        sent = self.safe_send(ctx.chat_id, self.text("text_receipt_ok"), None, protect=False)
+        ctx.save(data={**ctx.data, "receipt_prompt_id": 0, "receipt_note_id": int(sent.get("message_id") or 0)})
 
     def tick_timers(self) -> None:
         """Refresh the countdown on active payment cards when the template shows one ({left})."""
@@ -891,12 +864,12 @@ class MainBot:
         self.ask_id(ctx, data)
 
     def on_photo(self, ctx: Ctx, message: dict[str, Any]) -> None:
+        message_id = int(message.get("message_id") or 0)
         if ctx.state == "wait_payment":
             self.save_receipt(ctx, message)
+            self.delete_later(ctx.chat_id, message_id)
             return
-        if ctx.state not in {"wait_qr", "wait_profile_qr"}:
-            if ctx.state == "idle":
-                self.show_menu(ctx)
+        if ctx.state != "wait_qr":
             return
         photos = message.get("photo") or []
         file_id = str(photos[-1].get("file_id") or "") if photos else ""
@@ -919,9 +892,7 @@ class MainBot:
         with transaction() as db:
             qr = user_service.save_qr(db, db.get(User, ctx.user_id), file_id=file_id, file_url=url, payload=payload, bank_name=bank)
             qr_id, qr_url = qr.id, qr.file_url
-        if ctx.state == "wait_profile_qr":
-            self.show_profile(ctx, note="✅ " + ctx.T("qr_saved"))
-            return
+        self.delete_later(ctx.chat_id, message_id)  # the chat keeps only the current step
         self.ask_id(ctx, {**ctx.data, "qr_record_id": qr_id, "qr_file_url": qr_url})
 
     def ask_code(self, ctx: Ctx, data: dict[str, Any], error: str = "") -> None:
@@ -947,7 +918,7 @@ class MainBot:
                 ctx.panel(text, inline_keyboard([button(ctx.T("back"), "back_code")]), state="wait_code")
             return
         photo = self.local_file(global_photo)
-        ctx.panel(text, inline_keyboard([button(ctx.T("back"), "help")]), photo=photo, state=ctx.state if ctx.state == "wait_payment" else "idle", keep_previous=ctx.state == "wait_payment")
+        self.safe_send(ctx.chat_id, text, None, photo=photo, protect=False)
 
     def on_code(self, ctx: Ctx, text: str) -> None:
         code = str(text).strip()
@@ -979,137 +950,6 @@ class MainBot:
             self.ask_code(ctx, ctx.data, error=self.text("text_bad_withdraw"))
             return
         ctx.receipt(str(result.get("message") or self.text("text_withdraw_accepted", player=ctx.data.get("player_id"), amount="", cur="")))
-
-    # ------------------------------------------------------------ profile
-    def show_profile(self, ctx: Ctx, note: str = "") -> None:
-        with transaction() as db:
-            user = db.get(User, ctx.user_id)
-            summary = user_service.user_summary(db, user)
-            qr = user_service.last_qr(db, user)
-            email = (user.email + (" ✅" if user.email_verified_at else " (не подтверждён)")) if user.email else "не привязан"
-            ref_balance = money(user.referral_balance)
-        lines = [
-            ctx.T("profile_title"),
-            "",
-            esc(ctx.name),
-            f"Telegram ID: {ctx.chat_id}",
-            f"Username: @{esc(ctx.tg_user.get('username') or '—')}",
-            f"E-mail: {esc(email)}",
-            "",
-            f"Пополнений: {summary['deposits_count']} · Выводов: {summary['withdrawals_count']}",
-            f"Реферальный баланс: {ref_balance} KGS",
-            f"QR вывода: {'сохранён' if qr else 'не добавлен'}",
-        ]
-        if note:
-            lines += ["", esc(note)]
-        markup = inline_keyboard(
-            [button(ctx.T("history"), "profile:history")],
-            [button(ctx.T("email_btn"), "profile:email"), button(ctx.T("qr_btn_update") if qr else ctx.T("qr_btn_add"), "profile:qr")],
-            [button(ctx.T("back"), "help")],
-        )
-        state = "wait_payment" if ctx.state == "wait_payment" else "idle"
-        ctx.panel("\n".join(lines), markup, state=state, data=ctx.data if state == "wait_payment" else ctx.idle_data(), keep_previous=state == "wait_payment")
-
-    def on_email(self, ctx: Ctx, text: str) -> None:
-        with transaction() as db:
-            user = db.get(User, ctx.user_id)
-            try:
-                result = email_service.start_verification(db, user, text)
-            except email_service.EmailError as exc:
-                ctx.panel(ctx.T("enter_email") + f"\n\n❌ {esc(exc)}", inline_keyboard([button(ctx.T("back"), "profile")]), state="wait_email")
-                return
-            email = email_service.normalize_email(text)
-        if result.get("already_verified"):
-            self.show_profile(ctx, note="✅ " + ctx.T("email_ok"))
-            return
-        hint = ""
-        if result.get("delivery") == "log":
-            hint = f"\n\n(тест: код {result.get('debug_code')})"
-        elif result.get("retry_in"):
-            hint = f"\n\n⏳ Повторная отправка через {result['retry_in']} с"
-        ctx.panel(f"✉️ {esc(email)}\n\n" + ctx.T("enter_email_code") + hint, inline_keyboard([button("🔁 Отправить код ещё раз", "email:resend")], [button(ctx.T("back"), "profile")]), state="wait_email_code", data={**ctx.data, "email": email})
-
-    def on_email_code(self, ctx: Ctx, text: str) -> None:
-        with transaction() as db:
-            user = db.get(User, ctx.user_id)
-            try:
-                email_service.confirm_verification(db, user, text)
-            except email_service.EmailError as exc:
-                ctx.panel(f"✉️ {esc(ctx.data.get('email'))}\n\n" + ctx.T("enter_email_code") + f"\n\n❌ {esc(exc)}", inline_keyboard([button("🔁 Отправить код ещё раз", "email:resend")], [button(ctx.T("back"), "profile")]), state="wait_email_code")
-                return
-        self.show_profile(ctx, note="✅ " + ctx.T("email_ok"))
-
-    def show_history(self, ctx: Ctx, page: int) -> None:
-        size = 8
-        with transaction() as db:
-            deposits = db.execute(select(Deposit).where(Deposit.user_id == ctx.user_id).order_by(Deposit.id.desc()).limit(60)).scalars().all()
-            withdrawals = db.execute(select(Withdrawal).where(Withdrawal.user_id == ctx.user_id).order_by(Withdrawal.id.desc()).limit(60)).scalars().all()
-            items: list[tuple[Any, str]] = [(d, "d") for d in deposits] + [(w, "w") for w in withdrawals]
-            items.sort(key=lambda x: as_utc(x[0].created_at) or utcnow(), reverse=True)
-            total = len(items)
-            page = max(0, min(page, max(0, (total - 1) // size)))
-            chunk = items[page * size : (page + 1) * size]
-            rows = []
-            for obj, kind in chunk:
-                amount = money(obj.pay_amount if kind == "d" else obj.amount)
-                label = deposit_service.STATUS_LABELS.get(obj.status, obj.status) if kind == "d" else withdrawal_service.STATUS_LABELS.get(obj.status, obj.status)
-                icon = "📥" if kind == "d" else "📤"
-                rows.append([button(f"{icon} {fmt_local(obj.created_at, '%d.%m %H:%M')} · {amount} · {label}", f"histitem:{kind}:{obj.id}")])
-        nav = []
-        if page > 0:
-            nav.append(button("◀️", f"hist:{page - 1}"))
-        if (page + 1) * size < total:
-            nav.append(button("▶️", f"hist:{page + 1}"))
-        if nav:
-            rows.append(nav)
-        rows.append([button(ctx.T("back"), "profile")])
-        text = ctx.T("history") + (f"\n{page + 1}/{max(1, (total + size - 1) // size)}" if total else "\n" + ctx.T("history_empty"))
-        ctx.panel(text, inline_keyboard(*rows), state=ctx.state if ctx.state == "wait_payment" else "idle", data={**(ctx.data if ctx.state == "wait_payment" else ctx.idle_data()), "history_page": page})
-
-    def show_history_item(self, ctx: Ctx, kind: str, item_id: int) -> None:
-        with transaction() as db:
-            if kind == "d":
-                obj = db.get(Deposit, item_id)
-                if obj is None or obj.user_id != ctx.user_id:
-                    self.show_history(ctx, 0)
-                    return
-                text = f"📥 Пополнение {obj.public_id}\n\nСайт: {esc(obj.cash.name if obj.cash else '')}\nID: {obj.player_id}\nСумма: {money(obj.pay_amount)} {obj.currency}\nСтатус: {deposit_service.STATUS_LABELS.get(obj.status, obj.status)}\nСоздана: {fmt_local(obj.created_at)}" + (f"\nЗачислено: {fmt_local(obj.credited_at)}" if obj.credited_at else "") + (f"\n\n{esc(obj.error)}" if obj.error and obj.status != "success" else "")
-            else:
-                obj = db.get(Withdrawal, item_id)
-                if obj is None or obj.user_id != ctx.user_id:
-                    self.show_history(ctx, 0)
-                    return
-                text = f"📤 Вывод {obj.public_id}\n\nСайт: {esc(obj.cash.name if obj.cash else '')}\nID: {obj.player_id}\nСумма: {money(obj.amount)} {obj.currency}\nСтатус: {withdrawal_service.STATUS_LABELS.get(obj.status, obj.status)}\nСоздан: {fmt_local(obj.created_at)}" + (f"\nВыполнен: {fmt_local(obj.completed_at)}" if obj.completed_at else "") + (f"\n\n{esc(obj.error)}" if obj.error and obj.status != "success" else "")
-        page = int(ctx.data.get("history_page") or 0)
-        ctx.panel(text, inline_keyboard([button(ctx.T("back"), f"hist:{page}")], [button(ctx.T("menu"), "help")]), state=ctx.state if ctx.state == "wait_payment" else "idle")
-
-    # ------------------------------------------------------------ referrals
-    def ref_link(self, code: str) -> str:
-        return f"https://t.me/{self.username}?start=ref_{code}"
-
-    def show_referrals(self, ctx: Ctx, note: str = "") -> None:
-        with transaction() as db:
-            user = db.get(User, ctx.user_id)
-            stats = user_service.referral_stats(db, user)
-            pct = settings_store.get_float(db, "referral_bonus_pct", 1.0)
-            brand = str(settings_store.get(db, "brand_name") or "PayGo")
-        link = self.ref_link(stats["code"])
-        text = f"{ctx.T('ref_title')}\n\nПриглашайте друзей и получайте {pct:g}% с каждого их пополнения.\n\n🔗 {link}\n\nПриглашено: {stats['invited']} · Активных: {stats['active']}\nНачислено всего: {stats['total']} KGS\nДоступно: {stats['available']} KGS" + (f"\nНа выводе: {stats['pending']} KGS" if stats["pending"] > 0 else "")
-        share = f"https://t.me/share/url?url={link}&text=Пополняй и выводи через {brand} без комиссии"
-        if note:
-            text += "\n\n" + esc(note)
-        ctx.panel(text, inline_keyboard([button(ctx.T("ref_share"), url=share)], [button(ctx.T("ref_payout"), "ref:payout")], [button(ctx.T("back"), "help")]), state=ctx.state if ctx.state == "wait_payment" else "idle", data=ctx.data if ctx.state == "wait_payment" else ctx.idle_data(), keep_previous=ctx.state == "wait_payment")
-
-    def referral_payout(self, ctx: Ctx) -> None:
-        with transaction() as db:
-            user = db.get(User, ctx.user_id)
-            row, error = user_service.create_referral_payout(db, user)
-            if row:
-                admin_event(db, "referral_payout", f"referral_payout:{row.id}", "🎁 Заявка на вывод реферального баланса", f"{ctx.name} • {money(row.amount)} KGS • {row.public_id}", {"user_id": user.id, "url": f"#/users/{user.id}"})
-                note = f"✅ Заявка {row.public_id} на {money(row.amount)} KGS создана. Оператор переведёт бонус на ваш QR."
-            else:
-                note = "❌ " + error
-        self.show_referrals(ctx, note=note)
 
     # ------------------------------------------------------------ outbox (messages created by the backend / worker)
     def deliver_outbox(self) -> None:
@@ -1158,9 +998,9 @@ class MainBot:
             ctx.receipt(body)
             return
         if data.get("final") in {"expired", "cancelled", "success"} and same_request:
-            prompt = int(ctx.data.get("receipt_prompt_id") or 0)
-            if prompt:
-                self.delete_later(chat_id, prompt)
+            for extra in (int(ctx.data.get("receipt_prompt_id") or 0), int(ctx.data.get("receipt_note_id") or 0)):
+                if extra:
+                    self.delete_later(chat_id, extra)
             ctx.save("idle", ctx.idle_data())
         photo = data.get("photo_url")
         if photo:
@@ -1175,7 +1015,7 @@ class MainBot:
         if me.get("username"):
             self.username = str(me["username"])
         self.client.delete_webhook()
-        self.client.set_commands([("start", "Главное меню"), ("help", "Помощь и инструкция"), ("profile", "Профиль и история")])
+        self.client.set_commands([("start", "Главное меню"), ("help", "Оператор")])
         logger.info("main bot @%s started", self.username)
         threading.Thread(target=self._loop, args=(self.deliver_outbox, 0.4, "outbox"), daemon=True).start()
         threading.Thread(target=self._loop, args=(self.tick_timers, 10.0, "timers"), daemon=True).start()

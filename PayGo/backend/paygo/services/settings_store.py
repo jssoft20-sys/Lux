@@ -26,7 +26,8 @@ DEFAULTS: dict[str, Any] = {
     #      HTML allowed (<b>, <i>, <blockquote>); premium emoji: [emoji:ID]😎
     "greeting_text": "[emoji:5199885118214255386:👋] Привет {name} в PayGo!\n\n[emoji:5258203794772085854:⚡️] Пополнение: 1-5 сек\n[emoji:5278467510604160626:💰] Быстрые выводы\n[emoji:5269617636001460986:👩‍💻] Работаем: 24/7\n\n<blockquote>[emoji:5409015472517553802:🔝] Лучший сервис для пополнений и выводов</blockquote>\n\n[emoji:5443038326535759644:💬] Оператор: {support}",
     "greeting_sticker": "[emoji:5278702045883292456:🛍]",
-    "text_help": "[emoji:5443038326535759644:💬] Оператор: {support}\n\nИнструкция, профиль и реферальная программа — кнопки ниже.",
+    "text_help": "[emoji:5443038326535759644:💬] Оператор: {support}",
+
     "text_paused": "Бот временно выключен",
     "text_blocked": "⛔ Аккаунт заблокирован. Напишите оператору: {support}",
     "menu_deposit_label": "📥 Пополнить",
