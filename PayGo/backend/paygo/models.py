@@ -474,6 +474,31 @@ class Notification(Base):
     __table_args__ = (Index("ix_notifications_channel_status_id", "channel", "status", "id"),)
 
 
+class Broadcast(Base):
+    """A mass message: queued from the panel, expanded to per-user notifications by the worker."""
+
+    __tablename__ = "broadcasts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    admin_id: Mapped[int | None] = mapped_column(ForeignKey("admins.id", ondelete="SET NULL"))
+    admin_name: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    bot: Mapped[str] = mapped_column(String(16), default="main", nullable=False)
+    audience: Mapped[str] = mapped_column(String(16), default="all", nullable=False)
+    text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    photo_url: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    video_url: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    buttons: Mapped[list[Any]] = mapped_column(JSON, default=list, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="queued", nullable=False, index=True)  # queued | sending | done | failed
+    recipients: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_user_id: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error: Mapped[str] = mapped_column(String(400), default="", nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class PushSubscription(Base):
     __tablename__ = "push_subscriptions"
 

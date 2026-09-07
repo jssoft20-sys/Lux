@@ -143,6 +143,7 @@ class BroadcastBody(BaseModel):
     only_active_days: int = 0
     bot: str = "main"  # main | support
     audience: str = "all"  # all | new | big | test
+    video_url: str = ""
     buttons: list[UrlButtonBody] = Field(default_factory=list, max_length=6)
     test_chat_id: int | str | None = None
 

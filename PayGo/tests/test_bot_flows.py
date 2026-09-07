@@ -141,7 +141,7 @@ def test_start_shows_greeting_with_reply_keyboard(bot):
     kind, body, markup = bot.client.last
     assert kind == "send" and "Али" in body and "PayGo" in body
     labels = [b["text"] for row in markup["keyboard"] for b in row]
-    assert labels == ["📥 Пополнить", "📤 Вывести", "✉️ Помощь"] and "inline_keyboard" not in markup
+    assert labels == ["Пополнить", "Вывести", "Помощь"] and "inline_keyboard" not in markup  # premium-only: no plain emoji
     assert state_of()[0] == "idle"
 
 
@@ -390,3 +390,24 @@ def test_open_deposit_is_found_after_state_loss(bot, fake_provider):
     assert state_of()[0] == "wait_payment"
     with transaction() as db:
         assert db.query(Deposit).filter_by(status="created").count() == 1
+
+
+
+def test_site_buttons_are_premium_only(bot):
+    text(bot, "/start")
+    kind, body, markup = bot.client.last
+    labels = [b["text"] for row in markup["keyboard"] for b in row]
+    assert labels == ["Пополнить", "Вывести", "Помощь"]  # reply keyboards cannot carry premium emoji → no plain ones
+    text(bot, "Пополнить")
+    kind, body, markup = bot.client.last
+    assert "<tg-emoji" in body and "👍" not in body.replace("</tg-emoji>", "").split("<tg-emoji")[0]
+    sites = [b for row in markup["inline_keyboard"] for b in row if b.get("callback_data", "").startswith("cash:")]
+    assert sites and all(b.get("icon_custom_emoji_id") and not bot_texts_emoji(b["text"]) for b in sites)
+    cancel = [b for row in markup["inline_keyboard"] for b in row if b.get("callback_data") == "cancel"][0]
+    assert cancel["text"] == "Отмена" and cancel["icon_custom_emoji_id"] == "5384234898494088007"
+
+
+def bot_texts_emoji(label):
+    from paygo.services.bot_texts import EMOJI_RE
+
+    return EMOJI_RE.search(label) is not None

@@ -25,8 +25,8 @@ from sqlalchemy import select
 from ..config import get_settings
 from ..db import transaction
 from ..models import Deposit, Job, Notification, PushDelivery, PushSubscription
+from ..services import broadcasts, notifications, payments, settings_store
 from ..services import cashes as cash_service
-from ..services import notifications, payments, settings_store
 from ..services import support as support_service
 from ..services.deposits import credit_deposit, expire_deposits
 from ..services.logs import log_event
@@ -87,6 +87,12 @@ def tick_cash_monitor() -> None:
             return
         results = cash_service.monitor_once(db)
         logger.info("cash monitor: %s", results)
+
+
+def tick_broadcasts() -> None:
+    """Expand queued broadcasts into per-user notifications and keep their counters fresh."""
+    with transaction() as db:
+        broadcasts.tick(db)
 
 
 def tick_support() -> None:
@@ -285,6 +291,7 @@ def main() -> None:
         ("admin_push", tick_admin_push, 1.0),
         ("support", tick_support, 300.0),
         ("jobs", tick_jobs, 2.0),
+        ("broadcasts", tick_broadcasts, 1.5),
     ]
     if settings.imap_enabled:
         loops.append(("imap", tick_imap, max(2.0, settings.imap_poll_seconds)))

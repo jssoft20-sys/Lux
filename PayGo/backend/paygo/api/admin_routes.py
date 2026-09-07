@@ -14,6 +14,7 @@ from ..config import get_settings
 from ..models import (
     AuditLog,
     BankLink,
+    Broadcast,
     Deposit,
     Notification,
     PaymentCash,
@@ -27,6 +28,7 @@ from ..models import (
     Withdrawal,
 )
 from ..providers import provider_types
+from ..services import broadcasts as broadcast_service
 from ..services import cashes as cash_service
 from ..services import deposits as deposit_service
 from ..services import elqr, payments, settings_store, stats
@@ -645,33 +647,36 @@ def message_user(user_id: int, body: SupportReplyBody, request: Request, princip
     return {"ok": True}
 
 
-def _broadcast_audience(db: Session, audience: str, only_active_days: int = 0):
-    """Recipients of a broadcast: all clients, new ones, big ones (by credited deposits)."""
-    stmt = select(User).where(User.is_blocked.is_(False))
-    if audience == "new":
-        days = max(1, settings_store.get_int(db, "broadcast_new_days", 7))
-        stmt = stmt.where(User.created_at >= utcnow() - timedelta(days=days))
-    elif audience == "big":
-        minimum = money(settings_store.get(db, "broadcast_big_min", 20000) or 0)
-        sums = select(Deposit.user_id, func.sum(Deposit.pay_amount).label("total")).where(Deposit.status == "success").group_by(Deposit.user_id).having(func.sum(Deposit.pay_amount) >= minimum).subquery()
-        stmt = stmt.join(sums, sums.c.user_id == User.id)
-    elif audience == "active":
-        stmt = stmt.where(User.last_seen_at >= utcnow() - timedelta(days=max(1, only_active_days)))
-    if only_active_days > 0 and audience != "active":
-        stmt = stmt.where(User.last_seen_at >= utcnow() - timedelta(days=only_active_days))
-    return db.execute(stmt).scalars().all()
-
-
 @router.get("/broadcast/audience")
 def broadcast_audience(audience: str = "all", days: int = 0, principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
     if audience == "test":
         chat = int(principal.admin.telegram_id or 0) or (get_settings().admin_chat_ids[0] if get_settings().admin_chat_ids else 0)
         return {"ok": True, "count": 1 if chat else 0, "test_chat_id": chat}
-    return {"ok": True, "count": len(_broadcast_audience(db, audience, days))}
+    return {"ok": True, "count": broadcast_service.audience_count(db, audience if audience in {"all", "new", "big", "active"} else "all")}
+
+
+@router.get("/broadcast/history")
+def broadcast_history(limit: int = 30, principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
+    rows = db.execute(select(Broadcast).order_by(Broadcast.id.desc()).limit(max(1, min(limit, 200)))).scalars().all()
+    for row in rows:
+        if row.status == "delivering":
+            broadcast_service.refresh_counts(db, row)
+    return {"ok": True, "items": [broadcast_service.public(r) for r in rows]}
+
+
+@router.get("/broadcast/{broadcast_id}")
+def broadcast_detail(broadcast_id: int, principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
+    row = db.get(Broadcast, broadcast_id)
+    if row is None:
+        raise HTTPException(404, "NOT_FOUND")
+    if row.status == "delivering":
+        broadcast_service.refresh_counts(db, row)
+    return {"ok": True, "item": broadcast_service.public(row, broadcast_service.errors(db, row))}
 
 
 @router.post("/broadcast")
 def broadcast(body: BroadcastBody, request: Request, principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
+    """Queues the mass message; the worker sends it in the background (see /broadcast/history)."""
     buttons = []
     for b in body.buttons[:6]:
         url = b.url.strip()
@@ -679,7 +684,6 @@ def broadcast(body: BroadcastBody, request: Request, principal: Principal = Depe
             raise HTTPException(400, f"Ссылка кнопки «{b.text}» должна начинаться с https://")
         buttons.append({"text": b.text.strip(), "url": url})
     bot = "support" if body.bot == "support" else "main"
-    stamp = int(utcnow().timestamp())
     if body.audience == "test":
         chat = 0
         try:
@@ -689,13 +693,16 @@ def broadcast(body: BroadcastBody, request: Request, principal: Principal = Depe
         chat = chat or int(principal.admin.telegram_id or 0) or (get_settings().admin_chat_ids[0] if get_settings().admin_chat_ids else 0)
         if not chat:
             raise HTTPException(400, "Укажите Telegram ID для теста")
-        notify_user(db, chat, event="broadcast", event_key=f"broadcast_test:{stamp}:{chat}", text=body.text, photo_url=body.photo_url, data={"broadcast": True, "test": True}, bot=bot, buttons=buttons)
+        stamp = int(utcnow().timestamp())
+        data = {"broadcast": True, "test": True}
+        if body.video_url:
+            data["video_url"] = body.video_url
+        notify_user(db, chat, event="broadcast", event_key=f"broadcast_test:{stamp}:{chat}", text=body.text, photo_url=body.photo_url, data=data, bot=bot, buttons=buttons)
         return {"ok": True, "recipients": 1, "test": True}
-    users = _broadcast_audience(db, body.audience if body.audience in {"all", "new", "big", "active"} else "all", body.only_active_days)
-    for user in users:
-        notify_user(db, user, event="broadcast", event_key=f"broadcast:{stamp}:{user.id}", text=body.text, photo_url=body.photo_url, data={"broadcast": True}, bot=bot, buttons=buttons)
-    audit(db, "broadcast.sent", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), details={"recipients": len(users), "audience": body.audience, "bot": bot, "buttons": len(buttons)})
-    return {"ok": True, "recipients": len(users)}
+    audience = body.audience if body.audience in {"all", "new", "big", "active"} else "all"
+    row = broadcast_service.queue(db, admin_id=principal.id, admin_name=principal.admin.name or principal.admin.username, bot=bot, audience=audience, text=body.text, photo_url=body.photo_url, video_url=body.video_url, buttons=buttons)
+    audit(db, "broadcast.queued", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), details={"recipients": row.recipients, "audience": audience, "bot": bot, "buttons": len(buttons), "broadcast_id": row.id})
+    return {"ok": True, "recipients": row.recipients, "item": broadcast_service.public(row)}
 
 
 # ------------------------------------------------------------------------------ cashes

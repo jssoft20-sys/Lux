@@ -177,6 +177,7 @@ class MainBot:
         self._locks: dict[int, threading.RLock] = {}
         self._locks_guard = threading.Lock()
         self.premium_blocked = False  # set when Telegram rejects custom emoji for this bot (no Fragment username)
+        self._premium_cache: dict[str, Any] = {"at": 0.0, "state": None}
         self.dispatcher = Dispatcher(self.client, self.handle_update, name="main", workers=48, offset_store=self._offset_store)
 
     # ------------------------------------------------------------ infra
@@ -222,35 +223,63 @@ class MainBot:
         path = Path(self.settings.data_dir) / rel
         return path if path.exists() else None
 
+    # ------------------------------------------------------------ premium emoji (only premium, never mixed)
+    def premium(self) -> dict[str, Any]:
+        """Premium emoji state (map, strict mode) — cached for a few seconds, off when Telegram refused custom emoji."""
+        now = time.time()
+        cache = self._premium_cache
+        if cache["state"] is None or now - float(cache["at"]) > 10:
+            with transaction() as db:
+                cache["state"] = bot_texts.premium_state(db)
+            cache["at"] = now
+        state = dict(cache["state"])
+        state["enabled"] = bool(state.get("enabled")) and not self.premium_blocked
+        return state
+
+    def fmt(self, text: str) -> str:
+        return bot_texts.premiumize(text, self.premium())
+
     # ------------------------------------------------------------ sending with graceful fallback
-    def safe_send(self, chat_id: int, text: str, markup: dict | None = None, *, photo: bytes | Path | None = None, protect: bool = True) -> dict[str, Any]:
-        """HTML + button icons/styles first; on a markup rejection resend plain text and plain buttons."""
+    def safe_send(self, chat_id: int, text: str, markup: dict | None = None, *, photo: bytes | Path | None = None, protect: bool = True, video: Path | str | None = None, reply_to: int | None = None) -> dict[str, Any]:
+        """HTML + premium emoji + button icons/styles first; on a markup rejection resend plain text and plain buttons."""
+        state = self.premium()
+        rich, rich_markup = bot_texts.premiumize(text, state), bot_texts.premium_markup(markup, state)
         try:
+            if video is not None:
+                return self.client.send_video(chat_id, video, caption=rich, markup=rich_markup, protect=protect, parse_mode="HTML", reply_to=reply_to)
             if photo is not None:
-                return self.client.send_photo(chat_id, photo, caption=text, markup=markup, protect=protect, parse_mode="HTML")
-            return self.client.send_message(chat_id, text, markup=markup, protect=protect, parse_mode="HTML")
+                return self.client.send_photo(chat_id, photo, caption=rich, markup=rich_markup, protect=protect, parse_mode="HTML", reply_to=reply_to)
+            return self.client.send_message(chat_id, rich, markup=rich_markup, protect=protect, parse_mode="HTML", reply_to=reply_to)
         except TelegramError as exc:
             if not exc.parse_error:
                 raise
             logger.info("markup rejected (%s) — sending plain", exc.description)
             if "custom emoji" in exc.description.lower() or "custom_emoji" in exc.description.lower():
                 self.premium_blocked = True
+                self._premium_cache["state"] = None
             plain, plain_markup = bot_texts.strip_html(text), strip_button_extras(markup)
+            if video is not None:
+                return self.client.send_video(chat_id, video, caption=plain, markup=plain_markup, protect=protect, reply_to=reply_to)
             if photo is not None:
-                return self.client.send_photo(chat_id, photo, caption=plain, markup=plain_markup, protect=protect)
-            return self.client.send_message(chat_id, plain, markup=plain_markup, protect=protect)
+                return self.client.send_photo(chat_id, photo, caption=plain, markup=plain_markup, protect=protect, reply_to=reply_to)
+            return self.client.send_message(chat_id, plain, markup=plain_markup, protect=protect, reply_to=reply_to)
 
     def safe_edit(self, chat_id: int, message_id: int, text: str, markup: dict | None = None) -> Any:
+        state = self.premium()
         try:
-            return self.client.edit_text(chat_id, message_id, text, markup=markup, parse_mode="HTML")
+            return self.client.edit_text(chat_id, message_id, bot_texts.premiumize(text, state), markup=bot_texts.premium_markup(markup, state), parse_mode="HTML")
         except TelegramError as exc:
             if not exc.parse_error:
                 raise
+            if "custom emoji" in exc.description.lower() or "custom_emoji" in exc.description.lower():
+                self.premium_blocked = True
+                self._premium_cache["state"] = None
             return self.client.edit_text(chat_id, message_id, bot_texts.strip_html(text), markup=strip_button_extras(markup))
 
     def safe_edit_caption(self, chat_id: int, message_id: int, caption: str, markup: dict | None = None) -> Any:
+        state = self.premium()
         try:
-            return self.client.edit_caption(chat_id, message_id, caption, markup=markup, parse_mode="HTML")
+            return self.client.edit_caption(chat_id, message_id, bot_texts.premiumize(caption, state), markup=bot_texts.premium_markup(markup, state), parse_mode="HTML")
         except TelegramError as exc:
             if not exc.parse_error:
                 raise
@@ -261,6 +290,8 @@ class MainBot:
         with transaction() as db:
             labels = bot_texts.menu_labels(db)
             styled = settings_store.get_bool(db, "button_styles_enabled", True)
+        state = self.premium()
+        labels = {k: bot_texts.plain_label(v, state) for k, v in labels.items()}
         return reply_keyboard(
             [button(labels["deposit"], style="primary" if styled else ""), button(labels["withdraw"], style="primary" if styled else "")],
             [button(labels["help"])],
@@ -277,7 +308,7 @@ class MainBot:
     def site_button(self, cash: dict[str, Any], premium: bool) -> dict[str, Any]:
         label = f"{cash.get('emoji') or ''} {cash['name']}".strip()
         icon = str(cash.get("custom_emoji_id") or "") if premium else ""
-        return button(label, f"cash:{cash['id']}", icon=icon)
+        return button(label, f"cash:{cash['id']}", icon=icon)  # safe_send turns the plain emoji into the premium icon
 
     # ------------------------------------------------------------ update entry
     def handle_update(self, update: dict[str, Any]) -> None:
@@ -792,7 +823,7 @@ class MainBot:
         with transaction() as db:
             premium = settings_store.get_bool(db, "premium_emoji_enabled")
         for i in range(0, len(methods), 2):
-            rows.append([button((m.get("emoji") + " " if m.get("emoji") and not (premium and m.get("custom_emoji_id")) else "") + m["name"] + " ↗", url=m["url"], icon=str(m.get("custom_emoji_id") or "") if premium else "") for m in methods[i : i + 2]])
+            rows.append([button(((m.get("emoji") or "") + " " + m["name"]).strip() + " ↗", url=m["url"], icon=str(m.get("custom_emoji_id") or "") if premium else "") for m in methods[i : i + 2]])
         rows.append([button(ctx.T("cancel_deposit"), f"cancel:{info.get('request_id')}")])
         return inline_keyboard(*rows)
 
@@ -1113,14 +1144,12 @@ class MainBot:
         photo, video = data.get("photo_url"), data.get("video_url")
         if video:
             path = Path(get_settings().data_dir) / str(video).lstrip("/") if str(video).startswith("/") else None
-            sent = self.client.send_video(chat_id, path if path and path.exists() else str(video), caption=body, markup=markup, reply_to=reply_to)
+            sent = self.safe_send(chat_id, body, markup, video=path if path and path.exists() else str(video), protect=False, reply_to=reply_to)
         elif photo:
             path = Path(get_settings().data_dir) / str(photo).lstrip("/") if str(photo).startswith("/") else None
-            sent = self.client.send_photo(chat_id, path if path and path.exists() else str(photo), caption=body, markup=markup, reply_to=reply_to)
-        elif markup or reply_to:
-            sent = self.client.send_message(chat_id, body, markup=markup, reply_to=reply_to)
+            sent = self.safe_send(chat_id, body, markup, photo=path if path and path.exists() else str(photo), protect=False, reply_to=reply_to)
         else:
-            sent = self.safe_send(chat_id, body, None, protect=False)
+            sent = self.safe_send(chat_id, body, markup, protect=False, reply_to=reply_to)
         message_id = int(data.get("message_id") or 0)
         if message_id and isinstance(sent, dict) and sent.get("message_id") and event == "support_reply":
             with transaction() as db:

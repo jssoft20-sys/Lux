@@ -323,13 +323,26 @@ def test_broadcast_audiences_buttons_and_test_send(logged, user):
     bad = logged.post(P + "/broadcast", json={"text": "Привет", "buttons": [{"text": "Сайт", "url": "javascript:alert(1)"}]})
     assert bad.status_code == 400
     r = logged.post(P + "/broadcast", json={"text": "Привет", "audience": "all", "bot": "main", "buttons": [{"text": "Сайт", "url": "https://paygo.kg"}]})
-    assert r.status_code == 200 and r.json()["recipients"] == 1
+    assert r.status_code == 200 and r.json()["recipients"] == 1 and r.json()["item"]["status"] == "queued"
+    bid = r.json()["item"]["id"]
+    from paygo.services import broadcasts
+
+    with transaction() as db:
+        broadcasts.tick(db)  # the worker expands the queue in the background
     r = logged.post(P + "/broadcast", json={"text": "Тест", "audience": "test", "test_chat_id": "700100200"})
     assert r.status_code == 200 and r.json()["test"] is True
     with transaction() as db:
         notes = db.query(Notification).filter_by(event="broadcast").order_by(Notification.id).all()
-        assert notes[0].data["buttons"] == [{"text": "Сайт", "url": "https://paygo.kg"}]
+        assert notes[0].data["buttons"] == [{"text": "Сайт", "url": "https://paygo.kg"}] and notes[0].data["broadcast_id"] == bid
         assert notes[1].target_telegram_id == 700100200 and notes[1].data.get("test") is True
+    hist = logged.get(P + "/broadcast/history").json()["items"]
+    assert hist[0]["id"] == bid and hist[0]["status"] == "delivering" and hist[0]["recipients"] == 1 and hist[0]["sent"] == 0
+    with transaction() as db:
+        note = db.query(Notification).filter_by(event="broadcast").order_by(Notification.id).first()
+        note.status = "failed"
+        note.error = "Forbidden: bot was blocked by the user"
+    detail = logged.get(P + f"/broadcast/{bid}").json()["item"]
+    assert detail["status"] == "done" and detail["failed"] == 1 and detail["errors"][0]["error"].startswith("Forbidden")
 
 
 def test_deposit_list_shows_payment_hint(logged, user, fake_provider):

@@ -568,8 +568,8 @@
     const out = [];
     if (ops && open) {
       if (dep) out.push(tx.status === 'processing' ? h('button', { class: 'big-btn green', disabled: true }, 'Зачисляется…') : h('button', { class: 'big-btn green', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const r = await txAction(kind, tx, 'credit', { confirm: 'Зачислить ' + money(tx.pay_amount) + ' ' + tx.currency + ' на ID ' + tx.player_id + '?', okLabel: 'Зачислить', done: 'Зачислено' }); busy(b, false); if (r) ctx.refresh(); } }, 'Зачислить на счёт игрока'));
-      else if (tx.receipt_required && !tx.has_receipt) out.push(h('button', { class: 'big-btn amber', onclick: async () => { const ok = await pickReceipt(tx, null); if (!ok) return; const r = await txAction(kind, tx, 'complete', { confirm: 'Чек прикреплён. Перевели ' + money(tx.amount) + ' ' + tx.currency + ' клиенту?', okLabel: 'Да, перевёл', done: 'Вывод выполнен' }); ctx.refresh(); } }, svg('image', 16), 'Чек перевода → Перевёл'));
-      else out.push(h('button', { class: 'big-btn green', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const r = await txAction(kind, tx, 'complete', { confirm: 'Перевели ' + money(tx.amount) + ' ' + tx.currency + ' клиенту?', okLabel: 'Да, перевёл', done: 'Вывод выполнен' }); busy(b, false); if (r) ctx.refresh(); } }, 'Перевёл на счёт игрока'));
+      else if (tx.receipt_required && !tx.has_receipt) out.push(h('button', { class: 'big-btn amber', onclick: async () => { const ok = await pickReceipt(tx, null); if (!ok) return; const r = await txAction(kind, tx, 'complete', { confirm: 'Чек прикреплён. Перевели ' + money(tx.amount) + ' ' + tx.currency + ' клиенту?', okLabel: 'Да, перевёл', done: 'Вывод выполнен' }); ctx.refresh(); } }, svg('image', 18), 'Чек → Перевёл деньги'));
+      else out.push(h('button', { class: 'big-btn green', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const r = await txAction(kind, tx, 'complete', { confirm: 'Перевели ' + money(tx.amount) + ' ' + tx.currency + ' клиенту?', okLabel: 'Да, перевёл', done: 'Вывод выполнен' }); busy(b, false); if (r) ctx.refresh(); } }, svg('check', 18), 'Перевёл деньги'));
     }
     const grid = h('div', { class: 'btn-grid compact' });
     grid.appendChild(h('button', { class: 'action-btn', onclick: () => { ctx.close(); go('#/users/' + tx.user_id); } }, svg('user', 14), 'Профиль'));
@@ -589,10 +589,22 @@
   function txBody(kind, r, ctx) {
     const tx = r.item; const dep = kind === 'deposit';
     ctx.user = r.user;
-    const body = h('div', { class: 'tx-view' }, txHero(kind, tx, !ctx.inSheet), (tx.status === 'failed' || tx.needs_attention) && tx.error && tx.status !== 'success' ? h('div', { class: 'hint-card err' }, reasonText(tx.error)) : null, tx.payment ? h('div', { class: 'pay-note ' + tx.payment.kind }, svg(tx.payment.kind === 'matched' ? 'check' : 'bolt', 14), (tx.payment.kind === 'matched' ? 'Платёж получен: ' : 'Есть платёж на эту сумму: ') + srcLabel(tx.payment.source) + ' · ' + money(tx.payment.amount) + ' · ' + fmtDate(tx.payment.received_at)) : null, userCard(r.user, ctx.close, tx.player_name), infoTable(txRows(kind, tx)));
-    if (!dep && (tx.has_generated_qr || tx.qr_file_url || tx.qr_payload)) body.appendChild(qrBlock(tx, r, ctx));
+    const problem = (tx.status === 'failed' || tx.needs_attention) && tx.error && tx.status !== 'success' ? h('div', { class: 'hint-card err' }, reasonText(tx.error)) : null;
+    const payNote = tx.payment ? h('div', { class: 'pay-note ' + tx.payment.kind }, svg(tx.payment.kind === 'matched' ? 'check' : 'bolt', 14), (tx.payment.kind === 'matched' ? 'Платёж получен: ' : 'Есть платёж на эту сумму: ') + srcLabel(tx.payment.source) + ' · ' + money(tx.payment.amount) + ' · ' + fmtDate(tx.payment.received_at)) : null;
+    const buttons = txButtons(kind, tx, ctx);
+    const body = h('div', { class: 'tx-view' }, txHero(kind, tx, !ctx.inSheet), problem, payNote);
+    if (!dep) {
+      /* withdrawal: the client's QR comes first — scan, pay, press «Перевёл деньги» */
+      if (tx.has_generated_qr || tx.qr_file_url || tx.qr_payload) body.appendChild(qrBlock(tx, r, ctx));
+      if (buttons.length && buttons[0].classList.contains('big-btn')) body.appendChild(buttons.shift());
+      body.appendChild(userCard(r.user, ctx.close, tx.player_name));
+      body.appendChild(infoTable(txRows(kind, tx)));
+    } else {
+      body.appendChild(userCard(r.user, ctx.close, tx.player_name));
+      body.appendChild(infoTable(txRows(kind, tx)));
+    }
     body.appendChild(historyBlock(r.history));
-    txButtons(kind, tx, ctx).forEach((n) => body.appendChild(n));
+    buttons.forEach((n) => body.appendChild(n));
     return body;
   }
   function qrBlock(tx, r, ctx) {
@@ -913,13 +925,36 @@
       const label = (AUD.find((a) => a[0] === st.audience) || AUD[0])[1];
       if (st.audience !== 'test' && !(await confirmDialog(label + ' через ' + (st.bot === 'support' ? 'бот поддержки' : 'основной бот') + '?', 'Отправить'))) return;
       busy(btn, true);
-      try { const r = await api('/broadcast', { method: 'POST', body: { text: text.value, photo_url: st.photo, bot: st.bot, audience: st.audience, buttons: buttons.map((b) => ({ text: b.text.trim(), url: b.url.trim() })), test_chat_id: st.audience === 'test' ? st.testChat || null : null } }); toast(r.test ? 'Тест отправлен вам в бот' : 'Отправляется · ' + r.recipients + ' получателей', 'ok', 4000); if (!r.test) { text.value = ''; st.photo = ''; drawPhoto(); } buzz(); } catch (ex) { err(ex); }
+      try { const r = await api('/broadcast', { method: 'POST', body: { text: text.value, photo_url: st.photo, bot: st.bot, audience: st.audience, buttons: buttons.map((b) => ({ text: b.text.trim(), url: b.url.trim() })), test_chat_id: st.audience === 'test' ? st.testChat || null : null } }); toast(r.test ? 'Тест отправлен вам в бот' : 'В очереди · ' + r.recipients + ' получателей. Отправка идёт в фоне', 'ok', 4000); if (!r.test) { text.value = ''; st.photo = ''; st.buttons = []; drawPhoto(); drawButtons(); loadHistory(); } buzz(); } catch (ex) { err(ex); }
       busy(btn, false);
     };
+    const histBox = h('div');
+    const AUD_SHORT = { all: 'всем', new: 'новым', big: 'крупным', active: 'активным', test: 'тест' };
+    const BSTATUS = { queued: ['В очереди', 'blue'], sending: ['Отправляется', 'blue'], delivering: ['Отправляется', 'blue'], done: ['Готово', 'success'], failed: ['Ошибка', 'problem'] };
+    let histTimer = null;
+    const loadHistory = async () => {
+      try {
+        const r = await api('/broadcast/history?limit=30');
+        histBox.innerHTML = '';
+        histBox.appendChild(h('div', { class: 'section-title' }, h('h2', null, 'История рассылок')));
+        if (!r.items.length) { histBox.appendChild(empty('Рассылок ещё не было', '', 'bell')); return; }
+        r.items.forEach((b) => { const [label, cls] = BSTATUS[b.status] || [b.status, '']; const running = ['queued', 'sending', 'delivering'].includes(b.status); histBox.appendChild(h('button', { class: 'card row-card bc-row', onclick: () => openBroadcast(b.id) }, h('span', { class: 'menu-color ' + (b.status === 'done' ? 'green' : b.status === 'failed' ? 'red' : 'blue') }, svg(b.bot === 'support' ? 'chat' : 'send', 16)), h('div', null, h('b', null, (b.text || '').replace(/\s+/g, ' ').slice(0, 60) || (b.photo_url ? 'Фото' : b.video_url ? 'Видео' : '—')), h('small', null, fmtDate(b.created_at) + ' · ' + (b.bot === 'support' ? 'поддержка' : 'основной') + ' · ' + (AUD_SHORT[b.audience] || b.audience) + ' · ' + b.admin_name), h('div', { class: 'bc-stats' }, h('span', { class: 'status ' + cls }, h('i'), label), h('span', { class: 'pill' }, 'получателей ' + b.recipients), h('span', { class: 'pill green' }, 'отправлено ' + b.sent), b.failed ? h('span', { class: 'pill red' }, 'ошибок ' + b.failed) : null, running ? h('span', { class: 'bc-bar' }, h('i', { style: { width: (b.recipients ? Math.round(((b.sent + b.failed) / b.recipients) * 100) : 0) + '%' } })) : null)))); });
+        const active = r.items.some((b) => ['queued', 'sending', 'delivering'].includes(b.status));
+        clearTimeout(histTimer); if (active && document.body.contains(histBox)) histTimer = setTimeout(loadHistory, 3000);
+      } catch (e) { /* silent */ }
+    };
+    async function openBroadcast(id) {
+      const s = sheet({ title: 'Рассылка #' + id, body: loader(2) });
+      try {
+        const r = await api('/broadcast/' + id); const b = r.item; const [label, cls] = BSTATUS[b.status] || [b.status, ''];
+        s.setBody(h('div', null, h('div', { class: 'bc-stats', style: { marginBottom: '8px' } }, h('span', { class: 'status ' + cls }, h('i'), label), h('span', { class: 'pill' }, 'получателей ' + b.recipients), h('span', { class: 'pill green' }, 'отправлено ' + b.sent), h('span', { class: 'pill ' + (b.failed ? 'red' : '') }, 'ошибок ' + b.failed)), kv([['Создана', fmtDate(b.created_at)], ['Завершена', b.finished_at ? fmtDate(b.finished_at) : '—'], ['Бот', b.bot === 'support' ? 'Бот поддержки' : 'Основной бот'], ['Кому', AUD_SHORT[b.audience] || b.audience], ['Оператор', b.admin_name || '—'], b.error ? ['Ошибка', h('span', { class: 'err-text' }, b.error)] : null]), h('div', { class: 'bubble out operator', style: { maxWidth: '100%', marginTop: '10px' } }, b.photo_url ? h('img', { src: fileUrl(b.photo_url), alt: '' }) : null, h('span', { class: 'txt' }, b.text)), b.buttons && b.buttons.length ? h('div', { class: 'bank-row', style: { marginTop: '8px' } }, b.buttons.map((x) => h('a', { class: 'outline-btn', href: x.url, target: '_blank', rel: 'noopener' }, x.text))) : null, b.errors && b.errors.length ? h('div', { style: { marginTop: '10px' } }, h('div', { class: 'section-title' }, h('h2', null, 'Ошибки доставки')), b.errors.map((e) => h('div', { class: 'setting-row' }, h('div', null, h('b', null, e.error), h('small', null, e.count + ' получателей'))))) : null));
+      } catch (e) { s.setBody(empty('Ошибка', e.message)); }
+    }
     box.innerHTML = ''; drawSeg(); drawPhoto(); drawButtons();
     box.appendChild(segBox);
     box.appendChild(h('div', { class: 'card section-card' }, h('label', { class: 'field' }, h('span', null, 'Кому'), audSel), countEl, testBox, h('label', { class: 'field' }, h('span', null, 'Текст'), text), h('div', { class: 'field' }, h('span', null, 'Фото'), photoBox), h('div', { class: 'field' }, h('span', null, 'Кнопки под сообщением'), btnBox), btn));
-    loadCount();
+    box.appendChild(histBox);
+    loadCount(); loadHistory();
   }
 
   /* ------------------------------------------------------------- security (Безопасность) */
@@ -1026,7 +1061,8 @@
     ['bot', 'Бот', [
       ['Работа', [['bot_paused', 'Пауза бота', 'bool'], ['deposits_enabled', 'Пополнения', 'bool'], ['withdrawals_enabled', 'Выводы', 'bool']]],
       ['Оператор', [['support_username', 'Username оператора'], ['brand_name', 'Название']]],
-      ['Кнопки', [['menu_deposit_label', 'Пополнить'], ['menu_withdraw_label', 'Вывести'], ['menu_help_label', 'Помощь'], ['button_styles_enabled', 'Цветные кнопки', 'bool'], ['premium_emoji_enabled', 'Premium-эмодзи', 'bool']]],
+      ['Кнопки', [['menu_deposit_label', 'Пополнить'], ['menu_withdraw_label', 'Вывести'], ['menu_help_label', 'Помощь'], ['button_styles_enabled', 'Цветные кнопки', 'bool'], ['premium_emoji_enabled', 'Premium-эмодзи', 'bool'], ['premium_only_emoji', 'Только premium (обычные эмодзи убирать)', 'bool']]],
+      ['Premium-эмодзи: соответствия (эмодзи и ID, по одному в строке)', [['premium_emoji_map', 'Эмодзи → ID', 'textarea']]],
       ['Доступ', [['subscription_enabled', 'Подписка на канал', 'bool'], ['subscription_channel', 'Канал'], ['phone_required', 'Запрашивать телефон', 'bool']]],
     ]],
     ['texts', 'Тексты', [
