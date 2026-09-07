@@ -12,15 +12,16 @@ from typing import Any
 
 from paygo.config import get_settings
 from paygo.db import transaction
-from paygo.models import BotSession, Notification, User
+from paygo.models import BotSession, Notification, SupportMessage, User
 from paygo.services import settings_store
 from paygo.services import support as support_service
 from paygo.services import users as user_service
-from paygo.utils import sha256_hex, utcnow
+from paygo.utils import utcnow
 from sqlalchemy import select
 
+from . import media as media_lib
 from .dispatcher import Dispatcher
-from .telegram import TelegramClient, TelegramError, inline_keyboard
+from .telegram import TelegramClient, TelegramError, inline_keyboard, url_buttons
 
 logger = logging.getLogger("paygobot.support")
 STOP = threading.Event()
@@ -123,7 +124,7 @@ class SupportBot:
                 if support_service.apply_rating(db, user, int(text)):
                     self._send(chat_id, "Спасибо за оценку! 🙏")
                     return
-        media_kind, file_url = self._media(message)
+        media_kind, file_url, file_name = media_lib.fetch(self.client, message, self.uploads)
         # debounce: merge a burst of short messages into one request
         with transaction() as db:
             debounce = float(settings_store.get(db, "support_debounce_seconds") or 1.5)
@@ -136,33 +137,9 @@ class SupportBot:
                     text = f"{text}\n{more}"
         with transaction() as db:
             user = db.get(User, user_id)
-            reply = support_service.respond(db, user, text, media_kind=media_kind, file_url=file_url, telegram_message_id=int(message.get("message_id") or 0))
+            reply = support_service.respond(db, user, text, media_kind=media_kind, file_url=file_url, file_name=file_name, telegram_message_id=int(message.get("message_id") or 0))
         if reply:
             self._send(chat_id, reply.text, reply.buttons)
-
-    def _media(self, message: dict[str, Any]) -> tuple[str, str]:
-        file_id, kind = "", ""
-        if message.get("photo"):
-            file_id, kind = message["photo"][-1]["file_id"], "photo"
-        else:
-            for key in ("document", "video", "voice", "video_note", "audio"):
-                obj = message.get(key)
-                if isinstance(obj, dict) and obj.get("file_id"):
-                    file_id, kind = obj["file_id"], key
-                    break
-        if not file_id:
-            return "", ""
-        try:
-            url = self.client.get_file_url(file_id)
-            if kind == "photo" and url:
-                raw = self.client.download(url)
-                name = f"{sha256_hex(raw)[:24]}.jpg"
-                (self.uploads / name).write_bytes(raw)
-                return kind, f"/uploads/support/{name}"
-            return kind, url
-        except Exception as exc:
-            logger.warning("media fetch failed: %s", exc)
-            return kind, ""
 
     # ------------------------------------------------------------ outbox
     def deliver_outbox(self) -> None:
@@ -170,24 +147,54 @@ class SupportBot:
             rows = db.execute(
                 select(Notification).where(Notification.channel.in_(("telegram_user", "admin_telegram")), Notification.bot == "support", Notification.status == "pending", (Notification.next_attempt_at.is_(None)) | (Notification.next_attempt_at <= utcnow())).order_by(Notification.id.asc()).limit(40)
             ).scalars().all()
-            items = [(r.id, r.target_telegram_id, r.body, dict(r.data or {}), r.attempts, r.channel) for r in rows]
-        for note_id, chat_id, body, data, attempts, _channel in items:
+            items = [(r.id, r.target_telegram_id, r.event, r.body, dict(r.data or {}), r.attempts) for r in rows]
+        for note_id, chat_id, event, body, data, attempts in items:
             try:
-                photo = data.get("photo_url")
-                if photo:
-                    path = Path(self.settings.data_dir) / str(photo).lstrip("/") if str(photo).startswith("/") else None
-                    self.client.send_photo(chat_id, path if path and path.exists() else str(photo), caption=body)
-                else:
-                    markup = None
-                    if data.get("rating_prompt"):
-                        markup = inline_keyboard([{"text": "⭐ " + str(i), "callback_data": f"rate:{i}"} for i in range(1, 6)])
-                    self.client.send_message(chat_id, body, markup=markup)
+                self._deliver_one(chat_id, event, body, data)
                 self._mark(note_id, "sent")
             except TelegramError as exc:
                 self._mark(note_id, "failed" if exc.fatal_for_chat or attempts >= 4 else "pending", exc.description, retry_in=15 * (attempts + 1))
             except Exception as exc:
                 logger.exception("support outbox failed")
                 self._mark(note_id, "failed" if attempts >= 4 else "pending", str(exc)[:300], retry_in=30)
+
+    def _deliver_one(self, chat_id: int, event: str, body: str, data: dict[str, Any]) -> None:
+        """One outbox row: a message (with optional photo, quote and URL buttons), an edit or a delete."""
+        tg_id = int(data.get("telegram_message_id") or 0)
+        if event == "support_delete":
+            if tg_id:
+                self.client.delete_message(chat_id, tg_id)
+            return
+        if event == "support_edit":
+            if tg_id:
+                try:
+                    if data.get("kind") == "photo":
+                        self.client.edit_caption(chat_id, tg_id, body)
+                    else:
+                        self.client.edit_text(chat_id, tg_id, body)
+                except TelegramError as exc:
+                    if not exc.not_modified and not exc.cant_edit:
+                        raise
+            return
+        markup = url_buttons(data.get("buttons"))
+        if data.get("rating_prompt"):
+            markup = inline_keyboard([{"text": "⭐ " + str(i), "callback_data": f"rate:{i}"} for i in range(1, 6)])
+        reply_to = int(data.get("reply_to") or 0) or None
+        photo = data.get("photo_url")
+        if photo:
+            path = Path(self.settings.data_dir) / str(photo).lstrip("/") if str(photo).startswith("/") else None
+            sent = self.client.send_photo(chat_id, path if path and path.exists() else str(photo), caption=body, markup=markup, reply_to=reply_to)
+        else:
+            sent = None
+            for chunk in _chunks(body, 3900):
+                sent = self.client.send_message(chat_id, chunk, markup=markup, reply_to=reply_to)
+        message_id = int(data.get("message_id") or 0)
+        if message_id and isinstance(sent, dict) and sent.get("message_id"):
+            with transaction() as db:
+                row = db.get(SupportMessage, message_id)
+                if row is not None:
+                    row.telegram_message_id = int(sent["message_id"])
+                    row.via = "support"
 
     def _mark(self, note_id: int, status: str, error: str = "", retry_in: int = 0) -> None:
         with transaction() as db:

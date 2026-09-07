@@ -73,6 +73,8 @@ DEFAULTS: dict[str, Any] = {
     "premium_emoji_enabled": True,
     "button_styles_enabled": True,
     "deposit_presets": "500,1000,2000,3000,5000,10000",
+    "broadcast_new_days": 7,
+    "broadcast_big_min": 20000,
     # QR card (photo sent to the client)
     "qr_card_title": "ОТСКАНИРУЙТЕ QR",
     "qr_card_subtitle": "В любом банке",

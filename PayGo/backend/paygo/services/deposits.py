@@ -478,6 +478,36 @@ STATUS_LABELS = {
 }
 
 
+def payment_hints(db: Session, deposits: list[Deposit]) -> dict[int, dict[str, Any]]:
+    """Bank payments related to the listed deposits: the matched event, or an unmatched
+    notification with exactly the same amount (shown in the history so the operator sees
+    that money arrived even before it was credited)."""
+    out: dict[int, dict[str, Any]] = {}
+    if not deposits:
+        return out
+    event_ids = [d.payment_event_id for d in deposits if d.payment_event_id]
+    if event_ids:
+        for ev in db.execute(select(PaymentEvent).where(PaymentEvent.id.in_(event_ids))).scalars().all():
+            for d in deposits:
+                if d.payment_event_id == ev.id:
+                    out[d.id] = {"kind": "matched", "amount": str(money(ev.amount)), "source": ev.source, "received_at": iso(ev.received_at)}
+    pending = [d for d in deposits if d.id not in out and d.status in {"created", "processing", "failed", "expired"}]
+    if pending:
+        amounts = {money(d.pay_amount) for d in pending}
+        since = utcnow() - timedelta(hours=48)
+        rows = db.execute(
+            select(PaymentEvent).where(PaymentEvent.status.in_(("received", "unmatched", "failed", "processing")), PaymentEvent.received_at >= since, PaymentEvent.amount.in_(list(amounts))).order_by(PaymentEvent.id.desc())
+        ).scalars().all()
+        by_amount: dict[Any, PaymentEvent] = {}
+        for ev in rows:
+            by_amount.setdefault(money(ev.amount), ev)
+        for d in pending:
+            ev = by_amount.get(money(d.pay_amount))
+            if ev is not None:
+                out[d.id] = {"kind": "candidate", "amount": str(money(ev.amount)), "source": ev.source, "received_at": iso(ev.received_at), "event_id": ev.id}
+    return out
+
+
 def public_deposit(db: Session, deposit: Deposit, *, full: bool = False) -> dict[str, Any]:
     user = deposit.user
     cash = deposit.cash

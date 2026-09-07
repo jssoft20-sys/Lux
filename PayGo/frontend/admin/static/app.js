@@ -52,6 +52,7 @@
   function promptDialog(title, label, placeholder, value) { return new Promise((resolve) => { const input = h('textarea', { class: 'textarea', placeholder: placeholder || '' }, value || ''); const s = sheet({ title, body: h('label', { class: 'field' }, h('span', null, label || ''), input), actions: [h('button', { class: 'action-btn', onclick: () => { s.close(); resolve(null); } }, 'Отмена'), h('button', { class: 'action-btn primary', onclick: () => { s.close(); resolve(input.value.trim()); } }, 'Продолжить')] }); setTimeout(() => input.focus(), 60); }); }
 
 
+
   /* ------------------------------------------------------------- sheet (modal) — drag down to close, drag up to expand */
   function sheet(opts) {
     const root = $('#modal-root');
@@ -60,52 +61,103 @@
     const head = h('div', { class: 'sheet-head' }, titleNode, h('button', { class: 'close', 'aria-label': 'Закрыть', onclick: () => api_.close() }, svg('close', 16)));
     const bodyEl = h('div', { class: 'sheet-body' }, opts.body);
     const box = h('div', { class: 'sheet' + (opts.full ? ' full' : ''), role: 'dialog', 'aria-modal': 'true' }, grab, head, bodyEl, opts.actions && opts.actions.length ? h('div', { class: 'sheet-actions' }, ...opts.actions) : null);
-    const back = h('div', { class: 'sheet-back', onclick: (e) => { if (e.target === back) api_.close(); } }, box);
+    const openedAt = Date.now();
+    const back = h('div', { class: 'sheet-back', onclick: (e) => { if (e.target === back && Date.now() - openedAt > 450) api_.close(); } }, box);
     const onKey = (e) => { if (e.key === 'Escape') api_.close(); };
+    if (opts.guardMs) box.addEventListener('click', (e) => { if (Date.now() - openedAt < opts.guardMs) { e.stopPropagation(); e.preventDefault(); } }, true); /* the release of a long press must not press a menu item */
     let closed = false, drag = null;
-    const onMouseMove = (e) => { if (drag) move(e.clientY, e); };
-    const onMouseUp = () => end();
     const api_ = {
       el: box, body: bodyEl,
-      close() { if (closed) return; closed = true; box.classList.add('closing'); back.classList.add('closing'); setTimeout(() => back.remove(), 170); document.removeEventListener('keydown', onKey); document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp); if (!document.querySelector('.sheet-back:not(.closing)')) document.body.style.overflow = ''; if (opts.onClose) opts.onClose(); },
+      close() { if (closed) return; closed = true; box.classList.add('closing'); back.classList.add('closing'); setTimeout(() => back.remove(), 170); document.removeEventListener('keydown', onKey); if (!document.querySelector('.sheet-back:not(.closing)')) document.body.style.overflow = ''; if (opts.onClose) opts.onClose(); },
       setBody(node) { bodyEl.innerHTML = ''; bodyEl.appendChild(node); },
       setActions(nodes) { let a = $('.sheet-actions', box); if (!nodes || !nodes.length) { if (a) a.remove(); return; } if (!a) { a = h('div', { class: 'sheet-actions' }); box.appendChild(a); } a.innerHTML = ''; nodes.forEach((n) => a.appendChild(n)); },
       setTitle(node) { titleNode.innerHTML = ''; titleNode.appendChild(typeof node === 'string' ? document.createTextNode(node) : node); },
     };
-    const start = (y, fromBody) => { drag = { y0: y, y, t0: Date.now(), fromBody, moved: false }; box.style.transition = 'none'; };
+    const start = (y, fromBody) => { drag = { y0: y, y, t0: Date.now(), fromBody, moved: false, dead: false }; box.style.transition = 'none'; };
     const move = (y, e) => {
-      if (!drag) return; const dy = y - drag.y0; drag.y = y;
-      if (drag.fromBody && !drag.moved && (bodyEl.scrollTop > 0 || dy < 0)) { drag = null; box.style.transition = ''; return; }
-      if (Math.abs(dy) > 4) drag.moved = true;
-      if (!drag.moved) return;
+      if (!drag || drag.dead) return; const dy = y - drag.y0; drag.y = y;
+      if (!drag.moved) {
+        if (Math.abs(dy) < 6) return; /* finger jitter: not a decision yet */
+        if (drag.fromBody && (bodyEl.scrollTop > 0 || dy < 0)) { drag.dead = true; box.style.transition = ''; return; } /* let the body scroll */
+        drag.moved = true;
+      }
       if (e && e.cancelable) e.preventDefault();
       if (dy > 0) box.style.transform = 'translateY(' + dy + 'px)';
-      else { box.style.transform = 'translateY(0)'; if (dy < -36) box.classList.add('full'); }
+      else { box.style.transform = 'translateY(' + Math.max(-24, dy / 4) + 'px)'; if (dy < -36) box.classList.add('full'); }
     };
     const end = () => {
-      if (!drag) return; const dy = drag.y - drag.y0; const v = dy / Math.max(1, Date.now() - drag.t0); box.style.transition = ''; drag = null;
-      if (box.classList.contains('full') && !opts.full && dy > 40 && dy < 200 && v < 0.5) { box.classList.remove('full'); box.style.transform = ''; return; }
-      if (dy > 110 || (dy > 24 && v > 0.55)) { api_.close(); return; }
+      if (!drag) return; const dy = drag.moved ? drag.y - drag.y0 : 0; const v = dy / Math.max(1, Date.now() - drag.t0); const moved = drag.moved; box.style.transition = ''; drag = null;
+      if (!moved) { box.style.transform = ''; return; }
+      if (box.classList.contains('full') && !opts.full && dy > 40 && dy < 220 && v < 0.5) { box.classList.remove('full'); box.style.transform = ''; return; }
+      if (dy > 100 || (dy > 24 && v > 0.5)) { api_.close(); return; }
       box.style.transform = '';
     };
-    const touchStart = (fromBody) => (e) => { if (e.touches.length === 1) start(e.touches[0].clientY, fromBody); };
-    [grab, head].forEach((el) => { el.addEventListener('touchstart', touchStart(false), { passive: true }); el.addEventListener('mousedown', (e) => { if (e.target.closest('button')) return; start(e.clientY, false); e.preventDefault(); }); });
-    bodyEl.addEventListener('touchstart', touchStart(true), { passive: true });
-    box.addEventListener('touchmove', (e) => move(e.touches[0].clientY, e), { passive: false });
-    box.addEventListener('touchend', end); box.addEventListener('touchcancel', end);
-    document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp);
+    /* head + grab: pointer events with capture — works for touch, pen and mouse */
+    [grab, head].forEach((el) => {
+      el.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) return; if (el.setPointerCapture) { try { el.setPointerCapture(e.pointerId); } catch (x) {} } start(e.clientY, false); });
+      el.addEventListener('pointermove', (e) => { if (drag && !drag.fromBody) move(e.clientY, e); });
+      el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+    });
+    /* body: touch drag down from the very top of the content */
+    bodyEl.addEventListener('touchstart', (e) => { if (e.touches.length === 1 && !drag) start(e.touches[0].clientY, true); }, { passive: true });
+    bodyEl.addEventListener('touchmove', (e) => { if (drag && drag.fromBody) move(e.touches[0].clientY, e); }, { passive: false });
+    bodyEl.addEventListener('touchend', () => { if (drag && drag.fromBody) end(); }); bodyEl.addEventListener('touchcancel', () => { if (drag && drag.fromBody) end(); });
     document.addEventListener('keydown', onKey); document.body.style.overflow = 'hidden'; root.appendChild(back);
     return api_;
   }
   function closeSheets() { document.querySelectorAll('.sheet-back').forEach((el) => el.remove()); document.body.style.overflow = ''; }
   function imageSheet(title, src, caption) { sheet({ title, full: true, body: h('div', { class: 'img-sheet' }, h('img', { src, alt: '' }), caption ? h('small', null, caption) : null) }); }
+  function actionSheet(title, items) {
+    /* quick vertical menu: [{label, icon, cls, onclick}] */
+    const s = sheet({ title, guardMs: 420, body: h('div', { class: 'menu-list' }, items.filter(Boolean).map((it) => h('button', { class: 'menu-item ' + (it.cls || ''), onclick: () => { s.close(); it.onclick(); } }, it.icon ? svg(it.icon, 17) : null, it.label))) });
+    return s;
+  }
 
   /* ------------------------------------------------------------- components */
   const STATUS = { created: ['Ожидает', 'blue'], processing: ['В обработке', 'blue'], success: ['Успешно', 'success'], failed: ['Проблема', 'problem'], cancelled: ['Отменено', 'rejected'], expired: ['Истекло', 'rejected'], auto: ['Авто', ''], waiting_operator: ['Ждёт оператора', 'problem'], operator: ['У оператора', 'blue'], resolved: ['Закрыто', 'success'], closed: ['Закрыто', 'rejected'], online: ['Онлайн', 'success'], error: ['Ошибка', 'problem'], low: ['Мало средств', 'pending'], disabled: ['Отключена', 'rejected'], auto_disabled: ['Автостоп', 'problem'], unknown: ['Не проверена', ''] };
   function statusEl(status, label) { const m = STATUS[status] || [status, '']; const cls = (status === 'created' && label && /проблем|внимание/i.test(label)) ? 'problem' : m[1]; return h('span', { class: 'status ' + cls }, h('i'), label || m[0]); }
   function txStatus(tx) { if (tx.needs_attention && tx.status !== 'success') return statusEl('failed', 'Проблема'); return statusEl(tx.status, tx.status_label); }
   function switchEl(on, onChange) { const b = h('button', { class: 'switch ' + (on ? 'on' : ''), type: 'button', 'aria-pressed': on ? 'true' : 'false' }, h('i')); b.onclick = async () => { b.disabled = true; try { await onChange(!b.classList.contains('on')); b.classList.toggle('on'); } catch (e) { if (!e || e.message !== '__cancel__') err(e); } b.disabled = false; }; return b; }
-  function empty(title, text, icon) { return h('div', { class: 'empty' }, svg(icon || 'history', 26), h('b', null, title || 'Пока пусто'), text ? h('span', null, text) : null); }
+  function art(kind) {
+    /* small animated scenes for empty states (pure CSS keyframes, no libraries) */
+    const ns = 'http://www.w3.org/2000/svg';
+    const el = (tag, attrs, ...kids) => { const n = document.createElementNS(ns, tag); for (const [k, v] of Object.entries(attrs || {})) n.setAttribute(k, v); kids.forEach((c) => n.appendChild(c)); return n; };
+    const root = el('svg', { viewBox: '0 0 120 90', class: 'art art-' + kind, width: '150', height: '112', fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
+    if (kind === 'home') {
+      root.appendChild(el('circle', { cx: 60, cy: 45, r: 30, class: 'ring ring1' }));
+      root.appendChild(el('circle', { cx: 60, cy: 45, r: 30, class: 'ring ring2' }));
+      root.appendChild(el('circle', { cx: 60, cy: 45, r: 22, class: 'disc' }));
+      root.appendChild(el('path', { d: 'M48 46l8 8 16-17', class: 'check' }));
+      return root;
+    }
+    if (kind === 'history' || kind === 'wallet' || kind === 'calendar') {
+      [[-16, 0, 'c1'], [0, -6, 'c2'], [16, 4, 'c3']].forEach(([dx, dy, cls]) => root.appendChild(el('g', { class: 'card ' + cls, transform: 'translate(' + dx + ' ' + dy + ')' }, el('rect', { x: 34, y: 22, width: 52, height: 40, rx: 8, class: 'paper' }), el('rect', { x: 42, y: 32, width: 22, height: 4, rx: 2, class: 'line' }), el('rect', { x: 42, y: 41, width: 34, height: 4, rx: 2, class: 'line' }), el('rect', { x: 42, y: 50, width: 16, height: 4, rx: 2, class: 'line' }))));
+      root.appendChild(el('circle', { cx: 22, cy: 26, r: 3, class: 'spark s1' })); root.appendChild(el('circle', { cx: 100, cy: 68, r: 2.5, class: 'spark s2' })); root.appendChild(el('circle', { cx: 96, cy: 20, r: 2, class: 'spark s3' }));
+      return root;
+    }
+    if (kind === 'chat') {
+      root.appendChild(el('path', { d: 'M22 30h44a8 8 0 0 1 8 8v14a8 8 0 0 1-8 8H40l-12 9v-9h-6a8 8 0 0 1-8-8V38a8 8 0 0 1 8-8z', class: 'bubble b1' }));
+      root.appendChild(el('path', { d: 'M62 18h36a7 7 0 0 1 7 7v12a7 7 0 0 1-7 7h-6v8l-10-8H62a7 7 0 0 1-7-7V25a7 7 0 0 1 7-7z', class: 'bubble b2' }));
+      [[36, 45], [46, 45], [56, 45]].forEach(([x, y], i) => root.appendChild(el('circle', { cx: x, cy: y, r: 3, class: 'dot d' + (i + 1) })));
+      return root;
+    }
+    if (kind === 'search') {
+      root.appendChild(el('circle', { cx: 52, cy: 40, r: 20, class: 'lens' }));
+      root.appendChild(el('path', { d: 'M67 55l16 16', class: 'handle' }));
+      root.appendChild(el('path', { d: 'M40 40a12 12 0 0 1 12-12', class: 'shine' }));
+      root.appendChild(el('g', { class: 'orbit' }, el('circle', { cx: 92, cy: 22, r: 3, class: 'spark s1' }), el('circle', { cx: 20, cy: 62, r: 2.5, class: 'spark s2' })));
+      return root;
+    }
+    if (kind === 'bell') {
+      root.appendChild(el('g', { class: 'bell' }, el('path', { d: 'M60 20c-11 0-18 8-18 18v12l-6 8h48l-6-8V38c0-10-7-18-18-18z', class: 'body' }), el('path', { d: 'M54 62a6 6 0 0 0 12 0', class: 'clapper' })));
+      root.appendChild(el('circle', { cx: 78, cy: 26, r: 5, class: 'badge' }));
+      return root;
+    }
+    root.appendChild(el('g', { class: 'float' }, el('rect', { x: 36, y: 24, width: 48, height: 42, rx: 10, class: 'paper' }), el('circle', { cx: 60, cy: 45, r: 9, class: 'disc' })));
+    root.appendChild(el('circle', { cx: 24, cy: 30, r: 2.5, class: 'spark s1' })); root.appendChild(el('circle', { cx: 98, cy: 62, r: 2.5, class: 'spark s2' }));
+    return root;
+  }
+  function empty(title, text, icon) { return h('div', { class: 'empty' }, art(icon || 'history'), h('b', null, title || 'Пока пусто'), text ? h('span', null, text) : null); }
   function loader(n) { return h('div', null, Array.from({ length: n || 3 }).map(() => h('div', { class: 'sk' }))); }
   function header(title, opts) { opts = opts || {}; return h('header', { class: 'v9-header' }, opts.back === false ? h('span', { class: 'header-spacer' }) : h('button', { class: 'header-btn', 'aria-label': 'Назад', onclick: () => (typeof opts.back === 'function' ? opts.back() : history.length > 1 ? history.back() : go('#/menu')) }, svg('back', 18)), h('h1', null, title), opts.right || h('span', { class: 'header-spacer' })); }
   function segEl(items, active, onSelect, cls) { return h('div', { class: 'seg ' + (cls || '') }, items.map(([key, label, count]) => h('button', { class: key === active ? 'active' : '', onclick: () => onSelect(key) }, label, count !== undefined && count !== null ? h('i', null, count) : null))); }
@@ -122,15 +174,18 @@
     opts = opts || {};
     const dep = tx.kind === 'deposit';
     const problem = tx.status === 'failed' || (tx.needs_attention && tx.status !== 'success');
-    const card = h('button', { class: 'tx-card', onclick: () => openTxSheet(tx.kind, tx.id) },
-      h('span', { class: 'tx-logo-wrap' }, h('span', { class: 'tx-logo' }, h('img', { src: 'brand/paygo-logo.png', alt: '' })), h('i', { class: 'tx-flow ' + (dep ? 'deposit' : 'withdraw') }, svg(dep ? 'arrowDown' : 'arrowUp', 13))),
-      h('span', { class: 'tx-copy' }, h('b', null, tx.user_name || 'Клиент'), h('small', null, (tx.cash_name || '').toUpperCase() + ' • ' + tx.player_id), h('em', null, '# ' + (tx.public_id || tx.id).replace(/^[DW]-/, ''), h('span', { class: 'tx-peek', role: 'button', 'aria-label': 'Быстрый просмотр', onclick: (e) => { e.stopPropagation(); openTxSheet(tx.kind, tx.id); } }, svg('peek', 16)))),
-      h('span', { class: 'tx-side' }, h('time', null, fmtDate(tx.created_at)), h('strong', { class: 'tx-amount ' + (dep ? 'deposit' : 'withdraw') }, (dep ? '+' : '−') + money(dep ? tx.pay_amount : tx.amount)), txStatus(tx)));
+    const pay = tx.payment;
+    const card = h('button', { class: 'tx-card', onclick: () => go('#/' + (dep ? 'deposits' : 'withdrawals') + '/' + tx.id) },
+      h('span', { class: 'tx-logo-wrap' }, h('span', { class: 'tx-logo' }, h('img', { src: 'brand/payqr.png', alt: '' })), h('i', { class: 'tx-flow ' + (dep ? 'deposit' : 'withdraw') }, svg(dep ? 'arrowDown' : 'arrowUp', 13))),
+      h('span', { class: 'tx-copy' }, h('b', null, clientName(tx)), h('small', null, (tx.cash_name || '').toUpperCase() + ' • ' + tx.player_id), h('em', null, '# ' + (tx.public_id || tx.id).replace(/^[DW]-/, ''), h('span', { class: 'tx-peek', role: 'button', 'aria-label': 'Быстрый просмотр', onclick: (e) => { e.stopPropagation(); openTxSheet(tx.kind, tx.id); } }, svg('peek', 16)))),
+      h('span', { class: 'tx-side' }, h('time', null, fmtDate(tx.created_at)), h('strong', { class: 'tx-amount ' + (dep ? 'deposit' : 'withdraw') }, (dep ? '+' : '−') + money(dep ? tx.pay_amount : tx.amount)), txStatus(tx)),
+      pay ? h('span', { class: 'tx-pay ' + pay.kind }, svg(pay.kind === 'matched' ? 'check' : 'bolt', 12), (pay.kind === 'matched' ? 'Платёж получен · ' : 'Есть платёж на эту сумму · ') + srcLabel(pay.source) + ' · ' + fmtTime(pay.received_at) + ' · ' + money(pay.amount)) : null);
     if (!problem || opts.noAlert) return card;
     const title = dep ? 'Надо пополнить: деньги пришли, букмекер не зачислил' : 'Нужна проверка: касса не подтвердила сумму вывода';
     return h('div', null, card, h('div', { class: 'tx-attn' }, h('b', null, title), h('small', null, tx.error || 'Откройте заявку и повторите операцию.')));
   }
-  function txGroups(list, opts) { opts = opts || {}; const groups = groupByDay(list); return h('div', { class: 'tx-groups' }, groups.map((g) => h('section', { class: 'tx-day' }, h('div', { class: 'tx-day-title' }, g.label), h('div', { class: 'tx-day-list' }, g.items.map((tx) => { const card = txCard(tx, opts); const sw = opts.swipe && opts.swipe(tx); return sw ? swipeRow(card, sw) : card; }))))); }
+  const clientName = (tx) => (tx.player_name && tx.player_name.trim()) || tx.user_name || 'Клиент';
+  function txGroups(list, opts) { opts = opts || {}; const groups = groupByDay(list); return h('div', { class: 'tx-groups' }, groups.map((g) => h('section', { class: 'tx-day' }, h('div', { class: 'tx-day-title' }, g.label), h('div', { class: 'tx-day-list' }, g.items.map((tx, i) => { const card = txCard(tx, opts); card.style.setProperty('--i', Math.min(i, 10)); const sw = opts.swipe && opts.swipe(tx); return sw ? swipeRow(card, sw) : card; }))))); }
   function swipeRow(card, opts) {
     /* swipe right → reveals one action (old admin: «Отложить») */
     const wrap = h('div', { class: 'swipe-wrap' }, h('div', { class: 'swipe-action ' + (opts.color || 'amber') }, svg(opts.icon || 'history', 18), h('span', null, opts.label)), h('div', { class: 'swipe-card' }, card));
@@ -143,9 +198,34 @@
     return wrap;
   }
 
+  /* ------------------------------------------------------------- feel: ripple, haptics, hold-to-open */
+  const isTouch = () => matchMedia('(hover: none) and (pointer: coarse)').matches;
+  function buzz(ms) { try { if (navigator.vibrate && isTouch()) navigator.vibrate(ms || 8); } catch (e) {} }
+  const RIPPLE_SEL = '.action-btn,.primary-btn,.outline-btn,.big-btn,.menu-tile,.tx-card,.row-card,.wallet-card,.chat-row,.nav-item,.seg button,.settings-tabs button,.kind-tabs button,.chat-tabs button,.user-card,.menu-item,.header-btn,.refresh-btn,.setting-row.tap';
+  document.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest(RIPPLE_SEL); if (!el || el.disabled) return;
+    const rect = el.getBoundingClientRect(); const size = Math.max(rect.width, rect.height) * 1.4;
+    const r = h('span', { class: 'ripple', style: { width: size + 'px', height: size + 'px', left: (e.clientX - rect.left - size / 2) + 'px', top: (e.clientY - rect.top - size / 2) + 'px' } });
+    el.appendChild(r); setTimeout(() => r.remove(), 520);
+    if (el.matches('.action-btn,.primary-btn,.big-btn,.nav-item,.menu-tile,.send-btn')) buzz(6);
+  }, { passive: true });
+  function holdMenu(el, onHold) {
+    /* long-press (touch) or right-click (desktop) → context menu; fires once per press */
+    let timer = null, x0 = 0, y0 = 0, fired = 0;
+    const fire = () => { if (Date.now() - fired < 700) return; fired = Date.now(); el.classList.remove('holding'); buzz(12); onHold(); };
+    const cancel = () => { clearTimeout(timer); timer = null; el.classList.remove('holding'); };
+    el.addEventListener('touchstart', (e) => { if (e.touches.length !== 1) return; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; el.classList.add('holding'); timer = setTimeout(() => { timer = null; fire(); }, 380); }, { passive: true });
+    el.addEventListener('touchmove', (e) => { if (timer && (Math.abs(e.touches[0].clientX - x0) > 8 || Math.abs(e.touches[0].clientY - y0) > 8)) cancel(); }, { passive: true });
+    el.addEventListener('touchend', cancel); el.addEventListener('touchcancel', cancel);
+    el.addEventListener('contextmenu', (e) => { e.preventDefault(); cancel(); fire(); });
+    el.addEventListener('mousedown', (e) => { if (e.button !== 0) return; timer = setTimeout(() => { timer = null; fire(); }, 450); });
+    el.addEventListener('mouseup', cancel); el.addEventListener('mouseleave', cancel);
+    el.addEventListener('click', (e) => { if (Date.now() - fired < 700) { e.stopPropagation(); e.preventDefault(); } }, true);
+  }
+
   /* ------------------------------------------------------------- router / shell */
   function parseHash() { const parts = (location.hash || '#/home').replace(/^#\/?/, '').split('/'); return { page: parts[0] || 'home', id: parts[1] || null, sub: parts[2] || null }; }
-  window.addEventListener('hashchange', () => { closeSheets(); state.route = parseHash(); render(); });
+  window.addEventListener('hashchange', () => { closeSheets(); state.route = parseHash(); render(); window.scrollTo(0, 0); });
   const go = (hash) => { location.hash = hash; };
   const TOP = ['home', 'history', 'chats', 'search', 'menu'];
   const NAV = [['home', 'Главная', 'home'], ['history', 'История', 'history'], ['chats', 'Чат', 'chat'], ['search', 'Поиск', 'search'], ['menu', 'Меню', 'menu']];
@@ -156,7 +236,7 @@
     if (!state.admin) { app.appendChild(loginView()); return; }
     const page = state.route.page;
     const noNav = page === 'chats' && !!state.route.id;
-    const shell = h('div', { class: 'shell ' + (noNav ? 'no-nav' : '') });
+    const shell = h('div', { class: 'shell page-in ' + (noNav ? 'no-nav' : '') });
     app.appendChild(shell);
     const views = { home: homeView, history: historyView, chats: chatsView, search: searchView, menu: menuView, manage: manageView, stats: statsView, cashes: cashesView, events: eventsView, gateway: gatewayView, broadcast: broadcastView, security: securityView, quick: quickView, logs: logsView, settings: settingsView, macrodroid: macrodroidView, firstline: firstLineView, deposits: (m) => txDetailView(m, 'deposits', state.route.id), withdrawals: (m) => txDetailView(m, 'withdrawals', state.route.id), users: (m) => userDetailView(m, state.route.id), push: pushView, env: envView };
     (views[page] || homeView)(shell);
@@ -286,11 +366,11 @@
     screen.appendChild(results); run(); setTimeout(() => input.focus(), 50);
   }
 
+
   /* ------------------------------------------------------------- chats (Чат) */
   function chatsView(shell) {
     if (state.route.id) return chatThreadView(shell, Number(state.route.id));
     const screen = h('section', { class: 'screen' }); shell.appendChild(screen);
-    const st = { page: 1 };
     const search = h('input', { placeholder: 'Имя, ID клиента или заявки', value: state.chatQuery, oninput: debounce((e) => { state.chatQuery = e.target.value.trim(); load(); }, 250) });
     const kindBox = h('div'); const tabBox = h('div'); const listBox = h('div', { class: 'chat-list' });
     screen.appendChild(h('div', { class: 'chat-top' }, h('div', { class: 'searchbar' }, svg('search', 20), search), kindBox, tabBox)); screen.appendChild(listBox);
@@ -305,33 +385,93 @@
         tabBox.innerHTML = ''; tabBox.appendChild(h('div', { class: 'chat-tabs' }, h('button', { class: state.chatTab !== 'closed' ? 'active' : '', onclick: () => { state.chatTab = 'open'; load(); } }, 'Новые', h('small', null, c.open || 0)), h('button', { class: state.chatTab === 'closed' ? 'active' : '', onclick: () => { state.chatTab = 'closed'; load(); } }, 'Обработанные', h('small', null, c.closed || 0))));
         listBox.innerHTML = '';
         if (!r.items.length) return listBox.appendChild(empty(state.chatTab === 'closed' ? 'Обработанных обращений нет' : 'Новых обращений нет', '', 'chat'));
-        r.items.forEach((cv) => { const ctx = cv.context || {}; const kindCls = cv.category === 'deposit' ? 'deposit' : cv.category === 'withdrawal' ? 'withdraw' : 'neutral'; listBox.appendChild(h('button', { class: 'chat-row ' + kindCls + (cv.status === 'waiting_operator' ? ' waiting' : ''), onclick: () => go('#/chats/' + cv.id) }, h('span', { class: 'avatar' }, (cv.user_name || '?').charAt(0).toUpperCase()), h('span', { class: 'chat-copy' }, h('span', { class: 'chat-name-line' }, h('b', null, cv.user_name || 'Клиент'), cv.category === 'deposit' ? h('i', { class: 'kind-badge deposit' }, 'ПП') : null, cv.category === 'withdrawal' ? h('i', { class: 'kind-badge withdraw' }, 'ВВ') : null, cv.category === 'operator' ? h('i', { class: 'kind-badge operator' }, 'ОП') : null, cv.rating ? h('i', { class: 'kind-badge' }, '★ ' + cv.rating) : null), cv.subject ? h('span', { class: 'chat-mini' }, cv.subject) : null, h('span', { class: 'chat-last' }, cv.status === 'waiting_operator' ? 'Ждёт оператора' : cv.status === 'operator' ? 'В работе у оператора' : cv.status === 'resolved' ? 'Закрыто' : 'Автоответы')), h('span', { class: 'chat-side' }, h('time', null, fmtTime(cv.last_message_at) || ago(cv.updated_at)), cv.unread_count ? h('span', { class: 'unread' }, cv.unread_count) : null))); });
+        r.items.forEach((cv, i) => { const kindCls = cv.category === 'deposit' ? 'deposit' : cv.category === 'withdrawal' ? 'withdraw' : 'neutral'; listBox.appendChild(h('button', { class: 'chat-row ' + kindCls + (cv.status === 'waiting_operator' ? ' waiting' : ''), style: { '--i': i }, onclick: () => go('#/chats/' + cv.id) }, h('span', { class: 'avatar' }, (cv.user_name || '?').charAt(0).toUpperCase()), h('span', { class: 'chat-copy' }, h('span', { class: 'chat-name-line' }, h('b', null, cv.user_name || 'Клиент'), cv.category === 'deposit' ? h('i', { class: 'kind-badge deposit' }, 'ПП') : null, cv.category === 'withdrawal' ? h('i', { class: 'kind-badge withdraw' }, 'ВВ') : null, cv.category === 'operator' ? h('i', { class: 'kind-badge operator' }, 'ОП') : null, cv.rating ? h('i', { class: 'kind-badge' }, '★ ' + cv.rating) : null), cv.subject ? h('span', { class: 'chat-mini' }, cv.subject) : null, h('span', { class: 'chat-last' }, cv.status === 'waiting_operator' ? 'Ждёт оператора' : cv.status === 'operator' ? 'В работе у оператора' : cv.status === 'resolved' ? 'Закрыто' : 'Автоответы')), h('span', { class: 'chat-side' }, h('time', null, fmtTime(cv.last_message_at) || ago(cv.updated_at)), cv.unread_count ? h('span', { class: 'unread' }, cv.unread_count) : null))); });
       } catch (e) { listBox.innerHTML = ''; listBox.appendChild(empty('Ошибка', e.message)); }
     }
     load(); watchChanges(screen, load);
   }
+  async function openChat(userId) {
+    /* «Написать клиенту» → the operator dialog of this client in Чат (created when needed) */
+    try { const r = await api('/users/' + userId + '/conversation', { method: 'POST' }); closeSheets(); go('#/chats/' + r.item.id); } catch (e) { err(e); }
+  }
+  const MEDIA_EXT = { audio: ['ogg', 'oga', 'opus', 'mp3', 'm4a', 'aac', 'wav'], video: ['mp4', 'mov', 'webm'], image: ['jpg', 'jpeg', 'png', 'webp', 'gif'] };
+  function mediaNode(m) {
+    if (!m.file_url) return null;
+    const url = fileUrl(m.file_url); const ext = (m.file_url.split('.').pop() || '').toLowerCase();
+    const kindOf = MEDIA_EXT.image.includes(ext) ? 'image' : MEDIA_EXT.audio.includes(ext) ? 'audio' : MEDIA_EXT.video.includes(ext) ? 'video' : 'file';
+    if (kindOf === 'image') return h('img', { src: url, alt: '', loading: 'lazy', onclick: () => imageSheet(m.sender === 'user' ? 'Фото клиента' : 'Фото', url) });
+    if (kindOf === 'audio') return h('div', { class: 'media-audio' }, svg(m.kind === 'voice' ? 'chat' : 'note', 15), h('audio', { controls: true, preload: 'metadata', src: url }));
+    if (kindOf === 'video') return h('video', { class: 'media-video', controls: true, playsinline: true, preload: 'metadata', src: url });
+    return h('a', { class: 'media-file', href: url, target: '_blank', rel: 'noopener' }, svg('note', 15), h('span', null, m.file_name || (m.kind === 'sticker' ? 'Стикер' : 'Файл')));
+  }
   async function chatThreadView(shell, id) {
     const screen = h('section', { class: 'chat-screen' }); shell.appendChild(screen); screen.appendChild(loader(2));
-    let lastId = 0;
+    let lastId = 0; let c = null; const known = {}; let composer = null;
+    const fitViewport = () => { const vv = window.visualViewport; screen.style.height = (vv ? vv.height : window.innerHeight) + 'px'; if (feed) feed.scrollTop = feed.scrollHeight; };
+    const feed = h('div', { class: 'chat-feed' });
+    const bottom = (smooth) => { feed.scrollTo({ top: feed.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); };
+    const nearBottom = () => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 140;
+    const senderLabel = (m) => (m.sender === 'user' ? 'клиент' : m.sender === 'bot' ? 'бот' : m.sender === 'operator' ? 'оператор' : 'система');
+    const bubble = (m) => {
+      known[m.id] = m;
+      const mine = m.direction === 'out' && m.sender === 'operator';
+      const b = h('div', { class: 'bubble ' + (m.direction === 'out' ? 'out ' : '') + m.sender + (m.deleted_at ? ' deleted' : ''), 'data-id': m.id },
+        m.reply_to ? h('div', { class: 'quote', onclick: () => { const t = feed.querySelector('.bubble[data-id="' + m.reply_to.id + '"]'); if (t) { t.scrollIntoView({ block: 'center', behavior: 'smooth' }); t.classList.add('flash'); setTimeout(() => t.classList.remove('flash'), 900); } } }, h('b', null, m.reply_to.sender === 'user' ? (c ? c.user_name : 'Клиент') : 'Вы'), h('span', null, m.reply_to.text || '…')) : null,
+        m.deleted_at ? h('i', null, 'Сообщение удалено') : mediaNode(m), m.deleted_at ? null : (m.text && !(m.file_url && /^\[.*\]$/.test(m.text)) ? h('span', { class: 'txt' }, m.text) : null),
+        h('small', null, senderLabel(m) + ' · ' + fmtTime(m.created_at) + (m.edited_at ? ' · изм.' : '')));
+      if (!m.deleted_at) holdMenu(b, () => messageMenu(m, mine, b));
+      return b;
+    };
+    const messageMenu = (m, mine, node) => {
+      actionSheet('Сообщение', [
+        { label: 'Ответить', icon: 'send', onclick: () => composer.reply(m) },
+        mine && ['text', 'photo'].includes(m.kind) ? { label: 'Изменить', icon: 'edit', onclick: () => composer.edit(m) } : null,
+        mine ? { label: 'Удалить', icon: 'trash', cls: 'danger', onclick: async () => { if (!(await confirmDialog('Удалить сообщение у клиента?', 'Удалить', true))) return; try { const rr = await api('/support/messages/' + m.id, { method: 'DELETE' }); Object.assign(m, rr.message); node.replaceWith(bubble(m)); } catch (e) { err(e); } } } : null,
+      ]);
+    };
     const draw = async () => {
       try {
-        const r = await api('/support/conversations/' + id); const c = r.item; const ctx = c.context || {}; screen.innerHTML = '';
-        const head = h('header', { class: 'chat-head' }, h('button', { class: 'header-btn', onclick: () => go('#/chats') }, svg('back', 18)), h('button', { class: 'chat-person', onclick: () => go('#/users/' + c.user_id) }, h('span', { class: 'avatar mini' }, (c.user_name || '?').charAt(0).toUpperCase()), h('span', null, h('b', null, c.user_name), h('small', null, 'TG ' + c.telegram_id + (c.username ? ' · @' + c.username : '') + ' · ' + (STATUS[c.status] || [c.status])[0]))), can('support') ? h('button', { class: 'chat-close-btn ' + (c.status === 'resolved' ? 'open' : ''), onclick: async () => { if (c.status === 'resolved') { await api('/support/conversations/' + c.id + '/status', { method: 'POST', body: { status: 'operator' } }); draw(); return; } const note = await promptDialog('Завершить обращение', 'Сообщение клиенту (необязательно)'); if (note === null) return; await api('/support/conversations/' + c.id + '/status', { method: 'POST', body: { status: 'resolved', note } }); go('#/chats'); } }, c.status === 'resolved' ? 'Вернуть' : 'Завершить') : h('span'), h('button', { class: 'header-btn', 'aria-label': 'Меню', onclick: () => chatMenu(c, draw) }, svg('more', 18)));
+        const r = await api('/support/conversations/' + id); c = r.item; const ctx = c.context || {}; screen.innerHTML = '';
+        const head = h('header', { class: 'chat-head' }, h('button', { class: 'header-btn', onclick: () => go('#/chats') }, svg('back', 18)), h('button', { class: 'chat-person', onclick: () => go('#/users/' + c.user_id) }, h('span', { class: 'avatar mini' }, (c.user_name || '?').charAt(0).toUpperCase()), h('span', null, h('b', null, c.user_name), h('small', null, 'TG ' + c.telegram_id + (c.username ? ' · @' + c.username : '') + ' · ' + (STATUS[c.status] || [c.status])[0] + (ctx.channel === 'main' ? ' · через основной бот' : '')))), can('support') ? h('button', { class: 'chat-close-btn ' + (c.status === 'resolved' ? 'open' : ''), onclick: async () => { if (c.status === 'resolved') { await api('/support/conversations/' + c.id + '/status', { method: 'POST', body: { status: 'operator' } }); draw(); return; } const note = await promptDialog('Завершить обращение', 'Сообщение клиенту (необязательно)'); if (note === null) return; await api('/support/conversations/' + c.id + '/status', { method: 'POST', body: { status: 'resolved', note } }); go('#/chats'); } }, c.status === 'resolved' ? 'Вернуть' : 'Завершить') : h('span'), h('button', { class: 'header-btn', 'aria-label': 'Меню', onclick: () => chatMenu(c, draw) }, svg('more', 18)));
         screen.appendChild(head);
-        if (ctx.deposit || ctx.withdrawal) { const t = ctx.withdrawal && c.category !== 'deposit' ? ctx.withdrawal : ctx.deposit; const dep = t === ctx.deposit; screen.appendChild(h('button', { class: 'case-card', style: { textAlign: 'left', width: 'calc(100% - 20px)' }, onclick: () => openTxSheet(dep ? 'deposit' : 'withdraw', t.id) }, h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, h('i', { class: 'kind-badge ' + (dep ? 'deposit' : 'withdraw') }, dep ? 'ПП' : 'ВВ'), h('b', null, (dep ? 'Пополнение ' : 'Вывод ') + t.public_id), h('span', { style: { flex: 1 } }), statusEl(t.status, t.status_label)), h('small', null, t.cash + ' • ID ' + t.player_id + ' • ' + money(t.amount) + ' ' + t.currency + ' • ' + fmtDate(t.created_at)), t.error ? h('small', { style: { color: '#bd344a' } }, t.error) : null)); }
-        const feed = h('div', { class: 'chat-feed' });
-        const bubble = (m) => h('div', { class: 'bubble ' + (m.direction === 'out' ? 'out ' : '') + m.sender }, m.file_url ? h('img', { src: fileUrl(m.file_url), alt: '' }) : null, m.text, h('small', null, (m.sender === 'user' ? 'клиент' : m.sender === 'bot' ? 'авто' : m.sender === 'operator' ? 'оператор' : 'система') + ' · ' + fmtTime(m.created_at)));
+        if (ctx.deposit || ctx.withdrawal) { const t = ctx.withdrawal && c.category !== 'deposit' ? ctx.withdrawal : ctx.deposit; const dep = t === ctx.deposit; screen.appendChild(h('button', { class: 'case-card', onclick: () => openTxSheet(dep ? 'deposit' : 'withdraw', t.id) }, h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, h('i', { class: 'kind-badge ' + (dep ? 'deposit' : 'withdraw') }, dep ? 'ПП' : 'ВВ'), h('b', null, (dep ? 'Пополнение ' : 'Вывод ') + t.public_id), h('span', { style: { flex: 1 } }), statusEl(t.status, t.status_label)), h('small', null, t.cash + ' • ID ' + t.player_id + ' • ' + money(t.amount) + ' ' + t.currency + ' • ' + fmtDate(t.created_at)), t.error ? h('small', { style: { color: '#bd344a' } }, t.error) : null)); }
+        feed.innerHTML = ''; lastId = 0;
         r.messages.forEach((m) => { feed.appendChild(bubble(m)); lastId = Math.max(lastId, m.id); });
-        if (!r.messages.length) feed.appendChild(empty('Сообщений нет', '', 'chat'));
+        if (!r.messages.length) feed.appendChild(empty('Сообщений нет', 'Напишите первым — клиент получит сообщение в боте', 'chat'));
         screen.appendChild(feed);
-        const ta = h('textarea', { placeholder: 'Сообщение клиенту...', rows: 1 });
-        const send = async () => { const text = ta.value.trim(); if (!text) return; ta.disabled = true; try { const rr = await api('/support/conversations/' + c.id + '/reply', { method: 'POST', body: { text } }); ta.value = ''; feed.appendChild(bubble(rr.message)); feed.scrollTop = feed.scrollHeight; lastId = Math.max(lastId, rr.message.id); } catch (e) { err(e); } ta.disabled = false; ta.focus(); };
-        ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
-        if (can('support')) screen.appendChild(h('div', { class: 'chat-composer' }, h('button', { class: 'composer-icon', 'aria-label': 'Быстрые ответы', onclick: () => quickPick((text) => { ta.value = text; ta.focus(); }) }, svg('bolt', 19)), ta, h('button', { class: 'send-btn', onclick: send, 'aria-label': 'Отправить' }, svg('send', 18))));
-        feed.scrollTop = feed.scrollHeight;
-        const poll = setInterval(async () => { if (!document.body.contains(feed)) return clearInterval(poll); try { const rr = await api('/support/conversations/' + c.id + '?after_id=' + lastId); rr.messages.forEach((m) => { feed.appendChild(bubble(m)); lastId = Math.max(lastId, m.id); feed.scrollTop = feed.scrollHeight; }); } catch (e) {} }, 3000);
+        composer = makeComposer();
+        if (can('support')) screen.appendChild(composer.el);
+        fitViewport(); bottom(false); setTimeout(() => bottom(false), 250); setTimeout(() => bottom(false), 700);
+        feed.querySelectorAll('img').forEach((im) => im.addEventListener('load', () => { if (nearBottom()) bottom(false); }));
+        const poll = setInterval(async () => { if (!document.body.contains(feed)) return clearInterval(poll); try { const rr = await api('/support/conversations/' + c.id + '?after_id=' + lastId); if (rr.messages.length) { const stick = nearBottom(); rr.messages.forEach((m) => { feed.appendChild(bubble(m)); lastId = Math.max(lastId, m.id); }); if (stick) bottom(true); } } catch (e) {} }, 2500);
       } catch (e) { screen.innerHTML = ''; screen.appendChild(header('Чат')); screen.appendChild(empty('Ошибка', e.message)); }
     };
+    function makeComposer() {
+      const ta = h('textarea', { placeholder: 'Сообщение клиенту…', rows: 1 });
+      const bar = h('div', { class: 'compose-bar', hidden: true });
+      let mode = null; /* {type:'reply'|'edit', m} */
+      const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(120, ta.scrollHeight) + 'px'; };
+      const clearMode = () => { mode = null; bar.hidden = true; bar.innerHTML = ''; ta.value = ''; grow(); };
+      const setMode = (m, type) => { mode = { m, type }; bar.hidden = false; bar.innerHTML = ''; bar.appendChild(h('div', { class: 'compose-quote' }, h('b', null, type === 'edit' ? 'Изменение' : 'Ответ ' + (m.sender === 'user' ? (c ? c.user_name : 'клиенту') : 'на своё сообщение')), h('span', null, (m.text || (m.file_name || '[файл]')).slice(0, 120)))); bar.appendChild(h('button', { class: 'compose-x', 'aria-label': 'Отмена', onclick: clearMode }, svg('close', 14))); if (type === 'edit') { ta.value = m.text || ''; grow(); } ta.focus(); };
+      const sendBtn = h('button', { class: 'send-btn', 'aria-label': 'Отправить' }, svg('send', 18));
+      const send = async () => {
+        const text = ta.value.trim(); if (!text) return; ta.disabled = true; sendBtn.disabled = true;
+        try {
+          if (mode && mode.type === 'edit') { const rr = await api('/support/messages/' + mode.m.id, { method: 'PATCH', body: { text } }); Object.assign(mode.m, rr.message); const node = feed.querySelector('.bubble[data-id="' + mode.m.id + '"]'); if (node) node.replaceWith(bubble(mode.m)); }
+          else { const rr = await api('/support/conversations/' + c.id + '/reply', { method: 'POST', body: { text, reply_to: mode && mode.type === 'reply' ? mode.m.id : null } }); feed.appendChild(bubble(rr.message)); lastId = Math.max(lastId, rr.message.id); bottom(true); }
+          clearMode(); buzz();
+        } catch (e) { err(e); }
+        ta.disabled = false; sendBtn.disabled = false; ta.focus();
+      };
+      sendBtn.onclick = send;
+      ta.addEventListener('input', grow);
+      ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !isTouch()) { e.preventDefault(); send(); } });
+      ta.addEventListener('focus', () => { setTimeout(() => { fitViewport(); bottom(false); }, 120); });
+      const el = h('div', { class: 'chat-composer' }, bar, h('div', { class: 'compose-row' }, h('button', { class: 'composer-icon', 'aria-label': 'Быстрые ответы', onclick: () => quickPick((t) => { ta.value = t; grow(); ta.focus(); }) }, svg('bolt', 19)), ta, sendBtn));
+      return { el, reply: (m) => setMode(m, 'reply'), edit: (m) => setMode(m, 'edit') };
+    }
+    if (window.visualViewport) { const onVV = () => { if (!document.body.contains(screen)) return window.visualViewport.removeEventListener('resize', onVV); fitViewport(); }; window.visualViewport.addEventListener('resize', onVV); }
+    window.addEventListener('resize', () => { if (document.body.contains(screen)) fitViewport(); });
     draw();
   }
   function chatMenu(c, redraw) {
@@ -341,7 +481,6 @@
     try { const r = await api('/quick-replies'); state.quick = r.items; } catch (e) {}
     const s = sheet({ title: 'Быстрые ответы', body: state.quick.length ? h('div', { class: 'list' }, state.quick.map((q) => h('button', { class: 'card row-card', onclick: () => { s.close(); onPick(q.text); } }, h('div', null, h('b', null, q.title), h('small', null, q.text))))) : empty('Ответов нет', 'Меню → Быстрые ответы', 'bolt') });
   }
-
 
   /* ------------------------------------------------------------- tx sheet / actions (old admin layout) */
   const SOURCE = { bot: 'Телеграм', telegram: 'Телеграм', admin: 'Панель', panel: 'Панель', api: 'API', manual: 'Вручную', macrodroid: 'MacroDroid', webhook: 'MacroDroid', imap: 'Почта', email: 'Почта', support: 'Поддержка' };
@@ -356,16 +495,16 @@
     if (opts.confirm && !(await confirmDialog(opts.confirm, opts.okLabel || 'Да', opts.danger))) return null;
     try { const r = await api('/' + path + '/' + tx.id + '/action', { method: 'POST', body: { action, reason } }); toast(opts.done || 'Готово', 'ok'); return r.item || tx; } catch (e) { err(e); return null; }
   }
-  async function messageUser(userId, name) { const t = await promptDialog('Сообщение ' + (name ? 'для ' + name : 'клиенту'), 'Уйдёт через основной бот'); if (!t) return; try { await api('/users/' + userId + '/message', { method: 'POST', body: { text: t } }); toast('Отправлено', 'ok'); } catch (e) { err(e); } }
   function txTitle(kind, tx) { return h('span', { class: 'tx-title' }, (kind === 'deposit' ? 'Пополнение' : 'Вывод') + ' # ' + txNo(tx), txStatus(tx)); }
   function txHero(kind, tx, withStatus) {
     const dep = kind === 'deposit';
     return h('div', { class: 'tx-hero' }, h('div', { class: 'tx-hero-amount ' + (dep ? 'deposit' : 'withdraw') }, (dep ? '+ ' : '− ') + money(dep ? tx.pay_amount : tx.amount) + ' ' + tx.currency), h('div', { class: 'tx-hero-sub' }, withStatus ? txStatus(tx) : null, dep && tx.amount !== tx.pay_amount ? h('small', null, 'запрос ' + money(tx.amount)) : null, tx.deferred ? h('span', { class: 'pill amber' }, 'отложен') : null));
   }
-  function userCard(u, onOpen) {
+  function userCard(u, onOpen, fullName) {
+    const name = (fullName && fullName.trim()) || u.name || 'Клиент';
     return h('button', { class: 'user-card', onclick: () => { if (onOpen) onOpen(); go('#/users/' + u.id); } },
-      h('span', { class: 'avatar' }, (u.name || '?').charAt(0).toUpperCase()),
-      h('span', { class: 'user-copy' }, h('b', null, u.name || 'Клиент', u.is_blocked ? h('i', { class: 'pill red' }, 'блок') : null), h('small', null, 'TG ' + u.telegram_id + (u.username ? ' · @' + u.username : ''))),
+      h('span', { class: 'avatar' }, name.charAt(0).toUpperCase()),
+      h('span', { class: 'user-copy' }, h('b', null, name, u.is_blocked ? h('i', { class: 'pill red' }, 'блок') : null), h('small', null, (fullName && fullName.trim() && u.name && u.name !== fullName ? u.name + ' · ' : '') + 'TG ' + u.telegram_id + (u.username ? ' · @' + u.username : ''))),
       h('span', { class: 'user-tiles' }, h('span', null, h('b', null, u.deposits_count), h('small', null, 'Пополнений')), h('span', null, h('b', null, u.withdrawals_count), h('small', null, 'Выводов'))));
   }
   const copyBtn = (text) => h('button', { class: 'copy-btn', type: 'button', 'aria-label': 'Копировать', onclick: (e) => { e.stopPropagation(); copy(text); } }, svg('copy', 14));
@@ -402,14 +541,16 @@
     if (ops && open && (!dep || tx.status === 'created')) grid.appendChild(h('button', { class: 'action-btn', onclick: async () => { const r = dep ? await txAction(kind, tx, 'cancel', { confirm: 'Отменить заявку?', okLabel: 'Отменить', danger: true, done: 'Отменено' }) : await txAction(kind, tx, 'reject', { askReason: 'Причина отмены', done: 'Отменено' }); if (r) ctx.refresh(); } }, svg('close', 15), 'Отменить'));
     if (dep && tx.has_receipt) grid.appendChild(h('button', { class: 'action-btn', onclick: () => imageSheet('Чек клиента', API + '/deposits/' + tx.id + '/receipt', fmtDate(tx.receipt_at)) }, svg('image', 15), 'Чек'));
     if (!dep && tx.qr_file_url) grid.appendChild(h('button', { class: 'action-btn', onclick: () => imageSheet('QR клиента', API + '/withdrawals/' + tx.id + '/photo', tx.qr_payload ? '' : 'не распознан автоматически') }, svg('qr', 15), 'Фото QR'));
-    if (can('support')) grid.appendChild(h('button', { class: 'action-btn', onclick: () => messageUser(tx.user_id, tx.user_name) }, svg('send', 15), 'Написать клиенту'));
+    if (can('support')) grid.appendChild(h('button', { class: 'action-btn', onclick: () => openChat(tx.user_id) }, svg('send', 15), 'Написать клиенту'));
+    if (can('users') && ctx.user) grid.appendChild(h('button', { class: 'action-btn ' + (ctx.user.is_blocked ? 'blue' : 'danger'), onclick: async () => { const u = ctx.user; if (u.is_blocked) { if (!(await confirmDialog('Разблокировать клиента?', 'Разблокировать'))) return; try { await api('/users/' + u.id, { method: 'PATCH', body: { is_blocked: false, block_reason: '' } }); toast('Разблокирован', 'ok'); ctx.refresh(); } catch (e) { err(e); } return; } const reason = await promptDialog('Заблокировать клиента', 'Клиент увидит причину'); if (reason === null) return; try { await api('/users/' + u.id, { method: 'PATCH', body: { is_blocked: true, block_reason: reason } }); toast('Заблокирован', 'ok'); ctx.refresh(); } catch (e) { err(e); } } }, svg('lock', 15), ctx.user.is_blocked ? 'Разблокировать' : 'Заблокировать'));
     out.push(grid);
     if (ops && open) out.push(h('button', { class: 'link-danger', onclick: async () => { const r = await txAction(kind, tx, dep ? 'reject' : 'fail', { askReason: 'Причина отказа', done: 'Отказано' }); if (r) ctx.refresh(); } }, 'Отказать'));
     return out;
   }
   function txBody(kind, r, ctx) {
     const tx = r.item; const dep = kind === 'deposit';
-    const body = h('div', { class: 'tx-view' }, txHero(kind, tx, !ctx.inSheet), (tx.status === 'failed' || tx.needs_attention) && tx.error && tx.status !== 'success' ? h('div', { class: 'hint-card err' }, tx.error) : null, userCard(r.user, ctx.close), infoTable(txRows(kind, tx)));
+    ctx.user = r.user;
+    const body = h('div', { class: 'tx-view' }, txHero(kind, tx, !ctx.inSheet), (tx.status === 'failed' || tx.needs_attention) && tx.error && tx.status !== 'success' ? h('div', { class: 'hint-card err' }, tx.error) : null, tx.payment ? h('div', { class: 'pay-note ' + tx.payment.kind }, svg(tx.payment.kind === 'matched' ? 'check' : 'bolt', 14), (tx.payment.kind === 'matched' ? 'Платёж получен: ' : 'Есть платёж на эту сумму: ') + srcLabel(tx.payment.source) + ' · ' + money(tx.payment.amount) + ' · ' + fmtDate(tx.payment.received_at)) : null, userCard(r.user, ctx.close, tx.player_name), infoTable(txRows(kind, tx)));
     if (!dep && (tx.has_generated_qr || tx.qr_file_url)) { const src = tx.has_generated_qr ? API + '/withdrawals/' + tx.id + '/qr.png?kind=generated' : API + '/withdrawals/' + tx.id + '/photo'; body.appendChild(h('div', { class: 'qr-pay' }, h('img', { src, alt: 'QR', onclick: () => imageSheet('QR · ' + money(tx.amount) + ' ' + tx.currency, src) }), h('small', null, tx.has_generated_qr ? 'QR с суммой ' + money(tx.amount) + ' ' + tx.currency : 'Фото QR от клиента'), r.payment_links && r.payment_links.length ? h('div', { class: 'bank-row' }, r.payment_links.map((l) => h('a', { class: 'outline-btn', href: l.url, target: '_blank', rel: 'noopener' }, l.name))) : null)); }
     txButtons(kind, tx, ctx).forEach((n) => body.appendChild(n));
     return body;
@@ -438,7 +579,7 @@
     const path = kind === 'deposit' ? 'deposits' : 'withdrawals';
     const s = sheet({ title: (kind === 'deposit' ? 'Пополнение' : 'Вывод') + ' # ' + id, body: loader(2) });
     const load = async () => {
-      try { const r = await api('/' + path + '/' + id); s.setTitle(txTitle(kind, r.item)); s.setBody(txBody(kind, r, { refresh: load, close: () => s.close(), inSheet: true })); }
+      try { const r = await api('/' + path + '/' + id); if (r.payment_event) r.item.payment = r.item.payment || { kind: 'matched', source: r.payment_event.source, amount: r.payment_event.amount, received_at: r.payment_event.received_at }; s.setTitle(txTitle(kind, r.item)); s.setBody(txBody(kind, r, { refresh: load, close: () => s.close(), inSheet: true })); }
       catch (e) { s.setBody(empty('Ошибка', e.message)); }
     };
     load();
@@ -451,9 +592,9 @@
     const draw = async () => {
       try {
         const r = await api('/' + path + '/' + id); const tx = r.item; box.innerHTML = '';
+        if (r.payment_event) tx.payment = tx.payment || { kind: 'matched', source: r.payment_event.source, amount: r.payment_event.amount, received_at: r.payment_event.received_at };
         $('h1', head).textContent = (kind === 'deposit' ? 'Пополнение' : 'Вывод') + ' # ' + txNo(tx);
         box.appendChild(h('div', { class: 'card section-card' }, txBody(kind, r, { refresh: draw, close: () => {}, inSheet: false })));
-        if (kind === 'deposit' && tx.qr_payload) box.appendChild(h('div', { class: 'card section-card' }, h('h2', null, 'QR для оплаты'), h('div', { class: 'qr-box' }, h('img', { src: API + '/deposits/' + tx.id + '/qr.png', alt: 'QR' })), r.payment_event ? h('div', { class: 'small muted', style: { textAlign: 'center' } }, srcLabel(r.payment_event.source) + ' · ' + money(r.payment_event.amount) + ' · ' + fmtDate(r.payment_event.received_at)) : null));
         box.appendChild(h('div', { class: 'card section-card' }, h('h2', null, 'История'), timeline(r.history)));
       } catch (e) { box.innerHTML = ''; box.appendChild(empty('Ошибка', e.message)); }
     };
@@ -477,7 +618,7 @@
           h('div', { class: 'setting-row' }, h('div', null, h('b', null, 'Активен'), h('small', null, u.is_blocked ? (u.block_reason || 'Заблокирован') : 'Может создавать заявки')), switchEl(!u.is_blocked, async (v) => { if (!can('users')) throw new Error('Нет доступа'); let reason = ''; if (!v) { reason = await promptDialog('Причина блокировки', 'Клиент увидит причину'); if (reason === null) throw new Error('__cancel__'); } await patch({ is_blocked: !v, block_reason: reason }); setTimeout(draw, 150); })),
           h('div', { class: 'setting-row' }, h('div', null, h('b', null, 'Поддержка'), h('small', null, u.support_blocked ? 'закрыта' : 'открыта')), switchEl(!u.support_blocked, async (v) => { if (!can('users')) throw new Error('Нет доступа'); await patch({ support_blocked: !v, support_block_reason: v ? '' : 'Ограничено оператором' }); })),
           h('div', { class: 'small muted', style: { paddingTop: '9px' } }, 'Регистрация ' + fmtDate(u.created_at) + (u.last_seen_at ? ' · был ' + ago(u.last_seen_at) + ' назад' : '') + (u.has_qr ? ' · QR ' + (u.qr_bank || 'сохранён') : ''))));
-        if (can('support')) box.appendChild(h('button', { class: 'primary-btn', style: { marginBottom: '6px' }, onclick: () => messageUser(u.id, u.name) }, svg('send', 16), 'Написать клиенту'));
+        if (can('support')) box.appendChild(h('button', { class: 'primary-btn', style: { marginBottom: '6px' }, onclick: () => openChat(u.id) }, svg('send', 16), 'Написать клиенту'));
         const txs = [...r.deposits, ...r.withdrawals].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         box.appendChild(h('div', { class: 'section-title' }, h('h2', null, 'Транзакции · ' + txs.length)));
         box.appendChild(txs.length ? txGroups(txs, { noAlert: true }) : empty('Заявок нет', '', 'history'));
@@ -660,29 +801,45 @@
   }
 
 
+
   /* ------------------------------------------------------------- broadcast (Рассылка) */
   async function broadcastView(shell) {
     const box = page(shell, 'Рассылка');
-    const st = { bot: 'main', photo: '' };
+    const st = { bot: 'main', photo: '', audience: 'all', buttons: [], testChat: '' };
+    const AUD = [['all', 'Отправить всем'], ['new', 'Новым клиентам'], ['big', 'Крупным клиентам'], ['test', 'Тест рассылки (себе)']];
     const text = h('textarea', { class: 'textarea', placeholder: 'Текст сообщения', style: { minHeight: '120px' } });
-    const days = h('input', { class: 'input', type: 'number', value: '0', min: '0', inputmode: 'numeric' });
     const segBox = h('div', { style: { marginBottom: '10px' } });
     const drawSeg = () => { segBox.innerHTML = ''; segBox.appendChild(segEl([['main', 'Основной бот'], ['support', 'Бот поддержки']], st.bot, (k) => { st.bot = k; drawSeg(); })); };
+    const audSel = h('select', { class: 'select' }, AUD.map(([v, l]) => h('option', { value: v }, l)));
+    const countEl = h('div', { class: 'aud-count' }, '…');
+    const testBox = h('label', { class: 'field', hidden: true }, h('span', null, 'Telegram ID для теста'), h('input', { class: 'input', inputmode: 'numeric', placeholder: 'ваш Telegram ID', oninput: (e) => { st.testChat = e.target.value.trim(); } }));
+    const loadCount = async () => { countEl.textContent = '…'; try { const r = await api('/broadcast/audience?audience=' + st.audience); countEl.textContent = 'Получателей: ' + r.count; if (st.audience === 'test') { testBox.hidden = false; const inp = $('input', testBox); if (r.test_chat_id && !inp.value) { inp.value = r.test_chat_id; st.testChat = String(r.test_chat_id); } } else testBox.hidden = true; } catch (e) { countEl.textContent = ''; } };
+    audSel.onchange = () => { st.audience = audSel.value; loadCount(); };
     const file = h('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
     const photoBox = h('div', { class: 'photo-row' });
     const drawPhoto = () => { photoBox.innerHTML = ''; photoBox.appendChild(st.photo ? h('img', { class: 'photo-thumb', src: fileUrl(st.photo), alt: '' }) : h('div', { class: 'photo-thumb blank' }, svg('image', 18))); photoBox.appendChild(h('div', { class: 'btn-row', style: { margin: 0 } }, h('button', { class: 'outline-btn blue', type: 'button', onclick: () => file.click() }, svg('image', 14), st.photo ? 'Заменить' : 'Загрузить'), st.photo ? h('button', { class: 'outline-btn danger', type: 'button', onclick: () => { st.photo = ''; drawPhoto(); } }, svg('trash', 13)) : null, file)); };
     file.onchange = async () => { if (!file.files[0]) return; const fd = new FormData(); fd.append('file', file.files[0]); try { const rr = await api('/support/upload', { method: 'POST', body: fd }); st.photo = rr.url; drawPhoto(); } catch (ex) { err(ex); } file.value = ''; };
+    const btnBox = h('div', { class: 'list' });
+    const drawButtons = () => {
+      btnBox.innerHTML = '';
+      st.buttons.forEach((b, i) => btnBox.appendChild(h('div', { class: 'btn-editor' }, h('input', { class: 'input', placeholder: 'Название', value: b.text, maxlength: 40, oninput: (e) => { b.text = e.target.value; } }), h('input', { class: 'input', placeholder: 'https://…', value: b.url, inputmode: 'url', oninput: (e) => { b.url = e.target.value; } }), h('button', { class: 'outline-btn danger', type: 'button', 'aria-label': 'Удалить', onclick: () => { st.buttons.splice(i, 1); drawButtons(); } }, svg('trash', 13)))));
+      if (st.buttons.length < 6) btnBox.appendChild(h('button', { class: 'outline-btn blue', type: 'button', onclick: () => { st.buttons.push({ text: '', url: '' }); drawButtons(); const last = btnBox.querySelector('.btn-editor:last-of-type input'); if (last) last.focus(); } }, svg('plus', 14), 'Добавить кнопку'));
+    };
     const btn = h('button', { class: 'primary-btn' }, svg('send', 16), 'Отправить');
     btn.onclick = async () => {
       if (!text.value.trim()) return toast('Введите текст', 'err');
-      if (!(await confirmDialog('Отправить через ' + (st.bot === 'support' ? 'бот поддержки' : 'основной бот') + '?', 'Отправить'))) return;
+      const buttons = st.buttons.filter((b) => b.text.trim() || b.url.trim());
+      for (const b of buttons) { if (!b.text.trim() || !/^https?:\/\/|^tg:\/\//.test(b.url.trim())) return toast('У кнопки нужны название и ссылка https://…', 'err'); }
+      const label = (AUD.find((a) => a[0] === st.audience) || AUD[0])[1];
+      if (st.audience !== 'test' && !(await confirmDialog(label + ' через ' + (st.bot === 'support' ? 'бот поддержки' : 'основной бот') + '?', 'Отправить'))) return;
       busy(btn, true);
-      try { const r = await api('/broadcast', { method: 'POST', body: { text: text.value, photo_url: st.photo, only_active_days: Number(days.value || 0), bot: st.bot } }); toast('Отправляется · ' + r.recipients + ' получателей', 'ok', 4000); text.value = ''; st.photo = ''; drawPhoto(); } catch (ex) { err(ex); }
+      try { const r = await api('/broadcast', { method: 'POST', body: { text: text.value, photo_url: st.photo, bot: st.bot, audience: st.audience, buttons: buttons.map((b) => ({ text: b.text.trim(), url: b.url.trim() })), test_chat_id: st.audience === 'test' ? st.testChat || null : null } }); toast(r.test ? 'Тест отправлен вам в бот' : 'Отправляется · ' + r.recipients + ' получателей', 'ok', 4000); if (!r.test) { text.value = ''; st.photo = ''; drawPhoto(); } buzz(); } catch (ex) { err(ex); }
       busy(btn, false);
     };
-    box.innerHTML = ''; drawSeg(); drawPhoto();
+    box.innerHTML = ''; drawSeg(); drawPhoto(); drawButtons();
     box.appendChild(segBox);
-    box.appendChild(h('div', { class: 'card section-card' }, h('label', { class: 'field' }, h('span', null, 'Текст'), text), h('div', { class: 'field' }, h('span', null, 'Фото'), photoBox), h('label', { class: 'field' }, h('span', null, 'Только активным за N дней (0 — всем)'), days), btn));
+    box.appendChild(h('div', { class: 'card section-card' }, h('label', { class: 'field' }, h('span', null, 'Кому'), audSel), countEl, testBox, h('label', { class: 'field' }, h('span', null, 'Текст'), text), h('div', { class: 'field' }, h('span', null, 'Фото'), photoBox), h('div', { class: 'field' }, h('span', null, 'Кнопки под сообщением'), btnBox), btn));
+    loadCount();
   }
 
   /* ------------------------------------------------------------- security (Безопасность) */

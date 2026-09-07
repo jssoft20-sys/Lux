@@ -279,3 +279,67 @@ def test_requisite_for_all_cashes_and_optima_c2c_link(logged):
     assert item["cash_id"] is None and item["bank_name"] == "Optima Bank" and item["account"] == "996707000727"
     r = logged.patch(P + f"/requisites/{item['id']}", json={"cash_id": 0, "priority": 5})
     assert r.status_code == 200 and r.json()["item"]["cash_id"] is None and r.json()["item"]["priority"] == 5
+
+
+def test_chat_open_from_profile_reply_edit_delete(logged, user):
+    from paygo.models import Notification, SupportMessage
+
+    r = logged.post(P + f"/users/{user}/conversation")
+    assert r.status_code == 200, r.text
+    conv_id = r.json()["item"]["id"]
+    assert r.json()["channel"] == "main"  # the client never opened the support bot → main bot carries the dialog
+    assert logged.post(P + f"/users/{user}/conversation").json()["item"]["id"] == conv_id
+    r = logged.post(P + f"/support/conversations/{conv_id}/reply", json={"text": "Здравствуйте"})
+    assert r.status_code == 200, r.text
+    msg_id = r.json()["message"]["id"]
+    with transaction() as db:
+        note = db.query(Notification).filter_by(event="support_reply").one()
+        assert note.bot == "main" and note.data["message_id"] == msg_id
+        db.get(SupportMessage, msg_id).telegram_message_id = 777  # the bot writes it back after sending
+    r = logged.post(P + f"/support/conversations/{conv_id}/reply", json={"text": "Уточнение", "reply_to": msg_id})
+    assert r.json()["message"]["reply_to"]["id"] == msg_id
+    with transaction() as db:
+        quoted = db.query(Notification).filter_by(event="support_reply").order_by(Notification.id.desc()).first()
+        assert quoted.data["reply_to"] == 777
+    r = logged.patch(P + f"/support/messages/{msg_id}", json={"text": "Здравствуйте!"})
+    assert r.status_code == 200 and r.json()["message"]["edited_at"]
+    r = logged.delete(P + f"/support/messages/{msg_id}")
+    assert r.status_code == 200 and r.json()["message"]["deleted_at"]
+    with transaction() as db:
+        events = [n.event for n in db.query(Notification).filter(Notification.event.in_(("support_edit", "support_delete"))).all()]
+        assert sorted(events) == ["support_delete", "support_edit"]
+        assert db.query(Notification).filter_by(event="support_edit").one().data["telegram_message_id"] == 777
+    r = logged.get(P + f"/support/conversations/{conv_id}")
+    msgs = {m["id"]: m for m in r.json()["messages"]}
+    assert msgs[msg_id]["deleted_at"] and msgs[msg_id]["text"] == ""
+
+
+def test_broadcast_audiences_buttons_and_test_send(logged, user):
+    from paygo.models import Notification
+
+    assert logged.get(P + "/broadcast/audience?audience=all").json()["count"] == 1
+    assert logged.get(P + "/broadcast/audience?audience=new").json()["count"] == 1
+    assert logged.get(P + "/broadcast/audience?audience=big").json()["count"] == 0
+    bad = logged.post(P + "/broadcast", json={"text": "Привет", "buttons": [{"text": "Сайт", "url": "javascript:alert(1)"}]})
+    assert bad.status_code == 400
+    r = logged.post(P + "/broadcast", json={"text": "Привет", "audience": "all", "bot": "main", "buttons": [{"text": "Сайт", "url": "https://paygo.kg"}]})
+    assert r.status_code == 200 and r.json()["recipients"] == 1
+    r = logged.post(P + "/broadcast", json={"text": "Тест", "audience": "test", "test_chat_id": "700100200"})
+    assert r.status_code == 200 and r.json()["test"] is True
+    with transaction() as db:
+        notes = db.query(Notification).filter_by(event="broadcast").order_by(Notification.id).all()
+        assert notes[0].data["buttons"] == [{"text": "Сайт", "url": "https://paygo.kg"}]
+        assert notes[1].target_telegram_id == 700100200 and notes[1].data.get("test") is True
+
+
+def test_deposit_list_shows_payment_hint(logged, user, fake_provider):
+    from paygo.models import PaymentEvent
+
+    with transaction() as db:
+        u = db.get(User, user)
+        dep, _ = deposits.create_deposit(db, user=u, cash=get_cash(db, "1xbet"), player_id="123456", amount="900", idempotency_key="hint1")
+        dep_id, pay = dep.id, dep.pay_amount
+        db.add(PaymentEvent(source="webhook", event_key="hint-evt-1", amount=pay, currency="KGS", status="failed", raw_text="MBank: зачисление", error="касса недоступна"))
+    r = logged.get(P + "/deposits?status=created")
+    item = next(x for x in r.json()["items"] if x["id"] == dep_id)
+    assert item["payment"]["kind"] == "candidate" and item["payment"]["amount"] == str(pay)

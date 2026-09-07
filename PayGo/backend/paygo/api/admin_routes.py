@@ -45,6 +45,7 @@ from .schemas import (
     CashBody,
     EditBody,
     ManualPaymentBody,
+    MessageEditBody,
     PremiumTestBody,
     PushSubscribeBody,
     RequisiteBody,
@@ -172,7 +173,8 @@ def list_deposits(
         stmt = stmt.where(Deposit.created_at < end)
     total = db.execute(select(func.count()).select_from(stmt.order_by(None).subquery())).scalar() or 0
     rows = db.execute(stmt.order_by(Deposit.id.desc()).offset((page - 1) * size).limit(size)).scalars().all()
-    return {"ok": True, "items": [deposit_service.public_deposit(db, d) for d in rows], "total": int(total), "page": page, "size": size}
+    hints = deposit_service.payment_hints(db, rows)
+    return {"ok": True, "items": [{**deposit_service.public_deposit(db, d), "payment": hints.get(d.id)} for d in rows], "total": int(total), "page": page, "size": size}
 
 
 @router.get("/deposits/{deposit_id}")
@@ -559,6 +561,17 @@ def referral_payout_action(user_id: int, payout_id: int, body: ActionBody, reque
     return {"ok": True}
 
 
+@router.post("/users/{user_id}/conversation")
+def open_user_conversation(user_id: int, request: Request, principal: Principal = Depends(require("support")), db: Session = Depends(get_db)):
+    """«Написать клиенту»: opens (or reuses) the operator dialog for this client in the Chat section."""
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(404, "NOT_FOUND")
+    conv = support_service.open_operator_conversation(db, user, principal.id)
+    audit(db, "support.open", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), entity_type="support", entity_id=conv.id)
+    return {"ok": True, "item": support_service.public_conversation(conv), "channel": str((conv.context or {}).get("channel") or "support")}
+
+
 @router.post("/users/{user_id}/message")
 def message_user(user_id: int, body: SupportReplyBody, request: Request, principal: Principal = Depends(require("support")), db: Session = Depends(get_db)):
     user = db.get(User, user_id)
@@ -569,16 +582,56 @@ def message_user(user_id: int, body: SupportReplyBody, request: Request, princip
     return {"ok": True}
 
 
+def _broadcast_audience(db: Session, audience: str, only_active_days: int = 0):
+    """Recipients of a broadcast: all clients, new ones, big ones (by credited deposits)."""
+    stmt = select(User).where(User.is_blocked.is_(False))
+    if audience == "new":
+        days = max(1, settings_store.get_int(db, "broadcast_new_days", 7))
+        stmt = stmt.where(User.created_at >= utcnow() - timedelta(days=days))
+    elif audience == "big":
+        minimum = money(settings_store.get(db, "broadcast_big_min", 20000) or 0)
+        sums = select(Deposit.user_id, func.sum(Deposit.pay_amount).label("total")).where(Deposit.status == "success").group_by(Deposit.user_id).having(func.sum(Deposit.pay_amount) >= minimum).subquery()
+        stmt = stmt.join(sums, sums.c.user_id == User.id)
+    elif audience == "active":
+        stmt = stmt.where(User.last_seen_at >= utcnow() - timedelta(days=max(1, only_active_days)))
+    if only_active_days > 0 and audience != "active":
+        stmt = stmt.where(User.last_seen_at >= utcnow() - timedelta(days=only_active_days))
+    return db.execute(stmt).scalars().all()
+
+
+@router.get("/broadcast/audience")
+def broadcast_audience(audience: str = "all", days: int = 0, principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
+    if audience == "test":
+        chat = int(principal.admin.telegram_id or 0) or (get_settings().admin_chat_ids[0] if get_settings().admin_chat_ids else 0)
+        return {"ok": True, "count": 1 if chat else 0, "test_chat_id": chat}
+    return {"ok": True, "count": len(_broadcast_audience(db, audience, days))}
+
+
 @router.post("/broadcast")
 def broadcast(body: BroadcastBody, request: Request, principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
-    stmt = select(User).where(User.is_blocked.is_(False))
-    if body.only_active_days > 0:
-        stmt = stmt.where(User.last_seen_at >= utcnow() - timedelta(days=body.only_active_days))
-    users = db.execute(stmt).scalars().all()
+    buttons = []
+    for b in body.buttons[:6]:
+        url = b.url.strip()
+        if not (url.startswith("https://") or url.startswith("http://") or url.startswith("tg://")):
+            raise HTTPException(400, f"Ссылка кнопки «{b.text}» должна начинаться с https://")
+        buttons.append({"text": b.text.strip(), "url": url})
+    bot = "support" if body.bot == "support" else "main"
     stamp = int(utcnow().timestamp())
+    if body.audience == "test":
+        chat = 0
+        try:
+            chat = int(str(body.test_chat_id or "").strip() or 0)
+        except ValueError:
+            raise HTTPException(400, "Telegram ID должен быть числом")
+        chat = chat or int(principal.admin.telegram_id or 0) or (get_settings().admin_chat_ids[0] if get_settings().admin_chat_ids else 0)
+        if not chat:
+            raise HTTPException(400, "Укажите Telegram ID для теста")
+        notify_user(db, chat, event="broadcast", event_key=f"broadcast_test:{stamp}:{chat}", text=body.text, photo_url=body.photo_url, data={"broadcast": True, "test": True}, bot=bot, buttons=buttons)
+        return {"ok": True, "recipients": 1, "test": True}
+    users = _broadcast_audience(db, body.audience if body.audience in {"all", "new", "big", "active"} else "all", body.only_active_days)
     for user in users:
-        notify_user(db, user, event="broadcast", event_key=f"broadcast:{stamp}:{user.id}", text=body.text, photo_url=body.photo_url, data={"broadcast": True}, bot="support" if body.bot == "support" else "main")
-    audit(db, "broadcast.sent", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), details={"recipients": len(users)})
+        notify_user(db, user, event="broadcast", event_key=f"broadcast:{stamp}:{user.id}", text=body.text, photo_url=body.photo_url, data={"broadcast": True}, bot=bot, buttons=buttons)
+    audit(db, "broadcast.sent", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), details={"recipients": len(users), "audience": body.audience, "bot": bot, "buttons": len(buttons)})
     return {"ok": True, "recipients": len(users)}
 
 
@@ -816,10 +869,15 @@ def get_conversation(conv_id: int, after_id: int = 0, principal: Principal = Dep
         for m in messages:
             m.read_by_admin = True
         db.flush()
+    by_id = {m.id: m for m in messages}
+    missing = [m.reply_to_id for m in messages if m.reply_to_id and m.reply_to_id not in by_id]
+    if missing:
+        for m in db.execute(select(SupportMessage).where(SupportMessage.id.in_(missing))).scalars().all():
+            by_id[m.id] = m
     return {
         "ok": True,
         "item": support_service.public_conversation(conv, with_context=True),
-        "messages": [support_service.public_message(m) for m in messages],
+        "messages": [support_service.public_message(m, by_id.get(m.reply_to_id) if m.reply_to_id else None) for m in messages if not m.deleted_at or after_id == 0],
         "user": public_user(conv.user, user_summary(db, conv.user)),
     }
 
@@ -829,9 +887,38 @@ def reply_conversation(conv_id: int, body: SupportReplyBody, request: Request, p
     conv = db.get(SupportConversation, conv_id)
     if conv is None:
         raise HTTPException(404, "NOT_FOUND")
-    msg = support_service.operator_reply(db, conv, principal.id, principal.name, body.text, photo_url=body.photo_url)
+    quoted = db.get(SupportMessage, int(body.reply_to)) if body.reply_to else None
+    if quoted is not None and quoted.conversation_id != conv.id:
+        quoted = None
+    msg = support_service.operator_reply(db, conv, principal.id, principal.name, body.text, photo_url=body.photo_url, reply_to=quoted)
     audit(db, "support.reply", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), entity_type="support", entity_id=conv.id)
-    return {"ok": True, "message": support_service.public_message(msg), "item": support_service.public_conversation(conv)}
+    return {"ok": True, "message": support_service.public_message(msg, quoted), "item": support_service.public_conversation(conv)}
+
+
+@router.patch("/support/messages/{message_id}")
+def edit_support_message(message_id: int, body: MessageEditBody, request: Request, principal: Principal = Depends(require("support")), db: Session = Depends(get_db)):
+    msg = db.get(SupportMessage, message_id)
+    if msg is None or msg.deleted_at:
+        raise HTTPException(404, "NOT_FOUND")
+    if msg.direction != "out" or msg.sender != "operator":
+        raise HTTPException(400, "Изменить можно только своё сообщение")
+    if msg.kind not in {"text", "photo"}:
+        raise HTTPException(400, "Это сообщение нельзя изменить")
+    support_service.edit_message(db, msg, body.text)
+    audit(db, "support.edit", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), entity_type="support", entity_id=msg.conversation_id, details={"message_id": msg.id})
+    return {"ok": True, "message": support_service.public_message(msg)}
+
+
+@router.delete("/support/messages/{message_id}")
+def delete_support_message(message_id: int, request: Request, principal: Principal = Depends(require("support")), db: Session = Depends(get_db)):
+    msg = db.get(SupportMessage, message_id)
+    if msg is None:
+        raise HTTPException(404, "NOT_FOUND")
+    if msg.deleted_at:
+        return {"ok": True, "message": support_service.public_message(msg)}
+    support_service.delete_message(db, msg)
+    audit(db, "support.delete", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), entity_type="support", entity_id=msg.conversation_id, details={"message_id": msg.id})
+    return {"ok": True, "message": support_service.public_message(msg)}
 
 
 @router.post("/support/conversations/{conv_id}/status")
@@ -1011,6 +1098,7 @@ def push_test(principal: Principal = Depends(current_principal), db: Session = D
 # ------------------------------------------------------------------------ files / photos
 
 IMAGE_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif"}
+MEDIA_TYPES = {**IMAGE_TYPES, "ogg": "audio/ogg", "oga": "audio/ogg", "opus": "audio/ogg", "mp3": "audio/mpeg", "m4a": "audio/mp4", "aac": "audio/aac", "wav": "audio/wav", "mp4": "video/mp4", "mov": "video/quicktime", "webm": "video/webm", "pdf": "application/pdf", "txt": "text/plain; charset=utf-8"}
 
 
 def _store_image(raw: bytes, filename: str, folder: str, stem: str) -> str:
@@ -1050,7 +1138,10 @@ def serve_file(path: str, principal: Principal = Depends(current_principal)):
     if base not in target.parents or not target.is_file():
         raise HTTPException(404, "NOT_FOUND")
     ext = target.suffix.lstrip(".").lower()
-    return Response(content=target.read_bytes(), media_type=IMAGE_TYPES.get(ext, "application/octet-stream"), headers={"Cache-Control": "private, max-age=3600"})
+    headers = {"Cache-Control": "private, max-age=3600"}
+    if ext not in MEDIA_TYPES:
+        headers["Content-Disposition"] = f"attachment; filename=\"{target.name}\""
+    return Response(content=target.read_bytes(), media_type=MEDIA_TYPES.get(ext, "application/octet-stream"), headers=headers)
 
 
 @router.post("/cashes/{cash_id}/photo")

@@ -137,7 +137,7 @@ class TelegramClient:
         except TelegramError:
             return False
 
-    def send_photo(self, chat_id: int, photo: str | bytes | Path, *, caption: str = "", markup: dict | None = None, protect: bool = False, filename: str = "photo.png", parse_mode: str | None = None) -> dict[str, Any]:
+    def send_photo(self, chat_id: int, photo: str | bytes | Path, *, caption: str = "", markup: dict | None = None, protect: bool = False, filename: str = "photo.png", parse_mode: str | None = None, reply_to: int | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {"chat_id": int(chat_id), "caption": caption[:1024]}
         if markup is not None:
             payload["reply_markup"] = markup
@@ -145,6 +145,8 @@ class TelegramClient:
             payload["protect_content"] = True
         if parse_mode:
             payload["parse_mode"] = parse_mode
+        if reply_to:
+            payload["reply_parameters"] = {"message_id": int(reply_to), "allow_sending_without_reply": True}
         if isinstance(photo, (bytes, bytearray)):
             return self.call("sendPhoto", payload, files={"photo": (filename, bytes(photo), "image/png")})
         if isinstance(photo, Path):
@@ -200,6 +202,15 @@ class TelegramClient:
 
     def get_me(self) -> dict[str, Any]:
         return self.call("getMe", {}, retries=1) or {}
+
+
+def url_buttons(buttons: Any) -> dict[str, Any] | None:
+    """Inline keyboard of URL buttons (one per row) from an outbox payload ``[{"text","url"}]``."""
+    rows = []
+    for b in buttons or []:
+        if isinstance(b, dict) and b.get("text") and b.get("url"):
+            rows.append([{"text": str(b["text"])[:64], "url": str(b["url"])}])
+    return inline_keyboard(*rows) if rows else None
 
 
 def inline_keyboard(*rows: list[dict[str, Any]]) -> dict[str, Any]:

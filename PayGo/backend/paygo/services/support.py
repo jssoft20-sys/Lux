@@ -222,6 +222,9 @@ def add_message(
     intent: Intent | None = None,
     admin_id: int | None = None,
     dedupe_key: str | None = None,
+    file_name: str = "",
+    via: str = "support",
+    reply_to_id: int | None = None,
 ) -> SupportMessage:
     row = SupportMessage(
         conversation_id=conv.id,
@@ -232,6 +235,9 @@ def add_message(
         kind=kind,
         text=text or "",
         file_url=file_url or "",
+        file_name=(file_name or "")[:200],
+        via=via,
+        reply_to_id=reply_to_id,
         intent=(f"{intent.category}/{intent.name}" if intent else "")[:32],
         confidence=intent.confidence if intent else 0,
         dedupe_key=dedupe_key,
@@ -407,6 +413,7 @@ def respond(
     file_url: str = "",
     telegram_message_id: int = 0,
     callback: str = "",
+    file_name: str = "",
 ) -> Reply | None:
     """Full pipeline for one user message. Returns ``None`` when the message must be dropped silently."""
     if user.support_blocked:
@@ -417,7 +424,7 @@ def respond(
     conv = get_or_open_conversation(db, user)
     intent = classify(text) if not callback else Intent(*_callback_intent(callback))
     dedupe = f"tg:{user.telegram_id}:{telegram_message_id}" if telegram_message_id else None
-    add_message(db, conv, direction="in", sender="user", text=text or ("[фото]" if media_kind == "photo" else f"[{media_kind}]" if media_kind else ""), kind=media_kind or "text", file_url=file_url, telegram_message_id=telegram_message_id, intent=intent, dedupe_key=dedupe)
+    add_message(db, conv, direction="in", sender="user", text=text or media_label(media_kind), kind=media_kind or "text", file_url=file_url, file_name=file_name, telegram_message_id=telegram_message_id, intent=intent, dedupe_key=dedupe)
     # The operator owns the dialog: forward silently, no automation.
     if conv.status == "operator":
         conv.status = "operator"
@@ -600,15 +607,110 @@ def _escalate(db: Session, user: User, conv: SupportConversation, reply: Reply, 
 
 # ------------------------------------------------------------------- operator side
 
-def operator_reply(db: Session, conv: SupportConversation, admin_id: int | None, admin_name: str, text: str, *, photo_url: str = "") -> SupportMessage:
+MEDIA_LABELS = {"photo": "[фото]", "voice": "[голосовое]", "audio": "[аудио]", "video": "[видео]", "video_note": "[видосообщение]", "document": "[файл]", "sticker": "[стикер]", "animation": "[гиф]"}
+
+
+def media_label(kind: str) -> str:
+    return MEDIA_LABELS.get(kind, f"[{kind}]" if kind else "")
+
+
+def user_uses_support_bot(db: Session, user: User) -> bool:
+    """True when the client has ever written to the support bot (so it may message them)."""
+    row = db.execute(
+        select(SupportMessage.id).join(SupportConversation, SupportConversation.id == SupportMessage.conversation_id).where(
+            SupportConversation.user_id == user.id, SupportMessage.direction == "in", SupportMessage.via == "support"
+        ).limit(1)
+    ).first()
+    return row is not None
+
+
+def delivery_bot(db: Session, conv: SupportConversation) -> str:
+    """Which bot carries operator messages: the support bot when the client has opened it, otherwise the main bot."""
+    channel = str((conv.context or {}).get("channel") or "")
+    if channel in {"support", "main"}:
+        return channel
     user = db.get(User, conv.user_id)
-    msg = add_message(db, conv, direction="out", sender="operator", text=text, admin_id=admin_id, kind="photo" if photo_url else "text", file_url=photo_url)
+    bot = "support" if user is not None and user_uses_support_bot(db, user) else "main"
+    conv.context = {**(conv.context or {}), "channel": bot}
+    return bot
+
+
+def operator_reply(db: Session, conv: SupportConversation, admin_id: int | None, admin_name: str, text: str, *, photo_url: str = "", reply_to: SupportMessage | None = None) -> SupportMessage:
+    user = db.get(User, conv.user_id)
+    bot = delivery_bot(db, conv)
+    msg = add_message(db, conv, direction="out", sender="operator", text=text, admin_id=admin_id, kind="photo" if photo_url else "text", file_url=photo_url, via=bot, reply_to_id=reply_to.id if reply_to else None)
     conv.status = "operator"
     conv.assigned_admin_id = admin_id or conv.assigned_admin_id
     conv.unread_count = 0
     db.flush()
-    notify_user(db, user, event="support_reply", event_key=f"support_reply:{msg.id}", text=text, data={"conversation_id": conv.id, "message_id": msg.id}, bot="support", photo_url=photo_url)
+    quote = int(reply_to.telegram_message_id or 0) if reply_to is not None and reply_to.via == bot else 0
+    notify_user(db, user, event="support_reply", event_key=f"support_reply:{msg.id}", text=text, data={"conversation_id": conv.id, "message_id": msg.id}, bot=bot, photo_url=photo_url, reply_to=quote)
     return msg
+
+
+def edit_message(db: Session, msg: SupportMessage, text: str) -> SupportMessage:
+    """Operator edits their own message; the bot edits it in Telegram too."""
+    msg.text = text
+    msg.edited_at = utcnow()
+    db.flush()
+    if msg.telegram_message_id and msg.direction == "out":
+        conv = db.get(SupportConversation, msg.conversation_id)
+        notify_user(db, db.get(User, conv.user_id), event="support_edit", event_key=f"support_edit:{msg.id}:{int(utcnow().timestamp() * 1000)}", text=text, data={"telegram_message_id": int(msg.telegram_message_id), "message_id": msg.id, "kind": msg.kind}, bot=msg.via or "support")
+    return msg
+
+
+def delete_message(db: Session, msg: SupportMessage) -> SupportMessage:
+    """Marks the message deleted and removes it from the client's Telegram chat."""
+    msg.deleted_at = utcnow()
+    db.flush()
+    if msg.telegram_message_id:
+        conv = db.get(SupportConversation, msg.conversation_id)
+        notify_user(db, db.get(User, conv.user_id), event="support_delete", event_key=f"support_delete:{msg.id}:{int(utcnow().timestamp() * 1000)}", text="", data={"telegram_message_id": int(msg.telegram_message_id), "message_id": msg.id}, bot=msg.via or "support")
+    return msg
+
+
+def open_operator_conversation(db: Session, user: User, admin_id: int | None) -> SupportConversation:
+    """«Написать клиенту» from the panel: reuse the open dialog or start one owned by the operator."""
+    conv = active_conversation(db, user)
+    if conv is None:
+        conv = SupportConversation(user_id=user.id, status="operator", category="operator", subject="Сообщение оператора", context={}, assigned_admin_id=admin_id)
+        db.add(conv)
+        db.flush()
+    else:
+        conv.status = "operator"
+        conv.assigned_admin_id = admin_id or conv.assigned_admin_id
+    delivery_bot(db, conv)
+    db.flush()
+    return conv
+
+
+def main_inbox(db: Session, user: User, text: str, *, media_kind: str = "", file_url: str = "", file_name: str = "", telegram_message_id: int = 0, create: bool = False) -> bool:
+    """A message in the MAIN bot outside of a payment flow.
+
+    Stored as a chat message when an operator dialog is carried by the main bot; with
+    ``create`` (files sent out of the blue) a new dialog is opened for the operator."""
+    if not text and not media_kind:
+        return False
+    conv = active_conversation(db, user)
+    if conv is not None and (conv.status not in {"operator", "waiting_operator"} or str((conv.context or {}).get("channel") or "") != "main"):
+        if not create:
+            return False
+        conv = None if conv.status in {"resolved", "closed"} else conv
+    if conv is None:
+        if not create or user.support_blocked:
+            return False
+        conv = SupportConversation(user_id=user.id, status="waiting_operator", category="operator", subject=(text or media_label(media_kind))[:120], context={**build_context(db, user), "channel": "main"}, escalated_at=utcnow(), priority="normal")
+        db.add(conv)
+        db.flush()
+    elif str((conv.context or {}).get("channel") or "") != "main":
+        conv.context = {**(conv.context or {}), "channel": "main"}
+    dedupe = f"tgm:{user.telegram_id}:{telegram_message_id}" if telegram_message_id else None
+    if dedupe and db.execute(select(SupportMessage.id).where(SupportMessage.dedupe_key == dedupe)).first():
+        return True
+    add_message(db, conv, direction="in", sender="user", text=text or media_label(media_kind), kind=media_kind or "text", file_url=file_url, file_name=file_name, telegram_message_id=telegram_message_id, dedupe_key=dedupe, via="main")
+    admin_event(db, "support_operator", f"support_message:{conv.id}:{int(utcnow().timestamp() // 120)}", "💬 Сообщение от клиента", f"{display_name(user)}: {(text or media_label(media_kind))[:120]}", {"conversation_id": conv.id, "url": f"#/chats/{conv.id}"})
+    db.flush()
+    return True
 
 
 def resolve_conversation(db: Session, conv: SupportConversation, admin_id: int | None, *, note: str = "", notify: bool = True) -> None:
@@ -677,17 +779,26 @@ def public_conversation(conv: SupportConversation, *, with_context: bool = False
     return out
 
 
-def public_message(msg: SupportMessage) -> dict[str, Any]:
-    return {
+def public_message(msg: SupportMessage, reply: SupportMessage | None = None) -> dict[str, Any]:
+    out = {
         "id": msg.id,
         "conversation_id": msg.conversation_id,
         "direction": msg.direction,
         "sender": msg.sender,
         "admin_id": msg.admin_id,
         "kind": msg.kind,
-        "text": msg.text,
-        "file_url": msg.file_url,
+        "text": "" if msg.deleted_at else msg.text,
+        "file_url": "" if msg.deleted_at else msg.file_url,
+        "file_name": msg.file_name,
+        "via": msg.via,
+        "telegram_message_id": int(msg.telegram_message_id or 0),
+        "reply_to_id": msg.reply_to_id,
+        "edited_at": iso(msg.edited_at),
+        "deleted_at": iso(msg.deleted_at),
         "intent": msg.intent,
         "confidence": float(msg.confidence or 0),
         "created_at": iso(msg.created_at),
     }
+    if reply is not None:
+        out["reply_to"] = {"id": reply.id, "sender": reply.sender, "text": ("" if reply.deleted_at else (reply.text or media_label(reply.kind)))[:140]}
+    return out

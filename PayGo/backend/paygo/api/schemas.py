@@ -114,6 +114,16 @@ class UserUpdateBody(BaseModel):
 class SupportReplyBody(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
     photo_url: str = ""
+    reply_to: int | None = None
+
+
+class MessageEditBody(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class UrlButtonBody(BaseModel):
+    text: str = Field(min_length=1, max_length=40)
+    url: str = Field(min_length=1, max_length=1000)
 
 
 class SupportStatusBody(BaseModel):
@@ -131,6 +141,9 @@ class BroadcastBody(BaseModel):
     photo_url: str = ""
     only_active_days: int = 0
     bot: str = "main"  # main | support
+    audience: str = "all"  # all | new | big | test
+    buttons: list[UrlButtonBody] = Field(default_factory=list, max_length=6)
+    test_chat_id: int | str | None = None
 
 
 class ManualPaymentBody(BaseModel):

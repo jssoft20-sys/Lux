@@ -23,10 +23,11 @@ from typing import Any
 
 from paygo.config import get_settings
 from paygo.db import transaction
-from paygo.models import BotSession, Deposit, Notification, PaymentCash, QrRecord, User
+from paygo.models import BotSession, Deposit, Notification, PaymentCash, QrRecord, SupportMessage, User
 from paygo.services import bot_state, bot_texts, elqr, settings_store
 from paygo.services import cashes as cash_service
 from paygo.services import deposits as deposit_service
+from paygo.services import support as support_service
 from paygo.services import users as user_service
 from paygo.services import withdrawals as withdrawal_service
 from paygo.services.logs import log_event
@@ -36,8 +37,17 @@ from paygo.services.qr_decode import decode_bytes
 from paygo.utils import as_utc, fmt_local, money, sha256_hex, utcnow
 from sqlalchemy import select
 
+from . import media as media_lib
 from .dispatcher import Dispatcher
-from .telegram import TelegramClient, TelegramError, button, inline_keyboard, reply_keyboard, strip_button_extras
+from .telegram import (
+    TelegramClient,
+    TelegramError,
+    button,
+    inline_keyboard,
+    reply_keyboard,
+    strip_button_extras,
+    url_buttons,
+)
 from .texts import t
 
 logger = logging.getLogger("paygobot.main")
@@ -145,6 +155,15 @@ class Ctx:
             if extra:
                 self.bot.delete_later(self.chat_id, extra)
         return int(sent.get("message_id") or 0)
+
+
+def media_file_id(message: dict[str, Any]) -> str:
+    """file_id of a photo or of an image sent as a document."""
+    photos = message.get("photo") or []
+    if photos:
+        return str(photos[-1].get("file_id") or "")
+    doc = message.get("document") or {}
+    return str(doc.get("file_id") or "") if str(doc.get("mime_type") or "").startswith("image/") else ""
 
 
 class MainBot:
@@ -310,8 +329,9 @@ class MainBot:
             else:
                 self.begin(ctx, action)
             return
-        if message.get("photo"):
-            self.on_photo(ctx, message)
+        media_kind, _obj = media_lib.describe(message)
+        if media_kind:
+            self.on_media(ctx, message, media_kind)
             return
         if ctx.state in FLOW_STATES:
             self.delete_later(chat_id, message_id)
@@ -339,8 +359,39 @@ class MainBot:
             ctx.panel(self.text("text_send_qr") + "\n\n❌ " + ctx.T("qr_photo_only"), self.cancel_kb(ctx))
         elif ctx.state == "wait_payment":
             self.delete_later(chat_id, message_id)  # the card stays; stray text is removed
+        elif self.support_inbox(ctx, message, text):
+            pass  # reply to the operator (dialog carried by this bot) — stays in the chat
         else:
             self.show_menu(ctx)
+
+    def on_media(self, ctx: Ctx, message: dict[str, Any], kind: str) -> None:
+        """Photos are receipts / QR codes at the right steps; anything else is passed to the
+        operator (outside a flow) or removed so the chat shows only the current step."""
+        message_id = int(message.get("message_id") or 0)
+        image = kind == "photo" or (kind == "document" and media_lib.is_image_document(message))
+        if ctx.state == "wait_payment" and image:
+            self.save_receipt(ctx, message)
+            self.delete_later(ctx.chat_id, message_id)
+            return
+        if ctx.state == "wait_qr" and image:
+            self.on_photo(ctx, message)
+            return
+        if ctx.state in FLOW_STATES or ctx.state == "wait_payment":
+            self.delete_later(ctx.chat_id, message_id)
+            if ctx.state == "wait_qr":
+                ctx.panel(self.text("text_send_qr") + "\n\n❌ " + ctx.T("qr_photo_only"), self.cancel_kb(ctx))
+            return
+        if self.support_inbox(ctx, message, str(message.get("caption") or "").strip(), kind, create=True):
+            return
+        self.delete_later(ctx.chat_id, message_id)
+
+    def support_inbox(self, ctx: Ctx, message: dict[str, Any], text: str, kind: str = "", *, create: bool = False) -> bool:
+        """Route a message to the operator dialog when this bot carries it (client never opened the support bot)."""
+        file_url, file_name = "", ""
+        if kind:
+            kind, file_url, file_name = media_lib.fetch(self.client, message, Path(self.settings.data_dir) / "uploads" / "support")
+        with transaction() as db:
+            return support_service.main_inbox(db, db.get(User, ctx.user_id), text, media_kind=kind, file_url=file_url, file_name=file_name, telegram_message_id=int(message.get("message_id") or 0), create=create)
 
     # ------------------------------------------------------------ callbacks
     def on_callback(self, query: dict[str, Any]) -> None:
@@ -777,8 +828,7 @@ class MainBot:
     def save_receipt(self, ctx: Ctx, message: dict[str, Any]) -> None:
         """Client sent a payment screenshot for the active request."""
         deposit_id = int(ctx.data.get("deposit_id") or 0)
-        photos = message.get("photo") or []
-        file_id = str(photos[-1].get("file_id") or "") if photos else ""
+        file_id = media_file_id(message)
         if not deposit_id or not file_id:
             return
         rel = ""
@@ -871,8 +921,7 @@ class MainBot:
             return
         if ctx.state != "wait_qr":
             return
-        photos = message.get("photo") or []
-        file_id = str(photos[-1].get("file_id") or "") if photos else ""
+        file_id = media_file_id(message)
         if not file_id:
             return
         try:
@@ -1002,12 +1051,39 @@ class MainBot:
                 if extra:
                     self.delete_later(chat_id, extra)
             ctx.save("idle", ctx.idle_data())
+        tg_id = int(data.get("telegram_message_id") or 0)
+        if event == "support_delete":
+            if tg_id:
+                self.client.delete_message(chat_id, tg_id)
+            return
+        if event == "support_edit":
+            if tg_id:
+                try:
+                    if data.get("kind") == "photo":
+                        self.client.edit_caption(chat_id, tg_id, body)
+                    else:
+                        self.client.edit_text(chat_id, tg_id, body)
+                except TelegramError as exc:
+                    if not exc.not_modified and not exc.cant_edit:
+                        raise
+            return
+        markup = url_buttons(data.get("buttons"))
+        reply_to = int(data.get("reply_to") or 0) or None
         photo = data.get("photo_url")
         if photo:
             path = Path(get_settings().data_dir) / str(photo).lstrip("/") if str(photo).startswith("/") else None
-            self.client.send_photo(chat_id, path if path and path.exists() else str(photo), caption=body)
+            sent = self.client.send_photo(chat_id, path if path and path.exists() else str(photo), caption=body, markup=markup, reply_to=reply_to)
+        elif markup or reply_to:
+            sent = self.client.send_message(chat_id, body, markup=markup, reply_to=reply_to)
         else:
-            self.safe_send(chat_id, body, None, protect=False)
+            sent = self.safe_send(chat_id, body, None, protect=False)
+        message_id = int(data.get("message_id") or 0)
+        if message_id and isinstance(sent, dict) and sent.get("message_id") and event == "support_reply":
+            with transaction() as db:
+                row = db.get(SupportMessage, message_id)
+                if row is not None:
+                    row.telegram_message_id = int(sent["message_id"])
+                    row.via = "main"
 
     # ------------------------------------------------------------ run
     def run(self) -> None:

@@ -293,3 +293,62 @@ def test_stale_button_is_ignored(bot):
     before = len(bot.client.calls)
     bot.handle_update({"update_id": 7, "callback_query": {"id": "old", "data": "cash:1", "from": FROM, "message": {"message_id": 1, "chat": {"id": CHAT}}}})
     assert len(bot.client.calls) == before  # no screen change
+
+
+def media(bot, kind="voice", mid=44, **extra):
+    obj = {"file_id": "f-" + kind, "file_size": 1000, **extra}
+    bot.handle_update({"update_id": 7, "message": {"message_id": mid, "chat": {"id": CHAT, "type": "private"}, "from": FROM, kind: obj}})
+
+
+def test_voice_during_flow_is_removed(bot):
+    text(bot, "/start")
+    text(bot, "Пополнить")
+    pick_cash(bot)
+    assert state_of()[0] == "wait_id"
+    media(bot, "voice", mid=44)
+    assert "44" in bot.client.deleted() and state_of()[0] == "wait_id"
+
+
+def test_voice_when_idle_opens_operator_dialog(bot):
+    from paygo.models import SupportConversation, SupportMessage
+
+    text(bot, "/start")
+    media(bot, "voice", mid=45, mime_type="audio/ogg")
+    assert "45" not in bot.client.deleted()
+    with transaction() as db:
+        conv = db.query(SupportConversation).one()
+        assert conv.status == "waiting_operator" and conv.context["channel"] == "main"
+        msg = db.query(SupportMessage).one()
+        assert msg.kind == "voice" and msg.file_url.startswith("/uploads/support/") and msg.file_url.endswith(".ogg") and msg.via == "main"
+    text(bot, "это по поводу вывода", mid=46)  # a reply inside the operator dialog stays in the chat
+    assert "46" not in bot.client.deleted()
+    with transaction() as db:
+        assert db.query(SupportMessage).count() == 2
+
+
+def test_outbox_url_buttons_edit_and_delete(bot):
+    from paygo.models import SupportMessage, User
+    from paygo.services import support as support_service
+    from paygo.services.notifications import notify_user
+
+    text(bot, "/start")
+    with transaction() as db:
+        u = db.query(User).filter_by(telegram_id=CHAT).one()
+        notify_user(db, u, event="broadcast", event_key="b1", text="Новости", buttons=[{"text": "Сайт", "url": "https://paygo.kg"}])
+    bot.deliver_outbox()
+    kind, body, markup = bot.client.last
+    assert body == "Новости" and markup["inline_keyboard"][0][0]["url"] == "https://paygo.kg"
+    with transaction() as db:
+        u = db.query(User).filter_by(telegram_id=CHAT).one()
+        conv = support_service.open_operator_conversation(db, u, None)
+        msg = support_service.operator_reply(db, conv, None, "admin", "Проверяю", reply_to=None)
+        msg_id = msg.id
+    bot.deliver_outbox()
+    with transaction() as db:
+        row = db.get(SupportMessage, msg_id)
+        assert row.telegram_message_id > 0 and row.via == "main"
+        support_service.edit_message(db, row, "Проверяю ещё раз")
+        support_service.delete_message(db, row)
+    bot.deliver_outbox()
+    assert bot.client.last_of("edit")[0] == "Проверяю ещё раз"
+    assert str(row.telegram_message_id) in bot.client.deleted()

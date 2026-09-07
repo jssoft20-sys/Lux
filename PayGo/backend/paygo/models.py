@@ -407,8 +407,14 @@ class SupportMessage(Base):
     admin_id: Mapped[int | None] = mapped_column(ForeignKey("admins.id", ondelete="SET NULL"))
     telegram_message_id: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     kind: Mapped[str] = mapped_column(String(16), default="text", nullable=False)
+    # text | photo | voice | audio | video | video_note | document | sticker | animation
     text: Mapped[str] = mapped_column(Text, default="", nullable=False)
     file_url: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    file_name: Mapped[str] = mapped_column(String(200), default="", nullable=False)
+    via: Mapped[str] = mapped_column(String(8), default="support", nullable=False)  # bot that carried the message: support | main
+    reply_to_id: Mapped[int | None] = mapped_column(ForeignKey("support_messages.id", ondelete="SET NULL"))
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     intent: Mapped[str] = mapped_column(String(32), default="", nullable=False)
     confidence: Mapped[float] = mapped_column(Numeric(4, 3), default=0, nullable=False)
     dedupe_key: Mapped[str | None] = mapped_column(String(96), unique=True)

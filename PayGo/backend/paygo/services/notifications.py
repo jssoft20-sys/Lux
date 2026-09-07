@@ -29,8 +29,13 @@ def notify_user(
     bot: str = "main",
     photo_url: str = "",
     supersede_event_keys: list[str] | None = None,
+    buttons: list[dict[str, str]] | None = None,
+    reply_to: int = 0,
 ) -> Notification | None:
-    """Queue a Telegram message for a client. Returns None when the event was already queued."""
+    """Queue a Telegram message for a client. Returns None when the event was already queued.
+
+    ``buttons`` — URL buttons under the message (``[{"text": ..., "url": ...}]``, one per row);
+    ``reply_to`` — Telegram message id in the same bot chat to quote."""
     telegram_id = user.telegram_id if isinstance(user, User) else int(user)
     if _exists(db, event_key):
         return None
@@ -43,6 +48,10 @@ def notify_user(
     payload = dict(data or {})
     if photo_url:
         payload["photo_url"] = photo_url
+    if buttons:
+        payload["buttons"] = [{"text": str(b.get("text") or "")[:64], "url": str(b.get("url") or "")[:1000]} for b in buttons if b.get("text") and b.get("url")][:8]
+    if reply_to:
+        payload["reply_to"] = int(reply_to)
     row = Notification(
         event_key=event_key,
         channel="telegram_user",
