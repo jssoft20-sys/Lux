@@ -112,8 +112,9 @@ class UserUpdateBody(BaseModel):
 
 
 class SupportReplyBody(BaseModel):
-    text: str = Field(min_length=1, max_length=4000)
+    text: str = Field(default="", max_length=4000)
     photo_url: str = ""
+    video_url: str = ""
     reply_to: int | None = None
 
 

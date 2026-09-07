@@ -168,7 +168,7 @@ class SupportBot:
         if event == "support_edit":
             if tg_id:
                 try:
-                    if data.get("kind") == "photo":
+                    if data.get("kind") in {"photo", "video"}:
                         self.client.edit_caption(chat_id, tg_id, body)
                     else:
                         self.client.edit_text(chat_id, tg_id, body)
@@ -180,8 +180,11 @@ class SupportBot:
         if data.get("rating_prompt"):
             markup = inline_keyboard([{"text": "⭐ " + str(i), "callback_data": f"rate:{i}"} for i in range(1, 6)])
         reply_to = int(data.get("reply_to") or 0) or None
-        photo = data.get("photo_url")
-        if photo:
+        photo, video = data.get("photo_url"), data.get("video_url")
+        if video:
+            path = Path(self.settings.data_dir) / str(video).lstrip("/") if str(video).startswith("/") else None
+            sent = self.client.send_video(chat_id, path if path and path.exists() else str(video), caption=body, markup=markup, reply_to=reply_to)
+        elif photo:
             path = Path(self.settings.data_dir) / str(photo).lstrip("/") if str(photo).startswith("/") else None
             sent = self.client.send_photo(chat_id, path if path and path.exists() else str(photo), caption=body, markup=markup, reply_to=reply_to)
         else:

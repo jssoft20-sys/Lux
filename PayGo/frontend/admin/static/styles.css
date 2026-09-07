@@ -101,7 +101,9 @@ html,body{overflow-x:clip}
 .chat-side time{font-size:11px;color:#a3adbb}
 .unread{min-width:24px;height:24px;padding:0 7px;border-radius:12px;background:#0e1728;color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center}
 /* chat thread */
-.chat-screen{display:flex;flex-direction:column;height:100dvh;overflow:hidden}
+.chat-screen{position:fixed;left:0;right:0;top:0;margin:0 auto;width:min(var(--shell),100%);height:100dvh;display:flex;flex-direction:column;overflow:hidden;background:linear-gradient(180deg,#f7fafb 0,#f2f6f7 52%,#edf3f4 100%);z-index:35;will-change:height,transform}
+html.chat-open,html.chat-open body{overflow:hidden;height:100%;overscroll-behavior:none}
+html.chat-open .shell{min-height:0;padding-bottom:0}
 .chat-head{flex:0 0 auto;display:grid;grid-template-columns:38px minmax(0,1fr) auto 38px;gap:7px;align-items:center;padding:calc(6px + env(safe-area-inset-top,0px)) 9px 7px;background:rgba(255,255,255,.97);border-bottom:1px solid #dde6ea;box-shadow:0 5px 18px rgba(23,42,62,.055);z-index:30}
 .chat-person{min-width:0;height:42px;display:grid;grid-template-columns:36px minmax(0,1fr);align-items:center;gap:8px;text-align:left;overflow:hidden}
 .chat-person b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.chat-person small{display:block;font-size:10px;color:#8b98a8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -114,9 +116,9 @@ html,body{overflow-x:clip}
 .case-card{flex:0 0 auto;text-align:left;width:calc(100% - 20px);margin:8px 10px 4px;padding:11px;border-radius:18px;background:#fff;border:1px solid #e4eaf0;box-shadow:0 8px 24px rgba(30,48,69,.08)}
 .case-card b{font-size:12.5px}.case-card small{display:block;color:#68788b;font-size:11px;margin-top:2px}
 .chat-composer{flex:0 0 auto;display:block;padding:6px 9px calc(8px + env(safe-area-inset-bottom,0px));background:rgba(255,255,255,.99);border-top:1px solid #dfe7eb;box-shadow:0 -7px 22px rgba(20,39,56,.05);z-index:20}
-.compose-row{display:grid;grid-template-columns:38px minmax(0,1fr) 40px;align-items:end;gap:6px}
+.compose-row{display:grid;grid-template-columns:36px 36px minmax(0,1fr) 40px;align-items:end;gap:5px}
 .chat-composer textarea{border:1px solid #e3e9ee;border-radius:13px;background:#f6f8fa;padding:10px 12px;font-size:16px;resize:none;min-height:40px;max-height:120px;outline:none;line-height:1.3;transition:border-color .15s,box-shadow .15s}.chat-composer textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(23,105,237,.12)}
-.composer-icon{width:38px;height:38px;border-radius:12px;background:#eef3f6;color:#52616c;display:grid;place-items:center}
+.composer-icon{width:36px;height:40px;border-radius:12px;background:#eef3f6;color:#52616c;display:grid;place-items:center}
 .send-btn{width:40px;height:40px;border-radius:13px;background:var(--blue);color:#fff;display:grid;place-items:center;box-shadow:0 7px 18px rgba(31,111,240,.24)}
 .send-btn:disabled{opacity:.5}
 /* menu */
@@ -346,3 +348,34 @@ html{-webkit-text-size-adjust:100%}
 .art-bell .badge{fill:#df2d2d;animation:twinkle 1.6s ease-in-out infinite}
 @keyframes swing{0%,100%{transform:rotate(-10deg)}50%{transform:rotate(10deg)}}
 .art .float{animation:floaty 3s ease-in-out infinite;transform-origin:60px 45px}
+
+/* ---- PayGo pass 4: compact sheet, press feedback, chat keyboard ---- */
+.pressed{transform:scale(.96)!important;filter:brightness(.96);transition:transform .06s ease!important}
+.tx-card.pressed,.row-card.pressed,.chat-row.pressed,.wallet-card.pressed,.user-card.pressed,.setting-row.tap.pressed{transform:scale(.985)!important;background:#f7f9fb}
+/* compact request view (fits one phone screen) */
+.tx-view{gap:8px}
+.tx-hero{padding:0}
+.tx-hero-amount{font-size:26px}
+.tx-hero-sub{margin-top:3px}
+.user-card{padding:7px 9px;gap:8px;grid-template-columns:38px minmax(0,1fr) auto;border-radius:14px}
+.user-card .avatar{width:38px;height:38px;font-size:15px}
+.user-copy b{font-size:13.5px}.user-copy small{font-size:10.5px;margin-top:1px}
+.user-tiles>span{min-width:54px;padding:4px 6px;border-radius:10px}.user-tiles b{font-size:13.5px}.user-tiles small{font-size:9px;margin-top:2px}
+.info-row{min-height:35px;padding:4px 10px;font-size:12.5px}.info-row .k{flex:0 0 88px;font-size:11.5px}.info-row .strong{font-size:13px}
+.copy-btn{width:28px;height:28px;border-radius:9px}
+.big-btn{min-height:46px;font-size:14px;border-radius:13px}
+.btn-grid.compact{grid-template-columns:repeat(3,1fr);gap:6px}
+.btn-grid.compact .action-btn{min-height:40px;font-size:11px;padding:0 6px;gap:4px;border-radius:11px;white-space:nowrap}
+.btn-grid.compact .action-btn:last-child:nth-child(odd){grid-column:auto}
+.btn-grid.compact .action-btn:last-child:nth-child(3n+1){grid-column:1/-1}
+.link-danger{padding:6px 0 0;font-size:12.5px}
+.pay-note{padding:7px 10px;font-size:12px}
+.qr-pay img{width:min(170px,60%)}
+.sheet-body{padding:8px 1px 4px}.sheet-head{min-height:38px;padding:2px 40px 6px}
+/* history accordion */
+.history-block{border:1px solid #e9eef2;border-radius:12px;overflow:hidden;background:#fff}
+.history-row{width:100%;min-height:36px;display:flex;align-items:center;gap:8px;padding:0 10px;font-size:12.5px;text-align:left;color:#1f2a37}
+.history-row .k{font-weight:800}.history-row .v{flex:1;min-width:0;color:#7b8896;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.history-row svg:last-child{transition:transform .18s;color:#9aa8b8}.history-row.open svg:last-child{transform:rotate(90deg)}
+.history-list{padding:4px 10px 8px;border-top:1px solid #eef1f4}.history-list[hidden]{display:none}
+.history-list .timeline li{font-size:11.5px;padding:3px 0 3px 14px}

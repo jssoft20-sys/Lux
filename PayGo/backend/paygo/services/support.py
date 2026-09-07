@@ -635,16 +635,24 @@ def delivery_bot(db: Session, conv: SupportConversation) -> str:
     return bot
 
 
-def operator_reply(db: Session, conv: SupportConversation, admin_id: int | None, admin_name: str, text: str, *, photo_url: str = "", reply_to: SupportMessage | None = None) -> SupportMessage:
+def operator_reply(db: Session, conv: SupportConversation, admin_id: int | None, admin_name: str, text: str, *, photo_url: str = "", video_url: str = "", reply_to: SupportMessage | None = None) -> SupportMessage:
+    """Operator → client: text, or a photo / video with an optional caption."""
+    text = (text or "").strip()
+    if not text and not photo_url and not video_url:
+        raise ValueError("Пустое сообщение")
     user = db.get(User, conv.user_id)
     bot = delivery_bot(db, conv)
-    msg = add_message(db, conv, direction="out", sender="operator", text=text, admin_id=admin_id, kind="photo" if photo_url else "text", file_url=photo_url, via=bot, reply_to_id=reply_to.id if reply_to else None)
+    kind = "video" if video_url else "photo" if photo_url else "text"
+    msg = add_message(db, conv, direction="out", sender="operator", text=text, admin_id=admin_id, kind=kind, file_url=video_url or photo_url, via=bot, reply_to_id=reply_to.id if reply_to else None)
     conv.status = "operator"
     conv.assigned_admin_id = admin_id or conv.assigned_admin_id
     conv.unread_count = 0
     db.flush()
     quote = int(reply_to.telegram_message_id or 0) if reply_to is not None and reply_to.via == bot else 0
-    notify_user(db, user, event="support_reply", event_key=f"support_reply:{msg.id}", text=text, data={"conversation_id": conv.id, "message_id": msg.id}, bot=bot, photo_url=photo_url, reply_to=quote)
+    data: dict[str, Any] = {"conversation_id": conv.id, "message_id": msg.id}
+    if video_url:
+        data["video_url"] = video_url
+    notify_user(db, user, event="support_reply", event_key=f"support_reply:{msg.id}", text=text, data=data, bot=bot, photo_url=photo_url, reply_to=quote)
     return msg
 
 

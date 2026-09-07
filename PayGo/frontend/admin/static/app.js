@@ -44,7 +44,7 @@
     return data;
   }
   function fileUrl(u) { u = String(u || ''); if (u.startsWith('/uploads/')) return API + '/files/' + u.slice(9); if (u.startsWith('uploads/')) return API + '/files/' + u.slice(8); if (u.startsWith('/')) return BASE + u; return u; }
-  function toast(text, kind, ms) { const el = h('div', { class: 'toast ' + (kind || '') }, text); $('#toasts').appendChild(el); setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .2s'; setTimeout(() => el.remove(), 220); }, ms || (kind === 'err' ? 4200 : 2400)); }
+  function toast(text, kind, ms) { const el = h('div', { class: 'toast ' + (kind || '') }, text); $('#toasts').appendChild(el); setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .2s'; setTimeout(() => el.remove(), 220); }, ms || (kind === 'err' ? 4200 : 2400)); return el; }
   const err = (e) => toast(e && e.message ? e.message : String(e), 'err');
   function copy(text) { navigator.clipboard && navigator.clipboard.writeText(String(text)).then(() => toast('Скопировано', 'ok', 1200)).catch(() => {}); }
   function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
@@ -202,8 +202,12 @@
   const isTouch = () => matchMedia('(hover: none) and (pointer: coarse)').matches;
   function buzz(ms) { try { if (navigator.vibrate && isTouch()) navigator.vibrate(ms || 8); } catch (e) {} }
   const RIPPLE_SEL = '.action-btn,.primary-btn,.outline-btn,.big-btn,.menu-tile,.tx-card,.row-card,.wallet-card,.chat-row,.nav-item,.seg button,.settings-tabs button,.kind-tabs button,.chat-tabs button,.user-card,.menu-item,.header-btn,.refresh-btn,.setting-row.tap';
+  document.addEventListener('touchstart', () => {}, { passive: true }); /* enables :active on iOS Safari */
+  const unpress = () => document.querySelectorAll('.pressed').forEach((el) => el.classList.remove('pressed'));
+  ['pointerup', 'pointercancel', 'touchend', 'touchcancel', 'dragstart'].forEach((t) => document.addEventListener(t, unpress, { passive: true }));
   document.addEventListener('pointerdown', (e) => {
     const el = e.target.closest(RIPPLE_SEL); if (!el || el.disabled) return;
+    el.classList.add('pressed'); setTimeout(() => el.classList.remove('pressed'), 600);
     const rect = el.getBoundingClientRect(); const size = Math.max(rect.width, rect.height) * 1.4;
     const r = h('span', { class: 'ripple', style: { width: size + 'px', height: size + 'px', left: (e.clientX - rect.left - size / 2) + 'px', top: (e.clientY - rect.top - size / 2) + 'px' } });
     el.appendChild(r); setTimeout(() => r.remove(), 520);
@@ -237,6 +241,7 @@
     const page = state.route.page;
     const noNav = page === 'chats' && !!state.route.id;
     const shell = h('div', { class: 'shell page-in ' + (noNav ? 'no-nav' : '') });
+    document.documentElement.classList.toggle('chat-open', noNav);
     app.appendChild(shell);
     const views = { home: homeView, history: historyView, chats: chatsView, search: searchView, menu: menuView, manage: manageView, stats: statsView, cashes: cashesView, events: eventsView, gateway: gatewayView, broadcast: broadcastView, security: securityView, quick: quickView, logs: logsView, settings: settingsView, macrodroid: macrodroidView, firstline: firstLineView, deposits: (m) => txDetailView(m, 'deposits', state.route.id), withdrawals: (m) => txDetailView(m, 'withdrawals', state.route.id), users: (m) => userDetailView(m, state.route.id), push: pushView, env: envView };
     (views[page] || homeView)(shell);
@@ -407,7 +412,7 @@
   async function chatThreadView(shell, id) {
     const screen = h('section', { class: 'chat-screen' }); shell.appendChild(screen); screen.appendChild(loader(2));
     let lastId = 0; let c = null; const known = {}; let composer = null;
-    const fitViewport = () => { const vv = window.visualViewport; screen.style.height = (vv ? vv.height : window.innerHeight) + 'px'; if (feed) feed.scrollTop = feed.scrollHeight; };
+    const fitViewport = () => { const vv = window.visualViewport; const stick = feed && nearBottom(); if (vv) { screen.style.height = Math.round(vv.height) + 'px'; screen.style.transform = 'translateY(' + Math.round(vv.offsetTop) + 'px)'; } else screen.style.height = window.innerHeight + 'px'; if (window.scrollY) window.scrollTo(0, 0); if (feed && stick) feed.scrollTop = feed.scrollHeight; };
     const feed = h('div', { class: 'chat-feed' });
     const bottom = (smooth) => { feed.scrollTo({ top: feed.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); };
     const nearBottom = () => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 140;
@@ -434,7 +439,7 @@
         const r = await api('/support/conversations/' + id); c = r.item; const ctx = c.context || {}; screen.innerHTML = '';
         const head = h('header', { class: 'chat-head' }, h('button', { class: 'header-btn', onclick: () => go('#/chats') }, svg('back', 18)), h('button', { class: 'chat-person', onclick: () => go('#/users/' + c.user_id) }, h('span', { class: 'avatar mini' }, (c.user_name || '?').charAt(0).toUpperCase()), h('span', null, h('b', null, c.user_name), h('small', null, 'TG ' + c.telegram_id + (c.username ? ' · @' + c.username : '') + ' · ' + (STATUS[c.status] || [c.status])[0] + (ctx.channel === 'main' ? ' · через основной бот' : '')))), can('support') ? h('button', { class: 'chat-close-btn ' + (c.status === 'resolved' ? 'open' : ''), onclick: async () => { if (c.status === 'resolved') { await api('/support/conversations/' + c.id + '/status', { method: 'POST', body: { status: 'operator' } }); draw(); return; } const note = await promptDialog('Завершить обращение', 'Сообщение клиенту (необязательно)'); if (note === null) return; await api('/support/conversations/' + c.id + '/status', { method: 'POST', body: { status: 'resolved', note } }); go('#/chats'); } }, c.status === 'resolved' ? 'Вернуть' : 'Завершить') : h('span'), h('button', { class: 'header-btn', 'aria-label': 'Меню', onclick: () => chatMenu(c, draw) }, svg('more', 18)));
         screen.appendChild(head);
-        if (ctx.deposit || ctx.withdrawal) { const t = ctx.withdrawal && c.category !== 'deposit' ? ctx.withdrawal : ctx.deposit; const dep = t === ctx.deposit; screen.appendChild(h('button', { class: 'case-card', onclick: () => openTxSheet(dep ? 'deposit' : 'withdraw', t.id) }, h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, h('i', { class: 'kind-badge ' + (dep ? 'deposit' : 'withdraw') }, dep ? 'ПП' : 'ВВ'), h('b', null, (dep ? 'Пополнение ' : 'Вывод ') + t.public_id), h('span', { style: { flex: 1 } }), statusEl(t.status, t.status_label)), h('small', null, t.cash + ' • ID ' + t.player_id + ' • ' + money(t.amount) + ' ' + t.currency + ' • ' + fmtDate(t.created_at)), t.error ? h('small', { style: { color: '#bd344a' } }, t.error) : null)); }
+        if (ctx.deposit || ctx.withdrawal) { const t = ctx.withdrawal && c.category !== 'deposit' ? ctx.withdrawal : ctx.deposit; const dep = t === ctx.deposit; screen.appendChild(h('button', { class: 'case-card', onclick: () => openTxSheet(dep ? 'deposit' : 'withdraw', t.id) }, h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, h('i', { class: 'kind-badge ' + (dep ? 'deposit' : 'withdraw') }, dep ? 'ПП' : 'ВВ'), h('b', null, (dep ? 'Пополнение ' : 'Вывод ') + t.public_id), h('span', { style: { flex: 1 } }), statusEl(t.status, t.status_label)), h('small', null, t.cash + ' • ID ' + t.player_id + ' • ' + money(t.amount) + ' ' + t.currency + ' • ' + fmtDate(t.created_at)), t.error ? h('small', { style: { color: '#bd344a' } }, reasonText(t.error)) : null)); }
         feed.innerHTML = ''; lastId = 0;
         r.messages.forEach((m) => { feed.appendChild(bubble(m)); lastId = Math.max(lastId, m.id); });
         if (!r.messages.length) feed.appendChild(empty('Сообщений нет', 'Напишите первым — клиент получит сообщение в боте', 'chat'));
@@ -453,38 +458,68 @@
       const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(120, ta.scrollHeight) + 'px'; };
       const clearMode = () => { mode = null; bar.hidden = true; bar.innerHTML = ''; ta.value = ''; grow(); };
       const setMode = (m, type) => { mode = { m, type }; bar.hidden = false; bar.innerHTML = ''; bar.appendChild(h('div', { class: 'compose-quote' }, h('b', null, type === 'edit' ? 'Изменение' : 'Ответ ' + (m.sender === 'user' ? (c ? c.user_name : 'клиенту') : 'на своё сообщение')), h('span', null, (m.text || (m.file_name || '[файл]')).slice(0, 120)))); bar.appendChild(h('button', { class: 'compose-x', 'aria-label': 'Отмена', onclick: clearMode }, svg('close', 14))); if (type === 'edit') { ta.value = m.text || ''; grow(); } ta.focus(); };
-      const sendBtn = h('button', { class: 'send-btn', 'aria-label': 'Отправить' }, svg('send', 18));
+      const keepFocus = (e) => { e.preventDefault(); }; /* buttons must not steal focus — the keyboard stays open */
+      const sendBtn = h('button', { class: 'send-btn', 'aria-label': 'Отправить', type: 'button', onpointerdown: keepFocus, onmousedown: keepFocus }, svg('send', 18));
+      let sending = false;
       const send = async () => {
-        const text = ta.value.trim(); if (!text) return; ta.disabled = true; sendBtn.disabled = true;
+        const text = ta.value.trim(); if (!text || sending) return; sending = true;
+        const current = mode; ta.value = ''; grow(); if (current) { bar.hidden = true; bar.innerHTML = ''; mode = null; }
+        if (document.activeElement !== ta) ta.focus();
         try {
-          if (mode && mode.type === 'edit') { const rr = await api('/support/messages/' + mode.m.id, { method: 'PATCH', body: { text } }); Object.assign(mode.m, rr.message); const node = feed.querySelector('.bubble[data-id="' + mode.m.id + '"]'); if (node) node.replaceWith(bubble(mode.m)); }
-          else { const rr = await api('/support/conversations/' + c.id + '/reply', { method: 'POST', body: { text, reply_to: mode && mode.type === 'reply' ? mode.m.id : null } }); feed.appendChild(bubble(rr.message)); lastId = Math.max(lastId, rr.message.id); bottom(true); }
-          clearMode(); buzz();
-        } catch (e) { err(e); }
-        ta.disabled = false; sendBtn.disabled = false; ta.focus();
+          if (current && current.type === 'edit') { const rr = await api('/support/messages/' + current.m.id, { method: 'PATCH', body: { text } }); Object.assign(current.m, rr.message); const node = feed.querySelector('.bubble[data-id="' + current.m.id + '"]'); if (node) node.replaceWith(bubble(current.m)); }
+          else { const rr = await api('/support/conversations/' + c.id + '/reply', { method: 'POST', body: { text, reply_to: current && current.type === 'reply' ? current.m.id : null } }); feed.appendChild(bubble(rr.message)); lastId = Math.max(lastId, rr.message.id); bottom(true); }
+          buzz();
+        } catch (e) { err(e); ta.value = text; grow(); if (current) setMode(current.m, current.type); }
+        sending = false;
       };
       sendBtn.onclick = send;
       ta.addEventListener('input', grow);
       ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !isTouch()) { e.preventDefault(); send(); } });
-      ta.addEventListener('focus', () => { setTimeout(() => { fitViewport(); bottom(false); }, 120); });
-      const el = h('div', { class: 'chat-composer' }, bar, h('div', { class: 'compose-row' }, h('button', { class: 'composer-icon', 'aria-label': 'Быстрые ответы', onclick: () => quickPick((t) => { ta.value = t; grow(); ta.focus(); }) }, svg('bolt', 19)), ta, sendBtn));
+      ta.addEventListener('focus', () => { setTimeout(() => { fitViewport(); bottom(false); }, 60); setTimeout(() => { fitViewport(); bottom(false); }, 350); });
+      /* photo / video from the operator: camera or gallery */
+      const camInput = h('input', { type: 'file', accept: 'image/*', capture: 'environment', style: { display: 'none' } });
+      const fileInput = h('input', { type: 'file', accept: 'image/*,video/*', style: { display: 'none' } });
+      const sendFile = async (file) => {
+        if (!file) return;
+        if (file.size > 25 * 1024 * 1024) return toast('Файл больше 25 МБ', 'err');
+        const caption = ta.value.trim(); const current = mode;
+        const note = toast(file.type.startsWith('video/') ? 'Отправляю видео…' : 'Отправляю фото…', '', 60000);
+        try {
+          const fd = new FormData(); fd.append('file', file);
+          const up = await api('/support/upload', { method: 'POST', body: fd });
+          const body = { text: caption, reply_to: current && current.type === 'reply' ? current.m.id : null };
+          if (up.kind === 'video') body.video_url = up.url; else body.photo_url = up.url;
+          const rr = await api('/support/conversations/' + c.id + '/reply', { method: 'POST', body });
+          feed.appendChild(bubble(rr.message)); lastId = Math.max(lastId, rr.message.id); bottom(true); clearMode(); buzz();
+        } catch (e) { err(e); }
+        note.remove();
+      };
+      camInput.onchange = () => { sendFile(camInput.files[0]); camInput.value = ''; };
+      fileInput.onchange = () => { sendFile(fileInput.files[0]); fileInput.value = ''; };
+      const attach = () => actionSheet('Отправить клиенту', [{ label: 'Сделать фото', icon: 'image', onclick: () => camInput.click() }, { label: 'Фото или видео из галереи', icon: 'note', onclick: () => fileInput.click() }]);
+      const vars = () => { const cx = (c && c.context) || {}; const t = cx.deposit || cx.withdrawal || {}; return { name: (c && c.user_name) || '', id: t.player_id || '' }; };
+      const el = h('div', { class: 'chat-composer' }, bar, h('div', { class: 'compose-row' }, h('button', { class: 'composer-icon', type: 'button', 'aria-label': 'Быстрые ответы', onclick: () => quickPick((t) => { ta.value = t; grow(); ta.focus(); }, vars()) }, svg('bolt', 19)), h('button', { class: 'composer-icon', type: 'button', 'aria-label': 'Фото или видео', onclick: attach }, svg('image', 19)), ta, sendBtn, camInput, fileInput));
       return { el, reply: (m) => setMode(m, 'reply'), edit: (m) => setMode(m, 'edit') };
     }
-    if (window.visualViewport) { const onVV = () => { if (!document.body.contains(screen)) return window.visualViewport.removeEventListener('resize', onVV); fitViewport(); }; window.visualViewport.addEventListener('resize', onVV); }
+    if (window.visualViewport) { const onVV = () => { if (!document.body.contains(screen)) { window.visualViewport.removeEventListener('resize', onVV); window.visualViewport.removeEventListener('scroll', onVV); return; } fitViewport(); }; window.visualViewport.addEventListener('resize', onVV); window.visualViewport.addEventListener('scroll', onVV); }
     window.addEventListener('resize', () => { if (document.body.contains(screen)) fitViewport(); });
+    window.addEventListener('scroll', () => { if (document.body.contains(screen) && window.scrollY) window.scrollTo(0, 0); }, { passive: true });
     draw();
   }
   function chatMenu(c, redraw) {
     const s = sheet({ title: 'Обращение #' + c.id, body: h('div', null, kv([['Клиент', h('a', { href: '#/users/' + c.user_id, onclick: () => s.close() }, c.user_name)], ['Telegram ID', h('span', { class: 'copy mono', onclick: () => copy(c.telegram_id) }, c.telegram_id)], ['Категория', c.category], ['Тема', c.subject || '—'], ['Статус', statusEl(c.status)], ['Создано', fmtDate(c.created_at)], ['Оценка', c.rating ? '★ ' + c.rating : '—']])), actions: [h('button', { class: 'action-btn blue', onclick: async () => { await api('/support/conversations/' + c.id + '/status', { method: 'POST', body: { status: 'operator' } }); s.close(); redraw(); } }, 'Взять в работу'), h('button', { class: 'action-btn', onclick: async () => { await api('/support/conversations/' + c.id + '/status', { method: 'POST', body: { status: 'auto' } }); s.close(); redraw(); } }, 'Вернуть боту')] });
   }
-  async function quickPick(onPick) {
+  async function quickPick(onPick, vars) {
     try { const r = await api('/quick-replies'); state.quick = r.items; } catch (e) {}
-    const s = sheet({ title: 'Быстрые ответы', body: state.quick.length ? h('div', { class: 'list' }, state.quick.map((q) => h('button', { class: 'card row-card', onclick: () => { s.close(); onPick(q.text); } }, h('div', null, h('b', null, q.title), h('small', null, q.text))))) : empty('Ответов нет', 'Меню → Быстрые ответы', 'bolt') });
+    const fill = (t) => String(t || '').replace(/\{name\}/g, (vars && vars.name) || '').replace(/\{id\}/g, (vars && vars.id) || '');
+    const s = sheet({ title: 'Быстрые ответы', body: state.quick.length ? h('div', { class: 'list' }, state.quick.map((q) => h('button', { class: 'card row-card', onclick: () => { s.close(); onPick(fill(q.text)); } }, h('div', null, h('b', null, q.title), h('small', null, fill(q.text)))))) : empty('Ответов нет', 'Меню → Быстрые ответы', 'bolt') });
   }
 
   /* ------------------------------------------------------------- tx sheet / actions (old admin layout) */
   const SOURCE = { bot: 'Телеграм', telegram: 'Телеграм', admin: 'Панель', panel: 'Панель', api: 'API', manual: 'Вручную', macrodroid: 'MacroDroid', webhook: 'MacroDroid', imap: 'Почта', email: 'Почта', support: 'Поддержка' };
   const srcLabel = (v) => (v ? (SOURCE[String(v).toLowerCase()] || v) : 'Телеграм');
+  const REASON = { user_cancelled: 'Отменено клиентом', expired: 'Истекло время оплаты', timeout: 'Истекло время оплаты' };
+  const reasonText = (v) => (v ? (REASON[String(v).trim()] || v) : '');
   const txNo = (tx) => String(tx.public_id || tx.id).replace(/^[DW]-/, '');
   function busy(b, on) { if (!b) return; b.disabled = !!on; b.classList.toggle('busy', !!on); }
   async function txAction(kind, tx, action, opts) {
@@ -521,7 +556,7 @@
       !dep ? ['Выполнена', tx.completed_at ? fmtDate(tx.completed_at) : '—'] : null,
       ['Обработал', tx.operator_id ? (tx.operator_name || '—') : '—'],
       dep ? ['Чек', tx.has_receipt ? h('span', { class: 'pill green' }, 'получен') : 'нет'] : ['QR клиента', tx.has_qr ? h('span', { class: 'pill green' }, 'есть') : 'нет'],
-      tx.error ? ['Комментарий', h('span', { class: 'err-text' }, tx.error)] : null,
+      tx.error ? ['Комментарий', h('span', { class: 'err-text' }, reasonText(tx.error))] : null,
     ];
   }
   function txButtons(kind, tx, ctx) {
@@ -533,16 +568,16 @@
       if (dep) out.push(tx.status === 'processing' ? h('button', { class: 'big-btn green', disabled: true }, 'Зачисляется…') : h('button', { class: 'big-btn green', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const r = await txAction(kind, tx, 'credit', { confirm: 'Зачислить ' + money(tx.pay_amount) + ' ' + tx.currency + ' на ID ' + tx.player_id + '?', okLabel: 'Зачислить', done: 'Зачислено' }); busy(b, false); if (r) ctx.refresh(); } }, 'Зачислить на счёт игрока'));
       else out.push(h('button', { class: 'big-btn green', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const r = await txAction(kind, tx, 'complete', { confirm: 'Перевели ' + money(tx.amount) + ' ' + tx.currency + ' клиенту?', okLabel: 'Да, перевёл', done: 'Вывод выполнен' }); busy(b, false); if (r) ctx.refresh(); } }, 'Перевёл на счёт игрока'));
     }
-    const grid = h('div', { class: 'btn-grid' });
-    grid.appendChild(h('button', { class: 'action-btn', onclick: () => { ctx.close(); go('#/users/' + tx.user_id); } }, svg('user', 15), 'Профиль'));
-    if (ctx.inSheet) grid.appendChild(h('button', { class: 'action-btn', onclick: () => { ctx.close(); go('#/' + (dep ? 'deposits' : 'withdrawals') + '/' + tx.id); } }, svg('note', 15), 'Заявка'));
-    if (ops) grid.appendChild(h('button', { class: 'action-btn', onclick: () => txEditSheet(kind, tx, ctx.refresh) }, svg('edit', 15), 'Изменить'));
-    if (ops && open && !dep) grid.appendChild(h('button', { class: 'action-btn amber', onclick: async () => { const r = await txAction(kind, tx, tx.deferred ? 'resume' : 'defer', { done: tx.deferred ? 'Возвращено в работу' : 'Отложено' }); if (r) ctx.refresh(); } }, svg('history', 15), tx.deferred ? 'Вернуть' : 'Отложить'));
-    if (ops && open && (!dep || tx.status === 'created')) grid.appendChild(h('button', { class: 'action-btn', onclick: async () => { const r = dep ? await txAction(kind, tx, 'cancel', { confirm: 'Отменить заявку?', okLabel: 'Отменить', danger: true, done: 'Отменено' }) : await txAction(kind, tx, 'reject', { askReason: 'Причина отмены', done: 'Отменено' }); if (r) ctx.refresh(); } }, svg('close', 15), 'Отменить'));
-    if (dep && tx.has_receipt) grid.appendChild(h('button', { class: 'action-btn', onclick: () => imageSheet('Чек клиента', API + '/deposits/' + tx.id + '/receipt', fmtDate(tx.receipt_at)) }, svg('image', 15), 'Чек'));
-    if (!dep && tx.qr_file_url) grid.appendChild(h('button', { class: 'action-btn', onclick: () => imageSheet('QR клиента', API + '/withdrawals/' + tx.id + '/photo', tx.qr_payload ? '' : 'не распознан автоматически') }, svg('qr', 15), 'Фото QR'));
-    if (can('support')) grid.appendChild(h('button', { class: 'action-btn', onclick: () => openChat(tx.user_id) }, svg('send', 15), 'Написать клиенту'));
-    if (can('users') && ctx.user) grid.appendChild(h('button', { class: 'action-btn ' + (ctx.user.is_blocked ? 'blue' : 'danger'), onclick: async () => { const u = ctx.user; if (u.is_blocked) { if (!(await confirmDialog('Разблокировать клиента?', 'Разблокировать'))) return; try { await api('/users/' + u.id, { method: 'PATCH', body: { is_blocked: false, block_reason: '' } }); toast('Разблокирован', 'ok'); ctx.refresh(); } catch (e) { err(e); } return; } const reason = await promptDialog('Заблокировать клиента', 'Клиент увидит причину'); if (reason === null) return; try { await api('/users/' + u.id, { method: 'PATCH', body: { is_blocked: true, block_reason: reason } }); toast('Заблокирован', 'ok'); ctx.refresh(); } catch (e) { err(e); } } }, svg('lock', 15), ctx.user.is_blocked ? 'Разблокировать' : 'Заблокировать'));
+    const grid = h('div', { class: 'btn-grid compact' });
+    grid.appendChild(h('button', { class: 'action-btn', onclick: () => { ctx.close(); go('#/users/' + tx.user_id); } }, svg('user', 14), 'Профиль'));
+    if (ctx.inSheet) grid.appendChild(h('button', { class: 'action-btn', onclick: () => { ctx.close(); go('#/' + (dep ? 'deposits' : 'withdrawals') + '/' + tx.id); } }, svg('note', 14), 'Заявка'));
+    if (ops) grid.appendChild(h('button', { class: 'action-btn', onclick: () => txEditSheet(kind, tx, ctx.refresh) }, svg('edit', 14), 'Изменить'));
+    if (ops && open && !dep) grid.appendChild(h('button', { class: 'action-btn amber', onclick: async () => { const r = await txAction(kind, tx, tx.deferred ? 'resume' : 'defer', { done: tx.deferred ? 'Возвращено в работу' : 'Отложено' }); if (r) ctx.refresh(); } }, svg('history', 14), tx.deferred ? 'Вернуть' : 'Отложить'));
+    if (ops && open && (!dep || tx.status === 'created')) grid.appendChild(h('button', { class: 'action-btn', onclick: async () => { const r = dep ? await txAction(kind, tx, 'cancel', { confirm: 'Отменить заявку?', okLabel: 'Отменить', danger: true, done: 'Отменено' }) : await txAction(kind, tx, 'reject', { askReason: 'Причина отмены', done: 'Отменено' }); if (r) ctx.refresh(); } }, svg('close', 14), 'Отменить'));
+    if (dep && tx.has_receipt) grid.appendChild(h('button', { class: 'action-btn', onclick: () => imageSheet('Чек клиента', API + '/deposits/' + tx.id + '/receipt', fmtDate(tx.receipt_at)) }, svg('image', 14), 'Чек'));
+    if (!dep && tx.qr_file_url) grid.appendChild(h('button', { class: 'action-btn', onclick: () => imageSheet('QR клиента', API + '/withdrawals/' + tx.id + '/photo', tx.qr_payload ? '' : 'не распознан автоматически') }, svg('qr', 14), 'Фото QR'));
+    if (can('support')) grid.appendChild(h('button', { class: 'action-btn', onclick: () => openChat(tx.user_id) }, svg('send', 14), 'Написать'));
+    if (can('users') && ctx.user) grid.appendChild(h('button', { class: 'action-btn ' + (ctx.user.is_blocked ? 'blue' : 'danger'), onclick: async () => { const u = ctx.user; if (u.is_blocked) { if (!(await confirmDialog('Разблокировать клиента?', 'Разблокировать'))) return; try { await api('/users/' + u.id, { method: 'PATCH', body: { is_blocked: false, block_reason: '' } }); toast('Разблокирован', 'ok'); ctx.refresh(); } catch (e) { err(e); } return; } const reason = await promptDialog('Заблокировать клиента', 'Клиент увидит причину'); if (reason === null) return; try { await api('/users/' + u.id, { method: 'PATCH', body: { is_blocked: true, block_reason: reason } }); toast('Заблокирован', 'ok'); ctx.refresh(); } catch (e) { err(e); } } }, ctx.user.is_blocked ? 'Разблокировать' : 'Заблокировать'));
     out.push(grid);
     if (ops && open) out.push(h('button', { class: 'link-danger', onclick: async () => { const r = await txAction(kind, tx, dep ? 'reject' : 'fail', { askReason: 'Причина отказа', done: 'Отказано' }); if (r) ctx.refresh(); } }, 'Отказать'));
     return out;
@@ -550,10 +585,19 @@
   function txBody(kind, r, ctx) {
     const tx = r.item; const dep = kind === 'deposit';
     ctx.user = r.user;
-    const body = h('div', { class: 'tx-view' }, txHero(kind, tx, !ctx.inSheet), (tx.status === 'failed' || tx.needs_attention) && tx.error && tx.status !== 'success' ? h('div', { class: 'hint-card err' }, tx.error) : null, tx.payment ? h('div', { class: 'pay-note ' + tx.payment.kind }, svg(tx.payment.kind === 'matched' ? 'check' : 'bolt', 14), (tx.payment.kind === 'matched' ? 'Платёж получен: ' : 'Есть платёж на эту сумму: ') + srcLabel(tx.payment.source) + ' · ' + money(tx.payment.amount) + ' · ' + fmtDate(tx.payment.received_at)) : null, userCard(r.user, ctx.close, tx.player_name), infoTable(txRows(kind, tx)));
+    const body = h('div', { class: 'tx-view' }, txHero(kind, tx, !ctx.inSheet), (tx.status === 'failed' || tx.needs_attention) && tx.error && tx.status !== 'success' ? h('div', { class: 'hint-card err' }, reasonText(tx.error)) : null, tx.payment ? h('div', { class: 'pay-note ' + tx.payment.kind }, svg(tx.payment.kind === 'matched' ? 'check' : 'bolt', 14), (tx.payment.kind === 'matched' ? 'Платёж получен: ' : 'Есть платёж на эту сумму: ') + srcLabel(tx.payment.source) + ' · ' + money(tx.payment.amount) + ' · ' + fmtDate(tx.payment.received_at)) : null, userCard(r.user, ctx.close, tx.player_name), infoTable(txRows(kind, tx)));
     if (!dep && (tx.has_generated_qr || tx.qr_file_url)) { const src = tx.has_generated_qr ? API + '/withdrawals/' + tx.id + '/qr.png?kind=generated' : API + '/withdrawals/' + tx.id + '/photo'; body.appendChild(h('div', { class: 'qr-pay' }, h('img', { src, alt: 'QR', onclick: () => imageSheet('QR · ' + money(tx.amount) + ' ' + tx.currency, src) }), h('small', null, tx.has_generated_qr ? 'QR с суммой ' + money(tx.amount) + ' ' + tx.currency : 'Фото QR от клиента'), r.payment_links && r.payment_links.length ? h('div', { class: 'bank-row' }, r.payment_links.map((l) => h('a', { class: 'outline-btn', href: l.url, target: '_blank', rel: 'noopener' }, l.name))) : null)); }
+    body.appendChild(historyBlock(r.history));
     txButtons(kind, tx, ctx).forEach((n) => body.appendChild(n));
     return body;
+  }
+  function historyBlock(items) {
+    /* «История» lives right under the details: one row, tap to unfold */
+    items = items || [];
+    const list = h('div', { class: 'history-list', hidden: true }, timeline(items));
+    const last = items.length ? items[items.length - 1] : null;
+    const row = h('button', { class: 'history-row', type: 'button', onclick: () => { list.hidden = !list.hidden; row.classList.toggle('open', !list.hidden); } }, svg('history', 14), h('span', { class: 'k' }, 'История'), h('span', { class: 'v' }, items.length ? items.length + ' · ' + (last.title || '').slice(0, 40) : 'пусто'), svg('chevron', 14));
+    return h('div', { class: 'history-block' }, row, list);
   }
   function txEditSheet(kind, tx, refresh) {
     const dep = kind === 'deposit';
@@ -595,7 +639,6 @@
         if (r.payment_event) tx.payment = tx.payment || { kind: 'matched', source: r.payment_event.source, amount: r.payment_event.amount, received_at: r.payment_event.received_at };
         $('h1', head).textContent = (kind === 'deposit' ? 'Пополнение' : 'Вывод') + ' # ' + txNo(tx);
         box.appendChild(h('div', { class: 'card section-card' }, txBody(kind, r, { refresh: draw, close: () => {}, inSheet: false })));
-        box.appendChild(h('div', { class: 'card section-card' }, h('h2', null, 'История'), timeline(r.history)));
       } catch (e) { box.innerHTML = ''; box.appendChild(empty('Ошибка', e.message)); }
     };
     draw(); watchChanges(screen, draw);

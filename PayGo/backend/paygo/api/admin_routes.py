@@ -890,7 +890,10 @@ def reply_conversation(conv_id: int, body: SupportReplyBody, request: Request, p
     quoted = db.get(SupportMessage, int(body.reply_to)) if body.reply_to else None
     if quoted is not None and quoted.conversation_id != conv.id:
         quoted = None
-    msg = support_service.operator_reply(db, conv, principal.id, principal.name, body.text, photo_url=body.photo_url, reply_to=quoted)
+    try:
+        msg = support_service.operator_reply(db, conv, principal.id, principal.name, body.text, photo_url=body.photo_url, video_url=body.video_url, reply_to=quoted)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
     audit(db, "support.reply", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), entity_type="support", entity_id=conv.id)
     return {"ok": True, "message": support_service.public_message(msg, quoted), "item": support_service.public_conversation(conv)}
 
@@ -902,7 +905,7 @@ def edit_support_message(message_id: int, body: MessageEditBody, request: Reques
         raise HTTPException(404, "NOT_FOUND")
     if msg.direction != "out" or msg.sender != "operator":
         raise HTTPException(400, "Изменить можно только своё сообщение")
-    if msg.kind not in {"text", "photo"}:
+    if msg.kind not in {"text", "photo", "video"}:
         raise HTTPException(400, "Это сообщение нельзя изменить")
     support_service.edit_message(db, msg, body.text)
     audit(db, "support.edit", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), entity_type="support", entity_id=msg.conversation_id, details={"message_id": msg.id})
@@ -969,18 +972,26 @@ def save_quick_replies(body: EditBody, request: Request, principal: Principal = 
 
 @router.post("/support/upload")
 async def support_upload(request: Request, file: UploadFile = File(...), principal: Principal = Depends(require("support"))):
+    """Photo or video the operator sends to a client (also used by the broadcast)."""
     raw = await file.read()
-    if len(raw) > 10 * 1024 * 1024:
-        raise HTTPException(400, "Файл слишком большой")
-    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
-    if ext not in {"jpg", "jpeg", "png", "webp"}:
-        raise HTTPException(400, "Только изображения")
+    if len(raw) > 25 * 1024 * 1024:
+        raise HTTPException(400, "Файл слишком большой (до 25 МБ)")
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
+    ctype = (file.content_type or "").lower()
+    if ext in {"jpg", "jpeg", "png", "webp", "gif"} or ctype.startswith("image/"):
+        kind = "image"
+        ext = ext if ext in {"jpg", "jpeg", "png", "webp", "gif"} else ("png" if "png" in ctype else "jpg")
+    elif ext in {"mp4", "mov", "webm", "m4v"} or ctype.startswith("video/"):
+        kind = "video"
+        ext = ext if ext in {"mp4", "mov", "webm", "m4v"} else "mp4"
+    else:
+        raise HTTPException(400, "Только фото или видео")
     settings = get_settings()
     folder = settings.uploads_dir() / "support"
     folder.mkdir(parents=True, exist_ok=True)
     name = f"{sha256_hex(raw)[:24]}.{ext}"
     (folder / name).write_bytes(raw)
-    return {"ok": True, "url": f"/uploads/support/{name}"}
+    return {"ok": True, "url": f"/uploads/support/{name}", "kind": kind}
 
 
 # ------------------------------------------------------------------------------ settings

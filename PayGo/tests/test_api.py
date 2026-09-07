@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from paygo.db import transaction
-from paygo.models import Deposit, User
+from paygo.models import Deposit, Notification, User
 from paygo.services import deposits
 from paygo.services.cashes import get_cash
 
@@ -343,3 +343,20 @@ def test_deposit_list_shows_payment_hint(logged, user, fake_provider):
     r = logged.get(P + "/deposits?status=created")
     item = next(x for x in r.json()["items"] if x["id"] == dep_id)
     assert item["payment"]["kind"] == "candidate" and item["payment"]["amount"] == str(pay)
+
+
+def test_operator_sends_photo_and_video(logged, user):
+    r = logged.post(P + f"/users/{user}/conversation")
+    conv = r.json()["item"]["id"]
+    up = logged.post(P + "/support/upload", files={"file": ("clip.mp4", b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 64, "video/mp4")})
+    assert up.status_code == 200 and up.json()["kind"] == "video", up.text
+    r = logged.post(P + f"/support/conversations/{conv}/reply", json={"text": "", "video_url": up.json()["url"]})
+    assert r.status_code == 200 and r.json()["message"]["kind"] == "video"
+    up2 = logged.post(P + "/support/upload", files={"file": ("shot.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 32, "image/png")})
+    assert up2.json()["kind"] == "image"
+    r = logged.post(P + f"/support/conversations/{conv}/reply", json={"text": "чек", "photo_url": up2.json()["url"]})
+    assert r.json()["message"]["kind"] == "photo"
+    with transaction() as db:
+        notes = db.query(Notification).filter_by(event="support_reply").order_by(Notification.id).all()
+        assert notes[0].data["video_url"].endswith(".mp4") and notes[1].data["photo_url"].endswith(".png")
+    assert logged.post(P + f"/support/conversations/{conv}/reply", json={"text": ""}).status_code == 400

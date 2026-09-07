@@ -55,7 +55,7 @@ BOT = "main"
 STOP = threading.Event()
 FLOW_STATES = {"choose_cash", "choose_id", "wait_id", "wait_amount", "wait_qr_choice", "wait_qr", "wait_code", "wait_phone"}
 PERSIST_KEYS = ("name", "panel_kind")
-DEPOSIT_KEYS = ("request_id", "deposit_id", "deadline", "cash_id", "cash_name", "cash_emoji", "player_id", "pay_amount", "currency", "minutes", "methods", "receipt_prompt_id", "receipt_note_id")
+DEPOSIT_KEYS = ("request_id", "deposit_id", "deadline", "cash_id", "cash_name", "cash_emoji", "player_id", "pay_amount", "currency", "minutes", "methods", "receipt_prompt_id", "receipt_note_id", "notice_id")
 
 
 def esc(value: Any) -> str:
@@ -151,7 +151,7 @@ class Ctx:
                 self.bot.delete_later(self.chat_id, old)
             else:
                 self.bot.strip_buttons_later(self.chat_id, old)
-        for extra in (prompt, note):
+        for extra in (prompt, note, int(self.data.get("notice_id") or 0)):
             if extra:
                 self.bot.delete_later(self.chat_id, extra)
         return int(sent.get("message_id") or 0)
@@ -401,10 +401,18 @@ class MainBot:
         data = str(query.get("data") or "")
         pressed = int(((query.get("message") or {}).get("message_id")) or 0)
         callback_id = str(query.get("id") or "")
-        if pressed and ctx.panel_id and pressed != ctx.panel_id and not data.startswith(("noop", "instr", "menu", "act:", "open_active", "help")):
+        if pressed and ctx.panel_id and pressed != ctx.panel_id and not data.startswith(("noop", "instr", "menu", "act:", "open_active", "help", "dep:", "cancel:")):
             self.strip_buttons_later(chat_id, pressed)  # button on an old screen
             return
         if data == "noop":
+            return
+        if data.startswith("dep:"):
+            notice = int(ctx.data.get("notice_id") or 0)
+            if notice:
+                self.delete_later(chat_id, notice)
+                ctx.save(data={k: v for k, v in ctx.data.items() if k != "notice_id"})
+            if data == "dep:show":
+                self.show_active_deposit(ctx)
             return
         if data == "instr":
             self.show_instruction(ctx, callback_id)
@@ -471,9 +479,15 @@ class MainBot:
         self.send_greeting_sticker(ctx)
         self.safe_send(ctx.chat_id, self.greeting(ctx, note), self.menu_kb(), protect=True)
         if active:
-            data = {**ctx.idle_data(), **{k: ctx.data[k] for k in DEPOSIT_KEYS if k in ctx.data}}
-            data["panel_kind"] = old_kind
-            ctx.save("wait_payment", data, old)
+            if ctx.state == "wait_payment" and int(ctx.data.get("deposit_id") or 0) == active and old:
+                data = {**ctx.idle_data(), **{k: ctx.data[k] for k in DEPOSIT_KEYS if k in ctx.data}}
+                data["panel_kind"] = old_kind
+                ctx.save("wait_payment", data, old)
+                return
+            ctx.save("idle", ctx.idle_data(), 0)
+            if old and old_kind != "receipt":
+                self.delete_later(ctx.chat_id, old)
+            self.show_active_deposit(ctx, active)  # the card was replaced by another screen — show it again
             return
         ctx.save("idle", ctx.idle_data(), 0)
         if old and old_kind != "receipt":
@@ -512,12 +526,15 @@ class MainBot:
         return inline_keyboard([button(ctx.T("cancel"), "cancel")])
 
     def active_deposit_id(self, ctx: Ctx) -> int:
+        """The client's open payment request (status created), from the chat state or the database."""
         deposit_id = int(ctx.data.get("deposit_id") or 0)
-        if not deposit_id:
-            return 0
         with transaction() as db:
-            deposit = db.get(Deposit, deposit_id)
-            return deposit.id if deposit and deposit.status == "created" else 0
+            if deposit_id:
+                deposit = db.get(Deposit, deposit_id)
+                if deposit and deposit.status == "created" and deposit.user_id == ctx.user_id:
+                    return deposit.id
+            row = db.execute(select(Deposit).where(Deposit.user_id == ctx.user_id, Deposit.status == "created").order_by(Deposit.id.desc())).scalars().first()
+            return row.id if row else 0
 
     def subscribed(self, ctx: Ctx) -> bool:
         with transaction() as db:
@@ -579,8 +596,12 @@ class MainBot:
         if ctx.blocked:
             self.safe_send(ctx.chat_id, self.text("text_blocked"), None)
             return
-        if action == "deposit" and self.active_deposit_id(ctx):
-            self.show_active_deposit(ctx)
+        active = self.active_deposit_id(ctx)
+        if active:
+            if action == "deposit":
+                self.show_active_deposit(ctx, active)
+            else:
+                self.active_deposit_notice(ctx, active)
             return
         all_cashes = self.enabled_cashes(action)
         cashes = [c for c in all_cashes if not c["reason"]]
@@ -803,9 +824,10 @@ class MainBot:
             return
         ctx.save(data={**ctx.data, "receipt_prompt_id": int(sent.get("message_id") or 0)})
 
-    def show_active_deposit(self, ctx: Ctx) -> None:
-        deposit_id = int(ctx.data.get("deposit_id") or 0)
+    def show_active_deposit(self, ctx: Ctx, deposit_id: int = 0) -> None:
+        deposit_id = deposit_id or self.active_deposit_id(ctx)
         if not deposit_id:
+            ctx.data = ctx.idle_data()
             self.show_menu(ctx)
             return
         with transaction() as db:
@@ -817,7 +839,26 @@ class MainBot:
             info = self._deposit_info(db, deposit)
         self.show_deposit_card(ctx, info)
 
+    def active_deposit_notice(self, ctx: Ctx, deposit_id: int) -> None:
+        """Вывести while a payment request is open: keep the request, explain, offer a choice."""
+        with transaction() as db:
+            deposit = db.get(Deposit, deposit_id)
+            if deposit is None:
+                return
+            public_id, amount, cur = deposit.public_id, money(deposit.pay_amount), deposit.currency
+            left = max(0, int((as_utc(deposit.expires_at) - utcnow()).total_seconds() // 60)) if deposit.expires_at else 0
+        old = int(ctx.data.get("notice_id") or 0)
+        if old:
+            self.delete_later(ctx.chat_id, old)
+        text = f"⏳ У вас есть активная заявка на пополнение <b>{esc(public_id)}</b> на {esc(str(amount))} {esc(cur)}" + (f" (осталось {left} мин)" if left else "") + ".\nСначала оплатите её или отмените — потом можно оформить вывод."
+        kb = inline_keyboard([button(ctx.T("show_request"), "dep:show")], [button(ctx.T("cancel_request"), f"cancel:{public_id}")], [button(ctx.T("close"), "dep:close")])
+        sent = self.safe_send(ctx.chat_id, text, kb, protect=False)
+        ctx.save(data={**ctx.data, "deposit_id": deposit_id, "notice_id": int(sent.get("message_id") or 0)})
+
     def cancel_deposit(self, ctx: Ctx, public_id: str) -> None:
+        notice = int(ctx.data.get("notice_id") or 0)
+        if notice:
+            self.delete_later(ctx.chat_id, notice)
         with transaction() as db:
             deposit = db.execute(select(Deposit).where(Deposit.public_id == public_id, Deposit.user_id == ctx.user_id)).scalar_one_or_none()
             if deposit and deposit.status == "created":
@@ -1047,7 +1088,7 @@ class MainBot:
             ctx.receipt(body)
             return
         if data.get("final") in {"expired", "cancelled", "success"} and same_request:
-            for extra in (int(ctx.data.get("receipt_prompt_id") or 0), int(ctx.data.get("receipt_note_id") or 0)):
+            for extra in (int(ctx.data.get("receipt_prompt_id") or 0), int(ctx.data.get("receipt_note_id") or 0), int(ctx.data.get("notice_id") or 0)):
                 if extra:
                     self.delete_later(chat_id, extra)
             ctx.save("idle", ctx.idle_data())
@@ -1059,7 +1100,7 @@ class MainBot:
         if event == "support_edit":
             if tg_id:
                 try:
-                    if data.get("kind") == "photo":
+                    if data.get("kind") in {"photo", "video"}:
                         self.client.edit_caption(chat_id, tg_id, body)
                     else:
                         self.client.edit_text(chat_id, tg_id, body)
@@ -1069,8 +1110,11 @@ class MainBot:
             return
         markup = url_buttons(data.get("buttons"))
         reply_to = int(data.get("reply_to") or 0) or None
-        photo = data.get("photo_url")
-        if photo:
+        photo, video = data.get("photo_url"), data.get("video_url")
+        if video:
+            path = Path(get_settings().data_dir) / str(video).lstrip("/") if str(video).startswith("/") else None
+            sent = self.client.send_video(chat_id, path if path and path.exists() else str(video), caption=body, markup=markup, reply_to=reply_to)
+        elif photo:
             path = Path(get_settings().data_dir) / str(photo).lstrip("/") if str(photo).startswith("/") else None
             sent = self.client.send_photo(chat_id, path if path and path.exists() else str(photo), caption=body, markup=markup, reply_to=reply_to)
         elif markup or reply_to:

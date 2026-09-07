@@ -352,3 +352,41 @@ def test_outbox_url_buttons_edit_and_delete(bot):
     bot.deliver_outbox()
     assert bot.client.last_of("edit")[0] == "Проверяю ещё раз"
     assert str(row.telegram_message_id) in bot.client.deleted()
+
+
+def test_menu_presses_keep_the_open_deposit(bot, fake_provider):
+    """/start, Пополнить, Вывести and Помощь never cancel an open payment request."""
+    text(bot, "/start")
+    text(bot, "Пополнить")
+    pick_cash(bot)
+    text(bot, "123456")
+    text(bot, "700")
+    assert state_of()[0] == "wait_payment"
+    with transaction() as db:
+        dep_id = db.query(Deposit).one().id
+    text(bot, "/start")  # greeting again, card stays
+    text(bot, "Помощь")
+    text(bot, "Вывести")  # notice instead of a new flow
+    kind, body, markup = bot.client.last
+    assert "активная заявка" in body and "cancel:" in " ".join(bot.client.buttons()) and "dep:show" in bot.client.buttons()
+    text(bot, "Пополнить")  # shows the card again
+    with transaction() as db:
+        dep = db.get(Deposit, dep_id)
+        assert dep.status == "created" and db.query(Deposit).count() == 1
+    assert state_of()[0] == "wait_payment" and int(state_of()[1]["deposit_id"]) == dep_id
+
+
+def test_open_deposit_is_found_after_state_loss(bot, fake_provider):
+    text(bot, "/start")
+    text(bot, "Пополнить")
+    pick_cash(bot)
+    text(bot, "123456")
+    text(bot, "700")
+    from paygo.services import bot_state
+
+    with transaction() as db:
+        bot_state.set_state(db, "main", CHAT, "idle", {}, 0)  # e.g. after a restart
+    text(bot, "Пополнить")
+    assert state_of()[0] == "wait_payment"
+    with transaction() as db:
+        assert db.query(Deposit).filter_by(status="created").count() == 1

@@ -171,6 +171,38 @@ class TelegramClient:
             return result
         return self.call("sendPhoto", {**payload, "photo": str(photo)})
 
+    def send_video(self, chat_id: int, video: str | Path, *, caption: str = "", markup: dict | None = None, protect: bool = False, reply_to: int | None = None, parse_mode: str | None = None) -> dict[str, Any]:
+        payload: dict[str, Any] = {"chat_id": int(chat_id), "caption": caption[:1024], "supports_streaming": True}
+        if markup is not None:
+            payload["reply_markup"] = markup
+        if protect:
+            payload["protect_content"] = True
+        if reply_to:
+            payload["reply_parameters"] = {"message_id": int(reply_to), "allow_sending_without_reply": True}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        if isinstance(video, Path):
+            key = f"{video}:{video.stat().st_mtime_ns}"
+            with self._lock:
+                cached = self._file_ids.get(key)
+            if cached:
+                try:
+                    return self.call("sendVideo", {**payload, "video": cached}, timeout=60)
+                except TelegramError as exc:
+                    if exc.fatal_for_chat:
+                        raise
+            mime = mimetypes.guess_type(video.name)[0] or "video/mp4"
+            result = self.call("sendVideo", payload, files={"video": (video.name, video.read_bytes(), mime)}, timeout=120)
+            try:
+                file_id = str(((result or {}).get("video") or {}).get("file_id") or "")
+                if file_id:
+                    with self._lock:
+                        self._file_ids[key] = file_id
+            except Exception:
+                pass
+            return result
+        return self.call("sendVideo", {**payload, "video": str(video)}, timeout=60)
+
     def get_file_url(self, file_id: str) -> str:
         result = self.call("getFile", {"file_id": file_id}, timeout=15)
         path = str((result or {}).get("file_path") or "")
