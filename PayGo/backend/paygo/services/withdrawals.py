@@ -173,9 +173,23 @@ def create_withdrawal(
 
 # ------------------------------------------------------------------- operator actions
 
-def _final_notify(db: Session, w: Withdrawal, text: str, final: str) -> None:
-    notify_user(db, db.get(User, w.user_id), event=f"withdrawal_{final}", event_key=f"withdrawal_{final}:{w.id}", text=text, data={"request_id": w.public_id, "final": final, "kind": "withdraw"})
+def _final_notify(db: Session, w: Withdrawal, text: str, final: str, *, photo_url: str = "") -> None:
+    notify_user(db, db.get(User, w.user_id), event=f"withdrawal_{final}", event_key=f"withdrawal_{final}:{w.id}", text=text, data={"request_id": w.public_id, "final": final, "kind": "withdraw"}, photo_url=photo_url)
     w.notified_final = True
+
+
+def receipt_required(db: Session, w: Withdrawal) -> bool:
+    """Large payouts need the operator's transfer receipt before «Перевёл на счёт игрока»."""
+    minimum = money(settings_store.get(db, "withdraw_receipt_min", 10000) or 0)
+    return minimum > 0 and money(w.amount) >= minimum
+
+
+def attach_receipt(db: Session, w: Withdrawal, rel_path: str, operator_id: int | None) -> None:
+    w.receipt_file = rel_path
+    w.receipt_at = utcnow()
+    w.operator_id = operator_id or w.operator_id
+    db.flush()
+    log_event(db, "Чек перевода прикреплён", w.public_id, category="withdrawals", entity_type="withdrawal", entity_id=w.public_id)
 
 
 def take(db: Session, w: Withdrawal, operator_id: int | None) -> bool:
@@ -195,6 +209,8 @@ def complete(db: Session, w: Withdrawal, operator_id: int | None) -> bool:
         return False
     if money(w.amount) <= 0:
         raise WithdrawalError("Нельзя завершить вывод без суммы. Сначала перепроверьте код в кассе.")
+    if receipt_required(db, w) and not w.receipt_file:
+        raise WithdrawalError(f"Для вывода от {money(settings_store.get(db, 'withdraw_receipt_min', 10000) or 0)} {w.currency} прикрепите чек перевода.")
     w.status = "success"
     w.completed_at = utcnow()
     w.closed_at = utcnow()
@@ -203,7 +219,7 @@ def complete(db: Session, w: Withdrawal, operator_id: int | None) -> bool:
     w.error = ""
     db.flush()
     cash = db.get(PaymentCash, w.cash_id)
-    _final_notify(db, w, render_text(db, "text_withdraw_done", player=w.player_id, amount=money(w.amount), cur=w.currency, cash=cash.name if cash else "", emoji=cash.emoji if cash else ""), "success")
+    _final_notify(db, w, render_text(db, "text_withdraw_done", player=w.player_id, amount=money(w.amount), cur=w.currency, cash=cash.name if cash else "", emoji=cash.emoji if cash else ""), "success", photo_url=("/" + w.receipt_file.lstrip("/")) if w.receipt_file else "")
     log_event(db, "Вывод выполнен", f"{w.public_id} • {money(w.amount)} {w.currency}", category="withdrawals", entity_type="withdrawal", entity_id=w.public_id)
     admin_event(db, "withdrawal_status", f"withdrawal_success:{w.id}", "✅ Вывод выполнен", f"{cash.name if cash else ''} • {money(w.amount)} {w.currency} • ID {w.player_id}", {"withdrawal_id": w.id, "url": f"#/withdrawals/{w.id}"})
     return True
@@ -356,6 +372,9 @@ def public_withdrawal(w: Withdrawal, *, full: bool = False) -> dict[str, Any]:
         "provider_ref": w.provider_ref,
         "has_qr": bool(w.qr_file_url or w.qr_payload),
         "has_generated_qr": bool(w.generated_qr_payload),
+        "qr_decoded": bool(w.qr_payload),
+        "has_receipt": bool(w.receipt_file),
+        "receipt_at": iso(w.receipt_at),
         "created_at": iso(w.created_at),
         "updated_at": iso(w.updated_at),
         "processing_started_at": iso(w.processing_started_at),

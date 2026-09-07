@@ -100,7 +100,7 @@ def stats_endpoint(date_from: str = "", date_to: str = "", principal: Principal 
 
 @router.get("/live")
 def live(principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
-    data = stats.dashboard(db)["queues"]
+    data = stats.queues(db)
     revision = stats.live_revision(db)
     latest = db.execute(
         select(Notification).where(Notification.channel == "admin_push", Notification.status != "expired").order_by(Notification.id.desc()).limit(15)
@@ -324,7 +324,7 @@ def get_withdrawal(withdrawal_id: int, principal: Principal = Depends(current_pr
         raise HTTPException(404, "NOT_FOUND")
     return {
         "ok": True,
-        "item": {**withdrawal_service.public_withdrawal(w, full=True), "operator_name": _operator_name(db, w.operator_id)},
+        "item": {**withdrawal_service.public_withdrawal(w, full=True), "operator_name": _operator_name(db, w.operator_id), "receipt_required": withdrawal_service.receipt_required(db, w)},
         "history": support_service.recent_events(db, "withdrawal", w.public_id, limit=30),
         "user": public_user(w.user, user_summary(db, w.user)),
         "payment_links": elqr.bank_links(w.generated_qr_payload, deposit_service.bank_link_rows(db)) if w.generated_qr_payload else [],
@@ -396,6 +396,69 @@ def withdrawal_qr(withdrawal_id: int, kind: str = "generated", principal: Princi
         raise HTTPException(404, "QR не распознан")
     png = render_qr_png(payload, branded=False)
     return Response(content=png, media_type="image/png", headers={"Cache-Control": "private, max-age=300"})
+
+
+@router.post("/withdrawals/{withdrawal_id}/decode-qr")
+def withdrawal_decode_qr(withdrawal_id: int, request: Request, principal: Principal = Depends(require("operations")), db: Session = Depends(get_db)):
+    """Read the client's QR photo again (stronger pipeline) and rebuild the QR with the amount."""
+    from ..services.qr_decode import decode_bytes
+
+    w = db.get(Withdrawal, withdrawal_id)
+    if w is None:
+        raise HTTPException(404, "NOT_FOUND")
+    raw = _withdrawal_photo_bytes(w)
+    if not raw:
+        raise HTTPException(400, "Фото QR не найдено")
+    text = decode_bytes(raw, budget=6.0)
+    if not text:
+        raise HTTPException(400, "QR не распознан. Попросите клиента прислать QR крупнее или введите текст QR вручную.")
+    changes = withdrawal_service.edit_fields(db, w, {"qr_payload": text}, principal.id)
+    audit(db, "withdrawal.decode_qr", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), entity_type="withdrawal", entity_id=w.public_id, details=changes)
+    return {"ok": True, "item": withdrawal_service.public_withdrawal(w, full=True), "decoded": text[:200]}
+
+
+@router.post("/withdrawals/{withdrawal_id}/receipt")
+async def upload_withdrawal_receipt(withdrawal_id: int, request: Request, file: UploadFile = File(...), principal: Principal = Depends(require("operations")), db: Session = Depends(get_db)):
+    """Operator's transfer receipt (required for large payouts; sent to the client with «Вывод выполнен»)."""
+    w = db.get(Withdrawal, withdrawal_id)
+    if w is None:
+        raise HTTPException(404, "NOT_FOUND")
+    if w.status in {"success", "cancelled"}:
+        raise HTTPException(400, "Заявка уже закрыта")
+    raw = await file.read()
+    rel = _store_image(raw, file.filename or "receipt.jpg", "receipts", f"W-{w.public_id}")
+    withdrawal_service.attach_receipt(db, w, rel, principal.id)
+    audit(db, "withdrawal.receipt", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), entity_type="withdrawal", entity_id=w.public_id)
+    return {"ok": True, "item": withdrawal_service.public_withdrawal(w, full=True)}
+
+
+@router.get("/withdrawals/{withdrawal_id}/receipt")
+def withdrawal_receipt(withdrawal_id: int, principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+    w = db.get(Withdrawal, withdrawal_id)
+    if w is None or not w.receipt_file:
+        raise HTTPException(404, "NOT_FOUND")
+    path = (get_settings().data_dir / w.receipt_file.lstrip("/")).resolve()
+    if not path.is_file():
+        raise HTTPException(404, "NOT_FOUND")
+    return Response(content=path.read_bytes(), media_type=IMAGE_TYPES.get(path.suffix.lstrip(".").lower(), "image/jpeg"), headers={"Cache-Control": "private, max-age=3600"})
+
+
+def _withdrawal_photo_bytes(w: Withdrawal) -> bytes:
+    """Bytes of the client's QR photo (local upload or Telegram file url)."""
+    url = w.qr_file_url or ""
+    if not url:
+        return b""
+    if url.startswith("/"):
+        path = get_settings().data_dir / url.lstrip("/")
+        return path.read_bytes() if path.exists() else b""
+    try:
+        import httpx
+
+        with httpx.Client(timeout=20) as client:
+            r = client.get(url)
+            return r.content if r.status_code == 200 else b""
+    except Exception:
+        return b""
 
 
 @router.get("/withdrawals/{withdrawal_id}/photo")
@@ -850,7 +913,7 @@ def list_conversations(status: str = "open", q: str = "", category: str = "", pa
     total = db.execute(select(func.count()).select_from(stmt.order_by(None).subquery())).scalar() or 0
     order = [SupportConversation.status.desc(), SupportConversation.last_message_at.desc().nullslast()] if status == "open" else [SupportConversation.last_message_at.desc().nullslast()]
     rows = db.execute(stmt.order_by(*order).offset((page - 1) * size).limit(size)).scalars().all()
-    queues = stats.dashboard(db)["queues"]
+    queues = stats.queues(db, max_age=0)
     counts = {"open": queues["support_open"], "waiting": queues["support_waiting"], "closed": queues["support_closed"], "deposit": queues["support_deposit"], "withdrawal": queues["support_withdrawal"]}
     return {"ok": True, "items": [support_service.public_conversation(c) for c in rows], "total": int(total), "page": page, "size": size, "counts": counts}
 

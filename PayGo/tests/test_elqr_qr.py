@@ -68,3 +68,23 @@ def test_pay_card_with_overlay_decodes():
     # phone-sized preview (Telegram compresses photos) still decodes
     small = img.resize((440, 550), Image.LANCZOS)
     assert zxing.read_barcodes(small)[0].text == value
+
+
+def test_qr_decoder_reads_tilted_and_dark_photos():
+    import io
+
+    from paygo.services.qr import render_qr_png
+    from paygo.services.qr_decode import decode_bytes
+    from PIL import Image, ImageEnhance
+
+    payload = "00020101021132710013QR.Optima.C2B01032031016109182123435011811112149664:1:1120211130212331500112149664:1:15204999953034175904ELQR"
+    img = Image.open(io.BytesIO(render_qr_png(payload))).convert("L")
+    # a phone photo: tilted 18°, on a grey background, darker, slightly blurred and small
+    canvas = Image.new("L", (int(img.width * 1.8), int(img.height * 1.8)), 150)
+    canvas.paste(img, (int(img.width * 0.4), int(img.height * 0.4)))
+    photo = canvas.rotate(18, resample=Image.BICUBIC, expand=True, fillcolor=150)
+    photo = ImageEnhance.Brightness(photo).enhance(0.55)
+    photo = photo.resize((photo.width // 2, photo.height // 2), Image.BILINEAR)
+    out = io.BytesIO()
+    photo.save(out, format="JPEG", quality=60)
+    assert decode_bytes(out.getvalue(), budget=8.0) == payload

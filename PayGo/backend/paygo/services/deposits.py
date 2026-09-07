@@ -381,6 +381,11 @@ def credit_deposit(deposit_id: int, *, source: str, event_id: int | None = None,
             if event and event.status != "matched":
                 event.status = "processing"
                 event.deposit_id = deposit.id
+            if event and money(event.amount) > 0 and money(event.amount) != amount:
+                # credit exactly what the bank received (tiyins included)
+                log_event(db, "Сумма платежа отличается от заявки", f"{deposit.public_id} • заявка {amount} → оплачено {money(event.amount)}", category="payments", entity_type="deposit", entity_id=deposit.public_id)
+                amount = money(event.amount)
+                deposit.pay_amount = amount
         cash_snapshot = cash
     # network call outside of any transaction
     try:

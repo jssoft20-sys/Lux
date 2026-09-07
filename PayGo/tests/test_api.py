@@ -360,3 +360,80 @@ def test_operator_sends_photo_and_video(logged, user):
         notes = db.query(Notification).filter_by(event="support_reply").order_by(Notification.id).all()
         assert notes[0].data["video_url"].endswith(".mp4") and notes[1].data["photo_url"].endswith(".png")
     assert logged.post(P + f"/support/conversations/{conv}/reply", json={"text": ""}).status_code == 400
+
+
+def _fresh_withdrawal(user, amount="12000", code="ABCD1234"):
+    from paygo.models import Withdrawal
+    from paygo.utils import new_public_id
+
+    with transaction() as db:
+        cash_id = get_cash(db, "1xbet").id
+        row = Withdrawal(public_id=new_public_id("W"), user_id=user, cash_id=cash_id, player_id="77123456", amount=Decimal(amount), currency="KGS", code=code, status="created", provider_claim_key=f"test:{cash_id}:77123456:{code}", idempotency_key=f"idem-{code}")
+        db.add(row)
+        db.flush()
+        return row.id
+
+
+def test_large_payout_needs_receipt_and_client_gets_it(logged, user, fake_provider):
+    wid = _fresh_withdrawal(user, "12000", "RCPT0001")
+    r = logged.get(P + f"/withdrawals/{wid}")
+    assert r.json()["item"]["receipt_required"] is True
+    r = logged.post(P + f"/withdrawals/{wid}/action", json={"action": "complete"})
+    assert r.status_code == 400 and "чек" in r.json()["error"].lower()
+    up = logged.post(P + f"/withdrawals/{wid}/receipt", files={"file": ("receipt.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 64, "image/png")})
+    assert up.status_code == 200 and up.json()["item"]["has_receipt"] is True
+    assert logged.get(P + f"/withdrawals/{wid}/receipt").status_code == 200
+    r = logged.post(P + f"/withdrawals/{wid}/action", json={"action": "complete"})
+    assert r.status_code == 200 and r.json()["item"]["status"] == "success"
+    with transaction() as db:
+        note = db.query(Notification).filter_by(event="withdrawal_success").one()
+        assert note.data["photo_url"].startswith("/uploads/receipts/")
+    small = _fresh_withdrawal(user, "3000", "RCPT0002")
+    assert logged.get(P + f"/withdrawals/{small}").json()["item"]["receipt_required"] is False
+    assert logged.post(P + f"/withdrawals/{small}/action", json={"action": "complete"}).status_code == 200
+
+
+def test_withdrawal_qr_decoded_again_from_photo(logged, user, fake_provider):
+    from paygo.config import get_settings
+    from paygo.services.qr import render_qr_png
+
+    payload = "00020101021132710013QR.Optima.C2B01032031016109182123435011811112149664:1:1120211130212331500112149664:1:15204999953034175904ELQR"
+    wid = _fresh_withdrawal(user, "4200", "QRDEC001")
+    folder = get_settings().data_dir / "uploads" / "qr"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "client.png").write_bytes(render_qr_png(payload))
+    from paygo.models import Withdrawal
+
+    with transaction() as db:
+        w = db.get(Withdrawal, wid)
+        w.qr_file_url = "/uploads/qr/client.png"
+        w.qr_payload = ""
+        w.generated_qr_payload = ""
+    item = logged.get(P + f"/withdrawals/{wid}").json()["item"]
+    assert item["has_qr"] and not item["qr_decoded"] and not item["has_generated_qr"]
+    r = logged.post(P + f"/withdrawals/{wid}/decode-qr")
+    assert r.status_code == 200, r.text
+    item = r.json()["item"]
+    assert item["qr_decoded"] and item["has_generated_qr"] and item["generated_qr_payload"].startswith("000201")
+    assert "4200" in item["generated_qr_payload"].replace(".", "")
+
+
+def test_payment_with_whole_soms_credits_what_was_paid(logged, user, fake_provider):
+    with transaction() as db:
+        u = db.get(User, user)
+        dep, _ = deposits.create_deposit(db, user=u, cash=get_cash(db, "1xbet"), player_id="123456", amount="900", idempotency_key="whole1")
+        dep_id, pay = dep.id, str(dep.pay_amount)
+    assert pay != "900.00"
+    r = logged.post(P + "/webhooks/payments/test-webhook-secret-test-webhook-secret", json={"text": "MBank: зачисление 900.00 KGS"})
+    assert r.status_code == 200 and r.json()["accepted"]
+    with transaction() as db:
+        d = db.get(Deposit, dep_id)
+        assert d.status == "success" and str(d.pay_amount) == "900.00"
+    assert [c for c in fake_provider["calls"] if c[0] == "deposit"][-1][1][1] == Decimal("900.00")
+
+
+def test_1win_provider_has_three_fields_only():
+    from paygo.providers import provider_types
+
+    xapi = next(t for t in provider_types() if t["type"] == "xapi")
+    assert [f["key"] for f in xapi["fields"]] == ["api_key", "agent_login", "agent_password"]

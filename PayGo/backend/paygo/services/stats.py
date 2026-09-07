@@ -24,6 +24,46 @@ def _sum_count(db: Session, model, amount_col, *conditions) -> tuple[str, int]:
     return str(money(row[0] or 0)), int(row[1] or 0)
 
 
+_QUEUES_CACHE: dict[str, Any] = {"at": 0.0, "value": None}
+
+
+def queues(db: Session, max_age: float = 2.5) -> dict[str, Any]:
+    """Counters for the badges (cached for a few seconds — every open panel polls them)."""
+    import time
+
+    now = time.time()
+    if _QUEUES_CACHE["value"] is not None and now - float(_QUEUES_CACHE["at"]) < max_age:
+        return dict(_QUEUES_CACHE["value"])
+    dep = {row[0]: int(row[1]) for row in db.execute(select(Deposit.status, func.count(Deposit.id)).group_by(Deposit.status)).all()}
+    wd_rows = db.execute(select(Withdrawal.status, Withdrawal.needs_attention, Withdrawal.deferred, func.count(Withdrawal.id)).group_by(Withdrawal.status, Withdrawal.needs_attention, Withdrawal.deferred)).all()
+    sup = db.execute(select(SupportConversation.status, SupportConversation.category, func.count(SupportConversation.id)).group_by(SupportConversation.status, SupportConversation.category)).all()
+    unread = db.execute(select(func.count(Notification.id)).where(Notification.channel == "admin_push", Notification.acknowledged_at.is_(None), Notification.status != "expired")).scalar() or 0
+    wd_pending = sum(int(n) for st, _a, _d, n in wd_rows if st in ("created", "processing"))
+    wd_attention = sum(int(n) for st, a, _d, n in wd_rows if a and st in ("created", "processing", "failed"))
+    wd_deferred = sum(int(n) for st, _a, d, n in wd_rows if d and st in ("created", "processing"))
+    open_states = ("waiting_operator", "operator")
+    value = {
+        "deposits_pending": int(dep.get("created", 0) + dep.get("processing", 0)),
+        "deposits_failed": int(dep.get("failed", 0)),
+        "withdrawals_pending": wd_pending,
+        "withdrawals_attention": wd_attention,
+        "withdrawals_deferred": wd_deferred,
+        "support_waiting": sum(int(n) for st, _c, n in sup if st == "waiting_operator"),
+        "support_open": sum(int(n) for st, _c, n in sup if st in open_states),
+        "support_closed": sum(int(n) for st, _c, n in sup if st in ("resolved", "closed")),
+        "support_deposit": sum(int(n) for st, c, n in sup if st in open_states and c == "deposit"),
+        "support_withdrawal": sum(int(n) for st, c, n in sup if st in open_states and c == "withdrawal"),
+        "notifications_unread": int(unread),
+    }
+    _QUEUES_CACHE["at"] = now
+    _QUEUES_CACHE["value"] = value
+    return dict(value)
+
+
+def invalidate_queues() -> None:
+    _QUEUES_CACHE["at"] = 0.0
+
+
 def dashboard(db: Session) -> dict[str, Any]:
     start, end = _day_bounds()
     dep_sum, dep_count = _sum_count(db, Deposit, Deposit.pay_amount, Deposit.status == "success", Deposit.credited_at >= start, Deposit.credited_at < end)

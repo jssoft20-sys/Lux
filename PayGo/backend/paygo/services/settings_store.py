@@ -95,6 +95,7 @@ DEFAULTS: dict[str, Any] = {
     "deposit_max_active_per_user": 1,
     # withdrawals
     "withdraw_code_min_length": 4,
+    "withdraw_receipt_min": 10000,
     "withdraw_processing_timeout_minutes": 60,
     # referrals
     "referral_bonus_pct": 1.0,

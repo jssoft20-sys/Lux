@@ -276,7 +276,8 @@
         document.dispatchEvent(new CustomEvent('paygo:live', { detail: r.queues }));
       } catch (e) { /* silent */ }
     };
-    tick(); state.poll = setInterval(tick, 3000);
+    tick(); state.poll = setInterval(() => { if (!document.hidden) tick(); }, 5000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
     setInterval(() => { api('/auth/refresh', { method: 'POST' }).then((r) => { state.admin = r.admin; }).catch(() => {}); }, 10 * 60 * 1000);
   }
   function stopLive() { if (state.poll) clearInterval(state.poll); state.poll = null; }
@@ -437,7 +438,7 @@
     const draw = async () => {
       try {
         const r = await api('/support/conversations/' + id); c = r.item; const ctx = c.context || {}; screen.innerHTML = '';
-        const head = h('header', { class: 'chat-head' }, h('button', { class: 'header-btn', onclick: () => go('#/chats') }, svg('back', 18)), h('button', { class: 'chat-person', onclick: () => go('#/users/' + c.user_id) }, h('span', { class: 'avatar mini' }, (c.user_name || '?').charAt(0).toUpperCase()), h('span', null, h('b', null, c.user_name), h('small', null, 'TG ' + c.telegram_id + (c.username ? ' · @' + c.username : '') + ' · ' + (STATUS[c.status] || [c.status])[0] + (ctx.channel === 'main' ? ' · через основной бот' : '')))), can('support') ? h('button', { class: 'chat-close-btn ' + (c.status === 'resolved' ? 'open' : ''), onclick: async () => { if (c.status === 'resolved') { await api('/support/conversations/' + c.id + '/status', { method: 'POST', body: { status: 'operator' } }); draw(); return; } const note = await promptDialog('Завершить обращение', 'Сообщение клиенту (необязательно)'); if (note === null) return; await api('/support/conversations/' + c.id + '/status', { method: 'POST', body: { status: 'resolved', note } }); go('#/chats'); } }, c.status === 'resolved' ? 'Вернуть' : 'Завершить') : h('span'), h('button', { class: 'header-btn', 'aria-label': 'Меню', onclick: () => chatMenu(c, draw) }, svg('more', 18)));
+        const head = h('header', { class: 'chat-head' }, h('button', { class: 'header-btn', onclick: () => go('#/chats') }, svg('back', 18)), h('button', { class: 'chat-person', onclick: () => go('#/users/' + c.user_id) }, h('span', { class: 'avatar mini' }, (c.user_name || '?').charAt(0).toUpperCase()), h('span', null, h('b', null, c.user_name), h('small', null, 'TG ' + c.telegram_id + (c.username ? ' · @' + c.username : '') + ' · ' + (STATUS[c.status] || [c.status])[0] + (ctx.channel === 'main' ? ' · через основной бот' : '')))), h('button', { class: 'header-btn', 'aria-label': 'Копировать ID', onclick: () => copy(c.telegram_id) }, svg('copy', 16)), can('support') ? h('button', { class: 'chat-close-btn ' + (c.status === 'resolved' ? 'open' : ''), onclick: async () => { if (c.status === 'resolved') { await api('/support/conversations/' + c.id + '/status', { method: 'POST', body: { status: 'operator' } }); draw(); return; } const note = await promptDialog('Завершить обращение', 'Сообщение клиенту (необязательно)'); if (note === null) return; await api('/support/conversations/' + c.id + '/status', { method: 'POST', body: { status: 'resolved', note } }); go('#/chats'); } }, c.status === 'resolved' ? 'Вернуть' : 'Завершить') : h('span'), h('button', { class: 'header-btn', 'aria-label': 'Меню', onclick: () => chatMenu(c, draw) }, svg('more', 18)));
         screen.appendChild(head);
         if (ctx.deposit || ctx.withdrawal) { const t = ctx.withdrawal && c.category !== 'deposit' ? ctx.withdrawal : ctx.deposit; const dep = t === ctx.deposit; screen.appendChild(h('button', { class: 'case-card', onclick: () => openTxSheet(dep ? 'deposit' : 'withdraw', t.id) }, h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, h('i', { class: 'kind-badge ' + (dep ? 'deposit' : 'withdraw') }, dep ? 'ПП' : 'ВВ'), h('b', null, (dep ? 'Пополнение ' : 'Вывод ') + t.public_id), h('span', { style: { flex: 1 } }), statusEl(t.status, t.status_label)), h('small', null, t.cash + ' • ID ' + t.player_id + ' • ' + money(t.amount) + ' ' + t.currency + ' • ' + fmtDate(t.created_at)), t.error ? h('small', { style: { color: '#bd344a' } }, reasonText(t.error)) : null)); }
         feed.innerHTML = ''; lastId = 0;
@@ -448,7 +449,7 @@
         if (can('support')) screen.appendChild(composer.el);
         fitViewport(); bottom(false); setTimeout(() => bottom(false), 250); setTimeout(() => bottom(false), 700);
         feed.querySelectorAll('img').forEach((im) => im.addEventListener('load', () => { if (nearBottom()) bottom(false); }));
-        const poll = setInterval(async () => { if (!document.body.contains(feed)) return clearInterval(poll); try { const rr = await api('/support/conversations/' + c.id + '?after_id=' + lastId); if (rr.messages.length) { const stick = nearBottom(); rr.messages.forEach((m) => { feed.appendChild(bubble(m)); lastId = Math.max(lastId, m.id); }); if (stick) bottom(true); } } catch (e) {} }, 2500);
+        const poll = setInterval(async () => { if (!document.body.contains(feed)) return clearInterval(poll); if (document.hidden) return; try { const rr = await api('/support/conversations/' + c.id + '?after_id=' + lastId); if (rr.messages.length) { const stick = nearBottom(); rr.messages.forEach((m) => { feed.appendChild(bubble(m)); lastId = Math.max(lastId, m.id); }); if (stick) bottom(true); } } catch (e) {} }, 3000);
       } catch (e) { screen.innerHTML = ''; screen.appendChild(header('Чат')); screen.appendChild(empty('Ошибка', e.message)); }
     };
     function makeComposer() {
@@ -530,7 +531,7 @@
     if (opts.confirm && !(await confirmDialog(opts.confirm, opts.okLabel || 'Да', opts.danger))) return null;
     try { const r = await api('/' + path + '/' + tx.id + '/action', { method: 'POST', body: { action, reason } }); toast(opts.done || 'Готово', 'ok'); return r.item || tx; } catch (e) { err(e); return null; }
   }
-  function txTitle(kind, tx) { return h('span', { class: 'tx-title' }, (kind === 'deposit' ? 'Пополнение' : 'Вывод') + ' # ' + txNo(tx), txStatus(tx)); }
+  function txTitle(kind, tx) { return h('span', { class: 'tx-title' }, h('span', { class: 'copy-text', onclick: () => copy(tx.public_id || txNo(tx)) }, (kind === 'deposit' ? 'Пополнение' : 'Вывод') + ' # ' + txNo(tx), svg('copy', 13)), txStatus(tx)); }
   function txHero(kind, tx, withStatus) {
     const dep = kind === 'deposit';
     return h('div', { class: 'tx-hero' }, h('div', { class: 'tx-hero-amount ' + (dep ? 'deposit' : 'withdraw') }, (dep ? '+ ' : '− ') + money(dep ? tx.pay_amount : tx.amount) + ' ' + tx.currency), h('div', { class: 'tx-hero-sub' }, withStatus ? txStatus(tx) : null, dep && tx.amount !== tx.pay_amount ? h('small', null, 'запрос ' + money(tx.amount)) : null, tx.deferred ? h('span', { class: 'pill amber' }, 'отложен') : null));
@@ -555,7 +556,8 @@
       ['Создана', fmtDate(tx.created_at)],
       !dep ? ['Выполнена', tx.completed_at ? fmtDate(tx.completed_at) : '—'] : null,
       ['Обработал', tx.operator_id ? (tx.operator_name || '—') : '—'],
-      dep ? ['Чек', tx.has_receipt ? h('span', { class: 'pill green' }, 'получен') : 'нет'] : ['QR клиента', tx.has_qr ? h('span', { class: 'pill green' }, 'есть') : 'нет'],
+      dep ? ['Чек', tx.has_receipt ? h('span', { class: 'pill green' }, 'получен') : 'нет'] : ['QR клиента', tx.has_qr ? h('span', { class: 'pill ' + (tx.qr_decoded ? 'green' : 'amber') }, tx.qr_decoded ? 'распознан' : 'не распознан') : 'нет'],
+      !dep ? ['Чек перевода', tx.has_receipt ? h('span', { class: 'pill green' }, 'прикреплён') : (tx.receipt_required ? h('span', { class: 'pill amber' }, 'нужен') : '—')] : null,
       tx.error ? ['Комментарий', h('span', { class: 'err-text' }, reasonText(tx.error))] : null,
     ];
   }
@@ -566,6 +568,7 @@
     const out = [];
     if (ops && open) {
       if (dep) out.push(tx.status === 'processing' ? h('button', { class: 'big-btn green', disabled: true }, 'Зачисляется…') : h('button', { class: 'big-btn green', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const r = await txAction(kind, tx, 'credit', { confirm: 'Зачислить ' + money(tx.pay_amount) + ' ' + tx.currency + ' на ID ' + tx.player_id + '?', okLabel: 'Зачислить', done: 'Зачислено' }); busy(b, false); if (r) ctx.refresh(); } }, 'Зачислить на счёт игрока'));
+      else if (tx.receipt_required && !tx.has_receipt) out.push(h('button', { class: 'big-btn amber', onclick: async () => { const ok = await pickReceipt(tx, null); if (!ok) return; const r = await txAction(kind, tx, 'complete', { confirm: 'Чек прикреплён. Перевели ' + money(tx.amount) + ' ' + tx.currency + ' клиенту?', okLabel: 'Да, перевёл', done: 'Вывод выполнен' }); ctx.refresh(); } }, svg('image', 16), 'Чек перевода → Перевёл'));
       else out.push(h('button', { class: 'big-btn green', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const r = await txAction(kind, tx, 'complete', { confirm: 'Перевели ' + money(tx.amount) + ' ' + tx.currency + ' клиенту?', okLabel: 'Да, перевёл', done: 'Вывод выполнен' }); busy(b, false); if (r) ctx.refresh(); } }, 'Перевёл на счёт игрока'));
     }
     const grid = h('div', { class: 'btn-grid compact' });
@@ -575,7 +578,8 @@
     if (ops && open && !dep) grid.appendChild(h('button', { class: 'action-btn amber', onclick: async () => { const r = await txAction(kind, tx, tx.deferred ? 'resume' : 'defer', { done: tx.deferred ? 'Возвращено в работу' : 'Отложено' }); if (r) ctx.refresh(); } }, svg('history', 14), tx.deferred ? 'Вернуть' : 'Отложить'));
     if (ops && open && (!dep || tx.status === 'created')) grid.appendChild(h('button', { class: 'action-btn', onclick: async () => { const r = dep ? await txAction(kind, tx, 'cancel', { confirm: 'Отменить заявку?', okLabel: 'Отменить', danger: true, done: 'Отменено' }) : await txAction(kind, tx, 'reject', { askReason: 'Причина отмены', done: 'Отменено' }); if (r) ctx.refresh(); } }, svg('close', 14), 'Отменить'));
     if (dep && tx.has_receipt) grid.appendChild(h('button', { class: 'action-btn', onclick: () => imageSheet('Чек клиента', API + '/deposits/' + tx.id + '/receipt', fmtDate(tx.receipt_at)) }, svg('image', 14), 'Чек'));
-    if (!dep && tx.qr_file_url) grid.appendChild(h('button', { class: 'action-btn', onclick: () => imageSheet('QR клиента', API + '/withdrawals/' + tx.id + '/photo', tx.qr_payload ? '' : 'не распознан автоматически') }, svg('qr', 14), 'Фото QR'));
+    if (!dep && tx.has_receipt) grid.appendChild(h('button', { class: 'action-btn', onclick: () => imageSheet('Чек перевода', API + '/withdrawals/' + tx.id + '/receipt', fmtDate(tx.receipt_at)) }, svg('image', 14), 'Чек'));
+    else if (!dep && open && ops) grid.appendChild(h('button', { class: 'action-btn', onclick: () => pickReceipt(tx, ctx.refresh) }, svg('image', 14), 'Чек перевода'));
     if (can('support')) grid.appendChild(h('button', { class: 'action-btn', onclick: () => openChat(tx.user_id) }, svg('send', 14), 'Написать'));
     if (can('users') && ctx.user) grid.appendChild(h('button', { class: 'action-btn ' + (ctx.user.is_blocked ? 'blue' : 'danger'), onclick: async () => { const u = ctx.user; if (u.is_blocked) { if (!(await confirmDialog('Разблокировать клиента?', 'Разблокировать'))) return; try { await api('/users/' + u.id, { method: 'PATCH', body: { is_blocked: false, block_reason: '' } }); toast('Разблокирован', 'ok'); ctx.refresh(); } catch (e) { err(e); } return; } const reason = await promptDialog('Заблокировать клиента', 'Клиент увидит причину'); if (reason === null) return; try { await api('/users/' + u.id, { method: 'PATCH', body: { is_blocked: true, block_reason: reason } }); toast('Заблокирован', 'ok'); ctx.refresh(); } catch (e) { err(e); } } }, ctx.user.is_blocked ? 'Разблокировать' : 'Заблокировать'));
     out.push(grid);
@@ -586,10 +590,43 @@
     const tx = r.item; const dep = kind === 'deposit';
     ctx.user = r.user;
     const body = h('div', { class: 'tx-view' }, txHero(kind, tx, !ctx.inSheet), (tx.status === 'failed' || tx.needs_attention) && tx.error && tx.status !== 'success' ? h('div', { class: 'hint-card err' }, reasonText(tx.error)) : null, tx.payment ? h('div', { class: 'pay-note ' + tx.payment.kind }, svg(tx.payment.kind === 'matched' ? 'check' : 'bolt', 14), (tx.payment.kind === 'matched' ? 'Платёж получен: ' : 'Есть платёж на эту сумму: ') + srcLabel(tx.payment.source) + ' · ' + money(tx.payment.amount) + ' · ' + fmtDate(tx.payment.received_at)) : null, userCard(r.user, ctx.close, tx.player_name), infoTable(txRows(kind, tx)));
-    if (!dep && (tx.has_generated_qr || tx.qr_file_url)) { const src = tx.has_generated_qr ? API + '/withdrawals/' + tx.id + '/qr.png?kind=generated' : API + '/withdrawals/' + tx.id + '/photo'; body.appendChild(h('div', { class: 'qr-pay' }, h('img', { src, alt: 'QR', onclick: () => imageSheet('QR · ' + money(tx.amount) + ' ' + tx.currency, src) }), h('small', null, tx.has_generated_qr ? 'QR с суммой ' + money(tx.amount) + ' ' + tx.currency : 'Фото QR от клиента'), r.payment_links && r.payment_links.length ? h('div', { class: 'bank-row' }, r.payment_links.map((l) => h('a', { class: 'outline-btn', href: l.url, target: '_blank', rel: 'noopener' }, l.name))) : null)); }
+    if (!dep && (tx.has_generated_qr || tx.qr_file_url || tx.qr_payload)) body.appendChild(qrBlock(tx, r, ctx));
     body.appendChild(historyBlock(r.history));
     txButtons(kind, tx, ctx).forEach((n) => body.appendChild(n));
     return body;
+  }
+  function qrBlock(tx, r, ctx) {
+    /* withdrawal QR: «С суммой» (rebuilt with the payout amount) and «Оригинал» (client's photo) */
+    const gen = tx.has_generated_qr ? API + '/withdrawals/' + tx.id + '/qr.png?kind=generated' : '';
+    const orig = tx.qr_file_url ? API + '/withdrawals/' + tx.id + '/photo' : (tx.qr_payload ? API + '/withdrawals/' + tx.id + '/qr.png?kind=original' : '');
+    const tabs = [gen ? ['gen', 'С суммой'] : null, orig ? ['orig', 'Оригинал'] : null].filter(Boolean);
+    let cur = tabs.length ? tabs[0][0] : '';
+    const img = h('img', { alt: 'QR' }); const cap = h('small'); const tabBar = h('div', { class: 'qr-tabs' });
+    const links = r.payment_links && r.payment_links.length ? h('div', { class: 'bank-row' }, r.payment_links.map((l) => h('a', { class: 'outline-btn', href: l.url, target: '_blank', rel: 'noopener' }, l.name))) : null;
+    const draw = () => {
+      tabBar.innerHTML = ''; tabs.forEach(([k, l]) => tabBar.appendChild(h('button', { class: k === cur ? 'active' : '', type: 'button', onclick: () => { cur = k; draw(); } }, l)));
+      const src = cur === 'gen' ? gen : orig; img.src = src; img.onclick = () => imageSheet(cur === 'gen' ? 'QR с суммой ' + money(tx.amount) + ' ' + tx.currency : 'QR клиента', src);
+      cap.textContent = cur === 'gen' ? 'Сумма ' + money(tx.amount) + ' ' + tx.currency + ' уже внутри QR' : (tx.qr_decoded ? 'Фото клиента' : 'Фото клиента · QR не распознан');
+      if (links) links.hidden = cur !== 'gen';
+    };
+    const tools = h('div', { class: 'bank-row' });
+    if (!tx.qr_decoded && tx.qr_file_url && can('operations')) tools.appendChild(h('button', { class: 'outline-btn blue', type: 'button', onclick: async (e) => { const b = e.currentTarget; busy(b, true); try { const rr = await api('/withdrawals/' + tx.id + '/decode-qr', { method: 'POST' }); toast('QR распознан', 'ok'); ctx.refresh(); } catch (ex) { err(ex); } busy(b, false); } }, svg('qr', 14), 'Распознать QR'));
+    if (!tx.qr_decoded && can('operations')) tools.appendChild(h('button', { class: 'outline-btn', type: 'button', onclick: async () => { const t = await promptDialog('Текст QR', 'Вставьте содержимое QR (ELQR 000201… или ссылку банка)'); if (!t) return; try { await api('/withdrawals/' + tx.id + '/edit', { method: 'POST', body: { fields: { qr_payload: t } } }); toast('QR сохранён', 'ok'); ctx.refresh(); } catch (ex) { err(ex); } } }, svg('edit', 14), 'Ввести вручную'));
+    if (!tabs.length) return h('div', { class: 'qr-pay' }, h('small', null, 'QR не прикреплён'), tools.childNodes.length ? tools : null);
+    draw();
+    return h('div', { class: 'qr-pay' }, tabs.length > 1 ? tabBar : null, img, cap, links, tools.childNodes.length ? tools : null);
+  }
+  async function pickReceipt(tx, refresh) {
+    /* transfer receipt for a payout: camera or gallery → stored on the request → sent to the client with «Вывод выполнен» */
+    return new Promise((resolve) => {
+      const input = h('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
+      const cam = h('input', { type: 'file', accept: 'image/*', capture: 'environment', style: { display: 'none' } });
+      const upload = async (file) => { if (!file) return resolve(false); const note = toast('Загружаю чек…', '', 60000); try { const fd = new FormData(); fd.append('file', file); await api('/withdrawals/' + tx.id + '/receipt', { method: 'POST', body: fd }); note.remove(); toast('Чек прикреплён', 'ok'); if (refresh) refresh(); resolve(true); } catch (e) { note.remove(); err(e); resolve(false); } };
+      input.onchange = () => upload(input.files[0]); cam.onchange = () => upload(cam.files[0]);
+      document.body.appendChild(input); document.body.appendChild(cam);
+      const s = actionSheet('Чек перевода', [{ label: 'Сделать фото', icon: 'image', onclick: () => cam.click() }, { label: 'Из галереи', icon: 'note', onclick: () => input.click() }]);
+      const prev = s.close; s.close = () => { prev(); setTimeout(() => { if (!input.files.length && !cam.files.length) resolve(false); input.remove(); cam.remove(); }, 1500); };
+    });
   }
   function historyBlock(items) {
     /* «История» lives right under the details: one row, tap to unfold */
@@ -654,7 +691,7 @@
       try {
         const r = await api('/users/' + id); const u = r.item; box.innerHTML = '';
         const patch = (body) => api('/users/' + u.id, { method: 'PATCH', body });
-        box.appendChild(h('div', { class: 'profile-head' }, h('span', { class: 'avatar big' }, (u.name || '?').charAt(0).toUpperCase()), h('b', null, u.name || 'Клиент'), h('small', null, 'TG ' + u.telegram_id + (u.username ? ' · @' + u.username : '')), u.is_blocked ? h('span', { class: 'pill red' }, 'заблокирован') : null));
+        box.appendChild(h('div', { class: 'profile-head' }, h('span', { class: 'avatar big' }, (u.name || '?').charAt(0).toUpperCase()), h('b', null, u.name || 'Клиент'), h('div', { class: 'copy-row' }, h('button', { class: 'copy-chip', type: 'button', onclick: () => copy(u.telegram_id) }, 'TG ' + u.telegram_id, svg('copy', 13)), u.username ? h('button', { class: 'copy-chip', type: 'button', onclick: () => copy('@' + u.username) }, '@' + u.username, svg('copy', 13)) : null), u.is_blocked ? h('span', { class: 'pill red' }, 'заблокирован') : null));
         box.appendChild(h('div', { class: 'tiles3' }, h('div', { class: 'card tile' }, h('b', null, (u.deposits_count || 0) + (u.withdrawals_count || 0)), h('small', null, 'Всего')), h('div', { class: 'card tile green' }, h('b', null, money(u.deposits_sum)), h('small', null, 'Пополнения · ' + u.deposits_count)), h('div', { class: 'card tile red' }, h('b', null, money(u.withdrawals_sum)), h('small', null, 'Выводы · ' + u.withdrawals_count))));
         box.appendChild(h('div', { class: 'card section-card' },
           h('button', { class: 'setting-row tap', type: 'button', onclick: async () => { if (!can('users')) return; const t = await promptDialog('Заметка', 'Видна только операторам', '', u.note || ''); if (t === null) return; try { await patch({ note: t }); toast('Сохранено', 'ok'); draw(); } catch (e) { err(e); } } }, h('div', null, h('b', null, 'Заметка'), h('small', null, u.note || 'Нажмите, чтобы добавить')), svg('edit', 16)),
@@ -750,9 +787,9 @@
       draw(); return wrap;
     };
     const body = h('div', null,
-      isNew ? field('Ключ (латиницей, напр. 1xbet)', 'key') : null, field('Название (как в кнопке бота)', 'name'), isNew ? field('Тип', 'provider_type', 'select', state.types.map((t) => [t.type, t.label])) : h('label', { class: 'field' }, h('span', null, 'Тип'), h('input', { class: 'input', value: c.provider_type, disabled: true })),
+      isNew ? field('Ключ (латиницей, напр. 1xbet)', 'key') : null, field('Название (как в кнопке бота)', 'name'), isNew ? field('Тип', 'provider_type', 'select', state.types.map((t) => [t.type, t.label])) : h('label', { class: 'field' }, h('span', null, 'Тип'), h('input', { class: 'input', value: (state.types.find((t) => t.type === c.provider_type) || { label: c.provider_type }).label, disabled: true })),
       h('div', { class: 'stat-grid' }, field('Эмодзи в кнопке', 'emoji', 'text', { placeholder: '😎' }), field('ID premium-эмодзи', 'custom_emoji_id', 'text', { placeholder: 'необязательно' })),
-      h('div', { class: 'stat-grid' }, field('Приоритет', 'priority', 'number'), field('Валюта', 'currency')), field('Валюты игрока (через запятую)', 'accepted_currency_ids', 'text', { placeholder: 'пусто — не проверять' }), field('IP кассы', 'ip_address'), field('Адрес API', 'base_url'),
+      h('div', { class: 'stat-grid' }, field('Приоритет', 'priority', 'number'), field('Валюта', 'currency')), field('Валюты игрока (через запятую)', 'accepted_currency_ids', 'text', { placeholder: 'пусто — не проверять' }), (function () { const extra = h('div', null, field('IP кассы', 'ip_address'), field('Адрес API', 'base_url')); const sync = () => { extra.hidden = (f.provider_type ? f.provider_type.value : c.provider_type) === 'xapi'; }; setTimeout(sync, 0); if (f.provider_type) f.provider_type.addEventListener('change', sync); return extra; })(),
       h('div', { class: 'card section-card' }, bool('Касса включена', 'enabled'), bool('Пополнение', 'deposit_enabled'), bool('Вывод', 'withdraw_enabled')),
       h('div', { class: 'stat-grid' }, field('Мин. пополнение', 'deposit_min', 'number'), field('Макс. пополнение', 'deposit_max', 'number'), field('Комиссия ПП, %', 'deposit_fee_pct', 'number'), field('Комиссия ВВ, %', 'withdraw_fee_pct', 'number')),
       title('Автоотключение по балансу'), h('div', { class: 'card section-card' }, bool('Автоматически отключать пополнения', 'auto_disable_enabled')),
@@ -1001,7 +1038,7 @@
     ['withdraw', 'Выводы', [
       ['Адрес', [['withdraw_city', 'Город'], ['withdraw_address', 'Адрес'], ['withdraw_sla_text', 'Сроки']]],
       ['Инструкция', [['instruction_text', 'Текст', 'textarea']]],
-      ['Правила', [['withdraw_code_min_length', 'Мин. длина кода', 'number'], ['withdraw_processing_timeout_minutes', 'Таймаут обработки, мин', 'number']]],
+      ['Правила', [['withdraw_receipt_min', 'Чек перевода обязателен от суммы (0 — никогда)', 'number'], ['withdraw_code_min_length', 'Мин. длина кода', 'number'], ['withdraw_processing_timeout_minutes', 'Таймаут обработки, мин', 'number']]],
     ]],
     ['deposit', 'Пополнения', [
       ['Заявка', [['payment_timeout_seconds', 'Время на оплату, сек', 'number'], ['deposit_max_active_per_user', 'Активных заявок на клиента', 'number'], ['deposit_presets', 'Кнопки сумм'], ['receipt_request_enabled', 'Просить чек', 'bool']]],

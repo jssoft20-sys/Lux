@@ -116,11 +116,23 @@ def _find_deposit_for_amount(db: Session, amount: Decimal) -> Deposit | None:
     grace = settings_store.get_int(db, "payment_event_max_age_minutes", 15)
     cutoff = now - timedelta(minutes=grace)
     # a late bank notification for a deposit that just expired is still a real payment
-    return db.execute(
+    row = db.execute(
         select(Deposit)
         .where(Deposit.status.in_(("expired", "failed")), Deposit.pay_amount == amount, Deposit.closed_at.is_not(None), Deposit.closed_at >= cutoff)
         .order_by(Deposit.id.desc())
     ).scalars().first()
+    if row:
+        return row
+    # the client paid the whole soms but not the tiyins (or paid a little more): when exactly one
+    # open request has the same whole amount, it is that request — it gets credited with what was paid
+    whole = int(amount)
+    candidates = [
+        d for d in db.execute(select(Deposit).where(Deposit.status == "created")).scalars().all()
+        if int(money(d.pay_amount)) == whole and abs(money(d.pay_amount) - amount) < Decimal("1")
+    ]
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
 
 
 def process_event(event_id: int) -> dict[str, Any]:

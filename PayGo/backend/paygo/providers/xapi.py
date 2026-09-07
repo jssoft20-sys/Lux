@@ -40,6 +40,16 @@ def _num(root: dict[str, Any], *keys: str) -> Decimal | None:
     return None
 
 
+def _token_of(data: Any) -> str:
+    """The JWT in a login answer: a bare string, ``{"token"}``, ``{"accessToken"}`` or nested under ``data``."""
+    if isinstance(data, str):
+        return data.strip().strip('"')
+    if isinstance(data, dict):
+        nested = data.get("data") if isinstance(data.get("data"), dict) else {}
+        return str(data.get("token") or data.get("accessToken") or nested.get("token") or nested.get("accessToken") or "").strip()
+    return ""
+
+
 def _jwt_exp(token: str) -> float:
     try:
         payload = token.split(".")[1]
@@ -52,17 +62,11 @@ def _jwt_exp(token: str) -> float:
 @register
 class XapiAdapter(BaseAdapter):
     type_name = "xapi"
-    label = "1WIN Cash (X-API-KEY)"
+    label = "1win (API key; логин и пароль 1win.win — для баланса)"
     credential_fields = [
-        {"key": "api_key", "label": "X-API-KEY", "required": True, "secret": True},
-        {"key": "agent_login", "label": "Логин агентской кассы (для баланса)", "required": False},
-        {"key": "agent_password", "label": "Пароль агентской кассы", "required": False, "secret": True},
-        {"key": "agent_cashdeskid", "label": "ID кассы 1win", "required": False},
-        {"key": "agent_tenant_id", "label": "Tenant ID", "required": False},
-        {"key": "agent_user_agent", "label": "User-Agent для агентского API", "required": False},
-        {"key": "agent_fingerprint_id", "label": "Fingerprint ID", "required": False},
-        {"key": "agent_client_id", "label": "Client ID", "required": False},
-        {"key": "code_as_number", "label": "Код вывода отправлять числом (1/0)", "required": False},
+        {"key": "api_key", "label": "API key", "required": True, "secret": True},
+        {"key": "agent_login", "label": "Логин (1win.win, для баланса)", "required": False},
+        {"key": "agent_password", "label": "Пароль (1win.win)", "required": False, "secret": True},
     ]
 
     @property
@@ -137,15 +141,27 @@ class XapiAdapter(BaseAdapter):
         if self.creds.get("agent_client_id"):
             payload["clientId"] = str(self.creds["agent_client_id"])
         status, data = http_json("POST", base + "/login", json={"data": payload}, headers=self._agent_headers(), label="1win.login")
-        token = ""
-        if isinstance(data, str):
-            token = data.strip().strip('"')
-        elif isinstance(data, dict):
-            nested = data.get("data") if isinstance(data.get("data"), dict) else {}
-            token = str(data.get("token") or data.get("accessToken") or nested.get("token") or nested.get("accessToken") or "").strip()
+        token = _token_of(data)
+        if not token and status in (400, 404, 405, 415, 422):
+            # older / stricter portal builds accept only the bare credentials
+            for body in ({"data": {"login": login, "password": password}}, {"login": login, "password": password}):
+                status, data = http_json("POST", base + "/login", json=body, headers=self._agent_headers(), label="1win.login")
+                token = _token_of(data)
+                if token:
+                    break
         if not (200 <= status < 300 and token.count(".") == 2):
-            msg = "1WIN: Unauthorized. Проверьте логин, пароль и IP сервера." if status in (401, 403) else f"1WIN: вход не выполнен (HTTP {status})."
-            return {"ok": False, "message": msg, "status": status}
+            detail = ""
+            if isinstance(data, dict):
+                detail = str(data.get("message") or data.get("error") or data.get("detail") or "")[:160]
+            elif isinstance(data, str):
+                detail = data.strip()[:160]
+            if status in (401, 403):
+                msg = "1WIN: вход отклонён (логин/пароль или IP сервера не разрешён в кабинете 1win.win)."
+            elif status == 0 or status >= 500:
+                msg = f"1WIN: 1win.win не отвечает (HTTP {status})."
+            else:
+                msg = f"1WIN: вход не выполнен (HTTP {status})."
+            return {"ok": False, "message": (msg + (" " + detail if detail else "")).strip(), "status": status}
         exp = _jwt_exp(token) or now + 45 * 60
         with _TOKEN_LOCK:
             _TOKEN_CACHE[cache_key] = {"token": token, "expires_at": exp}
@@ -161,8 +177,10 @@ class XapiAdapter(BaseAdapter):
             if status in (401, 403) and attempt == 0:
                 continue
             root = mapping(data)
-            ok = 200 <= status < 300 and any(k in root for k in ("balance", "limitCurrent", "limit"))
-            return ProviderResult(ok=ok, status=status, data=data, message="OK" if ok else human_error(status, data, "balance"), balance=_num(root, "balance"), limit=_num(root, "limitCurrent", "limit"))
+            nested = root.get("data") if isinstance(root.get("data"), dict) else {}
+            root = {**nested, **{k: v for k, v in root.items() if k != "data"}} if nested else root
+            ok = 200 <= status < 300 and any(k in root for k in ("balance", "limitCurrent", "limit", "currentBalance"))
+            return ProviderResult(ok=ok, status=status, data=data, message="OK" if ok else human_error(status, data, "balance"), balance=_num(root, "balance", "currentBalance"), limit=_num(root, "limitCurrent", "limit"))
         return ProviderResult(ok=False, status=403, message="1WIN: не удалось обновить сессию агентского API.")
 
     def test_connection(self) -> ProviderResult:
@@ -171,4 +189,4 @@ class XapiAdapter(BaseAdapter):
             return ProviderResult(ok=False, message="Не заполнены поля: " + ", ".join(missing))
         if self.creds.get("agent_login") and self.creds.get("agent_password"):
             return self.balance()
-        return ProviderResult(ok=True, message="X-API-KEY сохранён. Баланс доступен после указания агентского логина.")
+        return ProviderResult(ok=True, message="API key сохранён. Для баланса укажите логин и пароль от 1win.win.")

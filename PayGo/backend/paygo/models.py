@@ -283,6 +283,8 @@ class Withdrawal(TimestampMixin, Base):
     qr_file_url: Mapped[str] = mapped_column(Text, default="", nullable=False)
     qr_payload: Mapped[str] = mapped_column(Text, default="", nullable=False)
     generated_qr_payload: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    receipt_file: Mapped[str] = mapped_column(Text, default="", nullable=False)  # operator's transfer receipt (large payouts)
+    receipt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(16), default="created", nullable=False, index=True)
     needs_attention: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     deferred: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
