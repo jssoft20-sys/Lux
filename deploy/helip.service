@@ -1,0 +1,22 @@
+[Unit]
+Description=HeliHop helicopter tours website (Node.js, port 7033)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/Helip
+Environment=NODE_ENV=production
+Environment=PORT=7033
+Environment=HOST=0.0.0.0
+# Optional: Telegram notifications for new bookings
+# Environment=TELEGRAM_BOT_TOKEN=123456:ABC...
+# Environment=TELEGRAM_CHAT_ID=123456789
+# Optional: token to read bookings via GET /api/bookings?token=...
+# Environment=ADMIN_TOKEN=change-me
+ExecStart=/usr/bin/env node /home/Helip/server.js
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,5 @@
+node_modules/
+data/bookings.jsonl
+.DS_Store
+*.log
+release/*.tmp
