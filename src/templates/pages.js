@@ -67,6 +67,7 @@ function home({ lang, t }) {
   const exp = h.exp.map((e) => `<a class="tile tile--${e.key}" href="${url(lang, e.href)}" data-reveal="scale" data-cursor="view">
       <div class="tile__media">${img(e.image, { alt: e.title, sizes: '(min-width:1024px) 50vw, 100vw' })}</div>
       <div class="tile__body"><p class="tile__price">${esc(e.price)}</p><h3 class="tile__title">${esc(e.title)}</h3><p class="tile__desc">${esc(e.desc)}</p><span class="tile__arrow">${I.arrowUp}</span></div>
+      <span class="glare" aria-hidden="true"></span>
     </a>`).join('');
   const flightItems = routes.map((r, i) => `<div class="flight__item" data-index="${i}">
       <div class="flight__node" data-node><span class="flight__node-dot"></span><span class="flight__node-alt">${r.landing ? fmtNum(r.landing) + ' ' + c.metres : c.noLanding}</span></div>
@@ -86,7 +87,8 @@ function home({ lang, t }) {
       <canvas class="hero__mist" id="mist" aria-hidden="true"></canvas>
       <div class="hero__vignette" aria-hidden="true"></div>
     </div>
-    <div class="hero__heli" id="hero-heli"><div class="hero__heli-p" id="hero-heli-p">${heliSvg('heli--hero', 'heli-hero')}</div></div>
+    <div class="hero__stage" id="hero-stage" aria-hidden="true"></div>
+    <div class="hero__heli" id="hero-heli" hidden><div class="hero__heli-p" id="hero-heli-p">${heliSvg('heli--hero', 'heli-hero')}</div></div>
     <div class="container hero__inner">
       <p class="hero__overline" data-hero><span class="dot"></span>${esc(h.overline)}</p>
       <h1 class="hero__title" id="hero-title">${heroTitle}</h1>
@@ -141,13 +143,18 @@ function home({ lang, t }) {
     </div>
   </section>
 
-  <section class="fleet section" id="fleet">
-    <div class="container">${sectionHead({ label: h.fleetLabel, title: h.fleetTitle, link: url(lang, 'about'), linkText: h.fleetMore })}</div>
-    <div class="fleet__scroller" id="fleet-scroller" data-cursor="drag">
-      <div class="fleet__track" id="fleet-track">
-        ${FLEET.map((f, i) => fleetCard(f, lang, t, i)).join('')}
-        <a class="fcard fcard--end" href="${url(lang, 'about')}"><span class="fcard__end-text">${esc(h.fleetMore)}</span><span class="fcard__end-arrow">${I.arrow}</span></a>
-      </div>
+  <section class="show section" id="fleet">
+    <div class="container">${sectionHead({ label: t.showcase.label, title: t.showcase.title, sub: t.showcase.sub })}</div>
+    <div class="show__pin" id="show-pin">
+      <div class="show__stage" id="show-stage" data-cursor="drag"><canvas id="stage-show" aria-hidden="true"></canvas><div class="show__fallback" id="show-fallback" hidden>${img('fleet-h125', { alt: 'Airbus H125', sizes: '(min-width:1024px) 60vw, 100vw' })}</div><p class="show__hint">${esc(t.showcase.hint)}</p></div>
+      <div class="show__chapters">${t.showcase.chapters.map((ch, i) => `<article class="show__ch${i === 0 ? ' is-active' : ''}" data-ch="${i}"><span class="show__k">${esc(ch.k)}</span><h3 class="show__title">${esc(ch.title)}</h3><p class="show__text">${esc(ch.text)}</p><div class="show__stat"><b>${esc(ch.stat)}</b><small>${esc(ch.statLabel)}</small></div></article>`).join('')}</div>
+      <div class="show__dots">${t.showcase.chapters.map((ch, i) => `<i${i === 0 ? ' class="is-active"' : ''}></i>`).join('')}</div>
+    </div>
+    <div class="container">
+      <div class="fgrid" data-stagger>${FLEET.map((f, i) => `<article class="fmini" data-reveal="scale" data-tilt>
+        <div class="fmini__media">${img(f.image, { alt: f.name, sizes: '(min-width:1024px) 30vw, 90vw' })}<span class="fmini__num">0${i + 1}</span><span class="glare" aria-hidden="true"></span></div>
+        <div class="fmini__body"><p class="label">${esc(f.t[lang].role)}</p><h3 class="fmini__name">${esc(f.name)}</h3>${specList(f.specs, t)}<a class="link-arrow" href="${url(lang, 'about')}">${esc(h.fleetMore)} ${I.arrow}</a></div>
+      </article>`).join('')}</div>
     </div>
   </section>
 
@@ -253,7 +260,8 @@ function routePage({ lang, t, route }) {
       <h1 class="h1 rhero__title" data-split>${esc(r.title)}</h1>
       ${metaChips}
     </div>
-    <div class="rhero__heli" aria-hidden="true">${heliSvg('heli--route', 'heli-route')}</div>
+    <div class="rhero__stage" id="hero-stage" aria-hidden="true"></div>
+    <div class="rhero__heli" id="hero-heli" hidden aria-hidden="true">${heliSvg('heli--route', 'heli-route')}</div>
   </section>
   <section class="rbody section">
     <div class="container rbody__grid">

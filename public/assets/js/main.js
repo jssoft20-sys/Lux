@@ -1,6 +1,5 @@
 /* =========================================================
-   HeliHop — front-end animation & interaction layer
-   GSAP 3.13 (ScrollTrigger, MotionPath, SplitText) + Lenis
+   HeliHop — front-end v2 (3D intro/hero/showcase, GSAP, Lenis)
    ========================================================= */
 (() => {
   'use strict';
@@ -13,11 +12,9 @@
   const isTouch = matchMedia('(hover: none)').matches || navigator.maxTouchPoints > 1;
   const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
   const isMobile = () => innerWidth < 1024;
-  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const hasGsap = typeof gsap !== 'undefined';
-  if (!hasGsap) { doc.classList.add('js-failed'); return; }
+  if (typeof gsap === 'undefined') { doc.classList.add('js-failed'); return; }
   gsap.registerPlugin(ScrollTrigger, MotionPathPlugin, SplitText);
   gsap.config({ nullTargetWarn: false });
 
@@ -44,34 +41,88 @@
     if (lenis) lenis.scrollTo(el, { offset, duration: 1.4 });
     else { const y = el.getBoundingClientRect().top + currentY() + offset; window.scrollTo({ top: y, behavior: reduced ? 'auto' : 'smooth' }); }
   }
+  let locks = 0;
   function lockScroll(lock) {
-    if (lenis) { lock ? lenis.stop() : lenis.start(); }
-    doc.style.overflow = lock ? 'hidden' : '';
+    locks = Math.max(0, locks + (lock ? 1 : -1));
+    const on = locks > 0;
+    if (lenis) { on ? lenis.stop() : lenis.start(); }
+    doc.style.overflow = on ? 'hidden' : '';
   }
 
-  /* ---------------- preloader ---------------- */
-  function preloader() {
-    const el = $('#preloader');
+  /* ---------------- 3D loader ---------------- */
+  let heroStage = null;
+  function load3d() {
+    if (!HH.use3d || reduced || !window.__hh3dReady) return Promise.resolve(null);
+    return Promise.race([window.__hh3dReady, new Promise((r) => setTimeout(() => r(null), 6000))])
+      .then((api) => { try { return api && api.webglOK() ? api : null; } catch (e) { return null; } });
+  }
+  function hookHeroStage(stage, heroEl) {
+    if (!stage) return;
+    if (finePointer) addEventListener('mousemove', (e) => stage.setPointer(e.clientX / innerWidth * 2 - 1, e.clientY / innerHeight * 2 - 1), { passive: true });
+    onGyro((x, y) => stage.setPointer(x, y));
+    ScrollTrigger.create({ trigger: heroEl, start: 'top top', end: 'bottom top', scrub: true, onUpdate: (s) => stage.setScroll(s.progress) });
+  }
+
+  /* ---------------- intro (home) ---------------- */
+  function sessionFlag(key, clear = true) { try { const v = sessionStorage.getItem(key) === '1'; if (clear) sessionStorage.removeItem(key); return v; } catch (e) { return false; } }
+  async function introHome() {
+    const intro = $('#intro'), canvas = $('#stage-intro'), heroEl = $('#hero'), stageEl = $('#hero-stage');
     const returning = doc.classList.contains('is-returning');
-    let entering = false;
-    try { entering = sessionStorage.getItem('hh-transition') === '1'; sessionStorage.removeItem('hh-transition'); sessionStorage.setItem('hh-seen', '1'); } catch (e) { /* private mode */ }
+    try { sessionStorage.setItem('hh-seen', '1'); } catch (e) { /* noop */ }
+    if (!intro) { startHeroContent(false); return; }
+    lockScroll(true);
+    const api = await load3d();
+    let stage = null;
+    if (api && canvas && stageEl) { try { stage = new api.HeliStage(canvas, { mobile: isMobile() }); stage.start(); } catch (e) { console.warn('3D failed', e); stage = null; } }
+    if (!stage) { fallbackIntro(intro); return; }
+    heroStage = stage; window.__heroStage = stage;
+    const status = $('[data-intro-status]', intro), alt = $('[data-alt]', intro);
+    let revealed = false, finished = false;
+    const finish = () => {
+      if (finished) return; finished = true;
+      try { stage.attachTo(stageEl); } catch (e) { /* noop */ }
+      intro.remove(); lockScroll(false);
+      hookHeroStage(stage, heroEl);
+      ScrollTrigger.refresh();
+    };
+    const reveal = () => {
+      if (revealed) return; revealed = true;
+      intro.classList.remove('is-skippable');
+      gsap.to(['.intro__bg', '.intro__ui'], { opacity: 0, duration: 1.0, ease: 'power2.inOut', onComplete: finish });
+      startHeroContent(true);
+    };
+    const short = returning;
+    stage.intro({ short, onReveal: reveal, onDone: () => { reveal(); setTimeout(finish, 1100); } });
+    if (window.__hhIntroPause && stage.tl) stage.tl.pause(0);
+    if (!short) {
+      const t = HH.intro || {};
+      gsap.delayedCall(1.2, () => intro.classList.add('is-skippable'));
+      gsap.delayedCall(2.5, () => { status.textContent = t.takeoff || ''; });
+      gsap.delayedCall(3.6, () => { status.textContent = t.climb || ''; });
+      const o = { v: 800 }; alt.textContent = fmt(800);
+      gsap.to(o, { v: 3500, duration: 2.4, delay: 2.6, ease: 'power2.inOut', onUpdate: () => { alt.textContent = fmt(o.v); } });
+      const skip = $('[data-skip]', intro);
+      skip && skip.addEventListener('click', () => { stage.skipIntro(); intro.classList.remove('is-skippable'); });
+    }
+    setTimeout(() => { reveal(); setTimeout(finish, 1100); }, 10000);
+  }
+  function fallbackIntro(intro) {
+    const fb = $('#hero-heli');
+    if (fb) { fb.hidden = false; gsap.fromTo(fb, { opacity: 0, x: 300, y: 80, rotate: 8 }, { opacity: 1, x: 0, y: 0, rotate: 0, duration: 2.2, ease: 'power3.out', delay: .4 }); gsap.to(fb, { x: () => innerWidth * .55, y: () => -innerHeight * .35, scale: .55, ease: 'none', scrollTrigger: { trigger: '#hero', start: 'top top', end: 'bottom top', scrub: .5 } }); }
+    if (intro) gsap.to(intro, { opacity: 0, duration: .7, ease: 'power2.inOut', onComplete: () => { intro.remove(); lockScroll(false); } });
+    else lockScroll(false);
+    startHeroContent(true);
+  }
+  /* ---------------- preloader (inner pages) ---------------- */
+  function preloaderInner() {
+    const el = $('#preloader');
+    const entering = sessionFlag('hh-transition');
+    try { sessionStorage.setItem('hh-seen', '1'); } catch (e) { /* noop */ }
     return new Promise((resolve) => {
-      if (!el || returning || reduced) {
-        el && el.remove();
-        setTimeout(resolve, entering ? 420 : 0);
-        return;
-      }
-      lockScroll(true);
-      const num = $('[data-alt]', el), bar = $('.preloader__bar span', el);
-      const o = { v: 0 };
-      let resolved = false;
-      const done = () => { if (!resolved) { resolved = true; resolve(); } };
-      gsap.timeline({ onComplete: () => { el.remove(); lockScroll(false); done(); } })
-        .to(o, { v: 3500, duration: 1.5, ease: 'power3.inOut', onUpdate: () => { num.textContent = fmt(o.v); } }, 0)
-        .to(bar, { scaleX: 1, duration: 1.5, ease: 'power3.inOut' }, 0)
-        .to('.preloader__inner', { opacity: 0, y: -20, duration: .5, ease: 'power2.in' }, 1.45)
-        .to(el, { clipPath: 'inset(0 0 100% 0)', duration: .95, ease: 'power4.inOut', onStart: () => { lockScroll(false); setTimeout(done, 250); } }, 1.65);
-      setTimeout(() => { if (!resolved) { el.remove(); lockScroll(false); done(); } }, 6000);
+      if (!el || doc.classList.contains('is-returning') || reduced) { el && el.remove(); setTimeout(resolve, entering ? 380 : 0); return; }
+      gsap.timeline({ onComplete: () => { el.remove(); resolve(); } })
+        .to('.preloader__bar span', { scaleX: 1, duration: .8, ease: 'power3.inOut' }, 0)
+        .to(el, { opacity: 0, duration: .5, ease: 'power2.inOut' }, .85);
     });
   }
 
@@ -79,8 +130,7 @@
   function transitions() {
     const curtain = $('#curtain');
     if (!curtain) return;
-    let entering = false;
-    try { entering = sessionStorage.getItem('hh-entering') === '1'; sessionStorage.removeItem('hh-entering'); } catch (e) { /* noop */ }
+    const entering = sessionFlag('hh-entering');
     if (entering && !reduced) { curtain.classList.add('is-active'); gsap.set(curtain, { y: 0 }); gsap.to(curtain, { y: '-101%', duration: .9, ease: 'power4.inOut', delay: .05, onComplete: () => curtain.classList.remove('is-active') }); }
     document.addEventListener('click', (e) => {
       const a = e.target.closest('a[href]');
@@ -121,12 +171,8 @@
     });
     burger && burger.addEventListener('click', () => (menu.classList.contains('is-open') ? closeMenu() : openMenu()));
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenu(); closeBooking(); closeLightbox(); $$('.lang.is-open').forEach((l) => l.classList.remove('is-open')); } });
-    $$('.lang').forEach((l) => {
-      const b = $('.lang__btn', l);
-      b.addEventListener('click', (e) => { e.stopPropagation(); const open = l.classList.toggle('is-open'); b.setAttribute('aria-expanded', open); });
-    });
+    $$('.lang').forEach((l) => { const b = $('.lang__btn', l); b.addEventListener('click', (e) => { e.stopPropagation(); const open = l.classList.toggle('is-open'); b.setAttribute('aria-expanded', open); }); });
     document.addEventListener('click', (e) => { if (!e.target.closest('.lang')) $$('.lang.is-open').forEach((l) => { l.classList.remove('is-open'); $('.lang__btn', l).setAttribute('aria-expanded', 'false'); }); });
-    // remember language choice
     $$('[data-lang-link]').forEach((a) => a.addEventListener('click', () => { try { localStorage.setItem('hh-lang', a.dataset.langLink); } catch (e) { /* noop */ } }));
   }
 
@@ -158,48 +204,26 @@
   /* ---------------- generic reveals ---------------- */
   function reveals() {
     if (reduced) { $$('[data-reveal],[data-hero]').forEach((el) => { el.style.opacity = 1; }); return; }
-    // split headings
     $$('[data-split]').forEach((el) => {
       if (el.closest('.hero')) return;
       try {
-        SplitText.create(el, {
-          type: 'lines', mask: 'lines', linesClass: 'sl', autoSplit: true,
-          onSplit(self) {
-            return gsap.from(self.lines, { yPercent: 110, opacity: 0, duration: 1.15, ease: 'power4.out', stagger: .09, scrollTrigger: { trigger: el, start: 'top 90%', once: true } });
-          },
-        });
+        SplitText.create(el, { type: 'lines', mask: 'lines', linesClass: 'sl', autoSplit: true, onSplit(self) { return gsap.from(self.lines, { yPercent: 110, opacity: 0, duration: 1.15, ease: 'power4.out', stagger: .09, scrollTrigger: { trigger: el, start: 'top 90%', once: true } }); } });
       } catch (e) { el.style.opacity = 1; }
     });
     const handled = new Set();
-    const fromFor = (el) => {
-      const v = el.dataset.reveal;
-      if (v === 'scale') return { opacity: 0, y: 34, scale: .94 };
-      if (v === 'left') return { opacity: 0, x: -50 };
-      if (v === 'right') return { opacity: 0, x: 50 };
-      return { opacity: 0, y: 40 };
-    };
+    const fromFor = (el) => { const v = el.dataset.reveal; if (v === 'scale') return { opacity: 0, y: 34, scale: .94 }; if (v === 'left') return { opacity: 0, x: -50 }; if (v === 'right') return { opacity: 0, x: 50 }; return { opacity: 0, y: 40 }; };
     $$('[data-stagger]').forEach((box) => {
       const kids = $$('[data-reveal]', box).filter((k) => !handled.has(k));
       if (!kids.length) return;
       kids.forEach((k) => handled.add(k));
       gsap.fromTo(kids, fromFor(kids[0]), { opacity: 1, x: 0, y: 0, scale: 1, duration: 1.05, ease: 'power3.out', stagger: .09, clearProps: 'transform', scrollTrigger: { trigger: box, start: 'top 88%', once: true } });
     });
-    $$('[data-reveal]').forEach((el) => {
-      if (handled.has(el)) return;
-      gsap.fromTo(el, fromFor(el), { opacity: 1, x: 0, y: 0, scale: 1, duration: 1.05, ease: 'power3.out', clearProps: 'transform', scrollTrigger: { trigger: el, start: 'top 92%', once: true } });
-    });
-    $$('[data-count]').forEach((el) => {
-      const target = parseFloat(el.dataset.count);
-      const o = { v: 0 };
-      gsap.to(o, { v: target, duration: 2.2, ease: 'power3.out', onUpdate: () => { el.textContent = fmt(o.v); }, scrollTrigger: { trigger: el, start: 'top 100%', once: true } });
-    });
-    $$('[data-parallax]').forEach((el) => {
-      const s = parseFloat(el.dataset.parallax) || .2;
-      gsap.fromTo(el, { yPercent: -s * 40 }, { yPercent: s * 40, ease: 'none', scrollTrigger: { trigger: el.parentElement, start: 'top bottom', end: 'bottom top', scrub: true } });
-    });
+    $$('[data-reveal]').forEach((el) => { if (handled.has(el)) return; gsap.fromTo(el, fromFor(el), { opacity: 1, x: 0, y: 0, scale: 1, duration: 1.05, ease: 'power3.out', clearProps: 'transform', scrollTrigger: { trigger: el, start: 'top 92%', once: true } }); });
+    $$('[data-count]').forEach((el) => { const target = parseFloat(el.dataset.count); const o = { v: 0 }; gsap.to(o, { v: target, duration: 2.2, ease: 'power3.out', onUpdate: () => { el.textContent = fmt(o.v); }, scrollTrigger: { trigger: el, start: 'top 100%', once: true } }); });
+    $$('[data-parallax]').forEach((el) => { const s = parseFloat(el.dataset.parallax) || .2; gsap.fromTo(el, { yPercent: -s * 40 }, { yPercent: s * 40, ease: 'none', scrollTrigger: { trigger: el.parentElement, start: 'top bottom', end: 'bottom top', scrub: true } }); });
   }
 
-  /* ---------------- magnetic + tilt ---------------- */
+  /* ---------------- magnetic / tilt / glare ---------------- */
   function magnetic() {
     if (!finePointer || reduced) return;
     $$('[data-magnetic]').forEach((el) => {
@@ -211,123 +235,125 @@
   function tilt() {
     if (!finePointer || reduced) return;
     $$('[data-tilt]').forEach((el) => {
-      el.addEventListener('mousemove', (e) => {
-        const r = el.getBoundingClientRect();
-        const px = (e.clientX - r.left) / r.width - .5, py = (e.clientY - r.top) / r.height - .5;
-        gsap.to(el, { rotateY: px * 7, rotateX: -py * 7, transformPerspective: 1100, duration: .7, ease: 'power3' });
-      });
+      el.addEventListener('mousemove', (e) => { const r = el.getBoundingClientRect(); const px = (e.clientX - r.left) / r.width - .5, py = (e.clientY - r.top) / r.height - .5; gsap.to(el, { rotateY: px * 7, rotateX: -py * 7, transformPerspective: 1100, duration: .7, ease: 'power3' }); });
       el.addEventListener('mouseleave', () => gsap.to(el, { rotateY: 0, rotateX: 0, duration: .9, ease: 'power3' }));
     });
   }
+  function glare() {
+    if (!finePointer || reduced) return;
+    $$('.glare').forEach((g) => { const el = g.parentElement; el.addEventListener('mousemove', (e) => { const r = el.getBoundingClientRect(); el.style.setProperty('--gx', `${((e.clientX - r.left) / r.width * 100).toFixed(1)}%`); el.style.setProperty('--gy', `${((e.clientY - r.top) / r.height * 100).toFixed(1)}%`); }); });
+  }
 
-  /* ---------------- device orientation (mobile parallax) ---------------- */
+  /* ---------------- device orientation ---------------- */
   const gyroFns = [];
   function initGyro() {
     if (!isTouch || reduced || !('DeviceOrientationEvent' in window)) return;
     let base = null;
-    const handler = (e) => {
-      if (e.beta == null || e.gamma == null) return;
-      if (base === null) base = { b: e.beta, g: e.gamma };
-      const x = clamp((e.gamma - base.g) / 25, -1, 1), y = clamp((e.beta - base.b) / 25, -1, 1);
-      gyroFns.forEach((f) => f(x, y));
-    };
+    const handler = (e) => { if (e.beta == null || e.gamma == null) return; if (base === null) base = { b: e.beta, g: e.gamma }; const x = clamp((e.gamma - base.g) / 25, -1, 1), y = clamp((e.beta - base.b) / 25, -1, 1); gyroFns.forEach((f) => f(x, y)); };
     const start = () => addEventListener('deviceorientation', handler, { passive: true });
-    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-      const ask = () => { DeviceOrientationEvent.requestPermission().then((s) => { if (s === 'granted') start(); }).catch(() => {}); removeEventListener('touchend', ask); };
-      addEventListener('touchend', ask, { once: true });
-    } else start();
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') { const ask = () => { DeviceOrientationEvent.requestPermission().then((s) => { if (s === 'granted') start(); }).catch(() => {}); }; addEventListener('touchend', ask, { once: true }); }
+    else start();
   }
   function onGyro(fn) { gyroFns.push(fn); }
 
-  /* ---------------- WebGL mist ---------------- */
+  /* ---------------- WebGL mist (desktop only) ---------------- */
   function mist() {
     const canvas = $('#mist');
-    if (!canvas || reduced) return;
-    let gl;
-    try { gl = canvas.getContext('webgl', { alpha: true, antialias: false, premultipliedAlpha: true, powerPreference: 'low-power' }); } catch (e) { gl = null; }
+    if (!canvas) return;
+    if (reduced || isMobile() || isTouch) { canvas.remove(); return; }
+    let gl; try { gl = canvas.getContext('webgl', { alpha: true, antialias: false, premultipliedAlpha: true, powerPreference: 'low-power' }); } catch (e) { gl = null; }
     if (!gl) { canvas.remove(); return; }
     const vs = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
     const fs = `precision mediump float;uniform vec2 r;uniform float t;uniform vec2 m;
       float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
       float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
-      float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*n(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return v;}
+      float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<4;i++){v+=a*n(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return v;}
       void main(){vec2 uv=gl_FragCoord.xy/r;vec2 p=vec2(uv.x*r.x/r.y,uv.y);float tt=t*.035;
       float a=fbm(p*2.1+vec2(tt*1.3,tt*.35)+m*.06);float b=fbm(p*4.2-vec2(tt*.9,tt*.25)+a*.6);
-      float d=smoothstep(.38,.9,a*.72+b*.34);
-      float w=smoothstep(.95,.3,uv.y)*smoothstep(0.,.12,uv.y)*smoothstep(-.1,.35,uv.x+.2);
-      vec3 col=mix(vec3(.52,.68,.86),vec3(.96,.98,1.),b);float al=d*w*.5;gl_FragColor=vec4(col*al,al);}`;
+      float d=smoothstep(.38,.9,a*.72+b*.34);float w=smoothstep(.95,.3,uv.y)*smoothstep(0.,.12,uv.y)*smoothstep(-.1,.35,uv.x+.2);
+      vec3 col=mix(vec3(.52,.68,.86),vec3(.96,.98,1.),b);float al=d*w*.45;gl_FragColor=vec4(col*al,al);}`;
     const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
-    const prog = gl.createProgram();
-    gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(prog);
+    const prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { canvas.remove(); return; }
     gl.useProgram(prog);
-    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
     const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     const uR = gl.getUniformLocation(prog, 'r'), uT = gl.getUniformLocation(prog, 't'), uM = gl.getUniformLocation(prog, 'm');
     gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     let w = 0, hgt = 0, visible = true, mx = 0, my = 0, tmx = 0, tmy = 0;
-    const resize = () => { const scale = isMobile() ? .35 : .5; w = Math.max(2, Math.floor(canvas.clientWidth * scale)); hgt = Math.max(2, Math.floor(canvas.clientHeight * scale)); canvas.width = w; canvas.height = hgt; gl.viewport(0, 0, w, hgt); };
+    const resize = () => { w = Math.max(2, Math.floor(canvas.clientWidth * .4)); hgt = Math.max(2, Math.floor(canvas.clientHeight * .4)); canvas.width = w; canvas.height = hgt; gl.viewport(0, 0, w, hgt); };
     resize(); addEventListener('resize', resize);
     new IntersectionObserver((en) => { visible = en[0].isIntersecting; }).observe(canvas);
     addEventListener('mousemove', (e) => { tmx = e.clientX / innerWidth - .5; tmy = .5 - e.clientY / innerHeight; }, { passive: true });
-    onGyro((x, y) => { tmx = x * .5; tmy = -y * .5; });
     const start = performance.now();
-    const frame = () => {
-      if (visible && !document.hidden) {
-        mx += (tmx - mx) * .04; my += (tmy - my) * .04;
-        gl.uniform2f(uR, w, hgt); gl.uniform1f(uT, (performance.now() - start) / 1000); gl.uniform2f(uM, mx * 4, my * 4);
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-      }
-      requestAnimationFrame(frame);
-    };
+    const frame = () => { if (visible && !document.hidden) { mx += (tmx - mx) * .04; my += (tmy - my) * .04; gl.uniform2f(uR, w, hgt); gl.uniform1f(uT, (performance.now() - start) / 1000); gl.uniform2f(uM, mx * 4, my * 4); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); } requestAnimationFrame(frame); };
     frame();
   }
 
-  /* ---------------- hero ---------------- */
-  function hero(entering) {
+  /* ---------------- hero content ---------------- */
+  let heroStarted = false;
+  function startHeroContent(entering) {
     const h = $('#hero');
-    if (!h) return;
-    const lines = $$('.line__in', h), heli = $('#hero-heli'), heliP = $('#hero-heli-p'), items = $$('[data-hero]', h), img = $('.hero__img', h), stats = $('.hero__stats', h);
-    if (reduced) { gsap.set([items, heli, stats], { opacity: 1 }); return; }
-    const tl = gsap.timeline({ defaults: { ease: 'power4.out' }, delay: entering ? .3 : 0 });
-    tl.fromTo(img, { scale: 1.28 }, { scale: 1.12, duration: 2.6, ease: 'power3.out' }, 0)
-      .fromTo(lines, { yPercent: 110 }, { yPercent: 0, duration: 1.25, stagger: .11 }, .15)
-      .fromTo(items, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 1, stagger: .1 }, .6)
-      .fromTo(heli, { opacity: 0, x: 380, y: 90, rotate: 9, scale: .9 }, { opacity: 1, x: 0, y: 0, rotate: 0, scale: 1, duration: 2.4, ease: 'power3.out' }, .25)
-      .fromTo(stats, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 1 }, 1)
-      .call(() => ScrollTrigger.refresh(), null, 2.3)
+    if (!h || heroStarted) return;
+    heroStarted = true;
+    const lines = $$('.line__in', h), items = $$('[data-hero]', h), img = $('.hero__img', h), stats = $('.hero__stats', h);
+    if (reduced) { gsap.set([items, stats], { opacity: 1 }); return; }
+    gsap.timeline({ defaults: { ease: 'power4.out' }, delay: entering ? .15 : 0 })
+      .fromTo(img, { scale: 1.26 }, { scale: 1.12, duration: 2.6, ease: 'power3.out' }, 0)
+      .fromTo(lines, { yPercent: 110 }, { yPercent: 0, duration: 1.25, stagger: .11 }, .1)
+      .fromTo(items, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 1, stagger: .1 }, .5)
+      .fromTo(stats, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 1 }, .9)
+      .call(() => ScrollTrigger.refresh(), null, 2.2)
       .to(img, { scale: 1.2, duration: 22, ease: 'none', yoyo: true, repeat: -1 }, 2.6);
-    // scroll-driven: content parachutes away, helicopter flies off, background drifts
     gsap.to('.hero__inner', { yPercent: 25, opacity: 0, ease: 'none', scrollTrigger: { trigger: h, start: 'top top', end: '70% top', scrub: true } });
-    gsap.to(heli, { x: () => innerWidth * .55, y: () => -innerHeight * .35, scale: .55, ease: 'none', scrollTrigger: { trigger: h, start: 'top top', end: 'bottom top', scrub: .5 } });
     gsap.to(img, { yPercent: 16, ease: 'none', scrollTrigger: { trigger: h, start: 'top top', end: 'bottom top', scrub: true } });
-    // pointer / gyro parallax
     const bg = $('#hero-bg');
     const bx = gsap.quickTo(bg, 'x', { duration: 1.6, ease: 'power3' }), by = gsap.quickTo(bg, 'y', { duration: 1.6, ease: 'power3' });
-    const hx = gsap.quickTo(heliP, 'x', { duration: 1.2, ease: 'power3' }), hy = gsap.quickTo(heliP, 'y', { duration: 1.2, ease: 'power3' });
     const tx = gsap.quickTo('#hero-title', 'x', { duration: 1.4, ease: 'power3' });
-    const apply = (x, y) => { bx(-x * 18); by(-y * 12); hx(x * 46); hy(y * 30); tx(x * 10); };
+    const apply = (x, y) => { bx(-x * 18); by(-y * 12); tx(x * 10); };
     if (finePointer) addEventListener('mousemove', (e) => apply(e.clientX / innerWidth - .5, e.clientY / innerHeight - .5), { passive: true });
     onGyro((x, y) => apply(x * .8, y * .8));
     mist();
   }
 
   /* ---------------- inner page heroes ---------------- */
-  function pageHero(entering) {
+  async function pageHero(entering) {
     const h = $('.phero, .rhero');
     if (!h) return;
-    const items = $$('[data-hero]', h), heli = $('.rhero__heli', h);
-    if (reduced) { gsap.set(items, { opacity: 1 }); heli && gsap.set(heli, { opacity: 1 }); return; }
+    const items = $$('[data-hero]', h);
+    if (reduced) { gsap.set(items, { opacity: 1 }); const fb = $('#hero-heli'); if (fb) { fb.hidden = false; gsap.set(fb, { opacity: 1 }); } return; }
     const tl = gsap.timeline({ delay: entering ? .3 : .1, defaults: { ease: 'power4.out' } });
     tl.fromTo(items, { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 1, stagger: .1 }, .3);
-    if (heli) tl.fromTo(heli, { opacity: 0, x: 300, y: 60, rotate: 8 }, { opacity: 1, x: 0, y: 0, rotate: 0, duration: 2.2, ease: 'power3.out' }, .2);
-    tl.call(() => ScrollTrigger.refresh(), null, 1.6);
     const img = $('.phero__bg img, .rhero__bg img', h);
     img && tl.fromTo(img, { scale: 1.15 }, { scale: 1, duration: 2.4, ease: 'power3.out' }, 0);
-    if (heli) gsap.to(heli, { x: () => innerWidth * .4, y: -160, scale: .7, ease: 'none', scrollTrigger: { trigger: h, start: 'top top', end: 'bottom top', scrub: .5 } });
-    const gift = $('#gift3d');
-    if (gift) gift3d(gift);
+    tl.call(() => ScrollTrigger.refresh(), null, 1.6);
+    const gift = $('#gift3d'); if (gift) gift3d(gift);
+    const stageEl = $('#hero-stage');
+    if (stageEl && h.classList.contains('rhero')) {
+      const api = await load3d();
+      let stage = null;
+      if (api) { try { const c = document.createElement('canvas'); stageEl.appendChild(c); stage = new api.HeliStage(c, { mobile: isMobile(), poseOffset: isMobile() ? [0, .4, 0] : [1.6, 1.4, -1] }); stage.start(); stage.applyHero(true); stage.intro({ short: true }); } catch (e) { stage = null; } }
+      if (stage) hookHeroStage(stage, h);
+      else { const fb = $('#hero-heli'); if (fb) { fb.hidden = false; gsap.fromTo(fb, { opacity: 0, x: 300, y: 60, rotate: 8 }, { opacity: 1, x: 0, y: 0, rotate: 0, duration: 2.2, ease: 'power3.out' }); gsap.to(fb, { x: () => innerWidth * .4, y: -160, scale: .7, ease: 'none', scrollTrigger: { trigger: h, start: 'top top', end: 'bottom top', scrub: .5 } }); } }
+    }
+  }
+
+  /* ---------------- showcase (3D turntable) ---------------- */
+  async function showcase() {
+    const pin = $('#show-pin'), canvas = $('#stage-show');
+    if (!pin) return;
+    const chapters = $$('.show__ch', pin), dots = $$('.show__dots i', pin);
+    const setCh = (i) => { chapters.forEach((c, k) => c.classList.toggle('is-active', k === i)); dots.forEach((d, k) => d.classList.toggle('is-active', k === i)); };
+    let stage = null, progress = 0;
+    if (!reduced) ScrollTrigger.create({ trigger: pin, start: 'top top', end: '+=280%', pin: true, scrub: .6, anticipatePin: 1, onUpdate: (s) => { progress = s.progress; stage && stage.setShowcase(progress); setCh(Math.min(3, Math.floor(progress * 3.999))); } });
+    const api = await load3d();
+    if (api && canvas && !reduced) { try { stage = new api.HeliStage(canvas, { mobile: isMobile() }); stage.applyShowcase(); stage.setShowcase(progress); stage.start(); window.__showStage = stage; } catch (e) { stage = null; } }
+    if (!stage) { canvas && canvas.remove(); const fb = $('#show-fallback'); if (fb) fb.hidden = false; return; }
+    const el = $('#show-stage'); let down = false, lx = 0;
+    el.addEventListener('pointerdown', (e) => { down = true; lx = e.clientX; try { el.setPointerCapture(e.pointerId); } catch (err) { /* noop */ } });
+    el.addEventListener('pointermove', (e) => { if (!down) return; stage.dragBy(e.clientX - lx); lx = e.clientX; });
+    const up = () => { down = false; };
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); el.addEventListener('lostpointercapture', up);
   }
 
   /* ---------------- flight log path ---------------- */
@@ -336,38 +362,12 @@
     if (!track) return;
     const svg = $('#flight-svg'), path = $('#flight-path'), bg = $('.flight__path--bg', svg), heli = $('#flight-heli');
     const nodes = [$('[data-node-start]', track), ...$$('.flight__node', track), $('[data-node-end]', track)].filter(Boolean);
-    const catmull = (p) => {
-      if (p.length < 2) return '';
-      let d = `M${p[0][0]},${p[0][1]}`;
-      for (let i = 0; i < p.length - 1; i++) {
-        const p0 = p[i - 1] || p[i], p1 = p[i], p2 = p[i + 1], p3 = p[i + 2] || p2;
-        const T = 0.45;
-        const c1 = [p1[0] + (p2[0] - p0[0]) * T / 3, p1[1] + (p2[1] - p0[1]) * T / 3];
-        const c2 = [p2[0] - (p3[0] - p1[0]) * T / 3, p2[1] - (p3[1] - p1[1]) * T / 3];
-        d += `C${c1[0]},${c1[1]} ${c2[0]},${c2[1]} ${p2[0]},${p2[1]}`;
-      }
-      return d;
-    };
+    const catmull = (p) => { if (p.length < 2) return ''; let d = `M${p[0][0]},${p[0][1]}`; for (let i = 0; i < p.length - 1; i++) { const p0 = p[i - 1] || p[i], p1 = p[i], p2 = p[i + 1], p3 = p[i + 2] || p2; const T = .45; const c1 = [p1[0] + (p2[0] - p0[0]) * T / 3, p1[1] + (p2[1] - p0[1]) * T / 3]; const c2 = [p2[0] - (p3[0] - p1[0]) * T / 3, p2[1] - (p3[1] - p1[1]) * T / 3]; d += `C${c1[0]},${c1[1]} ${c2[0]},${c2[1]} ${p2[0]},${p2[1]}`; } return d; };
     let len = 0;
-    const build = () => {
-      const tr = track.getBoundingClientRect();
-      const pts = nodes.map((n) => { const d = $('.flight__node-dot', n) || n; const r = d.getBoundingClientRect(); return [r.left + r.width / 2 - tr.left, r.top + r.height / 2 - tr.top]; });
-      const d = catmull(pts);
-      path.setAttribute('d', d); bg.setAttribute('d', d);
-      svg.setAttribute('viewBox', `0 0 ${tr.width} ${tr.height}`);
-      len = path.getTotalLength();
-      path.style.strokeDasharray = len; path.style.strokeDashoffset = len;
-    };
+    const build = () => { const tr = track.getBoundingClientRect(); const pts = nodes.map((n) => { const d = $('.flight__node-dot', n) || n; const r = d.getBoundingClientRect(); return [r.left + r.width / 2 - tr.left, r.top + r.height / 2 - tr.top]; }); const d = catmull(pts); path.setAttribute('d', d); bg.setAttribute('d', d); svg.setAttribute('viewBox', `0 0 ${tr.width} ${tr.height}`); len = path.getTotalLength(); path.style.strokeDasharray = len; path.style.strokeDashoffset = len; };
     build();
     let lastP = -1;
-    const update = (pr) => {
-      if (!len) return;
-      path.style.strokeDashoffset = len * (1 - pr);
-      const pt = path.getPointAtLength(len * pr), pt2 = path.getPointAtLength(Math.min(len, len * pr + 3));
-      const ang = Math.atan2(pt2.y - pt.y, pt2.x - pt.x) * 180 / Math.PI + 90;
-      gsap.set(heli, { x: pt.x - 27, y: pt.y - 27, rotation: ang, opacity: pr > .004 && pr < .996 ? 1 : 0 });
-      lastP = pr;
-    };
+    const update = (pr) => { if (!len) return; path.style.strokeDashoffset = len * (1 - pr); const pt = path.getPointAtLength(len * pr), pt2 = path.getPointAtLength(Math.min(len, len * pr + 3)); const ang = Math.atan2(pt2.y - pt.y, pt2.x - pt.x) * 180 / Math.PI + 90; gsap.set(heli, { x: pt.x - 27, y: pt.y - 27, rotation: ang, opacity: pr > .004 && pr < .996 ? 1 : 0 }); lastP = pr; };
     if (reduced) { path.style.strokeDashoffset = 0; return; }
     ScrollTrigger.create({ trigger: track, start: 'top 62%', end: 'bottom 55%', scrub: .5, onUpdate: (s) => update(s.progress), onRefresh: (s) => { build(); update(s.progress); } });
     addEventListener('load', () => { build(); if (lastP >= 0) update(lastP); });
@@ -380,13 +380,12 @@
     const svg = $('.map', wrap), pins = $$('.map-pin', svg), paths = $$('.map-route', svg), heli = $('.map__heli', svg), card = $('#mapcard');
     paths.forEach((p) => { const l = p.getTotalLength(); p.dataset.len = l; if (!p.classList.contains('map-route--dest')) { p.style.strokeDasharray = l; p.style.strokeDashoffset = l; } });
     let heliTween = null, timer = null, userAt = 0, active = null;
-    const data = (key) => HH.routes.find((r) => r.slug === key) || HH.dests.find((d) => d.slug === key);
     const fillCard = (key) => {
       if (!card) return;
       const r = HH.routes.find((x) => x.slug === key), d = HH.dests.find((x) => x.slug === key);
       const it = r || d; if (!it) return;
       card.classList.remove('is-switching'); void card.offsetWidth; card.classList.add('is-switching');
-      card.style.setProperty('--pin', r ? r.color : '#8fd3ff');
+      card.style.setProperty('--pin', r ? r.color : '#bfe1ff');
       $('.mapcard__kind', card).textContent = r ? HH.mapText.base : HH.mapText.custom;
       $('.mapcard__title', card).textContent = r ? r.title : d.name;
       $('.mapcard__meta', card).textContent = r ? `${r.duration} ${HH.common.min}${r.ground ? ' + ' + r.ground + ' ' + HH.common.min : ''}${r.landing ? ' · ' + fmt(r.landing) + ' ' + HH.common.metres : ''}` : `~${d.km} ${HH.common.metres === 'm' ? 'km' : 'км'} ${HH.mapText.km}`;
@@ -404,7 +403,7 @@
       fillCard(key);
       const path = paths.find((p) => p.dataset.key === key);
       if (!path || reduced) return;
-      if (path.classList.contains('map-route--dest')) { gsap.fromTo(path, { strokeDashoffset: 60 }, { strokeDashoffset: 0, duration: 1.2, ease: 'none' }); }
+      if (path.classList.contains('map-route--dest')) gsap.fromTo(path, { strokeDashoffset: 60 }, { strokeDashoffset: 0, duration: 1.2, ease: 'none' });
       if (!fly) return;
       heliTween && heliTween.kill();
       gsap.set(heli, { opacity: 1 });
@@ -413,47 +412,9 @@
     const routeKeys = pins.filter((p) => p.dataset.kind === 'route').map((p) => p.dataset.key);
     const allKeys = pins.map((p) => p.dataset.key);
     let inView = false;
-    const cycle = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (inView && Date.now() - userAt > 9000 && !document.hidden) {
-          const keys = card ? allKeys : routeKeys;
-          const i = keys.indexOf(active);
-          activate(keys[(i + 1) % keys.length]);
-        }
-        cycle();
-      }, 4800);
-    };
-    pins.forEach((p) => {
-      const go = () => { userAt = Date.now(); activate(p.dataset.key); };
-      p.addEventListener('click', go); p.addEventListener('mouseenter', go); p.addEventListener('focus', go);
-      p.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
-    });
-    ScrollTrigger.create({
-      trigger: wrap, start: 'top 80%', end: 'bottom 10%',
-      onToggle: (s) => { inView = s.isActive; },
-      onEnter: () => {
-        if (!wrap.dataset.drawn) {
-          wrap.dataset.drawn = '1';
-          paths.filter((p) => !p.classList.contains('map-route--dest')).forEach((p, i) => gsap.to(p, { strokeDashoffset: 0, duration: 1.8, delay: i * .25, ease: 'power2.inOut' }));
-          gsap.fromTo(pins, { opacity: 0, scale: .4, transformOrigin: 'center' }, { opacity: 1, scale: 1, duration: .7, stagger: .07, delay: .5, ease: 'back.out(2)' });
-          setTimeout(() => activate(routeKeys[0] || allKeys[0]), 900);
-          cycle();
-        }
-      },
-    });
-  }
-
-  /* ---------------- fleet horizontal ---------------- */
-  function fleet() {
-    const sec = $('#fleet'), track = $('#fleet-track');
-    if (!sec || !track || reduced) return;
-    const mm = gsap.matchMedia();
-    mm.add('(min-width: 1025px)', () => {
-      const dist = () => track.scrollWidth - innerWidth + 40;
-      const tween = gsap.to(track, { x: () => -dist(), ease: 'none', scrollTrigger: { trigger: sec, start: 'top top', end: () => '+=' + dist(), pin: true, scrub: .8, anticipatePin: 1, invalidateOnRefresh: true } });
-      return () => tween.kill();
-    });
+    const cycle = () => { clearTimeout(timer); timer = setTimeout(() => { if (inView && Date.now() - userAt > 9000 && !document.hidden) { const keys = card ? allKeys : routeKeys; const i = keys.indexOf(active); activate(keys[(i + 1) % keys.length]); } cycle(); }, 4800); };
+    pins.forEach((p) => { const go = () => { userAt = Date.now(); activate(p.dataset.key); }; p.addEventListener('click', go); p.addEventListener('mouseenter', go); p.addEventListener('focus', go); p.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }); });
+    ScrollTrigger.create({ trigger: wrap, start: 'top 80%', end: 'bottom 10%', onToggle: (s) => { inView = s.isActive; }, onEnter: () => { if (!wrap.dataset.drawn) { wrap.dataset.drawn = '1'; paths.filter((p) => !p.classList.contains('map-route--dest')).forEach((p, i) => gsap.to(p, { strokeDashoffset: 0, duration: 1.8, delay: i * .25, ease: 'power2.inOut' })); gsap.fromTo(pins, { opacity: 0, scale: .4, transformOrigin: 'center' }, { opacity: 1, scale: 1, duration: .7, stagger: .07, delay: .5, ease: 'back.out(2)' }); setTimeout(() => activate(routeKeys[0] || allKeys[0]), 900); cycle(); } } });
   }
 
   /* ---------------- custom destinations chips ---------------- */
@@ -462,13 +423,7 @@
     const chips = $$('.chip', sec), imgs = $$('.custom__img', sec), desc = $('#custom-desc');
     if (!chips.length) return;
     let i = 0, timer, userAt = 0, inView = false;
-    const set = (n) => {
-      i = n;
-      chips.forEach((c, k) => c.classList.toggle('is-active', k === n));
-      imgs.forEach((im) => im.classList.toggle('is-active', im.dataset.image === chips[n].dataset.image));
-      if (desc && !reduced) gsap.fromTo(desc, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: .6, ease: 'power3.out', onStart: () => { desc.textContent = chips[n].dataset.desc; } });
-      else if (desc) desc.textContent = chips[n].dataset.desc;
-    };
+    const set = (n) => { i = n; chips.forEach((c, k) => c.classList.toggle('is-active', k === n)); imgs.forEach((im) => im.classList.toggle('is-active', im.dataset.image === chips[n].dataset.image)); if (desc && !reduced) gsap.fromTo(desc, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: .6, ease: 'power3.out', onStart: () => { desc.textContent = chips[n].dataset.desc; } }); else if (desc) desc.textContent = chips[n].dataset.desc; };
     chips.forEach((c, k) => c.addEventListener('click', () => { userAt = Date.now(); set(k); }));
     const cycle = () => { timer = setTimeout(() => { if (inView && Date.now() - userAt > 8000 && !document.hidden) set((i + 1) % chips.length); cycle(); }, 5000); };
     ScrollTrigger.create({ trigger: sec, start: 'top 80%', end: 'bottom 20%', onToggle: (s) => { inView = s.isActive; } });
@@ -479,18 +434,7 @@
   function faq() {
     $$('.faq__item').forEach((d) => {
       const s = $('summary', d), a = $('.faq__a', d), inner = $('.faq__inner', d);
-      s.addEventListener('click', (e) => {
-        e.preventDefault();
-        const open = d.classList.contains('is-open');
-        if (open) {
-          d.classList.remove('is-open');
-          gsap.to(a, { height: 0, duration: .5, ease: 'power3.inOut', onComplete: () => d.removeAttribute('open') });
-        } else {
-          d.setAttribute('open', '');
-          d.classList.add('is-open');
-          gsap.fromTo(a, { height: 0 }, { height: inner.offsetHeight, duration: .6, ease: 'power3.inOut', onComplete: () => { a.style.height = 'auto'; } });
-        }
-      });
+      s.addEventListener('click', (e) => { e.preventDefault(); const open = d.classList.contains('is-open'); if (open) { d.classList.remove('is-open'); gsap.to(a, { height: 0, duration: .5, ease: 'power3.inOut', onComplete: () => d.removeAttribute('open') }); } else { d.setAttribute('open', ''); d.classList.add('is-open'); gsap.fromTo(a, { height: 0 }, { height: inner.offsetHeight, duration: .6, ease: 'power3.inOut', onComplete: () => { a.style.height = 'auto'; } }); } });
     });
   }
 
@@ -501,103 +445,87 @@
     const measure = () => { max = Math.max(1, doc.scrollHeight - innerHeight); };
     measure(); addEventListener('resize', measure); addEventListener('load', measure);
     let raf = false, ly = 0;
-    onScroll((y) => {
-      ly = y;
-      if (raf) return; raf = true;
-      requestAnimationFrame(() => {
-        raf = false;
-        const p = clamp(ly / max, 0, 1);
-        prog && (prog.style.transform = `scaleX(${p})`);
-        if (alt) { alt.classList.toggle('is-visible', ly > 240); altV.textContent = fmt(800 + p * 2700); ticks.style.setProperty('--tape', `${-(p * 330) % 55}px`); }
-        mbar && mbar.classList.toggle('is-visible', ly > innerHeight * .55);
-      });
-    });
+    onScroll((y) => { ly = y; if (raf) return; raf = true; requestAnimationFrame(() => { raf = false; const p = clamp(ly / max, 0, 1); prog && (prog.style.transform = `scaleX(${p})`); if (alt) { alt.classList.toggle('is-visible', ly > 240); altV.textContent = fmt(800 + p * 2700); ticks.style.setProperty('--tape', `${-(p * 330) % 55}px`); } mbar && mbar.classList.toggle('is-visible', ly > innerHeight * .55); }); });
   }
 
-  /* ---------------- booking modal ---------------- */
-  const modal = $('#booking');
-  let bookingStep = 1;
+  /* ---------------- booking sheet ---------------- */
+  const bk = $('#booking');
+  let bkStep = 1;
   function openBooking(opts = {}) {
-    if (!modal) return;
-    const form = $('#bform');
+    if (!bk) return;
+    const form = $('#bform', bk), sheet = $('.bk__sheet', bk);
     form.reset();
-    $('.bform__success', modal).hidden = true; form.hidden = false; $('.bform__error', form).hidden = true;
+    $('.bk__success', bk).hidden = true; $$('.bk__step', bk).forEach((s) => { s.hidden = false; }); $('.bk__error', bk).hidden = true; $('.bk__foot', bk).hidden = false;
     if (opts.route) { const r = $(`input[name=route][value="${opts.route}"]`, form); if (r) r.checked = true; }
     if (opts.seat) { const s = $(`input[name=seatType][value="${opts.seat}"]`, form); if (s) s.checked = true; }
-    if (opts.seats) { $('input[name=seats]', form).value = opts.seats; }
+    if (opts.seats) $('input[name=seats]', form).value = opts.seats;
     gotoStep(opts.route ? 2 : 1);
-    modal.classList.add('is-open'); modal.setAttribute('aria-hidden', 'false');
+    bk.classList.add('is-open'); bk.setAttribute('aria-hidden', 'false');
     lockScroll(true);
-    setTimeout(() => { const f = $('.bform__step.is-active input:not([type=radio]), .bform__step.is-active input[type=radio]', form); f && f.focus({ preventScroll: true }); }, 350);
+    setTimeout(() => { const f = $('.bk__step.is-active input:not([type=radio]):not(.hp)', form) || $('.bk__step.is-active input', form); f && f.focus({ preventScroll: true }); }, 380);
+    sheet.scrollTop = 0;
   }
-  function closeBooking() {
-    if (!modal || !modal.classList.contains('is-open')) return;
-    modal.classList.remove('is-open'); modal.setAttribute('aria-hidden', 'true');
-    lockScroll(false);
-  }
+  function closeBooking() { if (!bk || !bk.classList.contains('is-open')) return; bk.classList.remove('is-open'); bk.setAttribute('aria-hidden', 'true'); lockScroll(false); }
+  function selectedRoute() { return $('input[name=route]:checked', bk); }
   function gotoStep(n) {
-    bookingStep = n;
-    $$('.bform__step', modal).forEach((f) => f.classList.toggle('is-active', +f.dataset.step === n));
-    $$('.steps__item', modal).forEach((s) => { const k = +s.dataset.step; s.classList.toggle('is-active', k === n); s.classList.toggle('is-done', k < n); });
-    $('[data-prev]', modal).hidden = n === 1;
-    $('[data-next]', modal).hidden = n === 3;
-    $('[data-submit]', modal).hidden = n !== 3;
-    if (n === 2) updateTotal();
-    $('.modal__panel', modal).scrollTo({ top: 0, behavior: 'smooth' });
+    bkStep = n;
+    const sheet = $('.bk__sheet', bk);
+    sheet.dataset.step = n;
+    $$('.bk__step', bk).forEach((s) => s.classList.toggle('is-active', +s.dataset.step === n));
+    $('[data-progress]', bk).style.width = `${(n / 3) * 100}%`;
+    $('[data-step-label]', bk).textContent = (HH.stepOf || 'Step {a} / {b}').replace('{a}', n).replace('{b}', 3);
+    $('[data-prev]', bk).hidden = n === 1;
+    $('[data-next]', bk).hidden = n === 3;
+    $('[data-submit]', bk).hidden = n !== 3;
+    updateSummary();
+    const form = $('.bk__form', bk); form.scrollTo({ top: 0, behavior: 'smooth' });
+    if (!reduced) gsap.fromTo($('.bk__step.is-active', bk), { opacity: 0, x: 14 }, { opacity: 1, x: 0, duration: .45, ease: 'power3.out' });
   }
-  function selectedRoute() { const r = $('input[name=route]:checked', modal); return r || null; }
-  function updateTotal() {
-    const r = selectedRoute(), box = $('#bform-total', modal);
-    if (!r || !box) return;
+  function updateSummary() {
+    const r = selectedRoute(), b = HH.booking;
+    const img = $('[data-summary-img]', bk), title = $('[data-summary-title]', bk), meta = $('[data-summary-meta]', bk), box = $('[data-total-box]', bk);
+    if (!r) { title.textContent = b.pickRoute; meta.textContent = ''; box.hidden = true; return; }
+    title.textContent = r.dataset.title; meta.textContent = r.dataset.meta || '';
+    if (r.dataset.img && !img.src.includes(`/${r.dataset.img}-720`)) { img.style.opacity = 0; img.onload = () => { img.style.opacity = 1; }; img.src = `/assets/img/${r.dataset.img}-720.webp`; }
+    const isType = r.value.startsWith('type:');
+    const segs = $$('input[name=seatType]', bk);
     const wholeOnly = r.dataset.wholeOnly === '1';
-    const segs = $$('input[name=seatType]', modal);
-    segs.forEach((s) => { s.disabled = wholeOnly && s.value !== 'whole'; s.parentElement.style.opacity = s.disabled ? .4 : 1; });
-    if (wholeOnly) $('input[name=seatType][value=whole]', modal).checked = true;
-    const type = ($('input[name=seatType]:checked', modal) || {}).value;
-    const seats = clamp(parseInt($('input[name=seats]', modal).value, 10) || 1, 1, 8);
+    segs.forEach((s) => { s.disabled = wholeOnly && s.value !== 'whole'; });
+    if (wholeOnly) $('input[name=seatType][value=whole]', bk).checked = true;
+    const type = ($('input[name=seatType]:checked', bk) || {}).value;
+    const seats = clamp(parseInt($('input[name=seats]', bk).value, 10) || 1, 1, 8);
     let total = null;
-    if (type === 'whole') total = r.dataset.whole ? +r.dataset.whole : null;
-    else if (r.dataset[type]) total = +r.dataset[type] * seats;
+    if (!isType) { if (type === 'whole') total = r.dataset.whole ? +r.dataset.whole : null; else if (r.dataset[type]) total = +r.dataset[type] * seats; }
     box.hidden = total == null;
     if (total != null) $('[data-total]', box).textContent = `${fmt(total)} ${HH.currency}`;
   }
   function booking() {
-    if (!modal) return;
-    const form = $('#bform');
+    if (!bk) return;
+    const form = $('#bform', bk);
     document.addEventListener('click', (e) => {
       const b = e.target.closest('[data-book]');
       if (b) { e.preventDefault(); openBooking({ route: b.dataset.bookRoute, seat: b.dataset.bookSeat, seats: b.dataset.bookSeats }); return; }
       if (e.target.closest('#booking [data-close]')) closeBooking();
     });
-    $('[data-next]', form).addEventListener('click', () => {
-      if (bookingStep === 1 && !selectedRoute()) { gsap.fromTo('.choices', { x: -6 }, { x: 0, duration: .4, ease: 'elastic.out(1,.3)' }); return; }
-      gotoStep(Math.min(3, bookingStep + 1));
-    });
-    $('[data-prev]', form).addEventListener('click', () => gotoStep(Math.max(1, bookingStep - 1)));
-    form.addEventListener('change', (e) => { if (e.target.name === 'seatType' || e.target.name === 'seats' || e.target.name === 'route') updateTotal(); });
-    $$('.stepper__btn', form).forEach((b) => b.addEventListener('click', () => { const i = $('input[name=seats]', form); i.value = clamp((parseInt(i.value, 10) || 1) + +b.dataset.step, 1, 8); updateTotal(); }));
-    $$('input[name=route]', form).forEach((r) => r.addEventListener('change', () => { if (r.value.startsWith('type:')) { /* skip seats for non-flight types */ } }));
+    $('[data-next]', bk).addEventListener('click', () => { if (bkStep === 1 && !selectedRoute()) { gsap.fromTo('.bk__routes', { x: -8 }, { x: 0, duration: .5, ease: 'elastic.out(1,.3)' }); return; } gotoStep(Math.min(3, bkStep + 1)); });
+    $('[data-prev]', bk).addEventListener('click', () => gotoStep(Math.max(1, bkStep - 1)));
+    form.addEventListener('change', (e) => { if (['route', 'seatType', 'seats'].includes(e.target.name)) updateSummary(); });
+    $$('.stepper__btn', form).forEach((b) => b.addEventListener('click', () => { const i = $('input[name=seats]', form); i.value = clamp((parseInt(i.value, 10) || 1) + +b.dataset.step, 1, 8); updateSummary(); }));
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const phone = $('input[name=phone]', form);
       if (phone.value.replace(/\D/g, '').length < 7) { phone.classList.add('is-invalid'); phone.focus(); return; }
       phone.classList.remove('is-invalid');
-      const r = selectedRoute();
-      const fd = new FormData(form);
-      const payload = {
-        lang: HH.lang, page: location.pathname,
-        type: r && r.value.startsWith('type:') ? r.value.slice(5) : (fd.get('seatType') === 'whole' ? 'whole' : 'flight'),
-        route: r ? r.dataset.title : '', date: fd.get('date') || '', seats: r && r.value.startsWith('type:') ? '' : fd.get('seats'), seatType: r && r.value.startsWith('type:') ? '' : fd.get('seatType'),
-        name: fd.get('name') || '', phone: phone.value, message: fd.get('message') || '', website: fd.get('website') || '',
-      };
-      const btn = $('[data-submit] .btn__label', form); btn.textContent = btn.dataset.sending;
+      const r = selectedRoute(); const fd = new FormData(form);
+      const isType = r && r.value.startsWith('type:');
+      const payload = { lang: HH.lang, page: location.pathname, type: isType ? r.value.slice(5) : (fd.get('seatType') === 'whole' ? 'whole' : 'flight'), route: r ? r.dataset.title : '', date: fd.get('date') || '', seats: isType ? '' : fd.get('seats'), seatType: isType ? '' : fd.get('seatType'), name: fd.get('name') || '', phone: phone.value, message: fd.get('message') || '', website: fd.get('website') || '' };
+      const btn = $('[data-submit] .btn__label', bk); btn.textContent = btn.dataset.sending;
       let ok = false;
       try { const res = await fetch('/api/book', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); ok = res.ok; } catch (err) { ok = false; }
       btn.textContent = btn.dataset.label;
       const wa = `${HH.whatsapp}?text=${encodeURIComponent(buildWaText(payload))}`;
-      if (ok) {
-        form.hidden = true; const s = $('.bform__success', modal); s.hidden = false; $('[data-wa-success]', s).href = wa;
-      } else { const er = $('.bform__error', form); er.hidden = false; er.innerHTML = `${er.textContent} <a href="${wa}" target="_blank" rel="noopener" style="color:#c9ffdc;text-decoration:underline">WhatsApp →</a>`; }
+      if (ok) { $$('.bk__step', bk).forEach((s) => { s.hidden = true; }); const s = $('.bk__success', bk); s.hidden = false; $('[data-wa-success]', s).href = wa; $('.bk__foot', bk).hidden = true; $('[data-progress]', bk).style.width = '100%'; }
+      else { const er = $('.bk__error', bk); er.hidden = false; er.innerHTML = `${er.textContent} <a href="${wa}" target="_blank" rel="noopener" style="color:#c9ffdc;text-decoration:underline">WhatsApp →</a>`; }
     });
   }
   function buildWaText(p) {
@@ -615,29 +543,12 @@
   /* ---------------- lightbox ---------------- */
   const lb = $('#lightbox');
   let lbItems = [], lbIndex = 0;
-  function openLightbox(items, i) {
-    if (!lb) return;
-    lbItems = items; lbIndex = i;
-    showLb();
-    lb.classList.add('is-open'); lb.setAttribute('aria-hidden', 'false'); lockScroll(true);
-  }
-  function showLb(dir = 0) {
-    const img = $('.lightbox__img', lb), it = lbItems[lbIndex];
-    if (!it) return;
-    const full = it.getAttribute('href'), alt = ($('img', it) || {}).alt || '';
-    if (dir && !reduced) gsap.fromTo(img, { opacity: 0, x: 40 * dir, scale: .96 }, { opacity: 1, x: 0, scale: 1, duration: .5, ease: 'power3.out' });
-    img.src = full; img.alt = alt; $('.lightbox__cap', lb).textContent = `${lbIndex + 1} / ${lbItems.length}`;
-  }
+  function openLightbox(items, i) { if (!lb) return; lbItems = items; lbIndex = i; showLb(); lb.classList.add('is-open'); lb.setAttribute('aria-hidden', 'false'); lockScroll(true); }
+  function showLb(dir = 0) { const img = $('.lightbox__img', lb), it = lbItems[lbIndex]; if (!it) return; const full = it.getAttribute('href'), alt = ($('img', it) || {}).alt || ''; if (dir && !reduced) gsap.fromTo(img, { opacity: 0, x: 40 * dir, scale: .96 }, { opacity: 1, x: 0, scale: 1, duration: .5, ease: 'power3.out' }); img.src = full; img.alt = alt; $('.lightbox__cap', lb).textContent = `${lbIndex + 1} / ${lbItems.length}`; }
   function closeLightbox() { if (!lb || !lb.classList.contains('is-open')) return; lb.classList.remove('is-open'); lb.setAttribute('aria-hidden', 'true'); lockScroll(false); }
   function lightbox() {
     if (!lb) return;
-    document.addEventListener('click', (e) => {
-      const a = e.target.closest('[data-lightbox]');
-      if (a) { e.preventDefault(); const g = a.closest('[data-gallery]') || document; const items = $$('[data-lightbox]', g); openLightbox(items, items.indexOf(a)); return; }
-      if (e.target.closest('#lightbox [data-close]')) closeLightbox();
-      const n = e.target.closest('#lightbox [data-dir]');
-      if (n) { const d = +n.dataset.dir; lbIndex = (lbIndex + d + lbItems.length) % lbItems.length; showLb(d); }
-    });
+    document.addEventListener('click', (e) => { const a = e.target.closest('[data-lightbox]'); if (a) { e.preventDefault(); const g = a.closest('[data-gallery]') || document; const items = $$('[data-lightbox]', g); openLightbox(items, items.indexOf(a)); return; } if (e.target.closest('#lightbox [data-close]')) closeLightbox(); const n = e.target.closest('#lightbox [data-dir]'); if (n) { const d = +n.dataset.dir; lbIndex = (lbIndex + d + lbItems.length) % lbItems.length; showLb(d); } });
     document.addEventListener('keydown', (e) => { if (!lb.classList.contains('is-open')) return; if (e.key === 'ArrowRight') { lbIndex = (lbIndex + 1) % lbItems.length; showLb(1); } if (e.key === 'ArrowLeft') { lbIndex = (lbIndex - 1 + lbItems.length) % lbItems.length; showLb(-1); } });
     let sx = 0;
     lb.addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; }, { passive: true });
@@ -646,101 +557,49 @@
 
   /* ---------------- route page: seats + altitude chart ---------------- */
   function seats() {
-    const map = $('.seatmap');
-    if (!map) return;
+    const map = $('.seatmap'); if (!map) return;
     const seatsEls = $$('.seat:not(.seat--pilot)', map), total = $('#seat-total'), btn = $('#book-seat');
-    const update = () => {
-      const sel = seatsEls.filter((s) => s.classList.contains('is-selected'));
-      const sum = sel.reduce((a, s) => a + (+s.dataset.price || 0), 0);
-      if (total) { total.hidden = !sel.length; $('[data-seat-count]', total).textContent = sel.length; $('[data-seat-total]', total).textContent = `${fmt(sum)} ${HH.currency}`; }
-      if (btn) { btn.dataset.bookSeats = sel.length || 1; btn.dataset.bookSeat = sel.length && sel.every((s) => s.dataset.type === 'window') ? 'window' : (sel.length ? 'middle' : 'window'); }
-    };
-    seatsEls.forEach((s) => {
-      const toggle = () => { s.classList.toggle('is-selected'); s.setAttribute('aria-checked', s.classList.contains('is-selected')); if (!reduced) gsap.fromTo(s, { scale: .85 }, { scale: 1, duration: .5, ease: 'back.out(3)', transformOrigin: 'center' }); update(); };
-      s.addEventListener('click', toggle);
-      s.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
-    });
+    const update = () => { const sel = seatsEls.filter((s) => s.classList.contains('is-selected')); const sum = sel.reduce((a, s) => a + (+s.dataset.price || 0), 0); if (total) { total.hidden = !sel.length; $('[data-seat-count]', total).textContent = sel.length; $('[data-seat-total]', total).textContent = `${fmt(sum)} ${HH.currency}`; } if (btn) { btn.dataset.bookSeats = sel.length || 1; btn.dataset.bookSeat = sel.length && sel.every((s) => s.dataset.type === 'window') ? 'window' : (sel.length ? 'middle' : 'window'); } };
+    seatsEls.forEach((s) => { const toggle = () => { s.classList.toggle('is-selected'); s.setAttribute('aria-checked', s.classList.contains('is-selected')); if (!reduced) gsap.fromTo(s, { scale: .85 }, { scale: 1, duration: .5, ease: 'back.out(3)', transformOrigin: 'center' }); update(); }; s.addEventListener('click', toggle); s.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }); });
   }
   function altitudeChart() {
-    const chart = $('.alt');
-    if (!chart) return;
+    const chart = $('.alt'); if (!chart) return;
     const line = $('.alt__line', chart), area = $('.alt__area', chart), wps = $$('.alt__wp', chart), heli = $('.alt__heli', chart);
-    const len = line.getTotalLength();
-    line.style.strokeDasharray = len; line.style.strokeDashoffset = len;
+    const len = line.getTotalLength(); line.style.strokeDasharray = len; line.style.strokeDashoffset = len;
     if (reduced) { line.style.strokeDashoffset = 0; area.style.opacity = 1; return; }
-    ScrollTrigger.create({ trigger: chart, start: 'top 85%', once: true, onEnter: () => {
-      gsap.to(line, { strokeDashoffset: 0, duration: 2.2, ease: 'power2.inOut' });
-      gsap.to(area, { opacity: 1, duration: 1.2, delay: .8 });
-      gsap.fromTo(wps, { opacity: 0, scale: .5, transformOrigin: 'center' }, { opacity: 1, scale: 1, duration: .5, stagger: .35, delay: .3, ease: 'back.out(2)' });
-      gsap.set(heli, { opacity: 1 });
-      gsap.to(heli, { duration: 2.2, ease: 'power2.inOut', motionPath: { path: line, align: line, alignOrigin: [.5, .5], autoRotate: 90 } });
-    } });
+    ScrollTrigger.create({ trigger: chart, start: 'top 85%', once: true, onEnter: () => { gsap.to(line, { strokeDashoffset: 0, duration: 2.2, ease: 'power2.inOut' }); gsap.to(area, { opacity: 1, duration: 1.2, delay: .8 }); gsap.fromTo(wps, { opacity: 0, scale: .5, transformOrigin: 'center' }, { opacity: 1, scale: 1, duration: .5, stagger: .35, delay: .3, ease: 'back.out(2)' }); gsap.set(heli, { opacity: 1 }); gsap.to(heli, { duration: 2.2, ease: 'power2.inOut', motionPath: { path: line, align: line, alignOrigin: [.5, .5], autoRotate: 90 } }); } });
   }
 
-  /* ---------------- gift 3D card ---------------- */
+  /* ---------------- gift 3D card / CTA fly-by / extras ---------------- */
   function gift3d(wrap) {
-    const card = $('.gift3d__card', wrap);
-    if (!card || reduced) return;
+    const card = $('.gift3d__card', wrap); if (!card || reduced) return;
     const rx = gsap.quickTo(card, 'rotateX', { duration: .6, ease: 'power3' }), ry = gsap.quickTo(card, 'rotateY', { duration: .6, ease: 'power3' });
     gsap.set(card, { transformPerspective: 1200 });
     const apply = (px, py) => { ry(px * 22); rx(-py * 22); card.style.setProperty('--sx', `${50 + px * 80}%`); card.style.setProperty('--sy', `${50 + py * 80}%`); };
-    if (finePointer) {
-      wrap.addEventListener('mousemove', (e) => { const r = card.getBoundingClientRect(); apply((e.clientX - r.left) / r.width - .5, (e.clientY - r.top) / r.height - .5); });
-      wrap.addEventListener('mouseleave', () => apply(0, 0));
-    }
+    if (finePointer) { wrap.addEventListener('mousemove', (e) => { const r = card.getBoundingClientRect(); apply((e.clientX - r.left) / r.width - .5, (e.clientY - r.top) / r.height - .5); }); wrap.addEventListener('mouseleave', () => apply(0, 0)); }
     onGyro((x, y) => apply(x * .6, y * .6));
     gsap.to(card, { y: -8, duration: 3, ease: 'sine.inOut', yoyo: true, repeat: -1 });
   }
-
-  /* ---------------- CTA helicopter fly-by ---------------- */
-  function ctaFly() {
-    const h = $('.cta__heli'); if (!h || reduced) return;
-    gsap.fromTo(h, { xPercent: -140 }, { xPercent: 460, ease: 'none', scrollTrigger: { trigger: '.cta', start: 'top bottom', end: 'bottom top', scrub: 1.2 } });
-  }
-
-  /* ---------------- misc: ticker speed on scroll velocity, images ---------------- */
+  function ctaFly() { const h = $('.cta__heli'); if (!h || reduced) return; gsap.fromTo(h, { xPercent: -140 }, { xPercent: 460, ease: 'none', scrollTrigger: { trigger: '.cta', start: 'top bottom', end: 'bottom top', scrub: 1.2 } }); }
   function extras() {
-    // pause marquees when off-screen (battery)
     $$('.ticker, .gmarquee').forEach((m) => { const t = $('.ticker__track, .gmarquee__track', m); if (!t) return; new IntersectionObserver((en) => { t.style.animationPlayState = en[0].isIntersecting ? 'running' : 'paused'; }).observe(m); });
-    // lqip: mark loaded images
-    $$('img.img').forEach((im) => { const done = () => im.classList.add('is-loaded'); if (im.complete) done(); else im.addEventListener('load', done, { once: true }); });
-    // hash on load
     if (location.hash && location.hash !== '#booking') setTimeout(() => scrollTo(location.hash), 900);
     if (location.hash === '#booking') setTimeout(() => openBooking({}), 900);
   }
 
   /* ---------------- init ---------------- */
-  function init() {
-    let entering = false;
-    try { entering = sessionStorage.getItem('hh-entering') === '1'; } catch (e) { /* noop */ }
-    initLenis();
-    transitions();
-    nav();
-    cursor();
-    initGyro();
-    booking();
-    lightbox();
-    faq();
-    seats();
-    scrollWidgets();
-    if ($('#hero') && !reduced) gsap.set(['.hero__stats', '#hero-heli'], { opacity: 0 });
-    preloader().then(() => {
-      hero(entering);
-      pageHero(entering);
-      reveals();
-      flightLog();
-      mapSection();
-      fleet();
-      custom();
-      altitudeChart();
-      ctaFly();
-      magnetic();
-      tilt();
-      extras();
+  async function init() {
+    const entering = sessionFlag('hh-entering', false);
+    initLenis(); transitions(); nav(); cursor(); initGyro(); booking(); lightbox(); faq(); seats(); scrollWidgets();
+    if ($('#hero') && !reduced) gsap.set('.hero__stats', { opacity: 0 });
+    const afterIntro = () => {
+      reveals(); flightLog(); mapSection(); custom(); altitudeChart(); ctaFly(); magnetic(); tilt(); glare(); extras(); showcase();
       ScrollTrigger.refresh();
       addEventListener('load', () => ScrollTrigger.refresh());
       if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => ScrollTrigger.refresh());
-    });
+    };
+    if (HH.page === 'home') { introHome().then(afterIntro); }
+    else { await preloaderInner(); pageHero(entering); afterIntro(); }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();

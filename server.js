@@ -12,6 +12,12 @@
  *   DATA_DIR             default ./data   (bookings.jsonl is written here)
  *   TELEGRAM_BOT_TOKEN   optional: forward bookings to Telegram
  *   TELEGRAM_CHAT_ID     optional: chat id for the bot
+ *   MAIL_TO              optional: e-mail address(es) that receive bookings (comma separated)
+ *   SMTP_HOST            SMTP server (e.g. smtp.gmail.com, smtp.yandex.ru, smtp.mail.ru)
+ *   SMTP_PORT            465 (SSL) or 587 (STARTTLS); default 465
+ *   SMTP_USER / SMTP_PASS  login (for Gmail/Yandex use an app password)
+ *   MAIL_FROM            sender, default "HeliHop <SMTP_USER>"
+ *   SMTP_INSECURE=1      accept self-signed certificates (not recommended)
  *   ADMIN_TOKEN          optional: GET /api/bookings?token=...
  */
 'use strict';
@@ -21,6 +27,7 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 const crypto = require('crypto');
+const { sendMail } = require('./lib/smtp');
 
 const PORT = parseInt(process.env.PORT || '7033', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -196,6 +203,25 @@ function telegramNotify(text) {
   });
 }
 
+const escHtml = (v) => String(v == null ? '' : v).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+function mailNotify(b) {
+  const to = process.env.MAIL_TO, host = process.env.SMTP_HOST;
+  if (!to || !host) return Promise.resolve(false);
+  const user = process.env.SMTP_USER || '', pass = process.env.SMTP_PASS || '';
+  const from = process.env.MAIL_FROM || `HeliHop <${user || 'noreply@helihop'}>`;
+  const digits = b.phone.replace(/\D/g, '');
+  const rows = [
+    ['Тип', b.type], ['Маршрут', b.route], ['Дата', b.date], ['Места', [b.seats, b.seatType].filter(Boolean).join(' · ')],
+    ['Имя', b.name], ['Телефон', b.phone], ['Сообщение', b.message], ['Язык', b.lang], ['Страница', b.page], ['Время', b.at], ['ID', b.id],
+  ].filter(([, v]) => v);
+  const text = rows.map(([k, v]) => `${k}: ${v}`).join('\n') + (digits ? `\n\nWhatsApp: https://wa.me/${digits}` : '');
+  const html = `<div style="font-family:Arial,sans-serif;font-size:15px;color:#111"><h2 style="margin:0 0 12px">🚁 Новая заявка — HeliHop</h2><table style="border-collapse:collapse">${rows.map(([k, v]) => `<tr><td style="padding:6px 14px 6px 0;color:#666">${escHtml(k)}</td><td style="padding:6px 0"><b>${escHtml(v)}</b></td></tr>`).join('')}</table>${digits ? `<p style="margin-top:16px"><a href="https://wa.me/${digits}" style="background:#25d366;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">Ответить в WhatsApp</a></p>` : ''}</div>`;
+  return sendMail({
+    host, port: process.env.SMTP_PORT || 465, secure: String(process.env.SMTP_PORT || '465') === '465', user, pass, from, to,
+    replyTo: undefined, subject: `Заявка: ${b.route || b.type} — ${b.name || b.phone}`, text, html, insecure: process.env.SMTP_INSECURE === '1',
+  }).then(() => true).catch((e) => { console.error('mail failed:', e.message); return false; });
+}
+
 async function handleBooking(req, res) {
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress;
   if (rateLimited(ip)) return sendJSON(req, res, 429, { ok: false, error: 'rate_limited' });
@@ -238,7 +264,8 @@ async function handleBooking(req, res) {
     (booking.message ? `Сообщение: ${esc(booking.message)}\n` : '') +
     `Язык: ${esc(booking.lang)} · ${esc(booking.page)}`
   );
-  console.log(`booking ${booking.id} saved${tg ? ' + telegram' : ''}`);
+  const mail = await mailNotify(booking);
+  console.log(`booking ${booking.id} saved${tg ? ' + telegram' : ''}${mail ? ' + email' : ''}`);
   sendJSON(req, res, 200, { ok: true, id: booking.id });
 }
 
@@ -256,7 +283,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     if (url.pathname.startsWith('/api/')) {
-      if (url.pathname === '/api/health') return sendJSON(req, res, 200, { ok: true, uptime: Math.round(process.uptime()), time: new Date().toISOString() });
+      if (url.pathname === '/api/health') return sendJSON(req, res, 200, { ok: true, uptime: Math.round(process.uptime()), time: new Date().toISOString(), email: !!(process.env.MAIL_TO && process.env.SMTP_HOST), telegram: !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID) });
       if (url.pathname === '/api/book' && req.method === 'POST') return handleBooking(req, res);
       if (url.pathname === '/api/bookings' && req.method === 'GET') return handleBookingsList(req, res, url);
       return sendJSON(req, res, 404, { ok: false, error: 'not_found' });

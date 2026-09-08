@@ -24,7 +24,7 @@ module.exports = [
     aircraft: H125,
     image: 'route-ala-archa',
     gallery: ['route-ala-archa', 'gal-ala-archa-2', 'gal-ala-archa-3', 'space-tian-shan'],
-    color: '#8fd3ff',
+    color: '#ffffff',
     coords: [[74.59, 42.87], [74.53, 42.64], [74.49, 42.56], [74.5, 42.5], [74.57, 42.6], [74.59, 42.87]],
     altitude: [800, 1700, 2300, 3300, 2600, 1500, 800],
     waypoints: [
@@ -71,7 +71,7 @@ module.exports = [
     aircraft: H125,
     image: 'route-glacier',
     gallery: ['route-glacier', 'gal-glacier-2', 'gal-glacier-4', 'gal-glacier-3', 'route-chunkurchak', 'gal-chunkurchak-2', 'gal-chunkurchak-3'],
-    color: '#f0b35a',
+    color: '#bfe1ff',
     coords: [[74.59, 42.87], [74.5, 42.6], [74.5, 42.49], [74.55, 42.52], [74.63, 42.6], [74.59, 42.87]],
     altitude: [800, 2000, 3500, 3500, 2800, 2200, 800],
     waypoints: [
@@ -119,7 +119,7 @@ module.exports = [
     aircraft: H125,
     image: 'route-kol-tor',
     gallery: ['route-kol-tor', 'gal-kol-tor-2', 'gal-kol-tor-3', 'gal-kol-tor-4'],
-    color: '#7fe3c8',
+    color: '#9fb3c8',
     coords: [[74.59, 42.87], [74.95, 42.78], [75.12, 42.66], [75.08, 42.5], [75.02, 42.62], [74.59, 42.87]],
     altitude: [800, 1300, 1900, 2700, 2700, 1800, 800],
     waypoints: [
@@ -168,7 +168,7 @@ module.exports = [
     aircraft: H125,
     image: 'route-adygene',
     gallery: ['route-adygene', 'gal-adygene-2', 'gal-adygene-3', 'gal-glacier-2'],
-    color: '#c9a3ff',
+    color: '#e6e9ee',
     coords: [[74.59, 42.87], [74.5, 42.62], [74.45, 42.53], [74.43, 42.5], [74.52, 42.6], [74.59, 42.87]],
     altitude: [800, 2000, 3000, 3300, 3300, 2000, 800],
     waypoints: [

@@ -82,10 +82,20 @@ const I = {
 function rotorMark(cls = '') {
   return `<svg class="mark ${cls}" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="29" fill="none" stroke="currentColor" stroke-width="2"/><g class="mark__blades"><path d="M32 32 30 8h4zM32 32l22 11-2 3.5zM32 32 10 43l-2-3.5z" fill="currentColor"/></g><circle cx="32" cy="32" r="4.5" fill="currentColor"/></svg>`;
 }
-function logo(lang, cls = '') {
-  return `<a class="logo ${cls}" href="${url(lang)}" aria-label="${site.brandFull}">${rotorMark('logo__mark')}<span class="logo__word">Heli<b>Hop</b></span></a>`;
+/** Helicopter silhouette (facing left) used in the wordmark */
+function heliSilhouette(cls = '') {
+  return `<svg class="sil ${cls}" viewBox="0 0 640 260" aria-hidden="true"><g transform="translate(640 0) scale(-1 1)">
+    <path d="M44 55.5h512a3 3 0 0 1 0 6H44a3 3 0 0 1 0-6z" fill="currentColor"/><rect x="292" y="58" width="16" height="32" rx="3" fill="currentColor"/>
+    <path d="M568 96 578 42h24l6 54z" fill="currentColor"/><path d="M574 112 582 140h18l6-28z" fill="currentColor"/><path d="M494 99h58l1 7h-59z" fill="currentColor"/>
+    <path d="M118 150c0-24 18-46 48-54 26-8 58-10 92-8 32 2 60 8 78 20l40 18c70-2 150-8 220-14v20c-70 8-150 14-222 26-8 28-34 50-76 58-56 10-116 4-146-16-18-12-30-30-34-50z" fill="currentColor"/>
+    <path d="M132 146c4-20 20-36 44-42l64-6 6 38-90 20c-14 2-22-2-24-10z" fill="#000" opacity=".85"/><path d="M252 96h64l12 38-6 8h-70z" fill="#000" opacity=".85"/>
+    <path d="M192 186 184 218M298 178l6 40" stroke="currentColor" stroke-width="8" stroke-linecap="round"/><path d="M140 214c4-9 12-12 24-10h176c12 0 20-2 26-10" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+    <path d="M594 50v52" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+  </g></svg>`;
 }
-
+function logo(lang, cls = '') {
+  return `<a class="logo ${cls}" href="${url(lang)}" aria-label="${site.brandFull}">${heliSilhouette('logo__sil')}<span class="logo__word"><span>HELI</span><span>HOP</span></span></a>`;
+}
 /** Side-view Airbus H125-style helicopter, facing right. viewBox 0 0 640 260 */
 function heliSvg(cls = '', id = 'heli') {
   return `<svg class="heli ${cls}" viewBox="0 0 640 260" aria-hidden="true">
@@ -176,7 +186,9 @@ function routeCard(route, lang, t, i = 0) {
       <span class="rcard__badge">${I.clock} ${route.duration} ${t.common.min}${route.ground ? ' + ' + route.ground : ''}</span>
       ${route.landing ? `<span class="rcard__badge rcard__badge--alt">${I.alt} ${fmtNum(route.landing)} ${t.common.metres}</span>` : ''}
       <span class="rcard__num">0${i + 1}</span>
+      <span class="rcard__fly" aria-hidden="true">${heliTop()}</span>
     </a>
+    <span class="glare" aria-hidden="true"></span>
     <div class="rcard__body">
       <h3 class="rcard__title"><a href="${url(lang, 'routes/' + route.slug)}">${esc(r.title)}</a></h3>
       <p class="rcard__tag">${esc(r.tagline)}</p>
@@ -367,4 +379,4 @@ function seatPicker(route, lang, t) {
   </div>`;
 }
 
-module.exports = { esc, attr, url, fmtNum, price, img, I, rotorMark, logo, heliSvg, heliTop, sectionHead, btn, waLink, durationText, routePriceText, routeCard, faqList, ctaSection, marquee, guestCard, specList, MAP, smoothPath, mapSvg, altitudeChart, seatPicker };
+module.exports = { esc, attr, url, fmtNum, price, img, I, rotorMark, heliSilhouette, logo, heliSvg, heliTop, sectionHead, btn, waLink, durationText, routePriceText, routeCard, faqList, ctaSection, marquee, guestCard, specList, MAP, smoothPath, mapSvg, altitudeChart, seatPicker };

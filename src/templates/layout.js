@@ -20,64 +20,73 @@ function langSwitch(lang, path, t, cls = '') {
 }
 
 function bookingModal(lang, t) {
-  const b = t.booking;
-  const c = t.common;
-  const routeOpts = routes.map((r) => `<label class="choice"><input type="radio" name="route" value="${r.slug}" data-title="${esc(r.t[lang].title)}" data-window="${r.price.window || ''}" data-middle="${r.price.middle || ''}" data-whole="${r.price.whole || ''}" data-whole-only="${r.wholeOnly ? 1 : 0}"><span class="choice__box"><span class="choice__title">${esc(r.t[lang].title)}</span><span class="choice__meta">${esc(C.durationText(r, lang, t))} · ${esc(C.routePriceText(r, lang, t))}</span></span></label>`).join('');
-  const typeOpts = ['proposal', 'gift', 'shoot', 'custom', 'partner', 'aviation'].map((k) => `<label class="choice choice--sm"><input type="radio" name="route" value="type:${k}" data-title="${esc(b.types[k])}"><span class="choice__box"><span class="choice__title">${esc(b.types[k])}</span></span></label>`).join('');
-  return `<div class="modal" id="booking" aria-hidden="true">
-    <div class="modal__backdrop" data-close></div>
-    <div class="modal__panel" role="dialog" data-lenis-prevent aria-modal="true" aria-labelledby="booking-title">
-      <button type="button" class="modal__close" data-close aria-label="${esc(t.nav.close)}">${I.x}</button>
-      <div class="modal__head">
-        <p class="label">${rotorMark('label__mark')} ${site.brand}</p>
-        <h3 class="h3" id="booking-title">${esc(b.title)}</h3>
-        <p class="modal__sub">${esc(b.subtitle)}</p>
-      </div>
-      <ol class="steps" aria-hidden="true">${b.steps.map((s, i) => `<li class="steps__item${i === 0 ? ' is-active' : ''}" data-step="${i + 1}"><span class="steps__num">${i + 1}</span><span class="steps__name">${esc(s)}</span></li>`).join('')}</ol>
-      <form class="bform" id="bform" novalidate>
-        <fieldset class="bform__step is-active" data-step="1">
-          <legend class="bform__legend">${esc(b.route)}</legend>
-          <div class="choices">${routeOpts}</div>
-          <div class="choices choices--row">${typeOpts}</div>
-        </fieldset>
-        <fieldset class="bform__step" data-step="2">
-          <div class="bform__grid">
-            <label class="field"><span class="field__label">${esc(b.date)}</span><input type="date" name="date" class="field__input"></label>
-            <div class="field"><span class="field__label">${esc(b.seats)}</span>
-              <div class="stepper"><button type="button" class="stepper__btn" data-step="-1" aria-label="−">−</button><input type="number" name="seats" class="stepper__input" value="2" min="1" max="8" inputmode="numeric"><button type="button" class="stepper__btn" data-step="1" aria-label="+">+</button></div>
+  const b = t.booking, c = t.common;
+  const routeOpts = routes.map((r) => `<label class="rpick"><input type="radio" name="route" value="${r.slug}" data-title="${esc(r.t[lang].title)}" data-meta="${esc(C.durationText(r, lang, t))}" data-img="${r.image}" data-window="${r.price.window || ''}" data-middle="${r.price.middle || ''}" data-whole="${r.price.whole || ''}" data-whole-only="${r.wholeOnly ? 1 : 0}"><span class="rpick__box"><img class="rpick__img" src="/assets/img/${r.image}-720.webp" alt="" loading="lazy" width="120" height="90"><span class="rpick__t"><b>${esc(r.t[lang].title)}</b><small>${esc(C.durationText(r, lang, t))} · ${esc(C.routePriceText(r, lang, t))}</small></span><i class="rpick__check">${I.check}</i></span></label>`).join('');
+  const typeOpts = ['proposal', 'gift', 'shoot', 'custom', 'partner', 'aviation'].map((k) => `<label class="tpick"><input type="radio" name="route" value="type:${k}" data-title="${esc(b.types[k])}" data-meta="" data-img="${{ proposal: 'marry', gift: 'gift', shoot: 'shoot', custom: 'dest-song-kul', partner: 'bishkek', aviation: 'aviation' }[k]}"><span>${esc(b.types[k])}</span></label>`).join('');
+  return `<div class="bk" id="booking" aria-hidden="true">
+    <div class="bk__backdrop" data-close></div>
+    <div class="bk__sheet" role="dialog" aria-modal="true" aria-labelledby="bk-title" data-lenis-prevent>
+      <header class="bk__head">
+        <div class="bk__brand">${C.heliSilhouette('bk__sil')}<span>${site.brand}</span></div>
+        <div class="bk__progress"><span data-step-label>${esc(b.stepOf.replace('{a}', '1').replace('{b}', '3'))}</span><i><b data-progress style="width:33.3%"></b></i></div>
+        <button type="button" class="bk__close" data-close aria-label="${esc(t.nav.close)}">${I.x}</button>
+      </header>
+      <div class="bk__body">
+        <aside class="bk__side">
+          <div class="bk__img"><img data-summary-img src="/assets/img/route-ala-archa-720.webp" alt="" width="720" height="540"></div>
+          <div class="bk__summary">
+            <p class="label">${esc(b.summaryTitle)}</p>
+            <h3 class="bk__stitle" data-summary-title>${esc(b.pickRoute)}</h3>
+            <p class="bk__smeta" data-summary-meta></p>
+            <div class="bk__total" data-total-box hidden><span>${esc(b.total)} <small>${esc(b.estimate)}</small></span><b data-total>—</b></div>
+          </div>
+        </aside>
+        <form class="bk__form" id="bform" novalidate>
+          <section class="bk__step is-active" data-step="1">
+            <h3 class="bk__title" id="bk-title">${esc(b.pickRoute)}</h3>
+            <div class="bk__routes">${routeOpts}</div>
+            <div class="bk__types">${typeOpts}</div>
+          </section>
+          <section class="bk__step" data-step="2">
+            <h3 class="bk__title">${esc(b.steps[1])}</h3>
+            <div class="bk__grid">
+              <label class="field"><span class="field__label">${esc(b.date)}</span><input type="date" name="date" class="field__input"><small class="field__hint">${esc(b.dateHint)}</small></label>
+              <div class="field"><span class="field__label">${esc(b.seats)}</span>
+                <div class="stepper"><button type="button" class="stepper__btn" data-step="-1" aria-label="−">−</button><input type="number" name="seats" class="stepper__input" value="2" min="1" max="8" inputmode="numeric"><button type="button" class="stepper__btn" data-step="1" aria-label="+">+</button></div>
+              </div>
             </div>
-          </div>
-          <div class="field"><span class="field__label">${esc(b.seatType)}</span>
-            <div class="seg" role="radiogroup">
-              <label class="seg__opt"><input type="radio" name="seatType" value="window" checked><span>${esc(b.window)}</span></label>
-              <label class="seg__opt"><input type="radio" name="seatType" value="middle"><span>${esc(b.middle)}</span></label>
-              <label class="seg__opt"><input type="radio" name="seatType" value="whole"><span>${esc(b.whole)}</span></label>
+            <div class="field"><span class="field__label">${esc(b.seatType)}</span>
+              <div class="seg" role="radiogroup">
+                <label class="seg__opt"><input type="radio" name="seatType" value="window" checked><span>${esc(b.window)}</span></label>
+                <label class="seg__opt"><input type="radio" name="seatType" value="middle"><span>${esc(b.middle)}</span></label>
+                <label class="seg__opt"><input type="radio" name="seatType" value="whole"><span>${esc(b.whole)}</span></label>
+              </div>
             </div>
-          </div>
-          <div class="bform__total" id="bform-total" hidden><span>${esc(b.total)} <small>(${esc(b.estimate)})</small></span><b data-total>—</b></div>
-        </fieldset>
-        <fieldset class="bform__step" data-step="3">
-          <div class="bform__grid">
-            <label class="field"><span class="field__label">${esc(b.name)}</span><input type="text" name="name" class="field__input" autocomplete="name" maxlength="80"></label>
-            <label class="field"><span class="field__label">${esc(b.phone)} *</span><input type="tel" name="phone" class="field__input" autocomplete="tel" inputmode="tel" placeholder="+996" required maxlength="30"></label>
-          </div>
-          <label class="field"><span class="field__label">${esc(b.message)}</span><textarea name="message" class="field__input" rows="3" maxlength="1000" placeholder="${esc(b.messagePh)}"></textarea></label>
-          <input type="text" name="website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
-          <p class="bform__privacy">${esc(b.privacy)}</p>
-        </fieldset>
-        <div class="bform__nav">
-          <button type="button" class="btn btn--ghost" data-prev hidden><span class="btn__label">${esc(b.prev)}</span></button>
-          <button type="button" class="btn btn--primary" data-next><span class="btn__label">${esc(b.next)}</span><span class="btn__icon">${I.arrow}</span></button>
-          <button type="submit" class="btn btn--primary" data-submit hidden><span class="btn__label" data-label="${esc(b.submit)}" data-sending="${esc(b.sending)}">${esc(b.submit)}</span><span class="btn__icon">${I.arrow}</span></button>
-        </div>
-        <p class="bform__error" hidden>${esc(b.errorText)}</p>
-      </form>
-      <div class="bform__success" hidden>
-        <div class="bform__success-mark">${I.check}</div>
-        <h3 class="h3">${esc(b.successTitle)}</h3>
-        <p>${esc(b.successText)}</p>
-        <a class="btn btn--wa" href="${site.whatsapp}" target="_blank" rel="noopener" data-wa-success><span class="btn__label">${esc(b.openWa)}</span><span class="btn__icon">${I.wa}</span></a>
+          </section>
+          <section class="bk__step" data-step="3">
+            <h3 class="bk__title">${esc(b.steps[2])}</h3>
+            <div class="bk__grid">
+              <label class="field"><span class="field__label">${esc(b.name)}</span><input type="text" name="name" class="field__input" autocomplete="name" maxlength="80"></label>
+              <label class="field"><span class="field__label">${esc(b.phone)} *</span><input type="tel" name="phone" class="field__input" autocomplete="tel" inputmode="tel" placeholder="+996" required maxlength="30"></label>
+            </div>
+            <label class="field"><span class="field__label">${esc(b.message)}</span><textarea name="message" class="field__input" rows="3" maxlength="1000" placeholder="${esc(b.messagePh)}"></textarea></label>
+            <input type="text" name="website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+            <p class="bk__privacy">${esc(b.privacy)}</p>
+            <p class="bk__error" hidden>${esc(b.errorText)}</p>
+          </section>
+          <section class="bk__success" hidden>
+            <div class="bk__success-mark">${I.check}</div>
+            <h3 class="h3">${esc(b.successTitle)}</h3>
+            <p>${esc(b.successText)}</p>
+            <a class="btn btn--wa" href="${site.whatsapp}" target="_blank" rel="noopener" data-wa-success><span class="btn__label">${esc(b.openWa)}</span><span class="btn__icon">${I.wa}</span></a>
+          </section>
+        </form>
       </div>
+      <footer class="bk__foot">
+        <button type="button" class="btn btn--ghost" data-prev hidden><span class="btn__label">${esc(b.prev)}</span></button>
+        <button type="button" class="btn btn--primary" data-next><span class="btn__label">${esc(b.next)}</span><span class="btn__icon">${I.arrow}</span></button>
+        <button type="submit" form="bform" class="btn btn--primary" data-submit hidden><span class="btn__label" data-label="${esc(b.submit)}" data-sending="${esc(b.sending)}">${esc(b.submit)}</span><span class="btn__icon">${I.arrow}</span></button>
+      </footer>
     </div>
   </div>`;
 }
@@ -121,6 +130,7 @@ function footer(lang, t, path) {
  */
 function render(p) {
   const { lang, t, path, page } = p;
+  const use3d = page === 'home' || page === 'route';
   const canonical = site.domain + url(lang, path);
   const ogImage = site.domain + '/assets/img/og.jpg';
   const alternates = site.langs.map((l) => `<link rel="alternate" hreflang="${l}" href="${site.domain}${url(l, path)}">`).join('\n  ');
@@ -131,7 +141,7 @@ function render(p) {
   const hh = {
     lang, page, phone: site.phoneRaw, whatsapp: site.whatsapp, brand: site.brand,
     booking: t.booking, common: { min: t.common.min, metres: t.common.metres, altitude: t.altimeter.label, view: t.common.view, open: t.common.open, drag: t.common.drag, loading: t.common.loading, ready: t.common.ready },
-    currency: site.currency[lang],
+    currency: site.currency[lang], intro: t.intro, stepOf: t.booking.stepOf, use3d,
     routes: routes.map((r) => ({ slug: r.slug, title: r.t[lang].title, short: r.t[lang].short, duration: r.duration, ground: r.ground, landing: r.landing, price: r.price, wholeOnly: !!r.wholeOnly, color: r.color, url: url(lang, 'routes/' + r.slug), format: r.t[lang].format, priceText: C.routePriceText(r, lang, t) })),
     dests: routes.destinations.map((d) => ({ slug: d.slug, name: d.t[lang].name, desc: d.t[lang].desc, km: d.km, image: d.image })),
     mapText: { base: t.home.mapBase, custom: t.home.mapCustom, km: t.home.mapKm, onRequest: t.common.onRequest, details: t.common.details, discuss: t.home.customCta },
@@ -155,7 +165,7 @@ function render(p) {
   <meta property="og:url" content="${canonical}">
   <meta property="og:locale" content="${{ ru: 'ru_RU', en: 'en_US', ky: 'ky_KG' }[lang]}">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="theme-color" content="#07090c">
+  <meta name="theme-color" content="#050607">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
@@ -166,20 +176,23 @@ function render(p) {
   <link rel="stylesheet" href="/assets/css/fonts.css">
   <link rel="stylesheet" href="/assets/css/main.css?v=${p.version}">
   <script>document.documentElement.className='js';try{if(sessionStorage.getItem('hh-seen'))document.documentElement.classList.add('is-returning')}catch(e){}if(matchMedia('(prefers-reduced-motion: reduce)').matches)document.documentElement.classList.add('reduced');setTimeout(function(){if(!window.__hh_ready)document.documentElement.classList.add('js-failed')},5000)</script>
+  ${use3d ? '<script>window.__hh3dReady=new Promise(function(r){window.__hh3dResolve=r});</script>' : ''}
   <script type="application/ld+json">${JSON.stringify(jsonld)}</script>
   ${p.extraHead || ''}
 </head>
 <body class="page page--${page}" data-lang="${lang}" data-page="${page}">
   <a class="skip" href="#main">${esc(t.nav.skip)}</a>
-  <div class="preloader" id="preloader" aria-hidden="true">
-    <div class="preloader__inner">
-      ${rotorMark('preloader__mark')}
-      <div class="preloader__word">Heli<b>Hop</b></div>
-      <div class="preloader__alt"><span class="preloader__label">${esc(t.altimeter.label)}</span><span class="preloader__num" data-alt>0</span><span class="preloader__unit">${esc(t.altimeter.unit)}</span></div>
-      <div class="preloader__bar"><span></span></div>
+  ${use3d && page === 'home' ? `<div class="intro" id="intro" aria-hidden="true">
+    <div class="intro__bg"></div>
+    <canvas class="intro__canvas" id="stage-intro"></canvas>
+    <div class="intro__ui">
+      <div class="intro__brand">${C.heliSilhouette('intro__sil')}<span>HELI<b>HOP</b></span></div>
+      <div class="intro__status"><span class="intro__dot"></span><span data-intro-status>${esc(t.intro.start)}</span></div>
+      <div class="intro__alt"><span data-alt>0</span> <small>${esc(t.altimeter.unit)}</small></div>
+      <button type="button" class="intro__skip" data-skip>${esc(t.intro.skip)} ${I.arrow}</button>
     </div>
-  </div>
-  <div class="curtain" id="curtain" aria-hidden="true"><div class="curtain__mark">${rotorMark()}</div></div>
+  </div>` : `<div class="preloader" id="preloader" aria-hidden="true"><div class="preloader__inner">${C.heliSilhouette('preloader__sil')}<div class="preloader__word">HELI<b>HOP</b></div><div class="preloader__bar"><span></span></div></div></div>`}
+  <div class="curtain" id="curtain" aria-hidden="true"><div class="curtain__mark">${C.heliSilhouette()}</div></div>
   <div class="cursor" id="cursor" aria-hidden="true"><div class="cursor__dot"></div><div class="cursor__ring"></div><div class="cursor__label"></div></div>
   <div class="progress" id="progress" aria-hidden="true"><span></span></div>
 
@@ -242,6 +255,7 @@ ${p.body}
   <script src="/assets/js/vendor/MotionPathPlugin.min.js"></script>
   <script src="/assets/js/vendor/SplitText.min.js"></script>
   <script src="/assets/js/vendor/lenis.min.js"></script>
+  ${use3d ? '<script type="module" src="/assets/js/heli3d.js?v=' + p.version + '"></script>' : ''}
   <script src="/assets/js/main.js?v=${p.version}" defer></script>
 </body>
 </html>`;
