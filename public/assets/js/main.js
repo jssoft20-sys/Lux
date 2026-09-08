@@ -1,5 +1,7 @@
 /* =========================================================
-   HeliHop — front-end v2 (3D intro/hero/showcase, GSAP, Lenis)
+   HeliHop — front-end v3
+   Shared 3D engine everywhere, cockpit start-up intro with sound,
+   price calculator, animated "how a flight goes" story page.
    ========================================================= */
 (() => {
   'use strict';
@@ -14,6 +16,7 @@
   const isMobile = () => innerWidth < 1024;
   const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   if (typeof gsap === 'undefined') { doc.classList.add('js-failed'); return; }
   gsap.registerPlugin(ScrollTrigger, MotionPathPlugin, SplitText);
   gsap.config({ nullTargetWarn: false });
@@ -49,62 +52,155 @@
     doc.style.overflow = on ? 'hidden' : '';
   }
 
-  /* ---------------- 3D loader ---------------- */
-  let heroStage = null;
+  /* ---------------- 3D engine ---------------- */
+  let engine = null, audio = null, api3d = null;
   function load3d() {
-    if (!HH.use3d || reduced || !window.__hh3dReady) return Promise.resolve(null);
-    return Promise.race([window.__hh3dReady, new Promise((r) => setTimeout(() => r(null), 6000))])
+    if (reduced || !window.__hh3dReady) return Promise.resolve(null);
+    return Promise.race([window.__hh3dReady, wait(7000).then(() => null)])
       .then((api) => { try { return api && api.webglOK() ? api : null; } catch (e) { return null; } });
   }
-  function hookHeroStage(stage, heroEl) {
-    if (!stage) return;
-    if (finePointer) addEventListener('mousemove', (e) => stage.setPointer(e.clientX / innerWidth * 2 - 1, e.clientY / innerHeight * 2 - 1), { passive: true });
-    onGyro((x, y) => stage.setPointer(x, y));
-    ScrollTrigger.create({ trigger: heroEl, start: 'top top', end: 'bottom top', scrub: true, onUpdate: (s) => stage.setScroll(s.progress) });
+  function getEngine(api) {
+    if (engine) return engine;
+    if (!api) return null;
+    try { engine = api.getEngine({ mobile: isMobile() }); api3d = api; window.__engine = engine; } catch (e) { console.warn('3D failed', e); engine = null; }
+    return engine;
+  }
+  function getAudio() {
+    if (audio) return audio;
+    if (!api3d) return null;
+    audio = new api3d.AudioEngine(); window.__audio = audio; return audio;
+  }
+  function dragOn(el, view) {
+    let down = false, lx = 0;
+    el.addEventListener('pointerdown', (e) => { down = true; lx = e.clientX; try { el.setPointerCapture(e.pointerId); } catch (err) { /* noop */ } });
+    el.addEventListener('pointermove', (e) => { if (!down) return; view.dragBy(e.clientX - lx); lx = e.clientX; });
+    const up = () => { down = false; };
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); el.addEventListener('lostpointercapture', up);
+  }
+  /** mount every [data-v3d] slot as a live/static view */
+  function mountViews() {
+    if (!engine) return;
+    $$('[data-v3d]').forEach((el) => {
+      if (el.dataset.mounted) return; el.dataset.mounted = '1';
+      let params = {}; try { params = JSON.parse(el.dataset.v3dParams || '{}'); } catch (e) { params = {}; }
+      const pose = el.dataset.v3d, kind = el.dataset.v3dKind || 'live';
+      try {
+        const v = engine.addView(el, { pose, kind, ...params });
+        el.classList.add('is-3d'); el.__view = v;
+        if (params.drag) dragOn(el.closest('[data-cursor="drag"]') || el, v);
+      } catch (e) { console.warn('view failed', e); }
+    });
+  }
+  /** replace helicopter icons with rendered snapshots of the 3D model */
+  function applySnapshots() {
+    if (!engine) return;
+    const cache = {};
+    const get = (pose, size) => { const k = pose + size; if (!cache[k]) { try { cache[k] = engine.snapshot(pose, size).toDataURL('image/png'); } catch (e) { cache[k] = null; } } return cache[k]; };
+    $$('svg.heli-top[data-snap-svg]').forEach((svg) => {
+      const size = +svg.getAttribute('width') || 26, src = get(svg.dataset.snapSvg, Math.min(256, Math.max(96, size * 3)));
+      if (!src) return;
+      const im = new Image(); im.className = 'heli-snap ' + (svg.getAttribute('class') || ''); im.width = size; im.height = size; im.alt = ''; im.src = src; im.draggable = false;
+      svg.replaceWith(im);
+    });
+    $$('g.hmark[data-snap]').forEach((g) => {
+      const size = +g.dataset.size || 26, src = get(g.dataset.snap, 192);
+      if (!src) return;
+      const im = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+      im.setAttribute('width', size); im.setAttribute('height', size); im.setAttribute('x', -size / 2); im.setAttribute('y', -size / 2); im.setAttribute('href', src);
+      g.replaceChildren(im);
+    });
+  }
+  function hookHero(view, heroEl) {
+    if (!view) return;
+    if (finePointer) addEventListener('mousemove', (e) => view.setPointer(e.clientX / innerWidth * 2 - 1, e.clientY / innerHeight * 2 - 1), { passive: true });
+    onGyro((x, y) => view.setPointer(x, y));
+    ScrollTrigger.create({ trigger: heroEl, start: 'top top', end: 'bottom top', scrub: true, onUpdate: (s) => view.setScroll(s.progress) });
   }
 
-  /* ---------------- intro (home) ---------------- */
-  function sessionFlag(key, clear = true) { try { const v = sessionStorage.getItem(key) === '1'; if (clear) sessionStorage.removeItem(key); return v; } catch (e) { return false; } }
+  /* ---------------- cockpit intro (home, every load) ---------------- */
+  let heroView = null;
+  function setGauge(el, val) {
+    if (!el) return;
+    const max = +el.dataset.max || 100, p = clamp(val / max, 0, 1.05);
+    const needle = $('.gauge__needle', el), txt = $('[data-gauge-val]', el);
+    if (needle) needle.style.transform = `rotate(${-135 + 270 * p}deg)`;
+    if (txt) txt.textContent = fmt(val);
+  }
   async function introHome() {
-    const intro = $('#intro'), canvas = $('#stage-intro'), heroEl = $('#hero'), stageEl = $('#hero-stage');
-    const returning = doc.classList.contains('is-returning');
-    try { sessionStorage.setItem('hh-seen', '1'); } catch (e) { /* noop */ }
-    if (!intro) { startHeroContent(false); return; }
+    const intro = $('#intro'), stageEl = $('#intro-stage'), heroEl = $('#hero'), heroStage = $('#hero-stage');
+    if (!intro || reduced) { intro && intro.remove(); startHeroContent(false); return; }
     lockScroll(true);
     const api = await load3d();
-    let stage = null;
-    if (api && canvas && stageEl) { try { stage = new api.HeliStage(canvas, { mobile: isMobile() }); stage.start(); } catch (e) { console.warn('3D failed', e); stage = null; } }
-    if (!stage) { fallbackIntro(intro); return; }
-    heroStage = stage; window.__heroStage = stage;
-    const status = $('[data-intro-status]', intro), alt = $('[data-alt]', intro);
-    let revealed = false, finished = false;
+    const eng = getEngine(api);
+    let view = null;
+    if (eng && stageEl) { try { view = eng.addView(stageEl, { primary: true, pose: 'manual' }); } catch (e) { view = null; } }
+    if (!view) { fallbackIntro(intro); return; }
+    heroView = view; window.__heroView = view;
+    const snd = getAudio();
+    const T = HH.intro || {};
+    const panel = $('[data-panel]', intro), status = $('[data-intro-status]', intro), check = $('[data-check]', intro), startBtn = $('[data-start]', intro), startLabel = $('[data-start-label]', intro), soundBtn = $('[data-sound]', intro), soundLabel = $('[data-sound-label]', intro), skip = $('[data-skip]', intro);
+    const gauges = { n1: $('[data-gauge="n1"]', intro), nr: $('[data-gauge="nr"]', intro), tot: $('[data-gauge="tot"]', intro), alt: $('[data-gauge="alt"]', intro) };
+    const sw = (k) => $(`[data-sw="${k}"]`, intro);
+    let started = false, revealed = false, finished = false, soundOn = false, autoTimer = null, checkIdx = 0, nr = 0, tot = 20;
+    const setSoundUI = () => { if (soundBtn) { soundBtn.setAttribute('aria-pressed', soundOn ? 'true' : 'false'); soundLabel.textContent = soundOn ? (T.soundOn || 'Sound on') : (T.soundOff || 'Muted'); } };
+    const addCheck = (i, ok = true) => { const line = (T.check || [])[i]; if (!line || !check) return; const li = document.createElement('li'); li.textContent = line; if (ok) li.className = 'is-ok'; check.appendChild(li); while (check.children.length > 4) check.removeChild(check.firstChild); };
+    const beep = (f, d, v) => { if (soundOn && snd) snd.beep(f, d, v); };
+    const tick = () => {
+      const st = view.st;
+      const n1 = st.rpm * 100;
+      nr += (clamp((st.rpm - .1) / .9, 0, 1) * 100 - nr) * .08;
+      const totT = 20 + 720 * clamp(st.rpm / .55, 0, 1) - 190 * clamp((st.rpm - .55) / .45, 0, 1);
+      tot += (totT - tot) * .06;
+      setGauge(gauges.n1, n1); setGauge(gauges.nr, nr); setGauge(gauges.tot, tot);
+      setGauge(gauges.alt, 800 + Math.max(0, view.pos.y - .2) * 420);
+      if (snd && snd.ready) snd.setRPM(st.rpm);
+    };
+    const onStage = (s) => {
+      if (s === 'batt') { status.textContent = T.batt || ''; }
+      if (s === 'lights') { status.textContent = T.lights || ''; addCheck(1); beep(880, .07, .12); }
+      if (s === 'starter') { status.textContent = T.starter || ''; addCheck(2); addCheck(3); if (soundOn && snd) snd.buzz(.4); }
+      if (s === 'rotor') { status.textContent = T.rotor || ''; addCheck(4); addCheck(5); beep(990, .1, .14); }
+      if (s === 'takeoff') { status.textContent = T.takeoff || ''; addCheck(6); if (soundOn && snd) snd.chime(); }
+      if (s === 'climb') { status.textContent = T.climb || ''; }
+    };
     const finish = () => {
       if (finished) return; finished = true;
-      try { stage.attachTo(stageEl); } catch (e) { /* noop */ }
+      gsap.ticker.remove(tick);
+      try { if (heroStage) view.moveTo(heroStage); } catch (e) { /* noop */ }
       intro.remove(); lockScroll(false);
-      hookHeroStage(stage, heroEl);
+      hookHero(view, heroEl);
+      if (snd) snd.fadeOut(2.4);
       ScrollTrigger.refresh();
     };
     const reveal = () => {
       if (revealed) return; revealed = true;
-      intro.classList.remove('is-skippable');
       gsap.to(['.intro__bg', '.intro__ui'], { opacity: 0, duration: 1.0, ease: 'power2.inOut', onComplete: finish });
       startHeroContent(true);
     };
-    const short = returning;
-    stage.intro({ short, onReveal: reveal, onDone: () => { reveal(); setTimeout(finish, 1100); } });
-    if (window.__hhIntroPause && stage.tl) stage.tl.pause(0);
-    if (!short) {
-      const t = HH.intro || {};
-      gsap.delayedCall(1.2, () => intro.classList.add('is-skippable'));
-      gsap.delayedCall(2.5, () => { status.textContent = t.takeoff || ''; });
-      gsap.delayedCall(3.6, () => { status.textContent = t.climb || ''; });
-      const o = { v: 800 }; alt.textContent = fmt(800);
-      gsap.to(o, { v: 3500, duration: 2.4, delay: 2.6, ease: 'power2.inOut', onUpdate: () => { alt.textContent = fmt(o.v); } });
-      const skip = $('[data-skip]', intro);
-      skip && skip.addEventListener('click', () => { stage.skipIntro(); intro.classList.remove('is-skippable'); });
-    }
-    setTimeout(() => { reveal(); setTimeout(finish, 1100); }, 10000);
+    const start = (gesture) => {
+      if (started) return; started = true;
+      clearTimeout(autoTimer);
+      if (gesture && snd) { soundOn = snd.unlock(); if (soundOn) snd.click(); }
+      setSoundUI();
+      startBtn.classList.add('is-pressed'); if (startLabel) startLabel.textContent = T.start || '';
+      panel.classList.add('is-on');
+      [['batt', 0], ['fuel', .3], ['ign', .6]].forEach(([k, d]) => gsap.delayedCall(d, () => { const el = sw(k); el && el.classList.add('is-on'); if (soundOn && snd) snd.click(); if (k === 'batt') addCheck(0); }));
+      gsap.delayedCall(.25, () => beep(660, .08, .1)); gsap.delayedCall(.55, () => beep(770, .08, .1));
+      gsap.ticker.add(tick);
+      eng.intro(view, { onStage, onReveal: reveal, onDone: () => { reveal(); setTimeout(finish, 900); } });
+      if (window.__hhIntroPause && eng.tl) eng.tl.pause(0);
+    };
+    startBtn && startBtn.addEventListener('click', () => start(true));
+    soundBtn && soundBtn.addEventListener('click', () => {
+      if (!snd) return;
+      if (!snd.ready) { soundOn = snd.unlock(); if (soundOn) snd.click(); }
+      else { soundOn = !soundOn; snd.setMuted(!soundOn); if (soundOn) snd.click(); }
+      setSoundUI();
+    });
+    skip && skip.addEventListener('click', () => { if (!started) start(false); eng.skipIntro(); if (snd) snd.fadeOut(.3); });
+    status.textContent = T.pressStart || '';
+    autoTimer = setTimeout(() => start(false), 2800);
+    setTimeout(() => { reveal(); setTimeout(finish, 1100); }, 15000);
   }
   function fallbackIntro(intro) {
     const fb = $('#hero-heli');
@@ -113,25 +209,30 @@
     else lockScroll(false);
     startHeroContent(true);
   }
-  /* ---------------- preloader (inner pages) ---------------- */
-  function preloaderInner() {
-    const el = $('#preloader');
-    const entering = sessionFlag('hh-transition');
-    try { sessionStorage.setItem('hh-seen', '1'); } catch (e) { /* noop */ }
+  /* ---------------- inner pages: quick fly-through on every open ---------------- */
+  function introInner() {
+    const intro = $('#intro'), stageEl = $('#intro-stage');
+    if (!intro) return Promise.resolve();
+    if (reduced) { intro.remove(); return Promise.resolve(); }
+    lockScroll(true);
     return new Promise((resolve) => {
-      if (!el || doc.classList.contains('is-returning') || reduced) { el && el.remove(); setTimeout(resolve, entering ? 380 : 0); return; }
-      gsap.timeline({ onComplete: () => { el.remove(); resolve(); } })
-        .to('.preloader__bar span', { scaleX: 1, duration: .8, ease: 'power3.inOut' }, 0)
-        .to(el, { opacity: 0, duration: .5, ease: 'power2.inOut' }, .85);
+      let done = false, view = null;
+      const finish = () => { if (done) return; done = true; intro.remove(); lockScroll(false); if (view) { try { view.remove(); } catch (e) { /* noop */ } } resolve(); };
+      Promise.race([load3d(), wait(2600).then(() => null)]).then((api) => {
+        const eng = getEngine(api);
+        if (eng && stageEl) { try { view = eng.addView(stageEl, { primary: true, pose: 'manual' }); } catch (e) { view = null; } }
+        if (!view) { gsap.to(intro, { opacity: 0, duration: .5, ease: 'power2.inOut', onComplete: finish }); return; }
+        eng.flyby(view, { dir: Math.random() < .5 ? 1 : -1 });
+        gsap.to(intro, { opacity: 0, duration: .6, delay: 1.2, ease: 'power2.inOut', onComplete: finish });
+        const skip = $('[data-skip]', intro);
+        skip && skip.addEventListener('click', () => { eng.skipIntro(); gsap.to(intro, { opacity: 0, duration: .3, onComplete: finish }); });
+      });
+      setTimeout(finish, 4500);
     });
   }
-
-  /* ---------------- page transitions ---------------- */
   function transitions() {
     const curtain = $('#curtain');
     if (!curtain) return;
-    const entering = sessionFlag('hh-entering');
-    if (entering && !reduced) { curtain.classList.add('is-active'); gsap.set(curtain, { y: 0 }); gsap.to(curtain, { y: '-101%', duration: .9, ease: 'power4.inOut', delay: .05, onComplete: () => curtain.classList.remove('is-active') }); }
     document.addEventListener('click', (e) => {
       const a = e.target.closest('a[href]');
       if (!a || e.defaultPrevented) return;
@@ -146,12 +247,11 @@
       if (u.hash === '#booking') { e.preventDefault(); openBooking({}); return; }
       if (reduced) return;
       e.preventDefault();
-      try { sessionStorage.setItem('hh-transition', '1'); sessionStorage.setItem('hh-entering', '1'); } catch (err) { /* noop */ }
       closeMenu();
       curtain.classList.add('is-active');
       gsap.set(curtain, { y: '101%' });
-      gsap.to(curtain, { y: 0, duration: .7, ease: 'power4.inOut', onComplete: () => { location.href = u.href; } });
-      setTimeout(() => { location.href = u.href; }, 1600);
+      gsap.to(curtain, { y: 0, duration: .6, ease: 'power4.inOut', onComplete: () => { location.href = u.href; } });
+      setTimeout(() => { location.href = u.href; }, 1400);
     });
     addEventListener('pageshow', (e) => { if (e.persisted) { gsap.set(curtain, { y: '101%' }); curtain.classList.remove('is-active'); } });
   }
@@ -317,12 +417,12 @@
   }
 
   /* ---------------- inner page heroes ---------------- */
-  async function pageHero(entering) {
+  function pageHero() {
     const h = $('.phero, .rhero');
     if (!h) return;
     const items = $$('[data-hero]', h);
     if (reduced) { gsap.set(items, { opacity: 1 }); const fb = $('#hero-heli'); if (fb) { fb.hidden = false; gsap.set(fb, { opacity: 1 }); } return; }
-    const tl = gsap.timeline({ delay: entering ? .3 : .1, defaults: { ease: 'power4.out' } });
+    const tl = gsap.timeline({ delay: .1, defaults: { ease: 'power4.out' } });
     tl.fromTo(items, { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 1, stagger: .1 }, .3);
     const img = $('.phero__bg img, .rhero__bg img', h);
     img && tl.fromTo(img, { scale: 1.15 }, { scale: 1, duration: 2.4, ease: 'power3.out' }, 0);
@@ -330,30 +430,24 @@
     const gift = $('#gift3d'); if (gift) gift3d(gift);
     const stageEl = $('#hero-stage');
     if (stageEl && h.classList.contains('rhero')) {
-      const api = await load3d();
-      let stage = null;
-      if (api) { try { const c = document.createElement('canvas'); stageEl.appendChild(c); stage = new api.HeliStage(c, { mobile: isMobile(), poseOffset: isMobile() ? [0, .4, 0] : [1.6, 1.4, -1] }); stage.start(); stage.applyHero(true); stage.intro({ short: true }); } catch (e) { stage = null; } }
-      if (stage) hookHeroStage(stage, h);
+      let view = null;
+      if (engine) { try { view = engine.addView(stageEl, { primary: true, pose: 'hero', poseOffset: isMobile() ? [0, .4, 0] : [1.6, 1.4, -1] }); engine.intro(view, { short: true }); } catch (e) { view = null; } }
+      if (view) hookHero(view, h);
       else { const fb = $('#hero-heli'); if (fb) { fb.hidden = false; gsap.fromTo(fb, { opacity: 0, x: 300, y: 60, rotate: 8 }, { opacity: 1, x: 0, y: 0, rotate: 0, duration: 2.2, ease: 'power3.out' }); gsap.to(fb, { x: () => innerWidth * .4, y: -160, scale: .7, ease: 'none', scrollTrigger: { trigger: h, start: 'top top', end: 'bottom top', scrub: .5 } }); } }
     }
   }
 
   /* ---------------- showcase (3D turntable) ---------------- */
-  async function showcase() {
-    const pin = $('#show-pin'), canvas = $('#stage-show');
+  function showcase() {
+    const pin = $('#show-pin'), stageEl = $('#show-stage');
     if (!pin) return;
     const chapters = $$('.show__ch', pin), dots = $$('.show__dots i', pin);
     const setCh = (i) => { chapters.forEach((c, k) => c.classList.toggle('is-active', k === i)); dots.forEach((d, k) => d.classList.toggle('is-active', k === i)); };
-    let stage = null, progress = 0;
-    if (!reduced) ScrollTrigger.create({ trigger: pin, start: 'top top', end: '+=280%', pin: true, scrub: .6, anticipatePin: 1, onUpdate: (s) => { progress = s.progress; stage && stage.setShowcase(progress); setCh(Math.min(3, Math.floor(progress * 3.999))); } });
-    const api = await load3d();
-    if (api && canvas && !reduced) { try { stage = new api.HeliStage(canvas, { mobile: isMobile() }); stage.applyShowcase(); stage.setShowcase(progress); stage.start(); window.__showStage = stage; } catch (e) { stage = null; } }
-    if (!stage) { canvas && canvas.remove(); const fb = $('#show-fallback'); if (fb) fb.hidden = false; return; }
-    const el = $('#show-stage'); let down = false, lx = 0;
-    el.addEventListener('pointerdown', (e) => { down = true; lx = e.clientX; try { el.setPointerCapture(e.pointerId); } catch (err) { /* noop */ } });
-    el.addEventListener('pointermove', (e) => { if (!down) return; stage.dragBy(e.clientX - lx); lx = e.clientX; });
-    const up = () => { down = false; };
-    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); el.addEventListener('lostpointercapture', up);
+    let view = null, progress = 0;
+    if (!reduced) ScrollTrigger.create({ trigger: pin, start: 'top top', end: '+=280%', pin: true, scrub: .6, anticipatePin: 1, onUpdate: (s) => { progress = s.progress; view && view.setProgress(progress); setCh(Math.min(3, Math.floor(progress * 3.999))); } });
+    if (engine && stageEl && !reduced) { try { view = engine.addView(stageEl, { primary: true, pose: 'showcase' }); view.setProgress(progress); window.__showView = view; } catch (e) { view = null; } }
+    if (!view) { const fb = $('#show-fallback'); if (fb) fb.hidden = false; return; }
+    dragOn(stageEl, view);
   }
 
   /* ---------------- flight log path ---------------- */
@@ -404,7 +498,7 @@
       const path = paths.find((p) => p.dataset.key === key);
       if (!path || reduced) return;
       if (path.classList.contains('map-route--dest')) gsap.fromTo(path, { strokeDashoffset: 60 }, { strokeDashoffset: 0, duration: 1.2, ease: 'none' });
-      if (!fly) return;
+      if (!fly || !heli) return;
       heliTween && heliTween.kill();
       gsap.set(heli, { opacity: 1 });
       heliTween = gsap.to(heli, { duration: 3.2, ease: 'power1.inOut', motionPath: { path, align: path, alignOrigin: [.5, .5], autoRotate: 90 }, onComplete: () => gsap.to(heli, { opacity: 0, duration: .5 }) });
@@ -412,7 +506,7 @@
     const routeKeys = pins.filter((p) => p.dataset.kind === 'route').map((p) => p.dataset.key);
     const allKeys = pins.map((p) => p.dataset.key);
     let inView = false;
-    const cycle = () => { clearTimeout(timer); timer = setTimeout(() => { if (inView && Date.now() - userAt > 9000 && !document.hidden) { const keys = card ? allKeys : routeKeys; const i = keys.indexOf(active); activate(keys[(i + 1) % keys.length]); } cycle(); }, 4800); };
+    const cycle = () => { clearTimeout(timer); timer = setTimeout(() => { if (inView && Date.now() - userAt > 9000 && !document.hidden) { const keys = card ? allKeys : routeKeys; const i = keys.indexOf(active); activate(keys[(i + 1) % keys.length]); } cycle(); }, 5200); };
     pins.forEach((p) => { const go = () => { userAt = Date.now(); activate(p.dataset.key); }; p.addEventListener('click', go); p.addEventListener('mouseenter', go); p.addEventListener('focus', go); p.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }); });
     ScrollTrigger.create({ trigger: wrap, start: 'top 80%', end: 'bottom 10%', onToggle: (s) => { inView = s.isActive; }, onEnter: () => { if (!wrap.dataset.drawn) { wrap.dataset.drawn = '1'; paths.filter((p) => !p.classList.contains('map-route--dest')).forEach((p, i) => gsap.to(p, { strokeDashoffset: 0, duration: 1.8, delay: i * .25, ease: 'power2.inOut' })); gsap.fromTo(pins, { opacity: 0, scale: .4, transformOrigin: 'center' }, { opacity: 1, scale: 1, duration: .7, stagger: .07, delay: .5, ease: 'back.out(2)' }); setTimeout(() => activate(routeKeys[0] || allKeys[0]), 900); cycle(); } } });
   }
@@ -420,10 +514,10 @@
   /* ---------------- custom destinations chips ---------------- */
   function custom() {
     const sec = $('#custom'); if (!sec) return;
-    const chips = $$('.chip', sec), imgs = $$('.custom__img', sec), desc = $('#custom-desc');
+    const chips = $$('.chip', sec), minis = $$('.custom__mini', sec), desc = $('#custom-desc'), km = $('#custom-km');
     if (!chips.length) return;
     let i = 0, timer, userAt = 0, inView = false;
-    const set = (n) => { i = n; chips.forEach((c, k) => c.classList.toggle('is-active', k === n)); imgs.forEach((im) => im.classList.toggle('is-active', im.dataset.image === chips[n].dataset.image)); if (desc && !reduced) gsap.fromTo(desc, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: .6, ease: 'power3.out', onStart: () => { desc.textContent = chips[n].dataset.desc; } }); else if (desc) desc.textContent = chips[n].dataset.desc; };
+    const set = (n) => { i = n; chips.forEach((c, k) => c.classList.toggle('is-active', k === n)); minis.forEach((m) => m.classList.toggle('is-active', m.dataset.dest === chips[n].dataset.dest)); if (km) km.textContent = chips[n].dataset.km || ''; if (desc && !reduced) gsap.fromTo(desc, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: .6, ease: 'power3.out', onStart: () => { desc.textContent = chips[n].dataset.desc; } }); else if (desc) desc.textContent = chips[n].dataset.desc; };
     chips.forEach((c, k) => c.addEventListener('click', () => { userAt = Date.now(); set(k); }));
     const cycle = () => { timer = setTimeout(() => { if (inView && Date.now() - userAt > 8000 && !document.hidden) set((i + 1) % chips.length); cycle(); }, 5000); };
     ScrollTrigger.create({ trigger: sec, start: 'top 80%', end: 'bottom 20%', onToggle: (s) => { inView = s.isActive; } });
@@ -448,6 +542,16 @@
     onScroll((y) => { ly = y; if (raf) return; raf = true; requestAnimationFrame(() => { raf = false; const p = clamp(ly / max, 0, 1); prog && (prog.style.transform = `scaleX(${p})`); if (alt) { alt.classList.toggle('is-visible', ly > 240); altV.textContent = fmt(800 + p * 2700); ticks.style.setProperty('--tape', `${-(p * 330) % 55}px`); } mbar && mbar.classList.toggle('is-visible', ly > innerHeight * .55); }); });
   }
 
+  /* ---------------- price maths (3 window seats + 1 middle) ---------------- */
+  function allocate(n, type) {
+    n = clamp(n, 1, 4);
+    if (type === 'whole') return { w: 3, m: 1, whole: true };
+    if (type === 'middle') return { w: n - 1, m: 1, whole: n === 4 };
+    return { w: Math.min(n, 3), m: Math.max(0, n - 3), whole: n === 4 };
+  }
+  function seatWord(n) { const w = (HH.booking.seatsWord || ['seat', 'seats', 'seats']); if (HH.lang === 'ru') { const a = n % 10, b = n % 100; return (a === 1 && b !== 11) ? w[0] : (a >= 2 && a <= 4 && (b < 12 || b > 14)) ? w[1] : w[2]; } return n === 1 ? w[0] : w[1]; }
+  function money(n) { return `${fmt(n)} ${HH.currency}`; }
+
   /* ---------------- booking sheet ---------------- */
   const bk = $('#booking');
   let bkStep = 1;
@@ -458,7 +562,7 @@
     $('.bk__success', bk).hidden = true; $$('.bk__step', bk).forEach((s) => { s.hidden = false; }); $('.bk__error', bk).hidden = true; $('.bk__foot', bk).hidden = false;
     if (opts.route) { const r = $(`input[name=route][value="${opts.route}"]`, form); if (r) r.checked = true; }
     if (opts.seat) { const s = $(`input[name=seatType][value="${opts.seat}"]`, form); if (s) s.checked = true; }
-    if (opts.seats) $('input[name=seats]', form).value = opts.seats;
+    if (opts.seats) $('input[name=seats]', form).value = clamp(parseInt(opts.seats, 10) || 1, 1, 4);
     gotoStep(opts.route ? 2 : 1);
     bk.classList.add('is-open'); bk.setAttribute('aria-hidden', 'false');
     lockScroll(true);
@@ -483,21 +587,31 @@
   }
   function updateSummary() {
     const r = selectedRoute(), b = HH.booking;
-    const img = $('[data-summary-img]', bk), title = $('[data-summary-title]', bk), meta = $('[data-summary-meta]', bk), box = $('[data-total-box]', bk);
+    const img = $('[data-summary-img]', bk), title = $('[data-summary-title]', bk), meta = $('[data-summary-meta]', bk), box = $('[data-calc-box]', bk), lines = $('[data-calc-lines]', bk), prepay = $('[data-prepay]', bk);
     if (!r) { title.textContent = b.pickRoute; meta.textContent = ''; box.hidden = true; return; }
     title.textContent = r.dataset.title; meta.textContent = r.dataset.meta || '';
-    if (r.dataset.img && !img.src.includes(`/${r.dataset.img}-720`)) { img.style.opacity = 0; img.onload = () => { img.style.opacity = 1; }; img.src = `/assets/img/${r.dataset.img}-720.webp`; }
+    if (r.dataset.img && !img.src.includes(`/${r.dataset.img}-480`)) { img.style.opacity = 0; img.onload = () => { img.style.opacity = 1; }; img.src = `/assets/img/${r.dataset.img}-480.webp`; }
     const isType = r.value.startsWith('type:');
-    const segs = $$('input[name=seatType]', bk);
+    const segs = $$('input[name=seatType]', bk), seatsInput = $('input[name=seats]', bk);
     const wholeOnly = r.dataset.wholeOnly === '1';
     segs.forEach((s) => { s.disabled = wholeOnly && s.value !== 'whole'; });
     if (wholeOnly) $('input[name=seatType][value=whole]', bk).checked = true;
     const type = ($('input[name=seatType]:checked', bk) || {}).value;
-    const seats = clamp(parseInt($('input[name=seats]', bk).value, 10) || 1, 1, 8);
-    let total = null;
-    if (!isType) { if (type === 'whole') total = r.dataset.whole ? +r.dataset.whole : null; else if (r.dataset[type]) total = +r.dataset[type] * seats; }
-    box.hidden = total == null;
-    if (total != null) $('[data-total]', box).textContent = `${fmt(total)} ${HH.currency}`;
+    if (type === 'whole') seatsInput.value = 4;
+    seatsInput.disabled = type === 'whole';
+    const seats = clamp(parseInt(seatsInput.value, 10) || 1, 1, 4);
+    if (isType) { box.hidden = true; return; }
+    const W = +r.dataset.window || 0, M = +r.dataset.middle || 0, route = (HH.routes || []).find((x) => x.slug === r.dataset.slug) || {};
+    const WH = +r.dataset.whole || route.whole || (W * 3 + M);
+    const a = allocate(seats, type);
+    const parts = [];
+    let total;
+    if (a.whole) { total = WH; parts.push(`${b.wholeCalc}: ${money(WH)}`); if (!route.wholeDefined && !r.dataset.whole) parts.push(`3 × ${fmt(W)} + 1 × ${fmt(M)}`); parts.push(`${money(Math.round(WH / 4))} ${b.perSeatCalc}`); }
+    else { total = a.w * W + a.m * M; if (a.w) parts.push(`${a.w} × ${b.windowSeats} × ${fmt(W)} = ${money(a.w * W)}`); if (a.m) parts.push(`${a.m} × ${b.middleSeats} × ${fmt(M)} = ${money(a.m * M)}`); }
+    box.hidden = false;
+    lines.textContent = parts.join(' · ');
+    $('[data-total]', box).textContent = money(total);
+    prepay.textContent = `${b.prepay} ${b.prepayPct || 30}%: ${money(Math.round(total * (b.prepayPct || 30) / 100))}`;
   }
   function booking() {
     if (!bk) return;
@@ -510,7 +624,8 @@
     $('[data-next]', bk).addEventListener('click', () => { if (bkStep === 1 && !selectedRoute()) { gsap.fromTo('.bk__routes', { x: -8 }, { x: 0, duration: .5, ease: 'elastic.out(1,.3)' }); return; } gotoStep(Math.min(3, bkStep + 1)); });
     $('[data-prev]', bk).addEventListener('click', () => gotoStep(Math.max(1, bkStep - 1)));
     form.addEventListener('change', (e) => { if (['route', 'seatType', 'seats'].includes(e.target.name)) updateSummary(); });
-    $$('.stepper__btn', form).forEach((b) => b.addEventListener('click', () => { const i = $('input[name=seats]', form); i.value = clamp((parseInt(i.value, 10) || 1) + +b.dataset.step, 1, 8); updateSummary(); }));
+    form.addEventListener('input', (e) => { if (e.target.name === 'seats') updateSummary(); });
+    $$('.stepper__btn', form).forEach((b) => b.addEventListener('click', () => { const i = $('input[name=seats]', form); if (i.disabled) return; i.value = clamp((parseInt(i.value, 10) || 1) + +b.dataset.step, 1, 4); updateSummary(); }));
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const phone = $('input[name=phone]', form);
@@ -518,7 +633,9 @@
       phone.classList.remove('is-invalid');
       const r = selectedRoute(); const fd = new FormData(form);
       const isType = r && r.value.startsWith('type:');
-      const payload = { lang: HH.lang, page: location.pathname, type: isType ? r.value.slice(5) : (fd.get('seatType') === 'whole' ? 'whole' : 'flight'), route: r ? r.dataset.title : '', date: fd.get('date') || '', seats: isType ? '' : fd.get('seats'), seatType: isType ? '' : fd.get('seatType'), name: fd.get('name') || '', phone: phone.value, message: fd.get('message') || '', website: fd.get('website') || '' };
+      const seatsVal = $('input[name=seats]', form).value;
+      const total = $('[data-total]', bk) ? $('[data-total]', bk).textContent : '';
+      const payload = { lang: HH.lang, page: location.pathname, type: isType ? r.value.slice(5) : (fd.get('seatType') === 'whole' ? 'whole' : 'flight'), route: r ? r.dataset.title : '', date: fd.get('date') || '', seats: isType ? '' : seatsVal, seatType: isType ? '' : fd.get('seatType'), name: fd.get('name') || '', phone: phone.value, message: (fd.get('message') || '') + (!isType && total ? `\n[${HH.booking.total}: ${total}]` : ''), website: fd.get('website') || '' };
       const btn = $('[data-submit] .btn__label', bk); btn.textContent = btn.dataset.sending;
       let ok = false;
       try { const res = await fetch('/api/book', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); ok = res.ok; } catch (err) { ok = false; }
@@ -535,7 +652,7 @@
     if (p.date) extra.push(p.date);
     if (p.seats) extra.push(`${p.seats} × ${p.seatType === 'window' ? b.window : p.seatType === 'middle' ? b.middle : b.whole}`);
     if (p.name) extra.push(p.name);
-    if (p.message) extra.push(p.message);
+    if (p.message) extra.push(p.message.replace(/\n/g, ' '));
     if (extra.length) s += '\n' + extra.join(' · ');
     return s;
   }
@@ -555,19 +672,43 @@
     lb.addEventListener('touchend', (e) => { const dx = e.changedTouches[0].clientX - sx; if (Math.abs(dx) > 50) { const d = dx < 0 ? 1 : -1; lbIndex = (lbIndex + d + lbItems.length) % lbItems.length; showLb(d); } }, { passive: true });
   }
 
-  /* ---------------- route page: seats + altitude chart ---------------- */
-  function seats() {
-    const map = $('.seatmap'); if (!map) return;
-    const seatsEls = $$('.seat:not(.seat--pilot)', map), total = $('#seat-total'), btn = $('#book-seat');
-    const update = () => { const sel = seatsEls.filter((s) => s.classList.contains('is-selected')); const sum = sel.reduce((a, s) => a + (+s.dataset.price || 0), 0); if (total) { total.hidden = !sel.length; $('[data-seat-count]', total).textContent = sel.length; $('[data-seat-total]', total).textContent = `${fmt(sum)} ${HH.currency}`; } if (btn) { btn.dataset.bookSeats = sel.length || 1; btn.dataset.bookSeat = sel.length && sel.every((s) => s.dataset.type === 'window') ? 'window' : (sel.length ? 'middle' : 'window'); } };
-    seatsEls.forEach((s) => { const toggle = () => { s.classList.toggle('is-selected'); s.setAttribute('aria-checked', s.classList.contains('is-selected')); if (!reduced) gsap.fromTo(s, { scale: .85 }, { scale: 1, duration: .5, ease: 'back.out(3)', transformOrigin: 'center' }); update(); }; s.addEventListener('click', toggle); s.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }); });
+  /* ---------------- route page: seat picker + calculator ---------------- */
+  function calculator() {
+    const map = $('.pricebox .seatmap'); if (!map) return;
+    const calc = $('#calc', map); if (!calc) return;
+    const b = HH.booking;
+    const W = +map.dataset.window || 0, M = +map.dataset.middle || 0, WH = +map.dataset.whole || (W * 3 + M), whDef = map.dataset.wholeDefined === '1';
+    const seatsEls = $$('.seat:not(.seat--pilot)', map), btn = $('#book-seat'), quick = $$('.calc__q', calc);
+    const row = (k) => $(`[data-c-row="${k}"]`, calc);
+    const order = ['front', 'rl', 'rr', 'rm'];
+    const update = () => {
+      const sel = seatsEls.filter((s) => s.classList.contains('is-selected'));
+      const nW = sel.filter((s) => s.dataset.type === 'window').length, nM = sel.filter((s) => s.dataset.type === 'middle').length, n = nW + nM;
+      const whole = n === 4;
+      const total = whole ? WH : nW * W + nM * M;
+      row('window').hidden = !nW || whole; row('middle').hidden = !nM || whole; row('whole').hidden = !whole;
+      if (nW) { $('[data-c-n]', row('window')).textContent = nW; $('[data-c-sum]', row('window')).textContent = money(nW * W); }
+      if (nM) { $('[data-c-n]', row('middle')).textContent = nM; $('[data-c-sum]', row('middle')).textContent = money(nM * M); }
+      $('[data-c-count]', calc).textContent = `${n} ${b.seatsOf}`;
+      $('[data-c-total]', calc).textContent = n ? money(total) : '—';
+      const sub = $('[data-c-sub]', calc);
+      if (!n) { sub.hidden = false; sub.textContent = b.pick; }
+      else { sub.hidden = false; sub.textContent = (whole ? `${money(Math.round(WH / 4))} ${b.perSeatCalc}${whDef ? '' : ' · ' + b.approxWhole}. ` : '') + `${b.prepay} ${b.prepayPct || 30}%: ${money(Math.round(total * (b.prepayPct || 30) / 100))}`; }
+      quick.forEach((q) => q.classList.toggle('is-active', +q.dataset.q === n));
+      if (btn) { btn.dataset.bookSeats = n || 1; btn.dataset.bookSeat = whole ? 'whole' : (nM && !nW ? 'middle' : 'window'); }
+      if (!reduced && n) gsap.fromTo($('[data-c-total]', calc), { scale: 1.08 }, { scale: 1, duration: .5, ease: 'back.out(2)', transformOrigin: 'right center' });
+    };
+    const setSeat = (s, on) => { s.classList.toggle('is-selected', on); s.setAttribute('aria-checked', on); };
+    seatsEls.forEach((s) => { const toggle = () => { setSeat(s, !s.classList.contains('is-selected')); if (!reduced) gsap.fromTo(s, { scale: .85 }, { scale: 1, duration: .5, ease: 'back.out(3)', transformOrigin: 'center' }); update(); }; s.addEventListener('click', toggle); s.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }); });
+    quick.forEach((q) => q.addEventListener('click', () => { const n = +q.dataset.q; seatsEls.forEach((s) => setSeat(s, order.indexOf(s.dataset.seat) < n)); update(); }));
+    update();
   }
   function altitudeChart() {
     const chart = $('.alt'); if (!chart) return;
     const line = $('.alt__line', chart), area = $('.alt__area', chart), wps = $$('.alt__wp', chart), heli = $('.alt__heli', chart);
     const len = line.getTotalLength(); line.style.strokeDasharray = len; line.style.strokeDashoffset = len;
     if (reduced) { line.style.strokeDashoffset = 0; area.style.opacity = 1; return; }
-    ScrollTrigger.create({ trigger: chart, start: 'top 85%', once: true, onEnter: () => { gsap.to(line, { strokeDashoffset: 0, duration: 2.2, ease: 'power2.inOut' }); gsap.to(area, { opacity: 1, duration: 1.2, delay: .8 }); gsap.fromTo(wps, { opacity: 0, scale: .5, transformOrigin: 'center' }, { opacity: 1, scale: 1, duration: .5, stagger: .35, delay: .3, ease: 'back.out(2)' }); gsap.set(heli, { opacity: 1 }); gsap.to(heli, { duration: 2.2, ease: 'power2.inOut', motionPath: { path: line, align: line, alignOrigin: [.5, .5], autoRotate: 90 } }); } });
+    ScrollTrigger.create({ trigger: chart, start: 'top 85%', once: true, onEnter: () => { gsap.to(line, { strokeDashoffset: 0, duration: 2.2, ease: 'power2.inOut' }); gsap.to(area, { opacity: 1, duration: 1.2, delay: .8 }); gsap.fromTo(wps, { opacity: 0, scale: .5, transformOrigin: 'center' }, { opacity: 1, scale: 1, duration: .5, stagger: .35, delay: .3, ease: 'back.out(2)' }); if (heli) { gsap.set(heli, { opacity: 1 }); gsap.to(heli, { duration: 2.2, ease: 'power2.inOut', motionPath: { path: line, align: line, alignOrigin: [.5, .5], autoRotate: true } }); } } });
   }
 
   /* ---------------- gift 3D card / CTA fly-by / extras ---------------- */
@@ -580,26 +721,112 @@
     onGyro((x, y) => apply(x * .6, y * .6));
     gsap.to(card, { y: -8, duration: 3, ease: 'sine.inOut', yoyo: true, repeat: -1 });
   }
-  function ctaFly() { const h = $('.cta__heli'); if (!h || reduced) return; gsap.fromTo(h, { xPercent: -140 }, { xPercent: 460, ease: 'none', scrollTrigger: { trigger: '.cta', start: 'top bottom', end: 'bottom top', scrub: 1.2 } }); }
+  function ctaFly() { const h = $('.cta__heli'); if (!h || reduced) return; gsap.fromTo(h, { xPercent: -60 }, { xPercent: 340, ease: 'none', scrollTrigger: { trigger: '.cta', start: 'top bottom', end: 'bottom top', scrub: 1.2 } }); }
   function extras() {
     $$('.ticker, .gmarquee').forEach((m) => { const t = $('.ticker__track, .gmarquee__track', m); if (!t) return; new IntersectionObserver((en) => { t.style.animationPlayState = en[0].isIntersecting ? 'running' : 'paused'; }).observe(m); });
     if (location.hash && location.hash !== '#booking') setTimeout(() => scrollTo(location.hash), 900);
     if (location.hash === '#booking') setTimeout(() => openBooking({}), 900);
   }
 
+  /* ---------------- "how a flight goes" story ---------------- */
+  function story() {
+    const st = $('#story'); if (!st) return;
+    const scenes = $$('.scene', st), phases = $$('.story__phase', st), prog = $('.story__prog b', st);
+    const phaseOf = [0, 1, 1, 1, 1, 2, 3, 4, 5];
+    const setPhase = (i) => phases.forEach((p, k) => p.classList.toggle('is-active', k === i));
+    let soundOn = false;
+    const snd = () => getAudio();
+    const setSoundUI = () => $$('[data-story-sound]').forEach((b) => { b.setAttribute('aria-pressed', soundOn ? 'true' : 'false'); const l = $('[data-snd-label]', b); if (l && HH.story) l.textContent = soundOn ? HH.story.soundOn : HH.story.soundOff; });
+    $$('[data-story-sound]').forEach((b) => b.addEventListener('click', () => { const a = snd(); if (!a) return; if (!a.ready) { soundOn = a.unlock(); if (soundOn) a.click(); } else { soundOn = !soundOn; a.setMuted(!soundOn); if (soundOn) a.click(); } setSoundUI(); }));
+    const beep = (f, d, v) => { const a = audio; if (soundOn && a && a.ready) a.beep(f, d, v); };
+    const shutter = () => { const a = audio; if (soundOn && a && a.ready) { a.click(); a.beep(1800, .03, .08, .04); } };
+    if (!reduced) ScrollTrigger.create({ trigger: st, start: 'top 60%', end: 'bottom 60%', onUpdate: (s) => { prog && (prog.style.transform = `scaleX(${s.progress})`); } });
+    scenes.forEach((sc, i) => ScrollTrigger.create({ trigger: sc, start: 'top 55%', end: 'bottom 55%', onToggle: (s) => { if (s.isActive) setPhase(phaseOf[i] || 0); } }));
+    if (reduced) { $$('.bubble,.phone__stamp,.wx__item,.wx__checks li,.meet__steps li,.crew__check,.pilot,.board__name,.board__notes li,.flightsc__ph,.polaroid,.fact,.retsc__steps li,.retsc__stars .ic', st).forEach((el) => { el.style.opacity = 1; el.style.transform = 'none'; el.classList.add('is-in'); }); return; }
+    const once = (el, fn, start = 'top 70%') => ScrollTrigger.create({ trigger: el, start, once: true, onEnter: fn });
+    const inSeq = (els, step = .35, cls = 'is-in') => els.forEach((el, i) => gsap.delayedCall(i * step, () => el.classList.add(cls)));
+    const pop = (els, step = .12) => gsap.to(els, { opacity: 1, x: 0, y: 0, duration: .7, ease: 'power3.out', stagger: step });
+    // 1 request: chat
+    const chat = $('[data-anim="chat"]', st);
+    if (chat) once(chat, () => {
+      const bubbles = $$('.bubble:not(.bubble--typing)', chat), typing = $('[data-typing]', chat), stamp = $('[data-stamp]', chat);
+      let t = .2;
+      bubbles.forEach((b) => { const isHH = !b.classList.contains('bubble--you'); if (isHH) { gsap.delayedCall(t, () => typing.classList.add('is-in')); t += .9; } gsap.delayedCall(t, () => { typing.classList.remove('is-in'); b.classList.add('is-in'); beep(isHH ? 1040 : 780, .06, .1); }); t += .9; });
+      gsap.delayedCall(t + .2, () => { stamp.classList.add('is-in'); beep(1300, .12, .12); });
+    });
+    // 2 weather
+    const wx = $('[data-anim="wx"]', st);
+    if (wx) once(wx, () => { pop($$('.wx__item', wx)); gsap.to($$('.wx__checks li', wx), { opacity: 1, x: 0, duration: .6, stagger: .3, delay: .5, ease: 'power3.out', onStart: () => beep(900, .06, .08) }); });
+    // 3 meet
+    const meet = $('[data-anim="meet"]', st);
+    if (meet) once(meet, () => pop($$('.meet__steps li', meet), .25));
+    // 4 crew
+    const crew = $('[data-anim="crew"]', st);
+    if (crew) once(crew, () => { pop($$('.pilot', crew), .2); gsap.delayedCall(.6, () => inSeq($$('.crew__check', crew), .45)); $$('.crew__check', crew).forEach((c, i) => gsap.delayedCall(.6 + i * .45, () => beep(1100, .05, .07))); });
+    // 5 board
+    const board = $('[data-anim="board"]', st);
+    if (board) once(board, () => { const seats = $$('.seat:not(.seat--pilot)', board), names = $$('.board__name', board); const order = ['front', 'rl', 'rm', 'rr']; order.forEach((id, i) => gsap.delayedCall(.3 + i * .5, () => { const s = seats.find((x) => x.dataset.seat === id); s && s.classList.add('is-selected'); names[i] && names[i].classList.add('is-in'); beep(820 + i * 60, .06, .08); })); gsap.to($$('.board__notes li', board), { opacity: 1, x: 0, duration: .6, stagger: .25, delay: 1.2, ease: 'power3.out' }); });
+    // 6 start: scrubbed spool-up
+    const start = $('[data-anim="start"]', st);
+    if (start) {
+      const slot = $('[data-v3d]', start), stages = $$('.startsc__stages li', start), g1 = $('[data-gauge="n1"]', start), g2 = $('[data-gauge="nr"]', start);
+      const o = { p: 0 }; let lastStage = -1;
+      const apply = () => {
+        const p = o.p, v = slot && slot.__view;
+        const rpm = clamp(p / .8, 0, 1);
+        if (v) { v.st.rpm = rpm; v.st.lightsOn = p > .05; v.pos.y = Math.max(0, (p - .86) / .14) * 1.2; v.st.shadow = .8 * (1 - Math.max(0, (p - .86) / .14)); v.invalidate(); }
+        setGauge(g1, rpm * 100); setGauge(g2, clamp((rpm - .1) / .9, 0, 1) * 100);
+        const stage = p < .05 ? -1 : p < .2 ? 0 : p < .35 ? 1 : p < .6 ? 2 : p < .86 ? 3 : 4;
+        stages.forEach((li, i) => li.classList.toggle('is-on', i <= stage));
+        if (stage !== lastStage) { lastStage = stage; if (stage >= 0) beep(700 + stage * 120, .07, .09); }
+        if (soundOn && audio && audio.ready) audio.setRPM(rpm);
+      };
+      ScrollTrigger.create({ trigger: start.closest('.scene'), start: 'top 40%', end: 'bottom 60%', scrub: .6, onUpdate: (s) => { o.p = s.progress; apply(); }, onLeave: () => { if (audio && audio.ready) audio.setRPM(0); }, onLeaveBack: () => { if (audio && audio.ready) audio.setRPM(0); } });
+    }
+    // 7 flight: route draws, marker flies, clock + altitude
+    const fl = $('[data-anim="flight"]', st);
+    if (fl) {
+      const path = $('.map-route', fl), heli = $('.map__heli', fl), clock = $('[data-clock]', fl), altEl = $('[data-alt-story]', fl), logs = $$('.flightsc__log li', fl), phs = $$('.flightsc__ph', fl);
+      const len = path ? path.getTotalLength() : 0; if (path) { path.style.strokeDasharray = len; path.style.strokeDashoffset = len; path.classList.add('is-active'); }
+      const alts = [800, 1400, 2100, 2800, 3300, 3500];
+      ScrollTrigger.create({ trigger: fl.closest('.scene'), start: 'top 45%', end: 'bottom 65%', scrub: .5, onUpdate: (s) => {
+        const p = s.progress;
+        if (path) { path.style.strokeDashoffset = len * (1 - p * .55); if (heli) { const pt = path.getPointAtLength(len * p * .55), pt2 = path.getPointAtLength(Math.min(len, len * p * .55 + 2)); const ang = Math.atan2(pt2.y - pt.y, pt2.x - pt.x) * 180 / Math.PI + 90; gsap.set(heli, { x: pt.x, y: pt.y, rotation: ang, opacity: p > .01 ? 1 : 0, transformOrigin: '0 0' }); } }
+        const mins = Math.round(p * 30); if (clock) clock.textContent = `0:${String(mins).padStart(2, '0')}`;
+        const ai = p * (alts.length - 1), a0 = alts[Math.floor(ai)], a1 = alts[Math.min(alts.length - 1, Math.ceil(ai))]; if (altEl) altEl.textContent = fmt(a0 + (a1 - a0) * (ai % 1));
+        logs.forEach((li, i) => li.classList.toggle('is-on', p >= i / logs.length));
+        phs.forEach((ph, i) => ph.classList.toggle('is-in', p >= .25 + i * .25));
+      } });
+    }
+    // 8 landing: rotor winds down, polaroids
+    const land = $('[data-anim="landing"]', st);
+    if (land) {
+      const slot = $('[data-v3d]', land);
+      once(land, () => { pop($$('.fact', land), .2); $$('.polaroid', land).forEach((p, i) => gsap.delayedCall(.8 + i * .6, () => { p.classList.add('is-in'); shutter(); })); });
+      ScrollTrigger.create({ trigger: land.closest('.scene'), start: 'top 60%', end: 'center 40%', scrub: .5, onUpdate: (s) => { const v = slot && slot.__view; if (v) { v.st.rpm = 1 - s.progress; v.st.lightsOn = true; v.invalidate(); } } });
+    }
+    // 9 return
+    const ret = $('[data-anim="return"]', st);
+    if (ret) once(ret, () => { $$('.polaroid', ret).forEach((p, i) => gsap.delayedCall(.2 + i * .5, () => { p.classList.add('is-in'); shutter(); })); pop($$('.retsc__steps li', ret), .25); gsap.to($$('.retsc__stars .ic', ret), { opacity: 1, scale: 1, duration: .5, stagger: .12, delay: 1.6, ease: 'back.out(3)' }); });
+  }
+
   /* ---------------- init ---------------- */
+  function mount3d() {
+    if (!engine) return;
+    mountViews(); applySnapshots();
+  }
   async function init() {
-    const entering = sessionFlag('hh-entering', false);
-    initLenis(); transitions(); nav(); cursor(); initGyro(); booking(); lightbox(); faq(); seats(); scrollWidgets();
+    initLenis(); transitions(); nav(); cursor(); initGyro(); booking(); lightbox(); faq(); calculator(); scrollWidgets();
     if ($('#hero') && !reduced) gsap.set('.hero__stats', { opacity: 0 });
     const afterIntro = () => {
-      reveals(); flightLog(); mapSection(); custom(); altitudeChart(); ctaFly(); magnetic(); tilt(); glare(); extras(); showcase();
+      mount3d();
+      reveals(); flightLog(); mapSection(); custom(); altitudeChart(); ctaFly(); magnetic(); tilt(); glare(); extras(); showcase(); story();
       ScrollTrigger.refresh();
       addEventListener('load', () => ScrollTrigger.refresh());
       if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => ScrollTrigger.refresh());
     };
     if (HH.page === 'home') { introHome().then(afterIntro); }
-    else { await preloaderInner(); pageHero(entering); afterIntro(); }
+    else { await introInner(); pageHero(); afterIntro(); }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();

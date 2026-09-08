@@ -39,6 +39,7 @@ const defs = [
   { path: 'partners', page: 'partners', fn: pages.partnersPage },
   { path: 'aviation', page: 'aviation', fn: pages.aviationPage },
   { path: 'about', page: 'about', fn: pages.aboutPage },
+  { path: 'how', page: 'how', fn: pages.howPage },
   { path: 'credits', page: 'credits', fn: (ctx) => pages.creditsPage({ ...ctx, credits }) },
 ];
 
@@ -63,6 +64,6 @@ for (const lang of site.langs) {
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `  <url><loc>${u}</loc></url>`).join('\n')}\n</urlset>\n`);
 write('robots.txt', `User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: ${site.domain}/sitemap.xml\n`);
 write('site.webmanifest', JSON.stringify({ name: site.brandFull, short_name: site.brand, start_url: '/', display: 'standalone', background_color: '#07090c', theme_color: '#07090c', icons: [{ src: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }] }, null, 2));
-write('favicon.svg', `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#07090c"/><circle cx="32" cy="32" r="24" fill="none" stroke="#f0b35a" stroke-width="2.5"/><path d="M32 32 30 12h4zM32 32l19 9-2 3.5zM32 32 13 41l-2-3.5z" fill="#f0b35a"/><circle cx="32" cy="32" r="4" fill="#f0b35a"/></svg>`);
+write('favicon.svg', `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#07090c"/><circle cx="32" cy="32" r="24" fill="none" stroke="#ffffff" stroke-width="2.5"/><path d="M32 32 30 12h4zM32 32l19 9-2 3.5zM32 32 13 41l-2-3.5z" fill="#ffffff"/><circle cx="32" cy="32" r="4" fill="#ffffff"/></svg>`);
 
 console.log(`built ${count} pages (${site.langs.length} languages) → ${OUT}`);

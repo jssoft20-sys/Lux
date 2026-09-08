@@ -2,14 +2,14 @@
 const site = require('../data/site');
 const routes = require('../data/routes');
 const C = require('./components');
-const { esc, url, I, logo, rotorMark, btn, waLink, price } = C;
+const { esc, url, I, logo, rotorMark, btn, waLink, price, gauge } = C;
 
 function navLinks(lang, t, current) {
   const items = [
     ['routes', t.nav.routes], ['proposal', t.nav.proposal], ['experiences', t.nav.experiences], ['gift', t.nav.gift],
-    ['guests', t.nav.guests], ['partners', t.nav.partners], ['aviation', t.nav.aviation], ['about', t.nav.about],
+    ['guests', t.nav.guests], ['how', t.nav.how], ['partners', t.nav.partners], ['aviation', t.nav.aviation], ['about', t.nav.about],
   ];
-  return items.map(([p, label]) => `<a class="nav__link${current === p ? ' is-current' : ''}" href="${url(lang, p)}"${current === p ? ' aria-current="page"' : ''}>${esc(label)}</a>`).join('');
+  return items.map(([p, label]) => `<a class="nav__link${current === p ? ' is-current' : ''}${p === 'how' ? ' nav__link--how' : ''}" href="${url(lang, p)}"${current === p ? ' aria-current="page"' : ''}>${esc(label)}</a>`).join('');
 }
 
 function langSwitch(lang, path, t, cls = '') {
@@ -21,8 +21,8 @@ function langSwitch(lang, path, t, cls = '') {
 
 function bookingModal(lang, t) {
   const b = t.booking, c = t.common;
-  const routeOpts = routes.map((r) => `<label class="rpick"><input type="radio" name="route" value="${r.slug}" data-title="${esc(r.t[lang].title)}" data-meta="${esc(C.durationText(r, lang, t))}" data-img="${r.image}" data-window="${r.price.window || ''}" data-middle="${r.price.middle || ''}" data-whole="${r.price.whole || ''}" data-whole-only="${r.wholeOnly ? 1 : 0}"><span class="rpick__box"><img class="rpick__img" src="/assets/img/${r.image}-720.webp" alt="" loading="lazy" width="120" height="90"><span class="rpick__t"><b>${esc(r.t[lang].title)}</b><small>${esc(C.durationText(r, lang, t))} · ${esc(C.routePriceText(r, lang, t))}</small></span><i class="rpick__check">${I.check}</i></span></label>`).join('');
-  const typeOpts = ['proposal', 'gift', 'shoot', 'custom', 'partner', 'aviation'].map((k) => `<label class="tpick"><input type="radio" name="route" value="type:${k}" data-title="${esc(b.types[k])}" data-meta="" data-img="${{ proposal: 'marry', gift: 'gift', shoot: 'shoot', custom: 'dest-song-kul', partner: 'bishkek', aviation: 'aviation' }[k]}"><span>${esc(b.types[k])}</span></label>`).join('');
+  const routeOpts = routes.map((r) => `<label class="rpick"><input type="radio" name="route" value="${r.slug}" data-title="${esc(r.t[lang].title)}" data-meta="${esc(C.durationText(r, lang, t))}" data-img="${r.image}" data-window="${r.price.window || ''}" data-middle="${r.price.middle || ''}" data-whole="${r.price.whole || ''}" data-whole-only="${r.wholeOnly ? 1 : 0}" data-slug="${r.slug}"><span class="rpick__box"><img class="rpick__img" src="/assets/img/${r.image}-480.webp" alt="" loading="lazy" width="120" height="90"><span class="rpick__t"><b>${esc(r.t[lang].title)}</b><small>${esc(C.durationText(r, lang, t))} · ${esc(C.routePriceText(r, lang, t))}</small></span><i class="rpick__check">${I.check}</i></span></label>`).join('');
+  const typeOpts = ['proposal', 'gift', 'shoot', 'custom', 'partner', 'aviation'].map((k) => `<label class="tpick"><input type="radio" name="route" value="type:${k}" data-title="${esc(b.types[k])}" data-meta="" data-img="${{ proposal: 'mm-04', gift: 'gift-01', shoot: 'exp-03', custom: 'gl-04', partner: 'h145-05', aviation: 'mi8-01' }[k]}"><span>${esc(b.types[k])}</span></label>`).join('');
   return `<div class="bk" id="booking" aria-hidden="true">
     <div class="bk__backdrop" data-close></div>
     <div class="bk__sheet" role="dialog" aria-modal="true" aria-labelledby="bk-title" data-lenis-prevent>
@@ -33,12 +33,12 @@ function bookingModal(lang, t) {
       </header>
       <div class="bk__body">
         <aside class="bk__side">
-          <div class="bk__img"><img data-summary-img src="/assets/img/route-ala-archa-720.webp" alt="" width="720" height="540"></div>
+          <div class="bk__img"><img data-summary-img src="/assets/img/aa-01-480.webp" alt="" width="480" height="640"></div>
           <div class="bk__summary">
             <p class="label">${esc(b.summaryTitle)}</p>
             <h3 class="bk__stitle" data-summary-title>${esc(b.pickRoute)}</h3>
             <p class="bk__smeta" data-summary-meta></p>
-            <div class="bk__total" data-total-box hidden><span>${esc(b.total)} <small>${esc(b.estimate)}</small></span><b data-total>—</b></div>
+            <div class="bk__calc" data-calc-box hidden><p class="bk__calc-line" data-calc-lines></p><div class="bk__total"><span>${esc(b.total)} <small>${esc(b.estimate)}</small></span><b data-total>—</b></div><p class="bk__prepay" data-prepay></p></div>
           </div>
         </aside>
         <form class="bk__form" id="bform" novalidate>
@@ -51,8 +51,8 @@ function bookingModal(lang, t) {
             <h3 class="bk__title">${esc(b.steps[1])}</h3>
             <div class="bk__grid">
               <label class="field"><span class="field__label">${esc(b.date)}</span><input type="date" name="date" class="field__input"><small class="field__hint">${esc(b.dateHint)}</small></label>
-              <div class="field"><span class="field__label">${esc(b.seats)}</span>
-                <div class="stepper"><button type="button" class="stepper__btn" data-step="-1" aria-label="−">−</button><input type="number" name="seats" class="stepper__input" value="2" min="1" max="8" inputmode="numeric"><button type="button" class="stepper__btn" data-step="1" aria-label="+">+</button></div>
+              <div class="field"><span class="field__label">${esc(b.seats)} <small class="field__hint">(1–4)</small></span>
+                <div class="stepper"><button type="button" class="stepper__btn" data-step="-1" aria-label="−">−</button><input type="number" name="seats" class="stepper__input" value="2" min="1" max="4" inputmode="numeric"><button type="button" class="stepper__btn" data-step="1" aria-label="+">+</button></div>
               </div>
             </div>
             <div class="field"><span class="field__label">${esc(b.seatType)}</span>
@@ -108,7 +108,7 @@ function footer(lang, t, path) {
       </nav>
       <nav class="footer__col" aria-label="${esc(f.sections)}">
         <h4>${esc(f.sections)}</h4>
-        ${['proposal', 'experiences', 'gift', 'guests', 'partners', 'aviation', 'about'].map((p) => `<a href="${url(lang, p)}">${esc(t.nav[p])}</a>`).join('')}
+        ${['how', 'proposal', 'experiences', 'gift', 'guests', 'partners', 'aviation', 'about'].map((p) => `<a href="${url(lang, p)}">${esc(t.nav[p])}</a>`).join('')}
       </nav>
       <div class="footer__col footer__contacts">
         <h4>${esc(f.contacts)}</h4>
@@ -130,7 +130,8 @@ function footer(lang, t, path) {
  */
 function render(p) {
   const { lang, t, path, page } = p;
-  const use3d = page === 'home' || page === 'route';
+  const use3d = true;
+  const fullIntro = page === 'home';
   const canonical = site.domain + url(lang, path);
   const ogImage = site.domain + '/assets/img/og.jpg';
   const alternates = site.langs.map((l) => `<link rel="alternate" hreflang="${l}" href="${site.domain}${url(l, path)}">`).join('\n  ');
@@ -141,9 +142,9 @@ function render(p) {
   const hh = {
     lang, page, phone: site.phoneRaw, whatsapp: site.whatsapp, brand: site.brand,
     booking: t.booking, common: { min: t.common.min, metres: t.common.metres, altitude: t.altimeter.label, view: t.common.view, open: t.common.open, drag: t.common.drag, loading: t.common.loading, ready: t.common.ready },
-    currency: site.currency[lang], intro: t.intro, stepOf: t.booking.stepOf, use3d,
-    routes: routes.map((r) => ({ slug: r.slug, title: r.t[lang].title, short: r.t[lang].short, duration: r.duration, ground: r.ground, landing: r.landing, price: r.price, wholeOnly: !!r.wholeOnly, color: r.color, url: url(lang, 'routes/' + r.slug), format: r.t[lang].format, priceText: C.routePriceText(r, lang, t) })),
-    dests: routes.destinations.map((d) => ({ slug: d.slug, name: d.t[lang].name, desc: d.t[lang].desc, km: d.km, image: d.image })),
+    currency: site.currency[lang], intro: t.intro, stepOf: t.booking.stepOf, use3d, fullIntro, story: page === 'how' ? { soundOn: require('../data/story')[lang].soundOn, soundOff: require('../data/story')[lang].soundOff } : null,
+    routes: routes.map((r) => ({ slug: r.slug, title: r.t[lang].title, short: r.t[lang].short, duration: r.duration, ground: r.ground, landing: r.landing, price: r.price, whole: r.price.whole || (r.price.window * 3 + r.price.middle), wholeDefined: !!r.price.whole, wholeOnly: !!r.wholeOnly, color: r.color, url: url(lang, 'routes/' + r.slug), format: r.t[lang].format, priceText: C.routePriceText(r, lang, t) })),
+    dests: routes.destinations.map((d) => ({ slug: d.slug, name: d.t[lang].name, desc: d.t[lang].desc, km: d.km })),
     mapText: { base: t.home.mapBase, custom: t.home.mapCustom, km: t.home.mapKm, onRequest: t.common.onRequest, details: t.common.details, discuss: t.home.customCta },
   };
   return `<!doctype html>
@@ -176,22 +177,41 @@ function render(p) {
   <link rel="stylesheet" href="/assets/css/fonts.css">
   <link rel="stylesheet" href="/assets/css/main.css?v=${p.version}">
   <script>document.documentElement.className='js';try{if(sessionStorage.getItem('hh-seen'))document.documentElement.classList.add('is-returning')}catch(e){}if(matchMedia('(prefers-reduced-motion: reduce)').matches)document.documentElement.classList.add('reduced');setTimeout(function(){if(!window.__hh_ready)document.documentElement.classList.add('js-failed')},5000)</script>
-  ${use3d ? '<script>window.__hh3dReady=new Promise(function(r){window.__hh3dResolve=r});</script>' : ''}
+  <script>window.__hh3dReady=new Promise(function(r){window.__hh3dResolve=r});</script>
+  <link rel="modulepreload" href="/assets/js/vendor/three.module.min.js">
+  <link rel="modulepreload" href="/assets/js/vendor/three.core.min.js">
+  <link rel="modulepreload" href="/assets/js/heli3d.js?v=${p.version}">
   <script type="application/ld+json">${JSON.stringify(jsonld)}</script>
   ${p.extraHead || ''}
 </head>
 <body class="page page--${page}" data-lang="${lang}" data-page="${page}">
   <a class="skip" href="#main">${esc(t.nav.skip)}</a>
-  ${use3d && page === 'home' ? `<div class="intro" id="intro" aria-hidden="true">
+  ${fullIntro ? `<div class="intro" id="intro" aria-hidden="true">
     <div class="intro__bg"></div>
-    <canvas class="intro__canvas" id="stage-intro"></canvas>
+    <div class="intro__stage" id="intro-stage"></div>
+    <div class="intro__ui">
+      <div class="intro__brand">${C.heliSilhouette('intro__sil')}<span>HELI<b>HOP</b></span><small>${esc(t.intro.bookingHint)}</small></div>
+      <button type="button" class="intro__skip" data-skip>${esc(t.intro.skip)} ${I.arrow}</button>
+      <div class="intro__panel" data-panel>
+        <div class="intro__gauges">${gauge('n1', t.intro.gauges.n1)}${gauge('nr', t.intro.gauges.nr)}${gauge('tot', t.intro.gauges.tot, { max: 900 })}${gauge('alt', t.intro.gauges.alt, { max: 4000 })}</div>
+        <ul class="intro__check" data-check aria-live="polite"></ul>
+        <div class="intro__switches">
+          ${['batt', 'fuel', 'ign'].map((k, i) => `<span class="isw" data-sw="${k}"><i></i><small>${['BATT', 'FUEL PUMP', 'IGN'][i]}</small></span>`).join('')}
+        </div>
+        <button type="button" class="intro__start" data-start><span class="intro__start-ring"></span><span class="intro__start-btn"><b>START</b></span><small data-start-label>${esc(t.intro.pressStart)}</small></button>
+      </div>
+      <button type="button" class="intro__sound" data-sound aria-pressed="false" aria-label="${esc(t.intro.sound)}"><span class="intro__sound-ic">${I.wind}</span><span data-sound-label>${esc(t.intro.soundOff)}</span></button>
+      <div class="intro__status"><span class="intro__dot"></span><span data-intro-status>${esc(t.intro.pressStart)}</span></div>
+    </div>
+  </div>` : `<div class="intro intro--fly" id="intro" aria-hidden="true">
+    <div class="intro__bg"></div>
+    <div class="intro__stage" id="intro-stage"></div>
     <div class="intro__ui">
       <div class="intro__brand">${C.heliSilhouette('intro__sil')}<span>HELI<b>HOP</b></span></div>
-      <div class="intro__status"><span class="intro__dot"></span><span data-intro-status>${esc(t.intro.start)}</span></div>
-      <div class="intro__alt"><span data-alt>0</span> <small>${esc(t.altimeter.unit)}</small></div>
       <button type="button" class="intro__skip" data-skip>${esc(t.intro.skip)} ${I.arrow}</button>
+      <div class="intro__status"><span class="intro__dot"></span><span data-intro-status>${esc(t.intro.fly)}</span></div>
     </div>
-  </div>` : `<div class="preloader" id="preloader" aria-hidden="true"><div class="preloader__inner">${C.heliSilhouette('preloader__sil')}<div class="preloader__word">HELI<b>HOP</b></div><div class="preloader__bar"><span></span></div></div></div>`}
+  </div>`}
   <div class="curtain" id="curtain" aria-hidden="true"><div class="curtain__mark">${C.heliSilhouette()}</div></div>
   <div class="cursor" id="cursor" aria-hidden="true"><div class="cursor__dot"></div><div class="cursor__ring"></div><div class="cursor__label"></div></div>
   <div class="progress" id="progress" aria-hidden="true"><span></span></div>
@@ -210,11 +230,11 @@ function render(p) {
   </header>
 
   <div class="menu" id="menu" aria-hidden="true">
-    <div class="menu__bg">${C.img('space-tian-shan', { alt: '', sizes: '100vw' })}</div>
+    <div class="menu__bg">${C.img('aa-05', { alt: '', sizes: '100vw' })}</div>
     <div class="menu__inner" data-lenis-prevent>
       <nav class="menu__links" aria-label="${esc(t.nav.menu)}">
         <a class="menu__link" href="${url(lang)}"><span class="menu__num">01</span><span class="menu__text">${esc(t.nav.home)}</span></a>
-        ${['routes', 'proposal', 'experiences', 'gift', 'guests', 'partners', 'aviation', 'about'].map((k, i) => `<a class="menu__link${page === k ? ' is-current' : ''}" href="${url(lang, k)}"><span class="menu__num">0${i + 2}</span><span class="menu__text">${esc(t.nav[k])}</span></a>`).join('')}
+        ${['routes', 'how', 'proposal', 'experiences', 'gift', 'guests', 'partners', 'aviation', 'about'].map((k, i) => `<a class="menu__link${page === k ? ' is-current' : ''}" href="${url(lang, k)}"><span class="menu__num">${String(i + 2).padStart(2, '0')}</span><span class="menu__text">${esc(t.nav[k])}</span></a>`).join('')}
       </nav>
       <div class="menu__side">
         <div class="menu__langs">${site.langs.map((l) => `<a href="${url(l, path)}" hreflang="${l}"${l === lang ? ' class="is-active"' : ''}>${site.langNames[l]}</a>`).join('')}</div>
@@ -255,7 +275,7 @@ ${p.body}
   <script src="/assets/js/vendor/MotionPathPlugin.min.js"></script>
   <script src="/assets/js/vendor/SplitText.min.js"></script>
   <script src="/assets/js/vendor/lenis.min.js"></script>
-  ${use3d ? '<script type="module" src="/assets/js/heli3d.js?v=' + p.version + '"></script>' : ''}
+  <script type="module" src="/assets/js/heli3d.js?v=${p.version}"></script>
   <script src="/assets/js/main.js?v=${p.version}" defer></script>
 </body>
 </html>`;

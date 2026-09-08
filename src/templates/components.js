@@ -138,9 +138,19 @@ function heliSvg(cls = '', id = 'heli') {
   </g>
 </svg>`;
 }
-/** Small top-view helicopter icon for maps/paths */
-function heliTop(cls = '') {
-  return `<svg class="heli-top ${cls}" viewBox="0 0 64 64" aria-hidden="true"><g class="heli-top__rotor"><path d="M32 32 6 10l3-3zM32 32l26 22-3 3zM32 32 58 10l-3-3zM32 32 6 54l3 3z" fill="currentColor" opacity=".8"/></g><path d="M32 12c5 0 8 4 8 10v14l-3 12h-10l-3-12V22c0-6 3-10 8-10z" fill="currentColor"/><path d="M29 44h6l3 14h-12z" fill="currentColor" opacity=".9"/><circle cx="32" cy="32" r="3" fill="#0b0d11"/></svg>`;
+/** Small top-view helicopter icon: explicit width/height (iOS needs them on nested svg) + 3D snapshot slot */
+const HELI_TOP_PATH = '<g class="heli-top__rotor"><path d="M32 32 6 10l3-3zM32 32l26 22-3 3zM32 32 58 10l-3-3zM32 32 6 54l3 3z" fill="currentColor" opacity=".8"/></g><path d="M32 12c5 0 8 4 8 10v14l-3 12h-10l-3-12V22c0-6 3-10 8-10z" fill="currentColor"/><path d="M29 44h6l3 14h-12z" fill="currentColor" opacity=".9"/><circle cx="32" cy="32" r="3" fill="#0b0d11"/>';
+function heliTop(cls = '', size = 26, snap = 'top') {
+  return `<svg class="heli-top ${cls}" viewBox="0 0 64 64" width="${size}" height="${size}" aria-hidden="true" data-snap-svg="${snap}">${HELI_TOP_PATH}</svg>`;
+}
+/** Same marker for use inside another <svg>: a fixed-size group, replaced by a rendered 3D snapshot at runtime */
+function heliMarker(size = 26, snap = 'top', cls = '') {
+  const h = size / 2;
+  return `<g class="hmark ${cls}" data-snap="${snap}" data-size="${size}"><g transform="translate(${-h} ${-h}) scale(${size / 64})">${HELI_TOP_PATH}</g></g>`;
+}
+/** A DOM slot for a live 3D view (filled by the engine); `fallback` is shown when WebGL is unavailable */
+function view3d(pose, cls = '', params = {}, fallback = '') {
+  return `<div class="v3d-slot ${cls}" data-v3d="${pose}" data-v3d-params='${esc(JSON.stringify(params))}'>${fallback ? `<div class="v3d-fallback">${fallback}</div>` : ''}</div>`;
 }
 
 // ---------- layout blocks ----------
@@ -186,7 +196,7 @@ function routeCard(route, lang, t, i = 0) {
       <span class="rcard__badge">${I.clock} ${route.duration} ${t.common.min}${route.ground ? ' + ' + route.ground : ''}</span>
       ${route.landing ? `<span class="rcard__badge rcard__badge--alt">${I.alt} ${fmtNum(route.landing)} ${t.common.metres}</span>` : ''}
       <span class="rcard__num">0${i + 1}</span>
-      <span class="rcard__fly" aria-hidden="true">${heliTop()}</span>
+      <span class="rcard__fly" aria-hidden="true">${heliTop('', 64, 'iso')}</span>
     </a>
     <span class="glare" aria-hidden="true"></span>
     <div class="rcard__body">
@@ -211,8 +221,8 @@ function faqList(items, id = 'faq') {
 function ctaSection(lang, t, o = {}) {
   const c = t.common;
   return `<section class="cta" id="cta">
-    <div class="cta__bg" data-parallax="0.25">${img(o.image || 'cta', { alt: '', sizes: '100vw' })}</div>
-    <div class="cta__heli">${heliSvg('heli--cta', 'heli-cta')}</div>
+    <div class="cta__bg" data-parallax="0.25">${img(o.image || 'kg-02', { alt: '', sizes: '100vw' })}</div>
+    <div class="cta__heli" id="cta-heli">${view3d('fly', 'cta__v3d', { yaw: 0.9, roll: -0.2, pitch: -0.1, fov: 26, fit: 0.95, elev: -0.05 }, heliSvg('heli--cta', 'heli-cta'))}</div>
     <div class="container cta__inner">
       <h2 class="h1 cta__title" data-split>${esc(o.title || c.ctaTitle)}</h2>
       <p class="lead" data-reveal>${esc(o.sub || c.ctaSub)}</p>
@@ -229,10 +239,11 @@ function marquee(items, cls = '') {
   return `<div class="ticker ${cls}" aria-hidden="true"><div class="ticker__track">${row}${row}</div></div>`;
 }
 
-function guestCard(g, lang) {
+function guestCard(g, lang, o = {}) {
   const name = g.name[lang];
   const initials = name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('');
-  return `<article class="gcard"><div class="gcard__avatar" aria-hidden="true"><span>${esc(initials)}</span></div><h3 class="gcard__name">${esc(name)}</h3><p class="gcard__role">${esc(g.role[lang])}</p></article>`;
+  const photo = g.image ? img(g.image, { alt: name, sizes: o.sizes || '(min-width:760px) 300px, 70vw', cls: 'gcard__img' }) : `<span class="gcard__initials">${esc(initials)}</span>`;
+  return `<article class="gcard${g.image ? ' gcard--photo' : ''}"${o.tilt ? ' data-tilt' : ''}><div class="gcard__media">${photo}<span class="glare" aria-hidden="true"></span></div><div class="gcard__body"><h3 class="gcard__name">${esc(name)}</h3><p class="gcard__role">${esc(g.role[lang])}</p></div></article>`;
 }
 
 function specList(specs, t) {
@@ -321,14 +332,14 @@ function mapSvg(routes, dests, lang, t, opts = {}) {
   return `<svg class="map${k < 1 ? ' map--zoom' : ''}" viewBox="${vb.map((v) => Math.round(v * 10) / 10).join(' ')}" role="img" aria-label="${esc(t.home.mapTitle)}" style="--k:${k}">
     <defs>
       <pattern id="${pid}-dots" width="${sz(9)}" height="${sz(9)}" patternUnits="userSpaceOnUse"><circle cx="${sz(4.5)}" cy="${sz(4.5)}" r="${sz(1.1)}" fill="#8fd3ff" opacity=".35"/></pattern>
-      <filter id="${pid}-glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${sz(6)}" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     </defs>
     <path class="map__fill" d="${path}" fill="url(#${pid}-dots)"/>
-    <path class="map__outline" d="${path}" fill="none" stroke="#8fd3ff" stroke-opacity=".55" stroke-width="${sz(1.6)}" filter="url(#${pid}-glow)"/>
+    <path class="map__glow" d="${path}" fill="none" stroke="#8fd3ff" stroke-opacity=".12" stroke-width="${sz(9)}" stroke-linejoin="round"/>
+    <path class="map__outline" d="${path}" fill="none" stroke="#8fd3ff" stroke-opacity=".6" stroke-width="${sz(1.6)}" stroke-linejoin="round"/>
     <g class="map__cities">${cities.map((c) => { const p = project(c.c[0], c.c[1]); return `<g class="map-city${c.base ? ' map-city--base' : ''}" transform="translate(${p[0]} ${p[1]})"><circle r="${sz(c.base ? 5 : 3)}"/><text x="${sz(9)}" y="${sz(4)}" font-size="${sz(11)}">${esc(c.n[lang])}</text></g>`; }).join('')}</g>
     <g class="map__routes">${destPaths}${routePaths}</g>
     <g class="map__pins">${pins.map((p) => `<g class="map-pin map-pin--${p.kind}" data-key="${p.key}" data-kind="${p.kind}" transform="translate(${p.x} ${p.y})" tabindex="0" role="button" aria-label="${esc(p.label)}" style="--pin:${p.color}"><circle class="map-pin__ring" r="${sz(14)}"/><circle class="map-pin__dot" r="${sz(5)}" stroke-width="${sz(2)}"/><text class="map-pin__label" ${labelAttrs(p.pos)} font-size="${sz(12)}" stroke-width="${sz(4)}">${esc(p.label)}</text></g>`).join('')}</g>
-    <g class="map__heli" style="color:#f0b35a">${heliTop('map-heli')}</g>
+    <g class="map__heli" style="color:#ffffff">${heliMarker(Math.round(26 * k * 100) / 100, 'top')}</g>
   </svg>`;
 }
 
@@ -353,21 +364,22 @@ function altitudeChart(route, lang, t) {
     <path class="alt__area" d="${area}" fill="url(#alt-fill-${route.slug})"/>
     <path class="alt__line" d="${line}" fill="none" stroke="${route.color}" stroke-width="2.5" stroke-linecap="round"/>
     ${wps}
-    <g class="alt__heli" style="color:${route.color}">${heliTop()}</g>
+    <g class="alt__heli" style="color:#ffffff">${heliMarker(26, 'side')}</g>
   </svg>`;
 }
 
-// ---------- seat picker (H125 cabin, top view) ----------
+// ---------- seat picker + price calculator (H125 cabin: 3 window seats + 1 middle) ----------
 function seatPicker(route, lang, t) {
-  const r = t.route;
+  const r = t.route, b = t.booking;
   const seats = [
     { id: 'front', x: 128, y: 104, type: 'window', label: r.window },
     { id: 'rl', x: 64, y: 176, type: 'window', label: r.window },
     { id: 'rm', x: 100, y: 176, type: 'middle', label: r.middle },
     { id: 'rr', x: 136, y: 176, type: 'window', label: r.window },
   ];
-  const seat = (s) => `<g class="seat" data-seat="${s.id}" data-type="${s.type}" data-price="${route.price[s.type] || 0}" transform="translate(${s.x} ${s.y})" tabindex="0" role="checkbox" aria-checked="false" aria-label="${esc(s.label)}"><rect class="seat__base" x="-14" y="-14" width="28" height="28" rx="7"/><rect class="seat__back" x="-14" y="-18" width="28" height="7" rx="3.5"/><path class="seat__check" d="m-6 0 4 4 8-8" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></g>`;
-  return `<div class="seatmap" data-window="${route.price.window || 0}" data-middle="${route.price.middle || 0}">
+  const seat = (s) => `<g class="seat" data-seat="${s.id}" data-type="${s.type}" data-price="${route.price[s.type] || 0}" transform="translate(${s.x} ${s.y})" tabindex="0" role="checkbox" aria-checked="false" aria-label="${esc(s.label)} · ${price(route.price[s.type], lang)}"><rect class="seat__base" x="-14" y="-14" width="28" height="28" rx="7"/><rect class="seat__back" x="-14" y="-18" width="28" height="7" rx="3.5"/><path class="seat__check" d="m-6 0 4 4 8-8" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></g>`;
+  const W = route.price.window || 0, M = route.price.middle || 0, whole = route.price.whole || (W * 3 + M);
+  return `<div class="seatmap" data-window="${W}" data-middle="${M}" data-whole="${whole}" data-whole-defined="${route.price.whole ? 1 : 0}">
     <svg viewBox="0 0 200 240" class="seatmap__svg" aria-label="${esc(r.cabin)}">
       <path class="seatmap__hull" d="M100 10c44 0 70 30 70 70v110c0 26-30 40-70 40s-70-14-70-40V80c0-40 26-70 70-70z"/>
       <path class="seatmap__glass" d="M100 18c34 0 56 24 56 56v10H44v-10c0-32 22-56 56-56z"/>
@@ -376,7 +388,34 @@ function seatPicker(route, lang, t) {
       <text class="seatmap__front" x="100" y="60" text-anchor="middle">↑</text>
     </svg>
     <p class="seatmap__hint">${esc(r.tapSeat)}</p>
+    <div class="calc" id="calc">
+      <div class="calc__quick"><span>${esc(b.quick)}</span>${[1, 2, 3].map((n) => `<button type="button" class="calc__q" data-q="${n}">${n}</button>`).join('')}<button type="button" class="calc__q calc__q--whole" data-q="4">${esc(b.wholeBtn)}</button></div>
+      <div class="calc__rows">
+        <div class="calc__row" data-c-row="window" hidden><span><i class="sw sw--window"></i>${esc(b.windowSeats)} × <b data-c-n>0</b> × ${price(W, lang)}</span><b data-c-sum>0</b></div>
+        <div class="calc__row" data-c-row="middle" hidden><span><i class="sw sw--middle"></i>${esc(b.middleSeats)} × <b data-c-n>0</b> × ${price(M, lang)}</span><b data-c-sum>0</b></div>
+        <div class="calc__row calc__row--whole" data-c-row="whole" hidden><span>${esc(b.wholeCalc)}${route.price.whole ? '' : ` <small>(3 × ${fmtNum(W)} + 1 × ${fmtNum(M)})`}</small></span><b data-c-sum>${price(whole, lang)}</b></div>
+      </div>
+      <div class="calc__total"><span>${esc(b.total)} <small data-c-count>0 ${esc(b.seatsOf)}</small></span><b data-c-total>—</b></div>
+      <p class="calc__sub" data-c-sub hidden></p>
+    </div>
   </div>`;
 }
 
-module.exports = { esc, attr, url, fmtNum, price, img, I, rotorMark, heliSilhouette, logo, heliSvg, heliTop, sectionHead, btn, waLink, durationText, routePriceText, routeCard, faqList, ctaSection, marquee, guestCard, specList, MAP, smoothPath, mapSvg, altitudeChart, seatPicker };
+
+// ---------- cockpit gauge (intro + story) ----------
+function gauge(key, label, o = {}) {
+  const max = o.max || 100;
+  const ticks = [];
+  for (let i = 0; i <= 10; i++) { const a = (-135 + i * 27) * Math.PI / 180; const r1 = i % 5 === 0 ? 34 : 38, r2 = 42; ticks.push(`<line x1="${(50 + Math.cos(a) * r1).toFixed(1)}" y1="${(50 + Math.sin(a) * r1).toFixed(1)}" x2="${(50 + Math.cos(a) * r2).toFixed(1)}" y2="${(50 + Math.sin(a) * r2).toFixed(1)}"/>`); }
+  return `<div class="gauge" data-gauge="${key}" data-max="${max}"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="gauge__ring" cx="50" cy="50" r="46"/><path class="gauge__arc" d="M17.5 82.5A46 46 0 1 1 82.5 82.5" pathLength="100"/><path class="gauge__red" d="M76 88A46 46 0 0 0 82.5 82.5" pathLength="100"/><g class="gauge__ticks">${ticks.join('')}</g><g class="gauge__needle" style="transform:rotate(-135deg)"><path d="M50 50 48 54 50 14 52 54z"/></g><circle class="gauge__hub" cx="50" cy="50" r="4"/></svg><b class="gauge__val" data-gauge-val>0</b><small class="gauge__label">${esc(label)}</small></div>`;
+}
+/** Tiny outline map of Kyrgyzstan with one pin (photo-free destination cards) */
+function miniMap(coords, cls = '') {
+  const { W, H, project, path } = MAP;
+  const p = project(coords[0], coords[1]), b = project(74.59, 42.87);
+  const cx = (b[0] + p[0]) / 2, cy = Math.min(b[1], p[1]) - Math.abs(p[0] - b[0]) * .25 - 20;
+  return `<svg class="minimap ${cls}" viewBox="0 0 ${W} ${H}" aria-hidden="true"><path class="minimap__land" d="${path}"/><path class="minimap__route" d="M${b[0]} ${b[1]}Q${cx} ${cy} ${p[0]} ${p[1]}"/><circle class="minimap__base" cx="${b[0]}" cy="${b[1]}" r="9"/><circle class="minimap__pin" cx="${p[0]}" cy="${p[1]}" r="14"/><circle class="minimap__pin2" cx="${p[0]}" cy="${p[1]}" r="6"/></svg>`;
+}
+function largest(name) { const f = images.files[name]; return f ? Math.max(...f) : 1400; }
+
+module.exports = { esc, attr, url, fmtNum, price, img, I, rotorMark, heliSilhouette, logo, heliSvg, heliTop, heliMarker, view3d, gauge, miniMap, largest, sectionHead, btn, waLink, durationText, routePriceText, routeCard, faqList, ctaSection, marquee, guestCard, specList, MAP, smoothPath, mapSvg, altitudeChart, seatPicker };

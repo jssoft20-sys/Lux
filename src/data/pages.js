@@ -4,7 +4,7 @@
  */
 const fleet = [
   {
-    key: 'h125', name: 'Airbus H125', image: 'fleet-h125', gallery: ['fleet-h125', 'fleet-h125-2', 'landing-snow', 'gal-adygene-3'],
+    key: 'h125', name: 'Airbus H125', image: 'h125-06', reg: 'EX-88010', model3d: true, gallery: ['h125-06', 'h125-01', 'h125-02', 'h125-04', 'h125-05', 'h125-03'],
     specs: { seats: '4', cruise: 235, range: 691, ceiling: 7010, year: 2022 },
     t: {
       ru: { role: 'Основной борт горных маршрутов', desc: 'Лёгкий одномоторный вертолёт, рекордсмен по высотности: именно H125 садился на вершину Эвереста. Четыре пассажирских места, панорамные окна.' },
@@ -13,7 +13,7 @@ const fleet = [
     },
   },
   {
-    key: 'h145', name: 'Airbus H145', image: 'fleet-h145', gallery: ['fleet-h145', 'fleet-h145-2'],
+    key: 'h145', name: 'Airbus H145', image: 'h145-01', gallery: ['h145-01', 'h145-05', 'h145-02', 'h145-03', 'h145-04', 'h145-06'],
     specs: { seats: '6–8', cruise: 248, range: null, ceiling: null, year: 2022 },
     t: {
       ru: { role: 'Двухдвигательный', desc: 'VIP-перевозки, медицинская эвакуация, поисково-спасательные работы. От 6 до 8 мест в зависимости от компоновки салона.' },
@@ -22,7 +22,7 @@ const fleet = [
     },
   },
   {
-    key: 'mi8', name: 'Ми-8', image: 'fleet-mi8', gallery: ['fleet-mi8'],
+    key: 'mi8', name: 'Ми-8', image: 'mi8-01', gallery: ['mi8-01'],
     specs: { seats: '20+', cruise: 225, range: null, ceiling: null, year: 2023 },
     t: {
       ru: { role: 'Тяжёлый борт', desc: 'Для больших групп, грузов и работ в высокогорье. Экспедиции, съёмочные группы, оборудование.' },
@@ -33,19 +33,19 @@ const fleet = [
 ];
 
 const guests = [
-  { name: { ru: 'Оскар Хартманн', en: 'Oskar Hartmann', ky: 'Оскар Хартманн' }, role: { ru: 'Предприниматель и международный инвестор, основатель KupiVIP и инвестор более 150 компаний.', en: 'Entrepreneur and international investor, founder of KupiVIP and an investor in more than 150 companies.', ky: 'Ишкер жана эл аралык инвестор, KupiVIP негиздөөчүсү жана 150дөн ашык компаниянын инвестору.' } },
-  { name: { ru: 'Айжан Аденова', en: 'Aizhan Adenova', ky: 'Айжан Аденова' }, role: { ru: 'Кыргызстан · актриса, модель, блогер', en: 'Kyrgyzstan · actress, model, blogger', ky: 'Кыргызстан · актриса, модель, блогер' } },
-  { name: { ru: 'Мадинахон Мамадалиева', en: 'Madinakhon Mamadalieva', ky: 'Мадинахон Мамадалиева' }, role: { ru: 'Блогер, предприниматель', en: 'Blogger, entrepreneur', ky: 'Блогер, ишкер' } },
-  { name: { ru: 'Мэри Кувакова', en: 'Mary Kuvakova', ky: 'Мэри Кувакова' }, role: { ru: 'Модель, «Мисс Кыргызстан 2025». Представляла Кыргызстан на конкурсе «Мисс Вселенная 2025».', en: 'Model, Miss Kyrgyzstan 2025. Represented Kyrgyzstan at Miss Universe 2025.', ky: 'Модель, «Мисс Кыргызстан 2025». Кыргызстанды «Мисс Вселенная 2025» сынагында көрсөткөн.' } },
-  { name: { ru: 'Чолпон Уламбекова', en: 'Cholpon Ulambekova', ky: 'Чолпон Уламбекова' }, role: { ru: 'Маркетолог, телеведущая, блогер и предпринимательница.', en: 'Marketing specialist, TV presenter, blogger and entrepreneur.', ky: 'Маркетолог, телеалып баруучу, блогер жана ишкер.' } },
-  { name: { ru: 'Гузи Исламова', en: 'Guzi Islamova', ky: 'Гузи Исламова' }, role: { ru: 'Модель и тревел-блогер.', en: 'Model and travel blogger.', ky: 'Модель жана саякат блогери.' } },
-  { name: { ru: 'Аня Бонито', en: 'Anya Bonito', ky: 'Аня Бонито' }, role: { ru: 'Предпринимательница, основательница бренда Bonito.', en: 'Entrepreneur, founder of the Bonito brand.', ky: 'Ишкер, Bonito брендинин негиздөөчүсү.' } },
-  { name: { ru: 'Океана Урматбек', en: 'Okeana Urmatbek', ky: 'Океана Урматбек' }, role: { ru: 'Актриса и блогер. Известна по ролям в кыргызстанских кино- и телепроектах.', en: 'Actress and blogger, known for her roles in Kyrgyz film and television.', ky: 'Актриса жана блогер. Кыргызстандын кино жана телепроекттериндеги ролдору менен белгилүү.' } },
-  { name: { ru: 'Сабина Мамадалиева', en: 'Sabina Mamadalieva', ky: 'Сабина Мамадалиева' }, role: { ru: 'Блогер и предпринимательница, создательница проектов в сфере моды.', en: 'Blogger and entrepreneur, creator of her own fashion projects.', ky: 'Блогер жана ишкер, мода тармагындагы долбоорлордун автору.' } },
-  { name: { ru: 'Акылай Калбердиева', en: 'Akylai Kalberdieva', ky: 'Акылай Калбердиева' }, role: { ru: 'Модель, «Мисс Кыргызстан 2023», представляла Кыргызстан на Miss Universe 2023.', en: 'Model, Miss Kyrgyzstan 2023, represented Kyrgyzstan at Miss Universe 2023.', ky: 'Модель, «Мисс Кыргызстан 2023», Кыргызстанды Miss Universe 2023 сынагында көрсөткөн.' } },
-  { name: { ru: 'Акылай Саитова', en: 'Akylai Saitova', ky: 'Акылай Саитова' }, role: { ru: 'Блогер', en: 'Blogger', ky: 'Блогер' } },
-  { name: { ru: 'Азирет Осмонов', en: 'Aziret Osmonov', ky: 'Азирет Осмонов' }, role: { ru: 'Журналист, блогер и телеведущий.', en: 'Journalist, blogger and TV presenter.', ky: 'Журналист, блогер жана телеалып баруучу.' } },
-  { name: { ru: 'Ким Станислав', en: 'Kim Stanislav', ky: 'Ким Станислав' }, role: { ru: 'Гость HeliHop', en: 'HeliHop guest', ky: 'HeliHop коногу' } },
+  { image: 'guest-01', name: { ru: 'Оскар Хартманн', en: 'Oskar Hartmann', ky: 'Оскар Хартманн' }, role: { ru: 'Предприниматель и международный инвестор, основатель KupiVIP и инвестор более 150 компаний.', en: 'Entrepreneur and international investor, founder of KupiVIP and an investor in more than 150 companies.', ky: 'Ишкер жана эл аралык инвестор, KupiVIP негиздөөчүсү жана 150дөн ашык компаниянын инвестору.' } },
+  { image: 'guest-02', name: { ru: 'Айжан Аденова', en: 'Aizhan Adenova', ky: 'Айжан Аденова' }, role: { ru: 'Кыргызстан · актриса, модель, блогер', en: 'Kyrgyzstan · actress, model, blogger', ky: 'Кыргызстан · актриса, модель, блогер' } },
+  { image: 'guest-03', name: { ru: 'Мадинахон Мамадалиева', en: 'Madinakhon Mamadalieva', ky: 'Мадинахон Мамадалиева' }, role: { ru: 'Блогер, предприниматель', en: 'Blogger, entrepreneur', ky: 'Блогер, ишкер' } },
+  { image: 'guest-04', name: { ru: 'Мэри Кувакова', en: 'Mary Kuvakova', ky: 'Мэри Кувакова' }, role: { ru: 'Модель, «Мисс Кыргызстан 2025». Представляла Кыргызстан на конкурсе «Мисс Вселенная 2025».', en: 'Model, Miss Kyrgyzstan 2025. Represented Kyrgyzstan at Miss Universe 2025.', ky: 'Модель, «Мисс Кыргызстан 2025». Кыргызстанды «Мисс Вселенная 2025» сынагында көрсөткөн.' } },
+  { image: 'guest-05', name: { ru: 'Чолпон Уламбекова', en: 'Cholpon Ulambekova', ky: 'Чолпон Уламбекова' }, role: { ru: 'Маркетолог, телеведущая, блогер и предпринимательница.', en: 'Marketing specialist, TV presenter, blogger and entrepreneur.', ky: 'Маркетолог, телеалып баруучу, блогер жана ишкер.' } },
+  { image: 'guest-06', name: { ru: 'Гузи Исламова', en: 'Guzi Islamova', ky: 'Гузи Исламова' }, role: { ru: 'Модель и тревел-блогер.', en: 'Model and travel blogger.', ky: 'Модель жана саякат блогери.' } },
+  { image: 'guest-07', name: { ru: 'Аня Бонито', en: 'Anya Bonito', ky: 'Аня Бонито' }, role: { ru: 'Предпринимательница, основательница бренда Bonito.', en: 'Entrepreneur, founder of the Bonito brand.', ky: 'Ишкер, Bonito брендинин негиздөөчүсү.' } },
+  { image: 'guest-08', name: { ru: 'Океана Урматбек', en: 'Okeana Urmatbek', ky: 'Океана Урматбек' }, role: { ru: 'Актриса и блогер. Известна по ролям в кыргызстанских кино- и телепроектах.', en: 'Actress and blogger, known for her roles in Kyrgyz film and television.', ky: 'Актриса жана блогер. Кыргызстандын кино жана телепроекттериндеги ролдору менен белгилүү.' } },
+  { image: 'guest-09', name: { ru: 'Сабина Мамадалиева', en: 'Sabina Mamadalieva', ky: 'Сабина Мамадалиева' }, role: { ru: 'Блогер и предпринимательница, создательница проектов в сфере моды.', en: 'Blogger and entrepreneur, creator of her own fashion projects.', ky: 'Блогер жана ишкер, мода тармагындагы долбоорлордун автору.' } },
+  { image: 'guest-10', name: { ru: 'Акылай Калбердиева', en: 'Akylai Kalberdieva', ky: 'Акылай Калбердиева' }, role: { ru: 'Модель, «Мисс Кыргызстан 2023», представляла Кыргызстан на Miss Universe 2023.', en: 'Model, Miss Kyrgyzstan 2023, represented Kyrgyzstan at Miss Universe 2023.', ky: 'Модель, «Мисс Кыргызстан 2023», Кыргызстанды Miss Universe 2023 сынагында көрсөткөн.' } },
+  { image: 'guest-11', name: { ru: 'Акылай Саитова', en: 'Akylai Saitova', ky: 'Акылай Саитова' }, role: { ru: 'Блогер', en: 'Blogger', ky: 'Блогер' } },
+  { image: 'guest-12', name: { ru: 'Азирет Осмонов', en: 'Aziret Osmonov', ky: 'Азирет Осмонов' }, role: { ru: 'Журналист, блогер и телеведущий.', en: 'Journalist, blogger and TV presenter.', ky: 'Журналист, блогер жана телеалып баруучу.' } },
+  { image: 'guest-13', name: { ru: 'Ким Станислав', en: 'Kim Stanislav', ky: 'Ким Станислав' }, role: { ru: 'Гость HeliHop', en: 'HeliHop guest', ky: 'HeliHop коногу' } },
 ];
 
 const faq = {
@@ -98,9 +98,9 @@ const pages = {
       intro: 'За всё время мы организовали больше сотни предложений руки и сердца. Знаем, где сядет вертолёт, куда встанет фотограф и что делать, если она заплачет.', cta: 'Обсудить сценарий',
       formatsLabel: 'Три формата', formatsTitle: 'Выберите сценарий', formatsSub: 'Отличаются не ценой, а тем, кто это увидит: только вы двое, вы и горы или вы и все гости.',
       scenarios: [
-        { meta: 'Полёт 30 минут, 2 места', title: 'Во время полёта', desc: 'Предложение в воздухе, с панорамой гор за стеклом', price: 'от 71 000 сом', image: 'route-ala-archa' },
-        { meta: 'Полёт 1 час + посадка до 30 минут', title: 'С посадкой в горах', desc: 'Только вы двое — без шума и без свидетелей', price: 'от 131 000 сом', image: 'route-glacier' },
-        { meta: 'Полёт 30 минут, полный борт', title: 'С оформлением', desc: 'Декор, холодные фонтаны, фотозона — и вертолёт на площадке', price: 'от 135 000 сом', image: 'shoot' },
+        { meta: 'Полёт 30 минут, 2 места', title: 'Во время полёта', desc: 'Предложение в воздухе, с панорамой гор за стеклом', price: 'от 71 000 сом', image: 'mm-01' },
+        { meta: 'Полёт 1 час + посадка до 30 минут', title: 'С посадкой в горах', desc: 'Только вы двое — без шума и без свидетелей', price: 'от 131 000 сом', image: 'mm-02' },
+        { meta: 'Полёт 30 минут, полный борт', title: 'С оформлением', desc: 'Декор, холодные фонтаны, фотозона — и вертолёт на площадке', price: 'от 135 000 сом', image: 'mm-03' },
       ],
       howLabel: 'Как это было', howTitle: 'Кадры с настоящих предложений', howSub: 'Публикуем только с согласия пары.',
       stepsLabel: 'Как это устроено', stepsTitle: 'Четыре шага',
@@ -162,7 +162,7 @@ const pages = {
         { title: 'Фотограф', desc: 'После посадки 5–10 минут съёмки и 10–20 кадров на память.' },
       ],
     },
-    credits: { metaTitle: 'Фотографии и лицензии — HeliHop Travel', title: 'Фотографии и лицензии', intro: 'На сайте используются фотографии авторов Wikimedia Commons под свободными лицензиями. Автор, лицензия и источник каждого кадра:' },
+    credits: { metaTitle: 'Фотографии и лицензии — HeliHop Travel', title: 'Фотографии и лицензии', intro: 'Все фотографии на сайте — из полётов HeliHop Travel, публикуются с согласия гостей. © HeliHop Travel. Ниже — шрифты, библиотеки и данные, которые используются на сайте.' },
   },
 
   en: {
@@ -181,9 +181,9 @@ const pages = {
       intro: 'Over the years we have organised more than a hundred marriage proposals. We know where the helicopter lands, where the photographer stands and what to do if she cries.', cta: 'Discuss a scenario',
       formatsLabel: 'Three formats', formatsTitle: 'Choose a scenario', formatsSub: 'They differ not in price but in who sees it: just the two of you, you and the mountains, or you and all the guests.',
       scenarios: [
-        { meta: '30-minute flight, 2 seats', title: 'During the flight', desc: 'A proposal in the air with a mountain panorama behind the glass', price: 'from 71,000 KGS', image: 'route-ala-archa' },
-        { meta: '1-hour flight + landing up to 30 minutes', title: 'With a mountain landing', desc: 'Just the two of you — no noise and no witnesses', price: 'from 131,000 KGS', image: 'route-glacier' },
-        { meta: '30-minute flight, whole aircraft', title: 'With full décor', desc: 'Decorations, cold fountains, a photo zone — and the helicopter on the pad', price: 'from 135,000 KGS', image: 'shoot' },
+        { meta: '30-minute flight, 2 seats', title: 'During the flight', desc: 'A proposal in the air with a mountain panorama behind the glass', price: 'from 71,000 KGS', image: 'mm-01' },
+        { meta: '1-hour flight + landing up to 30 minutes', title: 'With a mountain landing', desc: 'Just the two of you — no noise and no witnesses', price: 'from 131,000 KGS', image: 'mm-02' },
+        { meta: '30-minute flight, whole aircraft', title: 'With full décor', desc: 'Decorations, cold fountains, a photo zone — and the helicopter on the pad', price: 'from 135,000 KGS', image: 'mm-03' },
       ],
       howLabel: 'How it went', howTitle: 'Photos from real proposals', howSub: 'Published only with the couple\'s consent.',
       stepsLabel: 'How it works', stepsTitle: 'Four steps',
@@ -245,7 +245,7 @@ const pages = {
         { title: 'Photographer', desc: 'After landing, 5–10 minutes of shooting and 10–20 keepsake photos.' },
       ],
     },
-    credits: { metaTitle: 'Photo credits and licenses — HeliHop Travel', title: 'Photo credits and licenses', intro: 'This site uses photographs by Wikimedia Commons authors under free licenses. Author, license and source of each image:' },
+    credits: { metaTitle: 'Photo credits and licenses — HeliHop Travel', title: 'Photo credits and licenses', intro: 'Every photograph on this site is from HeliHop Travel flights and is published with the guests\' consent. © HeliHop Travel. Below are the fonts, libraries and data used on the site.' },
   },
 
   ky: {
@@ -264,9 +264,9 @@ const pages = {
       intro: 'Бардык убакытта биз жүздөн ашык сүйүү сунушун уюштурдук. Вертолёт кайда конорун, сүрөтчү кайда турарын жана ал ыйлап жиберсе эмне кыларын билебиз.', cta: 'Сценарийди талкуулоо',
       formatsLabel: 'Үч формат', formatsTitle: 'Сценарий тандаңыз', formatsSub: 'Баасы менен эмес, ким көрөрү менен айырмаланат: экөөңөр гана, силер жана тоолор же силер жана бардык коноктор.',
       scenarios: [
-        { meta: '30 мүнөт учуу, 2 орун', title: 'Учуу учурунда', desc: 'Асманда сунуш, айнектин артында тоолордун панорамасы', price: '71 000 сомдон', image: 'route-ala-archa' },
-        { meta: '1 саат учуу + 30 мүнөткө чейин конуу', title: 'Тоого конуу менен', desc: 'Экөөңөр гана — ызы-чуусуз жана күбөлөрсүз', price: '131 000 сомдон', image: 'route-glacier' },
-        { meta: '30 мүнөт учуу, толук борт', title: 'Кооздоо менен', desc: 'Декор, муздак фонтандар, фотозона — жана аянтчадагы вертолёт', price: '135 000 сомдон', image: 'shoot' },
+        { meta: '30 мүнөт учуу, 2 орун', title: 'Учуу учурунда', desc: 'Асманда сунуш, айнектин артында тоолордун панорамасы', price: '71 000 сомдон', image: 'mm-01' },
+        { meta: '1 саат учуу + 30 мүнөткө чейин конуу', title: 'Тоого конуу менен', desc: 'Экөөңөр гана — ызы-чуусуз жана күбөлөрсүз', price: '131 000 сомдон', image: 'mm-02' },
+        { meta: '30 мүнөт учуу, толук борт', title: 'Кооздоо менен', desc: 'Декор, муздак фонтандар, фотозона — жана аянтчадагы вертолёт', price: '135 000 сомдон', image: 'mm-03' },
       ],
       howLabel: 'Кандай болгон', howTitle: 'Чыныгы сунуштардын кадрлары', howSub: 'Жуптун макулдугу менен гана жарыялайбыз.',
       stepsLabel: 'Кантип уюштурулат', stepsTitle: 'Төрт кадам',
@@ -328,7 +328,7 @@ const pages = {
         { title: 'Сүрөтчү', desc: 'Конгондон кийин 5–10 мүнөт тартуу жана 10–20 эстелик кадр.' },
       ],
     },
-    credits: { metaTitle: 'Сүрөттөр жана лицензиялар — HeliHop Travel', title: 'Сүрөттөр жана лицензиялар', intro: 'Сайтта Wikimedia Commons авторлорунун эркин лицензиядагы сүрөттөрү колдонулат. Ар бир кадрдын автору, лицензиясы жана булагы:' },
+    credits: { metaTitle: 'Сүрөттөр жана лицензиялар — HeliHop Travel', title: 'Сүрөттөр жана лицензиялар', intro: 'Сайттагы бардык сүрөттөр — HeliHop Travel учууларынан, коноктордун макулдугу менен жарыяланат. © HeliHop Travel. Төмөндө — сайтта колдонулган шрифттер, китепканалар жана маалыматтар.' },
   },
 };
 

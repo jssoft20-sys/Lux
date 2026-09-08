@@ -22,8 +22,8 @@ module.exports = [
     landing: null,
     price: { window: 38000, middle: 33000, whole: null },
     aircraft: H125,
-    image: 'route-ala-archa',
-    gallery: ['route-ala-archa', 'gal-ala-archa-2', 'gal-ala-archa-3', 'space-tian-shan'],
+    image: 'aa-01',
+    gallery: ['aa-01', 'aa-02', 'aa-03', 'aa-04', 'aa-05', 'aa-06', 'aa-map'],
     color: '#ffffff',
     coords: [[74.59, 42.87], [74.53, 42.64], [74.49, 42.56], [74.5, 42.5], [74.57, 42.6], [74.59, 42.87]],
     altitude: [800, 1700, 2300, 3300, 2600, 1500, 800],
@@ -69,8 +69,8 @@ module.exports = [
     landing: 3500,
     price: { window: 68000, middle: 63000, whole: null },
     aircraft: H125,
-    image: 'route-glacier',
-    gallery: ['route-glacier', 'gal-glacier-2', 'gal-glacier-4', 'gal-glacier-3', 'route-chunkurchak', 'gal-chunkurchak-2', 'gal-chunkurchak-3'],
+    image: 'gl-01',
+    gallery: ['gl-03', 'gl-01', 'gl-02', 'gl-04', 'gl-05', 'gl-06', 'gl-07', 'gl-08', 'gl-map'],
     color: '#bfe1ff',
     coords: [[74.59, 42.87], [74.5, 42.6], [74.5, 42.49], [74.55, 42.52], [74.63, 42.6], [74.59, 42.87]],
     altitude: [800, 2000, 3500, 3500, 2800, 2200, 800],
@@ -117,8 +117,8 @@ module.exports = [
     landing: 2700,
     price: { window: 68000, middle: 63000, whole: null },
     aircraft: H125,
-    image: 'route-kol-tor',
-    gallery: ['route-kol-tor', 'gal-kol-tor-2', 'gal-kol-tor-3', 'gal-kol-tor-4'],
+    image: 'kg-01',
+    gallery: ['kg-03', 'kg-01', 'kg-02', 'kg-04', 'kg-05', 'kg-06', 'kg-07', 'kg-08', 'kg-09', 'kg-map'],
     color: '#9fb3c8',
     coords: [[74.59, 42.87], [74.95, 42.78], [75.12, 42.66], [75.08, 42.5], [75.02, 42.62], [74.59, 42.87]],
     altitude: [800, 1300, 1900, 2700, 2700, 1800, 800],
@@ -166,8 +166,8 @@ module.exports = [
     maxPeople: 4,
     price: { window: null, middle: null, whole: 250000 },
     aircraft: H125,
-    image: 'route-adygene',
-    gallery: ['route-adygene', 'gal-adygene-2', 'gal-adygene-3', 'gal-glacier-2'],
+    image: 'ad-01',
+    gallery: ['ad-01', 'ad-03', 'ad-04', 'ad-05', 'ad-02'],
     color: '#e6e9ee',
     coords: [[74.59, 42.87], [74.5, 42.62], [74.45, 42.53], [74.43, 42.5], [74.52, 42.6], [74.59, 42.87]],
     altitude: [800, 2000, 3000, 3300, 3300, 2000, 800],
@@ -208,7 +208,7 @@ module.exports = [
 
 module.exports.destinations = [
   {
-    slug: 'issyk-kul', image: 'dest-issyk-kul', coords: [77.2, 42.45], km: 190, labelPos: 'below',
+    slug: 'issyk-kul', image: null, coords: [77.2, 42.45], km: 190, labelPos: 'below',
     t: {
       ru: { name: 'Иссык-Куль', desc: 'Второе по величине высокогорное озеро мира. Полёт вдоль северного или южного берега, посадка у воды.' },
       en: { name: 'Issyk-Kul', desc: 'The world\'s second-largest alpine lake. A flight along the north or south shore with a landing by the water.' },
@@ -216,7 +216,7 @@ module.exports.destinations = [
     },
   },
   {
-    slug: 'song-kul', image: 'dest-song-kul', coords: [75.13, 41.83], km: 140, labelPos: 'below',
+    slug: 'song-kul', image: null, coords: [75.13, 41.83], km: 140, labelPos: 'below',
     t: {
       ru: { name: 'Сон-Куль', desc: 'Озеро на высоте 3 016 м, юрты и табуны на джайлоо. Дорога занимает целый день — полёт из Бишкека меньше часа.' },
       en: { name: 'Son-Kul', desc: 'A lake at 3,016 m, yurts and horse herds on the summer pastures. The road takes a full day — the flight from Bishkek, under an hour.' },
@@ -224,7 +224,7 @@ module.exports.destinations = [
     },
   },
   {
-    slug: 'sary-chelek', image: 'dest-sary-chelek', coords: [71.97, 41.87], km: 260, labelPos: 'below',
+    slug: 'sary-chelek', image: null, coords: [71.97, 41.87], km: 260, labelPos: 'below',
     t: {
       ru: { name: 'Сары-Челек', desc: 'Заповедное озеро в орехово-плодовых лесах на западе страны. С воздуха видны все семь озёр заповедника.' },
       en: { name: 'Sary-Chelek', desc: 'A protected lake amid the walnut forests of the west. From the air you can see all seven lakes of the reserve.' },
@@ -232,7 +232,7 @@ module.exports.destinations = [
     },
   },
   {
-    slug: 'kel-suu', image: 'dest-kel-suu', coords: [77.58, 40.72], km: 300, labelPos: 'below',
+    slug: 'kel-suu', image: null, coords: [77.58, 40.72], km: 300, labelPos: 'below',
     t: {
       ru: { name: 'Кел-Суу', desc: 'Озеро в скальном каньоне у границы с Китаем, до которого почти нет дороги. Пограничная зона — нужен пропуск.' },
       en: { name: 'Kel-Suu', desc: 'A lake in a rock canyon near the Chinese border with almost no road to it. A border zone — a permit is required.' },
@@ -240,7 +240,7 @@ module.exports.destinations = [
     },
   },
   {
-    slug: 'around', image: 'dest-around', coords: [80.17, 42.21], km: 900, labelPos: 'left',
+    slug: 'around', image: null, coords: [80.17, 42.21], km: 900, labelPos: 'left',
     t: {
       ru: { name: 'Облёт Кыргызстана', desc: 'Многодневный маршрут: от Иссык-Куля до Хан-Тенгри и Памиро-Алая. Точки и остановки — под вашу компанию.' },
       en: { name: 'Around Kyrgyzstan', desc: 'A multi-day route: from Issyk-Kul to Khan Tengri and the Pamir-Alay. Waypoints and stops built around your party.' },
