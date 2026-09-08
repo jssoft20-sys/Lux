@@ -107,7 +107,7 @@ def premiumize(text: str, state: dict[str, Any] | None) -> str:
 
 
 def plain_label(text: str, state: dict[str, Any] | None) -> str:
-    """Reply-keyboard labels cannot carry premium emoji: in strict mode the plain ones are removed."""
+    """Strip plain emoji from a label in strict mode (helper; the main menu keeps its plain emoji on purpose)."""
     if not state or not state.get("enabled") or not state.get("strict"):
         return text
     return re.sub(r"\s{2,}", " ", EMOJI_RE.sub("", str(text or ""))).strip() or text

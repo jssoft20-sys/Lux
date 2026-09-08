@@ -44,6 +44,7 @@ def _make_engine(url: str) -> Engine:
         url,
         pool_size=settings.db_pool_size,
         max_overflow=settings.db_max_overflow,
+        pool_timeout=10,  # fail fast instead of freezing a handler for 30 s when the pool is exhausted
         pool_pre_ping=True,
         pool_recycle=1800,
         future=True,

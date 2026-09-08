@@ -16,6 +16,7 @@ import secrets
 import signal
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -33,17 +34,20 @@ from paygo.services import withdrawals as withdrawal_service
 from paygo.services.logs import log_event
 from paygo.services.notifications import admin_event
 from paygo.services.qr import render_pay_card
-from paygo.services.qr_decode import decode_bytes
+from paygo.services.qr_decode import decode_offloaded
+from paygo.services.qr_decode import warm_up as warm_up_qr
 from paygo.utils import as_utc, fmt_local, money, sha256_hex, utcnow
 from sqlalchemy import select
 
 from . import media as media_lib
 from .dispatcher import Dispatcher
+from .runtime import SidePool, fan_out, start_watchdog
 from .telegram import (
     TelegramClient,
     TelegramError,
     button,
     inline_keyboard,
+    rating_keyboard,
     reply_keyboard,
     strip_button_extras,
     url_buttons,
@@ -54,6 +58,9 @@ logger = logging.getLogger("paygobot.main")
 BOT = "main"
 STOP = threading.Event()
 FLOW_STATES = {"choose_cash", "choose_id", "wait_id", "wait_amount", "wait_qr_choice", "wait_qr", "wait_code", "wait_phone"}
+OUTBOX_PRIORITY_LIMIT = 40  # deposit/withdrawal notices, operator replies, edits, deletes per round
+OUTBOX_BROADCAST_LIMIT = 10  # mass messages per round (≈25/s with the 0.4 s loop; Telegram allows ~30/s)
+OUTBOX_LOCK_WAIT = 6.0  # seconds to wait for a busy chat before leaving the row for the next round
 PERSIST_KEYS = ("name", "panel_kind")
 DEPOSIT_KEYS = ("request_id", "deposit_id", "deadline", "cash_id", "cash_name", "cash_emoji", "player_id", "pay_amount", "currency", "minutes", "methods", "receipt_prompt_id", "receipt_note_id", "notice_id")
 
@@ -178,7 +185,9 @@ class MainBot:
         self._locks_guard = threading.Lock()
         self.premium_blocked = False  # set when Telegram rejects custom emoji for this bot (no Fragment username)
         self._premium_cache: dict[str, Any] = {"at": 0.0, "state": None}
-        self.dispatcher = Dispatcher(self.client, self.handle_update, name="main", workers=48, offset_store=self._offset_store)
+        self.dispatcher = Dispatcher(self.client, self.handle_update, name="main", workers=64, offset_store=self._offset_store)
+        self.side = SidePool("main", 12)  # deletes / button strips never spawn unbounded threads
+        self.outbox_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="main-outbox")
 
     # ------------------------------------------------------------ infra
     def chat_lock(self, chat_id: int) -> threading.RLock:
@@ -204,16 +213,10 @@ class MainBot:
         return value
 
     def delete_later(self, chat_id: int, message_id: int) -> None:
-        threading.Thread(target=self.client.delete_message, args=(chat_id, message_id), daemon=True).start()
+        self.side.submit(self.client.delete_message, chat_id, message_id)
 
     def strip_buttons_later(self, chat_id: int, message_id: int) -> None:
-        def _run():
-            try:
-                self.client.edit_markup(chat_id, message_id, None)
-            except TelegramError:
-                pass
-
-        threading.Thread(target=_run, daemon=True).start()
+        self.side.submit(self.client.edit_markup, chat_id, message_id, None)
 
     def local_file(self, rel: str) -> Path | None:
         """Photo stored by the admin panel (relative to DATA_DIR)."""
@@ -287,11 +290,10 @@ class MainBot:
 
     # ------------------------------------------------------------ keyboards & texts
     def menu_kb(self) -> dict:
+        """Persistent keyboard. Reply buttons cannot carry premium emoji, so their labels keep the plain ones."""
         with transaction() as db:
             labels = bot_texts.menu_labels(db)
             styled = settings_store.get_bool(db, "button_styles_enabled", True)
-        state = self.premium()
-        labels = {k: bot_texts.plain_label(v, state) for k, v in labels.items()}
         return reply_keyboard(
             [button(labels["deposit"], style="primary" if styled else ""), button(labels["withdraw"], style="primary" if styled else "")],
             [button(labels["help"])],
@@ -432,6 +434,9 @@ class MainBot:
         data = str(query.get("data") or "")
         pressed = int(((query.get("message") or {}).get("message_id")) or 0)
         callback_id = str(query.get("id") or "")
+        if data.startswith("rate:"):
+            self.on_rating(ctx, pressed, data)
+            return
         if pressed and ctx.panel_id and pressed != ctx.panel_id and not data.startswith(("noop", "instr", "menu", "act:", "open_active", "help", "dep:", "cancel:")):
             self.strip_buttons_later(chat_id, pressed)  # button on an old screen
             return
@@ -484,6 +489,19 @@ class MainBot:
                 self.ask_code(ctx, ctx.data)
         else:
             logger.debug("unknown callback %s", data)
+
+    def on_rating(self, ctx: Ctx, message_id: int, data: str) -> None:
+        """⭐ under «Обращение закрыто» when the operator dialog was carried by this bot."""
+        try:
+            rating = int(data.split(":", 1)[1])
+        except ValueError:
+            return
+        with transaction() as db:
+            ok = support_service.apply_rating(db, db.get(User, ctx.user_id), rating)
+        if message_id:
+            self.strip_buttons_later(ctx.chat_id, message_id)
+        if ok:
+            self.safe_send(ctx.chat_id, "Спасибо за оценку!", None, protect=False)
 
     # ------------------------------------------------------------ start / menu / help
     def start(self, ctx: Ctx, arg: str = "") -> None:
@@ -1004,7 +1022,7 @@ class MainBot:
         if url:
             try:
                 raw = self.client.download(url)
-                decoded = decode_bytes(raw)
+                decoded = decode_offloaded(raw)
                 if decoded:
                     meta = elqr.bank_meta(decoded)
                     payload, bank = meta["payload"], meta["bank_name"]
@@ -1073,25 +1091,43 @@ class MainBot:
         ctx.receipt(str(result.get("message") or self.text("text_withdraw_accepted", player=ctx.data.get("player_id"), amount="", cur="")))
 
     # ------------------------------------------------------------ outbox (messages created by the backend / worker)
-    def deliver_outbox(self) -> None:
+    def _fetch_outbox(self) -> list[tuple[int, int, str, str, dict[str, Any], int]]:
+        """Pending rows for this bot: personal notices first, then a slice of the broadcast queue."""
         with transaction() as db:
-            rows = db.execute(
-                select(Notification).where(Notification.channel == "telegram_user", Notification.bot == BOT, Notification.status == "pending", (Notification.next_attempt_at.is_(None)) | (Notification.next_attempt_at <= utcnow())).order_by(Notification.id.asc()).limit(40)
-            ).scalars().all()
-            items = [(r.id, r.target_telegram_id, r.event, r.body, dict(r.data or {}), r.attempts) for r in rows]
-        for note_id, chat_id, event, body, data, attempts in items:
-            with self.chat_lock(chat_id):
-                try:
-                    self._deliver_one(chat_id, event, body, data)
-                    self._mark(note_id, "sent")
-                except TelegramError as exc:
-                    if exc.fatal_for_chat or attempts >= 4:
-                        self._mark(note_id, "failed", exc.description)
-                    else:
-                        self._mark(note_id, "pending", exc.description, retry_in=15 * (attempts + 1))
-                except Exception as exc:
-                    logger.exception("outbox delivery failed")
-                    self._mark(note_id, "failed" if attempts >= 4 else "pending", str(exc)[:300], retry_in=30)
+            base = select(Notification).where(
+                Notification.channel == "telegram_user", Notification.bot == BOT, Notification.status == "pending",
+                (Notification.next_attempt_at.is_(None)) | (Notification.next_attempt_at <= utcnow()),
+            )
+            rows = list(db.execute(base.where(Notification.event != "broadcast").order_by(Notification.id.asc()).limit(OUTBOX_PRIORITY_LIMIT)).scalars().all())
+            rows += list(db.execute(base.where(Notification.event == "broadcast").order_by(Notification.id.asc()).limit(OUTBOX_BROADCAST_LIMIT)).scalars().all())
+            return [(r.id, r.target_telegram_id, r.event, r.body, dict(r.data or {}), r.attempts) for r in rows]
+
+    def deliver_outbox(self) -> None:
+        """Deliver in parallel; a chat that is busy with its own update is skipped until the next round."""
+        items = self._fetch_outbox()
+        if not items:
+            return
+        fan_out(self.outbox_pool, items, self._deliver_item, label="main outbox")
+
+    def _deliver_item(self, item: tuple[int, int, str, str, dict[str, Any], int]) -> None:
+        note_id, chat_id, event, body, data, attempts = item
+        lock = self.chat_lock(chat_id)
+        if not lock.acquire(timeout=OUTBOX_LOCK_WAIT):
+            logger.info("outbox: chat %s is busy, %s postponed", chat_id, event)
+            return
+        try:
+            self._deliver_one(chat_id, event, body, data)
+            self._mark(note_id, "sent")
+        except TelegramError as exc:
+            if exc.fatal_for_chat or attempts >= 4:
+                self._mark(note_id, "failed", exc.description)
+            else:
+                self._mark(note_id, "pending", exc.description, retry_in=15 * (attempts + 1))
+        except Exception as exc:
+            logger.exception("outbox delivery failed")
+            self._mark(note_id, "failed" if attempts >= 4 else "pending", str(exc)[:300], retry_in=30)
+        finally:
+            lock.release()
 
     def _mark(self, note_id: int, status: str, error: str = "", retry_in: int = 0) -> None:
         with transaction() as db:
@@ -1140,6 +1176,8 @@ class MainBot:
                         raise
             return
         markup = url_buttons(data.get("buttons"))
+        if data.get("rating_prompt"):
+            markup = rating_keyboard()
         reply_to = int(data.get("reply_to") or 0) or None
         photo, video = data.get("photo_url"), data.get("video_url")
         if video:
@@ -1166,8 +1204,10 @@ class MainBot:
         self.client.delete_webhook()
         self.client.set_commands([("start", "Главное меню"), ("help", "Оператор")])
         logger.info("main bot @%s started", self.username)
+        warm_up_qr()
         threading.Thread(target=self._loop, args=(self.deliver_outbox, 0.4, "outbox"), daemon=True).start()
         threading.Thread(target=self._loop, args=(self.tick_timers, 10.0, "timers"), daemon=True).start()
+        start_watchdog("main", lambda: self.dispatcher.last_poll_at, stop=STOP)
         self.dispatcher.run_polling()
 
     def _loop(self, fn, interval: float, name: str) -> None:

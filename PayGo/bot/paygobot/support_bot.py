@@ -1,11 +1,18 @@
-"""PayGo support bot (@PayOperator_bot): automated first line + operator relay."""
+"""PayGo support bot (@PayOperator_bot): automated first line + operator relay.
+
+Responsiveness rules: a message is answered immediately (a burst of short
+messages that is already queued is merged into one request — no waiting), one
+chat never blocks another, operator replies go out in parallel with client
+messages ahead of broadcasts, and a watchdog restarts the process if polling
+ever stops making progress.
+"""
 from __future__ import annotations
 
 import logging
 import re
 import signal
 import threading
-import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -21,10 +28,13 @@ from sqlalchemy import select
 
 from . import media as media_lib
 from .dispatcher import Dispatcher
-from .telegram import TelegramClient, TelegramError, inline_keyboard, url_buttons
+from .runtime import SidePool, fan_out, start_watchdog
+from .telegram import TelegramClient, TelegramError, inline_keyboard, rating_keyboard, url_buttons
 
 logger = logging.getLogger("paygobot.support")
 STOP = threading.Event()
+OUTBOX_PRIORITY_LIMIT = 40  # replies, status notices, edits, deletes per round
+OUTBOX_BROADCAST_LIMIT = 10  # mass messages per round (≈25/s with the 0.4 s loop; Telegram allows ~30/s)
 
 
 class SupportBot:
@@ -36,7 +46,9 @@ class SupportBot:
         self.client = TelegramClient(settings.support_bot_token, settings.telegram_api_base)
         self._locks: dict[int, threading.RLock] = {}
         self._locks_guard = threading.Lock()
-        self.dispatcher = Dispatcher(self.client, self.handle_update, name="support", workers=32, offset_store=self._offset_store)
+        self.dispatcher = Dispatcher(self.client, self.handle_update, name="support", workers=48, offset_store=self._offset_store)
+        self.side = SidePool("support", 8)
+        self.outbox_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="support-outbox")
         self.uploads = Path(settings.data_dir) / "uploads" / "support"
         self.uploads.mkdir(parents=True, exist_ok=True)
 
@@ -46,6 +58,9 @@ class SupportBot:
             if lock is None:
                 lock = threading.RLock()
                 self._locks[chat_id] = lock
+                if len(self._locks) > 20000:
+                    self._locks.clear()
+                    self._locks[chat_id] = lock
             return lock
 
     def _offset_store(self, value: int | None) -> int | None:
@@ -66,8 +81,9 @@ class SupportBot:
         return inline_keyboard(*[[{"text": b["text"], "callback_data": b["callback_data"]} for b in row] for row in buttons])
 
     def _send(self, chat_id: int, text: str, buttons: list[list[dict[str, str]]] | None = None) -> None:
-        for chunk in _chunks(text, 3900):
-            self.client.send_message(chat_id, chunk, markup=self._markup(buttons) if chunk is text or len(text) <= 3900 else None)
+        chunks = _chunks(text, 3900)
+        for index, chunk in enumerate(chunks):
+            self.client.send_message(chat_id, chunk, markup=self._markup(buttons) if index == len(chunks) - 1 else None)
 
     def _user(self, tg_user: dict[str, Any]) -> tuple[int, str]:
         with transaction() as db:
@@ -97,6 +113,8 @@ class SupportBot:
     def on_callback(self, query: dict[str, Any]) -> None:
         chat_id = int(((query.get("message") or {}).get("chat") or {}).get("id") or query["from"]["id"])
         data = str(query.get("data") or "")
+        if self._rating_callback(query):
+            return
         user_id, _lang = self._user({**(query.get("from") or {}), "id": chat_id})
         if data == "sup:home":
             text, buttons = self.greeting()
@@ -125,13 +143,10 @@ class SupportBot:
                     self._send(chat_id, "Спасибо за оценку! 🙏")
                     return
         media_kind, file_url, file_name = media_lib.fetch(self.client, message, self.uploads)
-        # debounce: merge a burst of short messages into one request
-        with transaction() as db:
-            debounce = float(settings_store.get(db, "support_debounce_seconds") or 1.5)
-        if text and not media_kind and debounce > 0:
-            time.sleep(min(3.0, debounce))
-            extra = self.dispatcher.pop_pending_messages(chat_id)
-            for item in extra:
+        # A burst of short messages typed one after another is already waiting in the
+        # chat queue: merge it into one request right away instead of sleeping.
+        if text and not media_kind:
+            for item in self.dispatcher.pop_pending_messages(chat_id):
                 more = str((item.get("message") or {}).get("text") or "").strip()
                 if more:
                     text = f"{text}\n{more}"
@@ -142,21 +157,33 @@ class SupportBot:
             self._send(chat_id, reply.text, reply.buttons)
 
     # ------------------------------------------------------------ outbox
-    def deliver_outbox(self) -> None:
+    def _fetch_outbox(self) -> list[tuple[int, int, str, str, dict[str, Any], int]]:
+        """Pending rows for this bot: everything personal first, then a slice of the broadcast queue."""
         with transaction() as db:
-            rows = db.execute(
-                select(Notification).where(Notification.channel.in_(("telegram_user", "admin_telegram")), Notification.bot == "support", Notification.status == "pending", (Notification.next_attempt_at.is_(None)) | (Notification.next_attempt_at <= utcnow())).order_by(Notification.id.asc()).limit(40)
-            ).scalars().all()
-            items = [(r.id, r.target_telegram_id, r.event, r.body, dict(r.data or {}), r.attempts) for r in rows]
-        for note_id, chat_id, event, body, data, attempts in items:
-            try:
-                self._deliver_one(chat_id, event, body, data)
-                self._mark(note_id, "sent")
-            except TelegramError as exc:
-                self._mark(note_id, "failed" if exc.fatal_for_chat or attempts >= 4 else "pending", exc.description, retry_in=15 * (attempts + 1))
-            except Exception as exc:
-                logger.exception("support outbox failed")
-                self._mark(note_id, "failed" if attempts >= 4 else "pending", str(exc)[:300], retry_in=30)
+            base = select(Notification).where(
+                Notification.channel.in_(("telegram_user", "admin_telegram")), Notification.bot == "support", Notification.status == "pending",
+                (Notification.next_attempt_at.is_(None)) | (Notification.next_attempt_at <= utcnow()),
+            )
+            rows = list(db.execute(base.where(Notification.event != "broadcast").order_by(Notification.id.asc()).limit(OUTBOX_PRIORITY_LIMIT)).scalars().all())
+            rows += list(db.execute(base.where(Notification.event == "broadcast").order_by(Notification.id.asc()).limit(OUTBOX_BROADCAST_LIMIT)).scalars().all())
+            return [(r.id, r.target_telegram_id, r.event, r.body, dict(r.data or {}), r.attempts) for r in rows]
+
+    def deliver_outbox(self) -> None:
+        items = self._fetch_outbox()
+        if not items:
+            return
+        fan_out(self.outbox_pool, items, self._deliver_item, label="support outbox")
+
+    def _deliver_item(self, item: tuple[int, int, str, str, dict[str, Any], int]) -> None:
+        note_id, chat_id, event, body, data, attempts = item
+        try:
+            self._deliver_one(chat_id, event, body, data)
+            self._mark(note_id, "sent")
+        except TelegramError as exc:
+            self._mark(note_id, "failed" if exc.fatal_for_chat or attempts >= 4 else "pending", exc.description, retry_in=15 * (attempts + 1))
+        except Exception as exc:
+            logger.exception("support outbox failed")
+            self._mark(note_id, "failed" if attempts >= 4 else "pending", str(exc)[:300], retry_in=30)
 
     def _deliver_one(self, chat_id: int, event: str, body: str, data: dict[str, Any]) -> None:
         """One outbox row: a message (with optional photo, quote and URL buttons), an edit or a delete."""
@@ -178,7 +205,7 @@ class SupportBot:
             return
         markup = url_buttons(data.get("buttons"))
         if data.get("rating_prompt"):
-            markup = inline_keyboard([{"text": "⭐ " + str(i), "callback_data": f"rate:{i}"} for i in range(1, 6)])
+            markup = rating_keyboard()
         reply_to = int(data.get("reply_to") or 0) or None
         photo, video = data.get("photo_url"), data.get("video_url")
         if video:
@@ -220,24 +247,15 @@ class SupportBot:
         with transaction() as db:
             ok = support_service.apply_rating(db, db.get(User, user_id), int(data.split(":")[1]))
         if ok:
-            try:
-                self.client.edit_markup(chat_id, int((query.get("message") or {}).get("message_id") or 0), None)
-            except TelegramError:
-                pass
+            self.side.submit(self.client.edit_markup, chat_id, int((query.get("message") or {}).get("message_id") or 0), None)
             self._send(chat_id, "Спасибо за оценку! 🙏")
         return True
 
     def run(self) -> None:
-        original = self.on_callback
-
-        def _cb(query: dict[str, Any]) -> None:
-            if not self._rating_callback(query):
-                original(query)
-
-        self.on_callback = _cb  # type: ignore[method-assign]
         self.client.set_commands([("start", "Начать"), ("menu", "Меню поддержки")])
         logger.info("support bot started")
-        threading.Thread(target=self._loop, args=(self.deliver_outbox, 0.5), daemon=True).start()
+        threading.Thread(target=self._loop, args=(self.deliver_outbox, 0.4), daemon=True).start()
+        start_watchdog("support", lambda: self.dispatcher.last_poll_at, stop=STOP)
         self.dispatcher.run_polling()
 
     def _loop(self, fn, interval: float) -> None:

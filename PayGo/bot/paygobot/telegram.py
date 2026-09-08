@@ -52,8 +52,8 @@ class TelegramClient:
         self.token = token
         self.api_base = api_base.rstrip("/")
         self._http = httpx.Client(
-            timeout=httpx.Timeout(45.0, connect=8.0),
-            limits=httpx.Limits(max_connections=64, max_keepalive_connections=32, keepalive_expiry=60.0),
+            timeout=httpx.Timeout(20.0, connect=6.0),
+            limits=httpx.Limits(max_connections=128, max_keepalive_connections=48, keepalive_expiry=60.0),
             headers={"User-Agent": "PayGoXBot/1.0"},
         )
         self._file_ids: dict[str, str] = {}
@@ -70,7 +70,7 @@ class TelegramClient:
                     data = {k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else str(v)) for k, v in (payload or {}).items() if v is not None}
                     response = self._http.post(url, data=data, files=files, timeout=timeout or 60)
                 else:
-                    response = self._http.post(url, json=payload or {}, timeout=timeout or 30)
+                    response = self._http.post(url, json=payload or {}, timeout=timeout or 20)
                 body = response.json()
             except (httpx.HTTPError, ValueError) as exc:
                 if attempt <= retries:
@@ -83,7 +83,7 @@ class TelegramClient:
             code = int(body.get("error_code") or response.status_code or 0)
             retry_after = int((body.get("parameters") or {}).get("retry_after") or 0)
             if code == 429 and attempt <= retries + 2:
-                time.sleep(min(30, retry_after or 1))
+                time.sleep(min(20, retry_after or 1))
                 continue
             if code >= 500 and attempt <= retries:
                 time.sleep(min(5.0, 0.7 * attempt))
@@ -247,6 +247,11 @@ def url_buttons(buttons: Any) -> dict[str, Any] | None:
 
 def inline_keyboard(*rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {"inline_keyboard": [list(row) for row in rows if row]}
+
+
+def rating_keyboard() -> dict[str, Any]:
+    """⭐ 1…5 under «Обращение закрыто» (both bots handle ``rate:N``)."""
+    return inline_keyboard([{"text": "⭐ " + str(i), "callback_data": f"rate:{i}"} for i in range(1, 6)])
 
 
 def reply_keyboard(*rows: list[dict[str, Any] | str], placeholder: str = "", one_time: bool = False) -> dict[str, Any]:

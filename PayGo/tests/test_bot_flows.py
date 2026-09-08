@@ -141,7 +141,7 @@ def test_start_shows_greeting_with_reply_keyboard(bot):
     kind, body, markup = bot.client.last
     assert kind == "send" and "Али" in body and "PayGo" in body
     labels = [b["text"] for row in markup["keyboard"] for b in row]
-    assert labels == ["Пополнить", "Вывести", "Помощь"] and "inline_keyboard" not in markup  # premium-only: no plain emoji
+    assert labels == ["📥 Пополнить", "📤 Вывести", "✉️ Помощь"] and "inline_keyboard" not in markup  # reply buttons keep plain emoji
     assert state_of()[0] == "idle"
 
 
@@ -397,7 +397,7 @@ def test_site_buttons_are_premium_only(bot):
     text(bot, "/start")
     kind, body, markup = bot.client.last
     labels = [b["text"] for row in markup["keyboard"] for b in row]
-    assert labels == ["Пополнить", "Вывести", "Помощь"]  # reply keyboards cannot carry premium emoji → no plain ones
+    assert labels == ["📥 Пополнить", "📤 Вывести", "✉️ Помощь"]  # the reply keyboard is the one place with plain emoji
     text(bot, "Пополнить")
     kind, body, markup = bot.client.last
     assert "<tg-emoji" in body and "👍" not in body.replace("</tg-emoji>", "").split("<tg-emoji")[0]

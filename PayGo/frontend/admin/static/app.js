@@ -508,7 +508,31 @@
     draw();
   }
   function chatMenu(c, redraw) {
-    const s = sheet({ title: 'Обращение #' + c.id, body: h('div', null, kv([['Клиент', h('a', { href: '#/users/' + c.user_id, onclick: () => s.close() }, c.user_name)], ['Telegram ID', h('span', { class: 'copy mono', onclick: () => copy(c.telegram_id) }, c.telegram_id)], ['Категория', c.category], ['Тема', c.subject || '—'], ['Статус', statusEl(c.status)], ['Создано', fmtDate(c.created_at)], ['Оценка', c.rating ? '★ ' + c.rating : '—']])), actions: [h('button', { class: 'action-btn blue', onclick: async () => { await api('/support/conversations/' + c.id + '/status', { method: 'POST', body: { status: 'operator' } }); s.close(); redraw(); } }, 'Взять в работу'), h('button', { class: 'action-btn', onclick: async () => { await api('/support/conversations/' + c.id + '/status', { method: 'POST', body: { status: 'auto' } }); s.close(); redraw(); } }, 'Вернуть боту')] });
+    /* three dots in a chat: the client's requests (like the old «Транзакции» window) + dialog actions */
+    const list = h('div', { class: 'tx-mini-list' }, loader(3));
+    const count = h('small', { class: 'muted' });
+    const setStatus = async (status) => { try { await api('/support/conversations/' + c.id + '/status', { method: 'POST', body: { status } }); s.close(); redraw(); } catch (e) { err(e); } };
+    const actions = h('div', { class: 'chat-menu-actions' },
+      can('support') ? h('button', { class: 'outline-btn blue', type: 'button', disabled: c.status === 'operator', onclick: () => setStatus('operator') }, svg('user', 14), c.status === 'operator' ? 'В работе' : 'Взять в работу') : null,
+      can('support') ? h('button', { class: 'outline-btn', type: 'button', disabled: c.status === 'auto', onclick: () => setStatus('auto') }, svg('bolt', 14), 'Вернуть боту') : null,
+      h('button', { class: 'outline-btn', type: 'button', onclick: () => { s.close(); go('#/users/' + c.user_id); } }, svg('user', 14), 'Профиль'));
+    const s = sheet({ title: h('span', { class: 'tx-title' }, h('span', { class: 'copy-text', onclick: () => copy(c.telegram_id) }, c.user_name || 'Клиент', svg('copy', 13)), statusEl(c.status)), full: true, body: h('div', null, actions, h('div', { class: 'section-title tight' }, h('h2', null, 'Заявки клиента'), count), list) });
+    api('/users/' + c.user_id).then((r) => {
+      const txs = [...r.deposits, ...r.withdrawals].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      list.innerHTML = ''; count.textContent = txs.length ? String(txs.length) : '';
+      if (!txs.length) return list.appendChild(empty('Заявок нет', 'Клиент ещё ничего не оформлял', 'history'));
+      txs.forEach((tx, i) => { const row = txMini(tx, s); row.style.setProperty('--i', Math.min(i, 12)); list.appendChild(row); });
+    }).catch((e) => { list.innerHTML = ''; list.appendChild(empty('Ошибка', e.message)); });
+  }
+  function txMini(tx, s) {
+    /* compact request row: tap → full page, eye → request sheet, «Чек» → the receipt image */
+    const dep = tx.kind === 'deposit'; const path = dep ? 'deposits' : 'withdrawals';
+    const receipt = tx.has_receipt ? h('button', { class: 'mini-btn', type: 'button', onclick: (e) => { e.stopPropagation(); imageSheet(dep ? 'Чек клиента' : 'Чек перевода', API + '/' + path + '/' + tx.id + '/receipt', '# ' + txNo(tx) + ' · ' + money(dep ? tx.pay_amount : tx.amount) + ' ' + tx.currency); } }, svg('image', 13), 'Чек') : null;
+    const peek = h('button', { class: 'mini-btn', type: 'button', 'aria-label': 'Открыть заявку', onclick: (e) => { e.stopPropagation(); openTxSheet(tx.kind, tx.id); } }, svg('peek', 15));
+    return h('button', { class: 'tx-mini ' + (dep ? 'deposit' : 'withdraw'), type: 'button', onclick: () => { if (s) s.close(); go('#/' + path + '/' + tx.id); } },
+      h('i', { class: 'kind-badge ' + (dep ? 'deposit' : 'withdraw') }, dep ? 'ПП' : 'ВВ'),
+      h('span', { class: 'tx-mini-copy' }, h('b', { class: dep ? 'deposit' : 'withdraw' }, (dep ? '+' : '−') + money(dep ? tx.pay_amount : tx.amount) + ' ' + tx.currency), h('small', null, (tx.cash_name || '').toUpperCase() + ' • ID ' + tx.player_id), h('small', null, '# ' + txNo(tx) + ' • ' + fmtDate(tx.created_at))),
+      h('span', { class: 'tx-mini-side' }, txStatus(tx), h('span', { class: 'tx-mini-btns' }, receipt, peek)));
   }
   async function quickPick(onPick, vars) {
     try { const r = await api('/quick-replies'); state.quick = r.items; } catch (e) {}
@@ -1086,7 +1110,7 @@
   ];
   const SUPPORT_GROUPS = [
     ['Автоответчик', [['support_greeting', 'Приветствие', 'textarea'], ['support_auto_resolve_hours', 'Автозакрытие, ч', 'number']]],
-    ['Антифлуд', [['support_rate_limit_messages', 'Сообщений подряд', 'number'], ['support_rate_limit_window_seconds', 'За сколько сек', 'number'], ['support_cooldown_seconds', 'Пауза, сек', 'number'], ['support_debounce_seconds', 'Объединять сообщения, сек', 'number'], ['support_duplicate_window_seconds', 'Окно повторов, сек', 'number'], ['support_escalation_cooldown_seconds', 'Пауза между вызовами оператора, сек', 'number']]],
+    ['Антифлуд', [['support_rate_limit_messages', 'Сообщений подряд', 'number'], ['support_rate_limit_window_seconds', 'За сколько сек', 'number'], ['support_cooldown_seconds', 'Пауза, сек', 'number'], ['support_duplicate_window_seconds', 'Окно повторов, сек', 'number'], ['support_escalation_cooldown_seconds', 'Пауза между вызовами оператора, сек', 'number']]],
   ];
   function settingsForm(box, groups, values, extraTop, extraBottom) {
     const inputs = {};

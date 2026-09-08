@@ -403,7 +403,7 @@ def withdrawal_qr(withdrawal_id: int, kind: str = "generated", principal: Princi
 @router.post("/withdrawals/{withdrawal_id}/decode-qr")
 def withdrawal_decode_qr(withdrawal_id: int, request: Request, principal: Principal = Depends(require("operations")), db: Session = Depends(get_db)):
     """Read the client's QR photo again (stronger pipeline) and rebuild the QR with the amount."""
-    from ..services.qr_decode import decode_bytes
+    from ..services.qr_decode import decode_offloaded
 
     w = db.get(Withdrawal, withdrawal_id)
     if w is None:
@@ -411,7 +411,7 @@ def withdrawal_decode_qr(withdrawal_id: int, request: Request, principal: Princi
     raw = _withdrawal_photo_bytes(w)
     if not raw:
         raise HTTPException(400, "Фото QR не найдено")
-    text = decode_bytes(raw, budget=6.0)
+    text = decode_offloaded(raw, budget=6.0)
     if not text:
         raise HTTPException(400, "QR не распознан. Попросите клиента прислать QR крупнее или введите текст QR вручную.")
     changes = withdrawal_service.edit_fields(db, w, {"qr_payload": text}, principal.id)
@@ -809,12 +809,12 @@ def create_requisite(body: RequisiteBody, request: Request, principal: Principal
 
 @router.post("/requisites/upload")
 async def upload_requisite(request: Request, file: UploadFile = File(...), principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
-    from ..services.qr_decode import decode_bytes
+    from ..services.qr_decode import decode_offloaded
 
     raw = await file.read()
     if len(raw) > 8 * 1024 * 1024:
         raise HTTPException(400, "Файл слишком большой")
-    text = decode_bytes(raw)
+    text = decode_offloaded(raw)
     if not text:
         raise HTTPException(400, "QR на изображении не распознан")
     try:
@@ -1002,11 +1002,11 @@ def set_conversation_status(conv_id: int, body: SupportStatusBody, request: Requ
     if body.status == "resolved":
         support_service.resolve_conversation(db, conv, principal.id, note=body.note)
     elif body.status == "operator":
-        conv.status = "operator"
+        support_service.reopen(conv, "operator", category=conv.category, subject=conv.subject)
         conv.assigned_admin_id = principal.id
         conv.unread_count = 0
     elif body.status == "auto":
-        conv.status = "auto"
+        support_service.reopen(conv, "auto", category=conv.category, subject=conv.subject)
     else:
         raise HTTPException(400, "Неизвестный статус")
     db.flush()

@@ -190,6 +190,7 @@ def escalation_allowed(db: Session, telegram_id: int) -> bool:
 # --------------------------------------------------------------------- conversations
 
 OPEN_STATUSES = ("auto", "waiting_operator", "operator")
+CLOSED_STATUSES = ("resolved", "closed")
 
 
 def active_conversation(db: Session, user: User) -> SupportConversation | None:
@@ -198,11 +199,40 @@ def active_conversation(db: Session, user: User) -> SupportConversation | None:
     ).scalars().first()
 
 
+def client_conversation(db: Session, user: User) -> SupportConversation | None:
+    """The client's one and only dialog (any status) — a closed one is reopened, never duplicated."""
+    return db.execute(select(SupportConversation).where(SupportConversation.user_id == user.id).order_by(SupportConversation.id.desc())).scalars().first()
+
+
+def reopen(conv: SupportConversation, status: str, *, category: str = "", subject: str = "") -> SupportConversation:
+    """A closed dialog becomes the current one again: the panel shows one chat per client, with full history."""
+    was_closed = conv.status in CLOSED_STATUSES
+    conv.status = status
+    if was_closed:
+        conv.resolved_at = None
+        conv.rating = None
+        conv.escalated_at = None
+        conv.priority = "normal"
+        conv.unread_count = 0
+        conv.category = category or "faq"
+        conv.subject = subject[:200]
+        conv.context = {"channel": (conv.context or {}).get("channel", "")} if (conv.context or {}).get("channel") else {}
+    else:
+        if category:
+            conv.category = category
+        if subject and not conv.subject:
+            conv.subject = subject[:200]
+    return conv
+
+
 def get_or_open_conversation(db: Session, user: User, category: str = "faq", subject: str = "") -> SupportConversation:
-    conv = active_conversation(db, user)
+    conv = client_conversation(db, user)
     if conv is None:
         conv = SupportConversation(user_id=user.id, status="auto", category=category, subject=subject[:200], context={})
         db.add(conv)
+        db.flush()
+    elif conv.status in CLOSED_STATUSES:
+        reopen(conv, "auto", category=category, subject=subject)
         db.flush()
     elif subject and not conv.subject:
         conv.subject = subject[:200]
@@ -678,14 +708,14 @@ def delete_message(db: Session, msg: SupportMessage) -> SupportMessage:
 
 
 def open_operator_conversation(db: Session, user: User, admin_id: int | None) -> SupportConversation:
-    """«Написать клиенту» from the panel: reuse the open dialog or start one owned by the operator."""
-    conv = active_conversation(db, user)
+    """«Написать клиенту» from the panel: the client's dialog (reopened when closed) owned by the operator."""
+    conv = client_conversation(db, user)
     if conv is None:
         conv = SupportConversation(user_id=user.id, status="operator", category="operator", subject="Сообщение оператора", context={}, assigned_admin_id=admin_id)
         db.add(conv)
         db.flush()
     else:
-        conv.status = "operator"
+        reopen(conv, "operator", category="operator", subject="Сообщение оператора")
         conv.assigned_admin_id = admin_id or conv.assigned_admin_id
     delivery_bot(db, conv)
     db.flush()
@@ -699,19 +729,21 @@ def main_inbox(db: Session, user: User, text: str, *, media_kind: str = "", file
     ``create`` (files sent out of the blue) a new dialog is opened for the operator."""
     if not text and not media_kind:
         return False
-    conv = active_conversation(db, user)
-    if conv is not None and (conv.status not in {"operator", "waiting_operator"} or str((conv.context or {}).get("channel") or "") != "main"):
-        if not create:
-            return False
-        conv = None if conv.status in {"resolved", "closed"} else conv
-    if conv is None:
+    conv = client_conversation(db, user)
+    carried = conv is not None and conv.status in {"operator", "waiting_operator"} and str((conv.context or {}).get("channel") or "") == "main"
+    if not carried:
         if not create or user.support_blocked:
             return False
-        conv = SupportConversation(user_id=user.id, status="waiting_operator", category="operator", subject=(text or media_label(media_kind))[:120], context={**build_context(db, user), "channel": "main"}, escalated_at=utcnow(), priority="normal")
-        db.add(conv)
-        db.flush()
-    elif str((conv.context or {}).get("channel") or "") != "main":
-        conv.context = {**(conv.context or {}), "channel": "main"}
+        subject = (text or media_label(media_kind))[:120]
+        if conv is None:
+            conv = SupportConversation(user_id=user.id, status="waiting_operator", category="operator", subject=subject, context={**build_context(db, user), "channel": "main"}, escalated_at=utcnow(), priority="normal")
+            db.add(conv)
+            db.flush()
+        else:
+            if conv.status in CLOSED_STATUSES or conv.status == "auto":
+                reopen(conv, "waiting_operator", category="operator", subject=subject)
+                conv.escalated_at = utcnow()
+            conv.context = {**build_context(db, user), "channel": "main"}
     dedupe = f"tgm:{user.telegram_id}:{telegram_message_id}" if telegram_message_id else None
     if dedupe and db.execute(select(SupportMessage.id).where(SupportMessage.dedupe_key == dedupe)).first():
         return True
@@ -729,7 +761,8 @@ def resolve_conversation(db: Session, conv: SupportConversation, admin_id: int |
     db.flush()
     if notify:
         user = db.get(User, conv.user_id)
-        notify_user(db, user, event="support_resolved", event_key=f"support_resolved:{conv.id}:{int(utcnow().timestamp())}", text=(note or "✅ Обращение закрыто. Если вопрос остался — напишите ещё раз.") + "\n\nОцените поддержку: отправьте цифру от 1 до 5.", data={"conversation_id": conv.id, "rating_prompt": True}, bot="support")
+        bot = delivery_bot(db, conv)
+        notify_user(db, user, event="support_resolved", event_key=f"support_resolved:{conv.id}:{int(utcnow().timestamp())}", text=(note or "✅ Обращение закрыто. Если вопрос остался — напишите ещё раз.") + "\n\nОцените поддержку кнопкой ниже.", data={"conversation_id": conv.id, "rating_prompt": True}, bot=bot)
     log_event(db, "Обращение закрыто", f"#{conv.id}", category="support", entity_type="support", entity_id=conv.id)
 
 

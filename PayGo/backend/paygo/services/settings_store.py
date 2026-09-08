@@ -111,7 +111,6 @@ DEFAULTS: dict[str, Any] = {
     "support_rate_limit_messages": 6,
     "support_rate_limit_window_seconds": 20,
     "support_cooldown_seconds": 45,
-    "support_debounce_seconds": 1.5,
     "support_duplicate_window_seconds": 600,
     "support_escalation_cooldown_seconds": 300,
     "support_auto_resolve_hours": 48,

@@ -22,6 +22,7 @@ os.environ.update({
     "COOKIE_SECURE": "false",
     "ADMIN_TELEGRAM_CHAT_IDS": "",
     "PAYGO_ENV_FILE": "/nonexistent/.env",
+    "QR_DECODE_WORKERS": "0",
 })
 
 

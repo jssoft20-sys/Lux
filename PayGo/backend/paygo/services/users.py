@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..models import Deposit, PaymentCash, QrRecord, ReferralPayout, ReferralReward, SavedPlayerId, User, Withdrawal
-from ..utils import money, new_public_id, sha256_hex, utcnow
+from ..utils import as_utc, money, new_public_id, sha256_hex, utcnow
 from . import settings_store
 from .logs import log_event
 from .notifications import notify_user
@@ -62,7 +62,10 @@ def get_or_create(db: Session, tg_user: dict[str, Any]) -> User:
     if last_name != user.last_name:
         user.last_name = last_name
         changed = True
-    user.last_seen_at = utcnow()
+    now = utcnow()
+    if user.last_seen_at is None or (now - as_utc(user.last_seen_at)).total_seconds() > 60:
+        user.last_seen_at = now  # written at most once a minute: a burst of taps is not a burst of UPDATEs
+        changed = True
     if changed:
         db.flush()
     return user

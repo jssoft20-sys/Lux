@@ -9,8 +9,13 @@ from __future__ import annotations
 
 import io
 import logging
+import multiprocessing
+import os
+import threading
 import time
 from collections.abc import Iterator
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 
 from PIL import Image, ImageChops, ImageFilter, ImageOps
 
@@ -145,3 +150,70 @@ def _decode_variant(img: Image.Image) -> str:
 
 def available() -> bool:
     return _zxing is not None or _cv2 is not None
+
+
+# ----------------------------------------------------------------- off-thread decoding
+# Image work holds the GIL for long stretches; done in the bot/API process it would freeze
+# every other chat for the duration. A helper process keeps the main threads responsive.
+_POOL: ProcessPoolExecutor | None = None
+_POOL_LOCK = threading.Lock()
+_MAX_OFFLOAD_BYTES = 25 * 1024 * 1024
+_FAILURES = 0
+_MAX_FAILURES = 2  # after that the helper is abandoned for the life of the process (in-process decoding)
+
+
+def _workers() -> int:
+    try:
+        return max(0, int(os.environ.get("QR_DECODE_WORKERS", "1")))
+    except ValueError:
+        return 1
+
+
+def _pool() -> ProcessPoolExecutor:
+    global _POOL
+    with _POOL_LOCK:
+        if _POOL is None:
+            _POOL = ProcessPoolExecutor(max_workers=_workers(), mp_context=multiprocessing.get_context("spawn"))
+        return _POOL
+
+
+def _reset_pool() -> None:
+    global _POOL
+    with _POOL_LOCK:
+        pool, _POOL = _POOL, None
+    if pool is not None:
+        try:
+            pool.shutdown(wait=False, cancel_futures=True)
+        except Exception:  # pragma: no cover
+            pass
+
+
+def warm_up() -> None:
+    """Start the helper process early so the first client photo is decoded without a spawn delay."""
+    if _workers() <= 0:
+        return
+    try:
+        _pool().submit(available)
+    except Exception as exc:  # pragma: no cover - environment without process support
+        logger.info("qr helper unavailable: %s", exc)
+
+
+def decode_offloaded(raw: bytes, budget: float = 2.5, timeout: float | None = None) -> str:
+    """``decode_bytes`` in the helper process; falls back to in-process decoding when it is unavailable."""
+    global _FAILURES
+    if _workers() <= 0 or _FAILURES >= _MAX_FAILURES or len(raw) > _MAX_OFFLOAD_BYTES:
+        return decode_bytes(raw, budget=budget)
+    try:
+        future = _pool().submit(decode_bytes, raw, budget)
+        text = future.result(timeout=timeout or budget + 6.0)
+        _FAILURES = 0
+        return text
+    except FutureTimeout:
+        logger.warning("qr decode: helper process timed out")
+        _reset_pool()
+        return ""
+    except Exception as exc:
+        _FAILURES += 1
+        logger.warning("qr decode: helper failed (%s) — decoding in-process%s", exc, "; helper disabled" if _FAILURES >= _MAX_FAILURES else "")
+        _reset_pool()
+        return decode_bytes(raw, budget=budget)
