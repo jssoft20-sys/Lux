@@ -449,4 +449,61 @@ def test_1win_provider_has_three_fields_only():
     from paygo.providers import provider_types
 
     xapi = next(t for t in provider_types() if t["type"] == "xapi")
-    assert [f["key"] for f in xapi["fields"]] == ["api_key", "agent_login", "agent_password"]
+    main = [f["key"] for f in xapi["fields"] if not f.get("advanced")]
+    assert main == ["api_key", "agent_login", "agent_password"]
+    # the browser identity the 1win.win portal expects (values from the old panel) stays optional
+    assert [f["key"] for f in xapi["fields"] if f.get("advanced")] == ["agent_fingerprint_id", "agent_client_id", "agent_user_agent"]
+
+
+def test_login_is_confirmed_in_the_main_bot(client, admin, monkeypatch):
+    """Password → pending request → ✅ in the bot → month-long session."""
+    from paygo.db import transaction
+    from paygo.models import LoginRequest, Notification
+    from paygo.services import auth as auth_service
+    from paygo.services import settings_store
+
+    with transaction() as db:
+        settings_store.set_many(db, {"login_approver_telegram_id": 8274883903})
+    r = client.post(P + "/auth/login", json={"username": admin["username"], "password": admin["password"], "device": "iPhone"}, headers={"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) Version/18.5 Mobile Safari/604.1"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["pending"] and body["request_token"] and "paygo_session" not in r.cookies
+    assert "iPhone" in body["device"] and "Safari" in body["device"]
+    with transaction() as db:
+        note = db.query(Notification).filter_by(event="login_request").one()
+        assert note.bot == "main" and note.target_telegram_id == 8274883903 and note.data["inline"][0][0]["callback_data"].startswith("login:ok:")
+        req = db.query(LoginRequest).one()
+        assert req.status == "pending" and req.username == admin["username"]
+        request_id = req.id
+    st = client.post(P + "/auth/login/status", json={"request_token": body["request_token"]})
+    assert st.json()["status"] == "pending" and st.json()["seconds_left"] > 0
+    # somebody else's tap does nothing; the approver's ✅ does
+    with transaction() as db:
+        assert auth_service.approver_telegram_id(db) == 8274883903
+        assert auth_service.decide_login_request(db, request_id, True, 8274883903).status == "approved"
+    st = client.post(P + "/auth/login/status", json={"request_token": body["request_token"]})
+    assert st.status_code == 200 and st.json()["status"] == "approved" and st.json()["admin"]["username"] == admin["username"]
+    assert "paygo_session" in st.cookies
+    with transaction() as db:
+        req = db.query(LoginRequest).one()
+        assert req.status == "used" and req.session_id
+        from paygo.models import AdminSession
+        sess = db.get(AdminSession, req.session_id)
+        assert (sess.absolute_expires_at - sess.created_at).days >= 29
+    # the token is single-use
+    assert client.post(P + "/auth/login/status", json={"request_token": body["request_token"]}).json()["status"] == "used"
+    # a rejected login never becomes a session
+    r2 = client.post(P + "/auth/login", json={"username": admin["username"], "password": admin["password"]})
+    with transaction() as db:
+        pending = db.query(LoginRequest).filter_by(status="pending").one()
+        auth_service.decide_login_request(db, pending.id, False, 8274883903)
+    st2 = client.post(P + "/auth/login/status", json={"request_token": r2.json()["request_token"]})
+    assert st2.json()["status"] == "rejected" and "paygo_session" not in st2.cookies
+
+
+def test_device_description():
+    from paygo.services.auth import describe_device
+
+    assert describe_device("Mozilla/5.0 (Linux; Android 14; SM-S911B Build/UP1A) Chrome/124 Mobile Safari/537.36") == "Android · SM-S911B · Chrome"
+    assert describe_device("Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) Version/17.4 Mobile/15E148 Safari/604.1 PayGoApp/1.0", "iOS") == "iPhone · iOS 17.4 · приложение PayGo"
+    assert describe_device("Mozilla/5.0 (Windows NT 10.0) Chrome/120", "Windows · ноутбук") == "Windows · ноутбук · Chrome"

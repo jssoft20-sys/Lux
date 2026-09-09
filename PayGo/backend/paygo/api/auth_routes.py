@@ -20,7 +20,7 @@ from .deps import (
     get_db,
     require,
 )
-from .schemas import AdminCreateBody, AdminUpdateBody, LoginBody, PasswordChangeBody
+from .schemas import AdminCreateBody, AdminUpdateBody, LoginBody, LoginStatusBody, PasswordChangeBody
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -64,10 +64,20 @@ def principal_payload(principal: Principal) -> dict:
 
 @router.post("/login")
 def login(body: LoginBody, request: Request, response: Response, db: Session = Depends(get_db)):
+    """Password check, then — when an approver is configured — a ✅/❌ request in the main bot.
+
+    The browser gets a one-time request token and polls ``/login/status``; the session
+    (a month long) is issued only after the approver confirms."""
     enforce_admin_allowlist(request)
     ip = client_ip(request)
+    user_agent = request.headers.get("user-agent", "")
+    settings = get_settings()
     try:
-        admin, session, token = auth_service.login(db, body.username, body.password, ip, request.headers.get("user-agent", ""))
+        if auth_service.login_confirmation_enabled(db):
+            admin = auth_service.authenticate(db, body.username, body.password, ip)
+            row, token = auth_service.start_login_request(db, admin, ip, user_agent, body.device)
+            return {"ok": True, "pending": True, "request_token": token, "expires_in": max(60, settings.login_request_ttl_seconds), "device": row.device, "ip": row.ip, "approver_bot": settings.main_bot_username}
+        admin, session, token = auth_service.login(db, body.username, body.password, ip, user_agent)
     except auth_service.AuthError as exc:
         db.commit()
         headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
@@ -75,6 +85,23 @@ def login(body: LoginBody, request: Request, response: Response, db: Session = D
     set_session_cookies(response, request, token, session.csrf_token)
     principal = Principal(admin=admin, session=session, via="cookie")
     return {"ok": True, "admin": principal_payload(principal)}
+
+
+@router.post("/login/status")
+def login_status(body: LoginStatusBody, request: Request, response: Response, db: Session = Depends(get_db)):
+    """Polled by the login screen; turns an approved request into the session (once)."""
+    enforce_admin_allowlist(request)
+    row = auth_service.login_request_by_token(db, body.request_token)
+    if row is None:
+        raise HTTPException(404, "Запрос на вход не найден")
+    if row.status == "approved":
+        try:
+            admin, session, token = auth_service.claim_login_request(db, row)
+        except auth_service.AuthError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.message)
+        set_session_cookies(response, request, token, session.csrf_token)
+        return {"ok": True, "status": "approved", "admin": principal_payload(Principal(admin=admin, session=session, via="cookie"))}
+    return {"ok": True, **auth_service.login_request_public(row)}
 
 
 @router.post("/logout")

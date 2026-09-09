@@ -134,6 +134,11 @@ DEFAULTS: dict[str, Any] = {
     # ui
     "ui_poll_seconds": 3,
     "ui_page_size": 30,
+    # panel login: confirmed by the owner in the main bot (0 = LOGIN_APPROVER_TELEGRAM_ID from .env)
+    "login_confirm_enabled": True,
+    "login_approver_telegram_id": 0,
+    # support: Claude answers first (needs ANTHROPIC_API_KEY); rules are the fallback
+    "assistant_enabled": True,
     # subscription gate
     "subscription_enabled": False,
     "subscription_channel": "",

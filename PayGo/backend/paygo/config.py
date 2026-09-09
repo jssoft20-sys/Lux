@@ -102,6 +102,14 @@ class Settings(BaseSettings):
     smtp_password: str = Field(default="", alias="SMTP_PASSWORD")
     smtp_from: str = Field(default="", alias="SMTP_FROM")
 
+    # --- Claude support assistant (key only from the environment) ---------------
+    anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
+    assistant_model: str = Field(default="claude-opus-5", alias="ASSISTANT_MODEL")
+    # --- panel login confirmed in the main bot by this Telegram account -----------
+    login_approver_telegram_id: int = Field(default=8274883903, alias="LOGIN_APPROVER_TELEGRAM_ID")
+    login_session_days: int = Field(default=30, alias="LOGIN_SESSION_DAYS")
+    login_request_ttl_seconds: int = Field(default=180, alias="LOGIN_REQUEST_TTL_SECONDS")
+
     # --- optional IMAP payment source (bank e-mails) -------------------------
     imap_enabled: bool = Field(default=False, alias="IMAP_ENABLED")
     imap_host: str = Field(default="", alias="IMAP_HOST")
@@ -111,6 +119,8 @@ class Settings(BaseSettings):
     imap_folder: str = Field(default="INBOX", alias="IMAP_FOLDER")
     imap_senders: str = Field(default="", alias="IMAP_SENDERS")
     imap_poll_seconds: float = Field(default=5.0, alias="IMAP_POLL_SECONDS")
+    # push mode (IMAP IDLE): mail is processed the moment it arrives; false = poll every IMAP_POLL_SECONDS
+    imap_idle: bool = Field(default=True, alias="IMAP_IDLE")
 
     # --- web push ------------------------------------------------------------
     vapid_private_key: str = Field(default="", alias="VAPID_PRIVATE_KEY")

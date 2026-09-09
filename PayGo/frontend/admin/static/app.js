@@ -243,7 +243,7 @@
     const shell = h('div', { class: 'shell page-in ' + (noNav ? 'no-nav' : '') });
     document.documentElement.classList.toggle('chat-open', noNav);
     app.appendChild(shell);
-    const views = { home: homeView, history: historyView, chats: chatsView, search: searchView, menu: menuView, manage: manageView, stats: statsView, cashes: cashesView, events: eventsView, gateway: gatewayView, broadcast: broadcastView, security: securityView, quick: quickView, logs: logsView, settings: settingsView, macrodroid: macrodroidView, firstline: firstLineView, deposits: (m) => txDetailView(m, 'deposits', state.route.id), withdrawals: (m) => txDetailView(m, 'withdrawals', state.route.id), users: (m) => userDetailView(m, state.route.id), push: pushView, env: envView };
+    const views = { home: homeView, history: historyView, chats: chatsView, search: searchView, menu: menuView, manage: manageView, stats: statsView, cashes: cashesView, events: eventsView, wallets: walletsView, broadcast: broadcastView, security: securityView, quick: quickView, logs: logsView, settings: settingsView, macrodroid: macrodroidView, deposits: (m) => txDetailView(m, 'deposits', state.route.id), withdrawals: (m) => txDetailView(m, 'withdrawals', state.route.id), users: (m) => userDetailView(m, state.route.id), push: pushView, env: envView };
     (views[page] || homeView)(shell);
     if (!noNav) shell.appendChild(bottomNav(page));
   }
@@ -254,14 +254,43 @@
   function updateBadges() { document.querySelectorAll('.bottom-nav .nav-item').forEach((b, i) => { const key = NAV[i][0]; const old = b.querySelector('.nav-badge'); if (old) old.remove(); const n = navBadge(key); if (n) b.querySelector('.nav-icon').appendChild(h('span', { class: 'nav-badge' }, n > 99 ? '99+' : n)); }); }
 
   /* ------------------------------------------------------------- auth / live */
+  function deviceHint() { try { const d = navigator.userAgentData; if (d && d.platform) return d.platform + (d.mobile ? ' · телефон' : ''); } catch (e) { /* older browsers */ } return ''; }
   function loginView() {
     const user = h('input', { class: 'input', placeholder: 'Логин', autocomplete: 'username', autocapitalize: 'none' });
     const pass = h('input', { class: 'input', placeholder: 'Пароль', type: 'password', autocomplete: 'current-password' });
     const btn = h('button', { class: 'primary-btn' }, 'Войти');
-    const form = h('form', { class: 'card login-card', onsubmit: async (e) => { e.preventDefault(); btn.disabled = true; try { const r = await api('/auth/login', { method: 'POST', body: { username: user.value, password: pass.value } }); state.admin = r.admin; state.route = parseHash(); startLive(); render(); } catch (ex) { err(ex); } btn.disabled = false; } },
+    const form = h('form', { class: 'card login-card', onsubmit: async (e) => { e.preventDefault(); btn.disabled = true; try { const r = await api('/auth/login', { method: 'POST', body: { username: user.value, password: pass.value, device: deviceHint() } }); if (r.pending) { const app = $('#app'); app.innerHTML = ''; app.appendChild(authWaitView(r)); return; } state.admin = r.admin; state.route = parseHash(); startLive(); render(); } catch (ex) { err(ex); } btn.disabled = false; } },
       h('div', { class: 'brand' }, h('img', { src: 'brand/paygo-logo.png', alt: '' }), h('div', null, h('b', null, 'PayGo'), h('small', null, 'Панель управления'))),
       h('label', { class: 'field' }, h('span', null, 'Логин'), user), h('label', { class: 'field' }, h('span', null, 'Пароль'), pass), btn);
     return h('div', { class: 'shell no-nav' }, h('div', { class: 'login' }, form));
+  }
+  function authWaitView(r) {
+    /* the owner confirms the login in the main bot; meanwhile the screen "checks the session" */
+    const lines = h('div', { class: 'hk-lines' }); const cursor = h('span', { class: 'hk-cursor' }, '▌');
+    const timer = h('div', { class: 'hk-timer' }, '--:--'); const status = h('div', { class: 'hk-status' }); const ring = h('i');
+    const cancelBtn = h('button', { class: 'hk-btn', type: 'button', onclick: () => { stopped = true; render(); } }, 'Отмена');
+    const screen = h('div', { class: 'hk' }, h('div', { class: 'hk-bg' }), h('div', { class: 'hk-card' }, h('div', { class: 'hk-head' }, h('span', { class: 'hk-dot' }), 'PAYGO // SECURE ACCESS'), lines, cursor, h('div', { class: 'hk-ring' }, ring, timer), status, cancelBtn));
+    const script = [['> инициализация защищённого канала', 'OK'], ['> устройство: ' + (r.device || 'неизвестно'), 'OK'], ['> ip: ' + (r.ip || '—'), 'OK'], ['> запрос подтверждения → @' + (r.approver_bot || 'PayGoXBot'), 'SENT'], ['> ожидание решения владельца', '···']];
+    let i = 0, stopped = false;
+    const typeLine = () => { if (stopped || i >= script.length) return; const [t, tag] = script[i++]; const row = h('div', { class: 'hk-line' }, h('span', null, ''), h('b', { class: tag === '···' ? '' : 'ok' }, tag)); lines.appendChild(row); let k = 0; const tick = () => { if (stopped) return; row.firstChild.textContent = t.slice(0, ++k); if (k < t.length) setTimeout(tick, 12); else setTimeout(typeLine, 200); }; tick(); };
+    typeLine();
+    const total = Math.max(30, r.expires_in || 180); const deadline = Date.now() + total * 1000;
+    const fmt = (sec) => String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0');
+    const finish = (ok, text) => { stopped = true; cursor.hidden = true; status.textContent = text; status.className = 'hk-status ' + (ok ? 'ok' : 'bad'); screen.classList.add(ok ? 'granted' : 'denied'); cancelBtn.textContent = ok ? 'Открываю…' : 'Назад'; buzz(ok ? 30 : 60); };
+    const poll = async () => {
+      if (stopped) return;
+      const left = Math.max(0, Math.round((deadline - Date.now()) / 1000)); timer.textContent = fmt(left); ring.style.setProperty('--p', Math.round((1 - left / total) * 100) + '%');
+      try {
+        const st = await api('/auth/login/status', { method: 'POST', body: { request_token: r.request_token } });
+        if (st.status === 'approved') { finish(true, 'ДОСТУП РАЗРЕШЁН'); state.admin = st.admin; state.route = parseHash(); setTimeout(() => { startLive(); render(); }, 900); return; }
+        if (st.status === 'rejected') return finish(false, 'ДОСТУП ЗАПРЕЩЁН');
+        if (st.status === 'expired' || st.status === 'used') return finish(false, 'ВРЕМЯ ВЫШЛО');
+      } catch (e) { status.textContent = e.message; }
+      if (left <= 0) return finish(false, 'ВРЕМЯ ВЫШЛО');
+      setTimeout(poll, 1500);
+    };
+    setTimeout(poll, 700);
+    return screen;
   }
   async function logout() { try { await api('/auth/logout', { method: 'POST' }); } catch (e) {} state.admin = null; stopLive(); render(); }
   function startLive() {
@@ -745,7 +774,7 @@
   }
 
   /* ------------------------------------------------------------- menu */
-  const MENU = [['manage', 'shield', 'Управление PayGo', 'green', 'view'], ['stats', 'stats', 'Статистика', 'blue', 'view'], ['cashes', 'wallet', 'Кассы', 'green', 'cashes'], ['events', 'calendar', 'Выписка', 'violet', 'operations'], ['gateway', 'qr', 'Платёжка', 'purple', 'settings'], ['broadcast', 'send', 'Рассылка', 'teal', 'settings'], ['security', 'shield', 'Безопасность', 'teal', 'view'], ['quick', 'bolt', 'Быстрые ответы', 'yellow', 'support'], ['logs', 'terminal', 'Логи', 'red', 'logs'], ['settings', 'settings', 'Настройки', 'gray', 'settings'], ['firstline', 'chat', 'Первая линия', 'blue', 'settings'], ['macrodroid', 'bolt', 'MacroDroid', 'yellow', 'settings']];
+  const MENU = [['manage', 'shield', 'Управление PayGo', 'green', 'view'], ['stats', 'stats', 'Статистика', 'blue', 'view'], ['cashes', 'wallet', 'Кассы', 'green', 'cashes'], ['wallets', 'qr', 'Кошельки', 'purple', 'settings'], ['broadcast', 'send', 'Рассылка', 'teal', 'settings'], ['security', 'shield', 'Безопасность', 'teal', 'view'], ['quick', 'bolt', 'Быстрые ответы', 'yellow', 'support'], ['logs', 'terminal', 'Логи', 'red', 'logs'], ['settings', 'settings', 'Настройки', 'gray', 'settings'], ['macrodroid', 'bolt', 'MacroDroid', 'yellow', 'settings']];
   function menuView(shell) {
     const screen = h('section', { class: 'screen' }); shell.appendChild(screen);
     screen.appendChild(h('div', { class: 'card account-card', style: { marginTop: '18px' } }, h('span', null, svg('user', 22)), h('div', null, h('b', null, 'Мой аккаунт'), h('small', null, (state.admin.name || state.admin.username) + ' · ' + ({ owner: 'Владелец', admin: 'Администратор платформы', operator: 'Оператор', viewer: 'Просмотр' }[state.admin.role] || state.admin.role)))));
@@ -809,7 +838,7 @@
     const bool = (label, key) => { const sw = switchEl(!!c[key], async (v) => { f[key].value = v ? '1' : '0'; }); f[key] = h('input', { type: 'hidden', value: c[key] ? '1' : '0' }); return h('div', { class: 'setting-row' }, h('div', null, h('b', null, label)), sw, f[key]); };
     const title = (text) => h('div', { class: 'section-title' }, h('h2', null, text));
     const credBox = h('div');
-    const drawCreds = () => { credBox.innerHTML = ''; const type = state.types.find((t) => t.type === (f.provider_type ? f.provider_type.value : c.provider_type)) || { fields: [] }; credBox.appendChild(title('Учётные данные (шифруются)')); type.fields.forEach((fd) => { const cur = (c.credentials || []).find((x) => x.key === fd.key); const el = h('input', { class: 'input', type: fd.secret ? 'password' : 'text', placeholder: cur && cur.set ? (fd.secret ? 'задано ' + cur.masked + ' — пусто = не менять' : cur.masked) : (fd.required ? 'обязательно' : 'необязательно'), value: cur && !fd.secret && cur.set ? cur.masked : '' }); el.dataset.cred = fd.key; credBox.appendChild(h('label', { class: 'field' }, h('span', null, fd.label), el)); }); };
+    const drawCreds = () => { credBox.innerHTML = ''; const type = state.types.find((t) => t.type === (f.provider_type ? f.provider_type.value : c.provider_type)) || { fields: [] }; credBox.appendChild(title('Учётные данные (шифруются)')); const adv = h('div', { hidden: true }); const fieldOf = (fd) => { const cur = (c.credentials || []).find((x) => x.key === fd.key); const el = h('input', { class: 'input', type: fd.secret ? 'password' : 'text', placeholder: cur && cur.set ? (fd.secret ? 'задано ' + cur.masked + ' — пусто = не менять' : cur.masked) : (fd.required ? 'обязательно' : 'необязательно'), value: cur && !fd.secret && cur.set ? cur.masked : '' }); el.dataset.cred = fd.key; return h('label', { class: 'field' }, h('span', null, fd.label), el); }; type.fields.forEach((fd) => (fd.advanced ? adv : credBox).appendChild(fieldOf(fd))); if (adv.childNodes.length) { const hasAdv = type.fields.some((fd) => fd.advanced && (c.credentials || []).some((x) => x.key === fd.key && x.set)); adv.hidden = !hasAdv; credBox.appendChild(h('button', { class: 'outline-btn', type: 'button', onclick: () => { adv.hidden = !adv.hidden; } }, svg('settings', 13), 'Дополнительно (вход на 1win.win)')); credBox.appendChild(adv); } };
     const photoField = (kind, label, hint) => {
       const wrap = h('div', { class: 'photo-field' });
       const key = kind === 'instruction' ? 'instruction_photo' : kind + '_photo';
@@ -862,21 +891,17 @@
   }
 
   /* ------------------------------------------------------------- gateway (Платёжка) */
-  async function gatewayView(shell) {
-    const box = page(shell, 'Платёжка');
+  async function walletsView(shell) {
+    /* Кошельки: QR / реквизиты, на которые клиенты платят (банковские кнопки — в Настройках) */
+    const box = page(shell, 'Кошельки');
     const draw = async () => {
       try {
-        const [rq, bl, info, cashes] = await Promise.all([api('/requisites'), api('/bank-links'), api('/webhook-info'), api('/cashes')]); box.innerHTML = '';
+        const [rq, info, cashes] = await Promise.all([api('/requisites'), api('/webhook-info'), api('/cashes')]); box.innerHTML = '';
         box.appendChild(h('div', { class: 'section-title' }, h('h2', null, 'Режим выбора реквизита')));
         box.appendChild(h('div', { style: { marginBottom: '10px' } }, segEl([['random', 'Случайный'], ['priority', 'Один основной']], info.requisite_mode, async (k) => { try { await api('/settings', { method: 'POST', body: { values: { requisite_mode: k } } }); toast('Сохранено', 'ok'); draw(); } catch (ex) { err(ex); } }, 'light')));
-        box.appendChild(h('div', { class: 'section-title' }, h('h2', null, 'Реквизиты · ' + rq.items.filter((q) => q.enabled).length + ' вкл.'), h('button', { class: 'outline-btn blue', onclick: () => requisiteForm(null) }, svg('plus', 14), 'Добавить')));
-        if (!rq.items.length) box.appendChild(empty('Реквизитов нет', 'Добавьте QR банка', 'qr'));
-        rq.items.forEach((q) => { const cashName = (cashes.items.find((c) => c.id === q.cash_id) || {}).name; box.appendChild(h('div', { class: 'card wallet-card', style: { opacity: q.enabled ? 1 : 0.6 } }, h('span', { class: 'ico' }, svg('qr', 20)), h('div', { style: { minWidth: 0 } }, h('b', null, q.name), h('small', null, q.bank_name + ' · ' + q.account + (q.holder ? ' · ' + q.holder : '')), h('div', { class: 'tag-row' }, h('span', { class: 'pill ' + (q.enabled ? 'green' : '') }, q.enabled ? 'включён' : 'выключен'), h('span', { class: 'pill' }, 'приоритет ' + q.priority), cashName ? h('span', { class: 'pill blue' }, cashName) : h('span', { class: 'pill' }, 'все кассы')), h('div', { class: 'btn-row' }, h('button', { class: 'outline-btn', onclick: () => requisiteForm(q) }, svg('edit', 13), 'Изменить'), h('button', { class: 'outline-btn danger', onclick: async () => { if (await confirmDialog('Удалить реквизит ' + q.name + '?', 'Удалить', true)) { try { await api('/requisites/' + q.id, { method: 'DELETE' }); toast('Удалено', 'ok'); draw(); } catch (ex) { err(ex); } } } }, svg('trash', 13)))), switchEl(q.enabled, async (v) => { await api('/requisites/' + q.id, { method: 'PATCH', body: { enabled: v } }); setTimeout(draw, 200); }))); });
-        box.appendChild(h('div', { class: 'section-title' }, h('h2', null, 'Кнопки банков под QR')));
-        bl.items.forEach((l) => box.appendChild(h('div', { class: 'card wallet-card' }, h('span', { class: 'ico' }, l.emoji ? h('span', { style: { fontSize: '20px' } }, l.emoji) : svg('bank', 20)), h('div', { style: { minWidth: 0 } }, h('b', null, l.name), h('small', null, l.kind === 'qr' ? 'картинка QR' : (l.custom_emoji_id ? 'premium-эмодзи · ' : '') + (l.prefix || ''))), h('span', { style: { display: 'flex', gap: '6px', alignItems: 'center' } }, l.kind !== 'qr' ? h('button', { class: 'outline-btn', 'aria-label': 'Изменить', onclick: () => bankLinkForm(l) }, svg('edit', 13)) : null, switchEl(l.enabled, async (v) => { await api('/bank-links', { method: 'POST', body: { key: l.key, enabled: v } }); })))));
-        function bankLinkForm(l) { const emoji = h('input', { class: 'input', value: l.emoji || '', placeholder: '🏦' }); const pid = h('input', { class: 'input', value: l.custom_emoji_id || '', placeholder: 'необязательно', inputmode: 'numeric' }); const s = sheet({ title: l.name, body: h('div', { class: 'stat-grid' }, h('label', { class: 'field' }, h('span', null, 'Эмодзи'), emoji), h('label', { class: 'field' }, h('span', null, 'Premium ID'), pid)), actions: [h('button', { class: 'action-btn', onclick: () => s.close() }, 'Отмена'), h('button', { class: 'action-btn primary', onclick: async () => { try { await api('/bank-links', { method: 'POST', body: { key: l.key, emoji: emoji.value.trim(), custom_emoji_id: pid.value.trim() } }); toast('Сохранено', 'ok'); s.close(); draw(); } catch (ex) { err(ex); } } }, 'Сохранить')] }); }
-        box.appendChild(h('div', { class: 'section-title' }, h('h2', null, 'Подтверждения платежей')));
-        box.appendChild(h('button', { class: 'card row-card', onclick: () => go('#/macrodroid') }, h('span', { class: 'avatar mini' }, svg('bolt', 16)), h('div', null, h('b', null, 'MacroDroid'), h('small', null, 'Адрес, ключ, тест')), svg('chevron', 16)));
+        box.appendChild(h('div', { class: 'section-title' }, h('h2', null, 'Кошельки · ' + rq.items.filter((q) => q.enabled).length + ' вкл.'), h('button', { class: 'outline-btn blue', onclick: () => requisiteForm(null) }, svg('plus', 14), 'Добавить')));
+        if (!rq.items.length) box.appendChild(empty('Кошельков нет', 'Добавьте QR банка — на него будут платить клиенты', 'qr'));
+        rq.items.forEach((q) => { const cashName = (cashes.items.find((c) => c.id === q.cash_id) || {}).name; box.appendChild(h('div', { class: 'card wallet-card', style: { opacity: q.enabled ? 1 : 0.6 } }, h('span', { class: 'ico' }, svg('qr', 20)), h('div', { style: { minWidth: 0 } }, h('b', null, q.name), h('small', null, q.bank_name + ' · ' + q.account + (q.holder ? ' · ' + q.holder : '')), h('div', { class: 'tag-row' }, h('span', { class: 'pill ' + (q.enabled ? 'green' : '') }, q.enabled ? 'включён' : 'выключен'), h('span', { class: 'pill' }, 'приоритет ' + q.priority), cashName ? h('span', { class: 'pill blue' }, cashName) : h('span', { class: 'pill' }, 'все кассы')), h('div', { class: 'btn-row' }, h('button', { class: 'outline-btn', onclick: () => requisiteForm(q) }, svg('edit', 13), 'Изменить'), h('button', { class: 'outline-btn danger', onclick: async () => { if (await confirmDialog('Удалить кошелёк ' + q.name + '?', 'Удалить', true)) { try { await api('/requisites/' + q.id, { method: 'DELETE' }); toast('Удалено', 'ok'); draw(); } catch (ex) { err(ex); } } } }, svg('trash', 13)))), switchEl(q.enabled, async (v) => { await api('/requisites/' + q.id, { method: 'PATCH', body: { enabled: v } }); setTimeout(draw, 200); }))); });
         function requisiteForm(q) {
           const isNew = !q; q = q || { name: '', priority: 100, enabled: true, notes: '', cash_id: null };
           const name = h('input', { class: 'input', placeholder: 'напр. Optima основной', value: q.name });
@@ -886,7 +911,7 @@
           const src = h('textarea', { class: 'textarea', placeholder: isNew ? 'ELQR (000201…) или ссылка банка' : 'Пусто = оставить текущий QR' });
           const file = h('input', { type: 'file', accept: 'image/*', class: 'input' });
           file.onchange = async () => { const fd = new FormData(); fd.append('file', file.files[0]); try { const rr = await api('/requisites/upload', { method: 'POST', body: fd }); src.value = rr.source; toast('QR распознан: ' + rr.meta.bank_name, 'ok'); } catch (ex) { err(ex); } };
-          const s = sheet({ title: isNew ? 'Новый реквизит' : q.name, body: h('div', null, h('label', { class: 'field' }, h('span', null, 'Название'), name), h('div', { class: 'stat-grid' }, h('label', { class: 'field' }, h('span', null, 'Приоритет'), priority), h('label', { class: 'field' }, h('span', null, 'Касса'), cashSel)), h('label', { class: 'field' }, h('span', null, 'Заметка'), notes), h('label', { class: 'field' }, h('span', null, isNew ? 'QR / ссылка' : 'Заменить QR / ссылку'), src), h('label', { class: 'field' }, h('span', null, 'или изображение QR'), file)), actions: [h('button', { class: 'action-btn', onclick: () => s.close() }, 'Отмена'), h('button', { class: 'action-btn primary', onclick: async () => { const body = { name: name.value, priority: Number(priority.value || 100), cash_id: cashSel.value ? Number(cashSel.value) : 0, notes: notes.value }; if (src.value.trim()) body.source = src.value.trim(); try { if (isNew) { if (!body.source) return toast('Укажите QR или ссылку', 'err'); await api('/requisites', { method: 'POST', body }); } else await api('/requisites/' + q.id, { method: 'PATCH', body }); toast('Сохранено', 'ok'); s.close(); draw(); } catch (ex) { err(ex); } } }, 'Сохранить')] });
+          const s = sheet({ title: isNew ? 'Новый кошелёк' : q.name, body: h('div', null, h('label', { class: 'field' }, h('span', null, 'Название'), name), h('div', { class: 'stat-grid' }, h('label', { class: 'field' }, h('span', null, 'Приоритет'), priority), h('label', { class: 'field' }, h('span', null, 'Касса'), cashSel)), h('label', { class: 'field' }, h('span', null, 'Заметка'), notes), h('label', { class: 'field' }, h('span', null, isNew ? 'QR / ссылка' : 'Заменить QR / ссылку'), src), h('label', { class: 'field' }, h('span', null, 'или изображение QR'), file)), actions: [h('button', { class: 'action-btn', onclick: () => s.close() }, 'Отмена'), h('button', { class: 'action-btn primary', onclick: async () => { const body = { name: name.value, priority: Number(priority.value || 100), cash_id: cashSel.value ? Number(cashSel.value) : 0, notes: notes.value }; if (src.value.trim()) body.source = src.value.trim(); try { if (isNew) { if (!body.source) return toast('Укажите QR или ссылку', 'err'); await api('/requisites', { method: 'POST', body }); } else await api('/requisites/' + q.id, { method: 'PATCH', body }); toast('Сохранено', 'ok'); s.close(); draw(); } catch (ex) { err(ex); } } }, 'Сохранить')] });
         }
       } catch (e) { box.innerHTML = ''; box.appendChild(empty('Ошибка', e.message)); }
     };
@@ -1081,7 +1106,7 @@
 
   /* ------------------------------------------------------------- settings (Настройки) */
   const NOTIFY_GROUP = ['Уведомления', [['notify_new_deposit', 'Новое пополнение', 'bool'], ['notify_deposit_success', 'Пополнение зачислено', 'bool'], ['notify_deposit_failed', 'Ошибка пополнения', 'bool'], ['notify_new_withdrawal', 'Новый вывод', 'bool'], ['notify_withdrawal_status', 'Статус вывода', 'bool'], ['notify_cash_critical', 'Проблемы касс', 'bool'], ['notify_support_operator', 'Обращения оператору', 'bool']]];
-  const SETTINGS_TABS = [
+  const ADVANCED_TABS = [
     ['bot', 'Бот', [
       ['Работа', [['bot_paused', 'Пауза бота', 'bool'], ['deposits_enabled', 'Пополнения', 'bool'], ['withdrawals_enabled', 'Выводы', 'bool']]],
       ['Оператор', [['support_username', 'Username оператора'], ['brand_name', 'Название']]],
@@ -1106,11 +1131,8 @@
       ['Карточка QR', [['qr_card_title', 'Заголовок'], ['qr_card_subtitle', 'Подзаголовок'], ['qr_overlay_text', 'Надпись на QR'], ['qr_watermark_text', 'Водяной знак']]],
     ]],
     ['notify', 'Уведомления', [NOTIFY_GROUP, ['Кассы', [['cash_monitor_enabled', 'Автопроверка балансов', 'bool'], ['cash_monitor_interval_seconds', 'Интервал, сек', 'number']]]]],
-    ['more', 'Ещё', []],
-  ];
-  const SUPPORT_GROUPS = [
-    ['Автоответчик', [['support_greeting', 'Приветствие', 'textarea'], ['support_auto_resolve_hours', 'Автозакрытие, ч', 'number']]],
-    ['Антифлуд', [['support_rate_limit_messages', 'Сообщений подряд', 'number'], ['support_rate_limit_window_seconds', 'За сколько сек', 'number'], ['support_cooldown_seconds', 'Пауза, сек', 'number'], ['support_duplicate_window_seconds', 'Окно повторов, сек', 'number'], ['support_escalation_cooldown_seconds', 'Пауза между вызовами оператора, сек', 'number']]],
+    ['support', 'Поддержка', [['Claude', [['assistant_enabled', 'Первым отвечает Claude (ключ ANTHROPIC_API_KEY в .env)', 'bool']]], ['Автоответчик', [['support_greeting', 'Приветствие', 'textarea'], ['support_auto_resolve_hours', 'Автозакрытие, ч', 'number']]], ['Антифлуд', [['support_rate_limit_messages', 'Сообщений подряд', 'number'], ['support_rate_limit_window_seconds', 'За сколько сек', 'number'], ['support_cooldown_seconds', 'Пауза, сек', 'number'], ['support_duplicate_window_seconds', 'Окно повторов, сек', 'number'], ['support_escalation_cooldown_seconds', 'Пауза между вызовами оператора, сек', 'number']]]]],
+    ['login', 'Вход', [['Подтверждение входа в основном боте', [['login_confirm_enabled', 'Спрашивать ✅ у владельца при каждом входе', 'bool'], ['login_approver_telegram_id', 'Telegram ID владельца (0 — из .env)', 'number']]]]],
   ];
   function settingsForm(box, groups, values, extraTop, extraBottom) {
     const inputs = {};
@@ -1137,39 +1159,55 @@
       wrap.appendChild(h('div', { class: 'photo-row' }, rel ? h('img', { class: 'photo-thumb', src: fileUrl('/' + rel), alt: '' }) : h('div', { class: 'photo-thumb blank' }, svg('image', 18)), h('div', { class: 'btn-row', style: { margin: 0 } }, h('button', { class: 'outline-btn blue', type: 'button', onclick: () => input.click() }, svg('image', 14), rel ? 'Заменить' : 'Загрузить'), rel ? h('button', { class: 'outline-btn danger', type: 'button', onclick: async () => { if (await confirmDialog('Удалить фото?', 'Удалить', true)) { try { await api('/settings/photo/' + key, { method: 'DELETE' }); values[key] = ''; draw(); } catch (ex) { err(ex); } } } }, svg('trash', 13)) : null, input)));
     }; draw(); return wrap;
   }
-  const MORE_LINKS = [['#/gateway', 'qr', 'Платёжка', 'Реквизиты и банки'], ['#/macrodroid', 'bolt', 'MacroDroid', 'Подтверждения платежей'], ['#/cashes', 'wallet', 'Кассы', 'Данные и фото шагов'], ['#/firstline', 'chat', 'Первая линия', 'Автоответчик поддержки'], ['#/push', 'bell', 'Push', 'Уведомления на телефон'], ['#/security', 'shield', 'Безопасность', 'Пароль и администраторы'], ['#/env', 'terminal', 'Сервер', 'Домен, боты, SMTP']];
-  async function settingsView(shell, forcedTab) {
-    const tab0 = forcedTab || state.route.id || 'bot';
+  const MORE_LINKS = [['#/wallets', 'qr', 'Кошельки', 'QR и реквизиты для приёма'], ['#/macrodroid', 'bolt', 'MacroDroid', 'Подтверждения платежей'], ['#/cashes', 'wallet', 'Кассы', 'Данные и фото шагов'], ['#/push', 'bell', 'Push', 'Уведомления на телефон'], ['#/security', 'shield', 'Безопасность', 'Пароль и администраторы'], ['#/env', 'terminal', 'Сервер', 'Домен, боты, SMTP']];
+  async function settingsView(shell) {
+    /* only what operators switch every day: pause, ПП/ВВ, cash desks, banks under the QR */
+    if (state.route.id === 'advanced') return advancedSettingsView(shell, state.route.sub);
     const box = page(shell, 'Настройки');
+    const row = (label, sub, ctl) => h('div', { class: 'setting-row' }, h('div', null, h('b', null, label), sub ? h('small', null, sub) : null), ctl);
+    const draw = async () => {
+      try {
+        const [r, cashes, banks] = await Promise.all([api('/settings'), api('/cashes'), api('/bank-links').catch(() => ({ items: [] }))]);
+        const v = r.values; box.innerHTML = '';
+        const save = async (key, val) => { await api('/settings', { method: 'POST', body: { values: { [key]: val } } }); v[key] = val; toast('Сохранено', 'ok', 1200); };
+        box.appendChild(h('div', { class: 'card section-card' }, h('h2', null, 'Работа'),
+          row('Пауза бота', 'Клиенты видят «Бот временно выключен»', switchEl(!!v.bot_paused, (on) => save('bot_paused', on))),
+          row('Пополнения', 'Кнопка «Пополнить» во всех кассах', switchEl(!!v.deposits_enabled, (on) => save('deposits_enabled', on))),
+          row('Выводы', 'Кнопка «Вывести» во всех кассах', switchEl(!!v.withdrawals_enabled, (on) => save('withdrawals_enabled', on)))));
+        const cashCard = h('div', { class: 'card section-card' }, h('h2', null, 'Кассы'));
+        if (!cashes.items.length) cashCard.appendChild(h('small', { class: 'muted' }, 'Касс нет — добавьте в разделе «Кассы»'));
+        cashes.items.forEach((c) => { const patch = (body) => api('/cashes/' + c.id, { method: 'PATCH', body }).then(() => toast('Сохранено', 'ok', 1200)); cashCard.appendChild(h('div', { class: 'cash-toggles' }, h('div', { class: 'cash-toggles-name' }, h('b', null, c.name), h('small', null, (c.provider_label || c.provider_type) + (c.auto_disabled ? ' · автостоп' : ''))), h('label', null, h('span', null, 'Вкл'), switchEl(!!c.enabled, (on) => patch({ enabled: on }))), h('label', null, h('span', null, 'ПП'), switchEl(!!c.deposit_enabled, (on) => patch({ deposit_enabled: on }))), h('label', null, h('span', null, 'ВВ'), switchEl(!!c.withdraw_enabled, (on) => patch({ withdraw_enabled: on }))))); });
+        box.appendChild(cashCard);
+        const bankCard = h('div', { class: 'card section-card' }, h('h2', null, 'Банки под QR'));
+        if (!banks.items.length) bankCard.appendChild(h('small', { class: 'muted' }, 'Кнопок банков нет'));
+        banks.items.forEach((l) => bankCard.appendChild(row((l.emoji ? l.emoji + ' ' : '') + l.name, l.kind === 'qr' ? 'картинка QR в заявке' : 'кнопка-ссылка под QR', switchEl(!!l.enabled, async (on) => { await api('/bank-links', { method: 'POST', body: { key: l.key, enabled: on } }); toast('Сохранено', 'ok', 1200); }))));
+        box.appendChild(bankCard);
+        const links = MORE_LINKS.slice();
+        if (state.admin && state.admin.role === 'owner') links.unshift(['#/settings/advanced/bot', 'settings', 'Расширенные настройки', 'Тексты, эмодзи, поддержка, вход, уведомления']);
+        box.appendChild(h('div', { class: 'section-title' }, h('h2', null, 'Ещё')));
+        links.forEach(([href, icon, title, sub]) => box.appendChild(h('button', { class: 'card row-card', onclick: () => go(href) }, h('span', { class: 'avatar mini' }, svg(icon, 16)), h('div', null, h('b', null, title), h('small', null, sub)), svg('chevron', 16))));
+      } catch (e) { box.innerHTML = ''; box.appendChild(empty('Ошибка', e.message)); }
+    };
+    draw();
+  }
+  async function advancedSettingsView(shell, forcedTab) {
+    const tab0 = forcedTab || 'bot';
+    const box = page(shell, 'Расширенные настройки', { back: () => go('#/settings') });
     try {
       const r = await api('/settings'); const values = r.values;
       const tabsBar = h('div', { class: 'settings-tabs' }); const body = h('div');
       const drawTab = (key) => {
-        tabsBar.innerHTML = ''; SETTINGS_TABS.forEach(([k, label]) => tabsBar.appendChild(h('button', { class: k === key ? 'active' : '', onclick: () => { history.replaceState(null, '', '#/settings/' + k); state.route.id = k; drawTab(k); } }, label)));
-        const tab = SETTINGS_TABS.find((t) => t[0] === key) || SETTINGS_TABS[0];
-        if (tab[0] === 'more') { body.innerHTML = ''; MORE_LINKS.forEach(([href, icon, title, sub]) => body.appendChild(h('button', { class: 'card row-card', onclick: () => go(href) }, h('span', { class: 'avatar mini' }, svg(icon, 16)), h('div', null, h('b', null, title), h('small', null, sub)), svg('chevron', 16)))); return; }
+        tabsBar.innerHTML = ''; ADVANCED_TABS.forEach(([k, label]) => tabsBar.appendChild(h('button', { class: k === key ? 'active' : '', onclick: () => { history.replaceState(null, '', '#/settings/advanced/' + k); state.route.sub = k; drawTab(k); } }, label)));
+        const tab = ADVANCED_TABS.find((t) => t[0] === key) || ADVANCED_TABS[0];
         let top = null, bottom = null;
         if (tab[0] === 'bot') bottom = h('div', { class: 'btn-row', style: { marginTop: 0 } }, h('button', { class: 'outline-btn blue', onclick: async (e) => { const chat = await promptDialog('Проверить premium-эмодзи', 'Ваш Telegram ID (сначала напишите боту /start)', '700100200'); if (chat === null) return; const b = e.currentTarget; busy(b, true); try { const rr = await api('/settings/premium-test', { method: 'POST', body: { chat_id: chat.trim() || null } }); if (rr.sent) toast('Отправлено — проверьте чат с ботом', 'ok', 5000); else toast('Telegram отказал: ' + rr.description + (rr.hint ? ' — ' + rr.hint : ''), 'err', 10000); } catch (ex) { err(ex); } busy(b, false); } }, svg('bolt', 14), 'Проверить premium-эмодзи'));
         if (tab[0] === 'texts') top = h('div', { class: 'card section-card' }, h('div', { class: 'placeholder-list' }, ['{name}', '{support}', '{brand}', '{cash}', '{emoji}', '{player}', '{amount}', '{cur}', '{min}', '{max}', '{minutes}', '{left}', '{reason}', '{sla}', '{city}', '{address}'].map((x) => h('code', null, x)), h('code', null, '[emoji:ID:😎]')), h('div', { class: 'btn-row' }, h('button', { class: 'outline-btn', onclick: async () => { if (await confirmDialog('Вернуть стандартные тексты? Ваши правки будут удалены.', 'Сбросить', true)) { try { const rr = await api('/settings/reset', { method: 'POST', body: { keys: ['texts'] } }); Object.assign(values, rr.values); toast('Тексты сброшены', 'ok'); drawTab('texts'); } catch (ex) { err(ex); } } } }, svg('refresh', 14), 'Сбросить тексты')));
         if (tab[0] === 'withdraw') bottom = settingPhoto('instruction_photo', values, 'Фото инструкции');
+        if (tab[0] === 'support') top = h('div', { class: 'card section-card' }, h('h2', null, 'Claude в поддержке'), h('small', { class: 'muted' }, r.env && r.env.assistant_configured ? 'Ключ задан — на вопросы клиентов первым отвечает Claude, сложное передаёт оператору' : 'Ключа нет: добавьте ANTHROPIC_API_KEY в /home/PayGo/.env и перезапустите paygo-support'));
         settingsForm(body, tab[2], values, top, bottom);
       };
       box.innerHTML = ''; box.appendChild(tabsBar); box.appendChild(body);
-      drawTab(SETTINGS_TABS.some((t) => t[0] === tab0) ? tab0 : 'bot');
-    } catch (e) { box.innerHTML = ''; box.appendChild(empty('Ошибка', e.message)); }
-  }
-
-
-  /* ------------------------------------------------------------- first line (Первая линия — автоподдержка) */
-  async function firstLineView(shell) {
-    const box = page(shell, 'Первая линия');
-    try {
-      const r = await api('/settings');
-      const q = (state.live && state.live.queues) || {};
-      const top = h('div', null,
-        h('div', { class: 'stat-grid', style: { marginBottom: '12px' } }, h('div', { class: 'card stat-card red' }, h('div', { class: 'v' }, q.support_waiting || 0), h('div', { class: 'l' }, 'ждут оператора')), h('div', { class: 'card stat-card blue' }, h('div', { class: 'v' }, q.support_open || 0), h('div', { class: 'l' }, 'открытых')), h('div', { class: 'card stat-card green' }, h('div', { class: 'v' }, q.support_closed || 0), h('div', { class: 'l' }, 'закрыто ботом'))),
-        h('div', { class: 'list', style: { marginBottom: '12px' } }, h('button', { class: 'card row-card', onclick: () => go('#/chats') }, h('span', { class: 'avatar mini' }, svg('chat', 16)), h('div', null, h('b', null, 'Чаты')), svg('chevron', 16)), h('button', { class: 'card row-card', onclick: () => go('#/quick') }, h('span', { class: 'avatar mini' }, svg('bolt', 16)), h('div', null, h('b', null, 'Быстрые ответы')), svg('chevron', 16))));
-      settingsForm(box, SUPPORT_GROUPS, r.values, top);
+      drawTab(ADVANCED_TABS.some((t) => t[0] === tab0) ? tab0 : 'bot');
     } catch (e) { box.innerHTML = ''; box.appendChild(empty('Ошибка', e.message)); }
   }
 

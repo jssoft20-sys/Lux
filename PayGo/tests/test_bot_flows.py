@@ -11,6 +11,7 @@ class FakeTelegram:
 
     def __init__(self):
         self.calls = []
+        self.media_edits = []
         self.next_id = 100
         self.token = "x"
 
@@ -36,6 +37,11 @@ class FakeTelegram:
 
     def edit_markup(self, chat_id, message_id, markup):
         self.calls.append(("markup", "", markup))
+        return True
+
+    def edit_media(self, chat_id, message_id, photo, caption="", markup=None, **kw):
+        self.calls.append(("edit_media", caption, markup))
+        self.media_edits.append((str(message_id), len(photo)))
         return True
 
     def delete_message(self, chat_id, message_id):
@@ -67,7 +73,7 @@ class FakeTelegram:
     @property
     def last(self):
         for kind, text, markup in reversed(self.calls):
-            if kind in {"send", "edit", "photo", "edit_caption"}:
+            if kind in {"send", "edit", "photo", "edit_caption", "edit_media"}:
                 return kind, text, markup
         return None, "", None
 
@@ -177,9 +183,11 @@ def test_deposit_flow_with_currency_mismatch_then_success(bot, fake_provider):
         event_id = event.id
     assert payments.process_event(event_id)["ok"]
     bot.deliver_outbox()
-    kind, body, _ = bot.client.last
-    assert kind == "send" and "Пополнено" in body and "654321" in body
-    assert str(panel) in bot.client.deleted() and str(data["receipt_prompt_id"]) in bot.client.deleted()
+    kind, body, markup = bot.client.last
+    # the QR card itself becomes the «Пополнено» card: no QR, no bank buttons, nothing deleted
+    assert kind == "edit_media" and "Пополнено" in body and "654321" in body and not (markup or {}).get("inline_keyboard")
+    assert bot.client.media_edits[-1][0] == str(panel) and bot.client.media_edits[-1][1] > 1000
+    assert not bot.client.deleted()
     assert state_of()[0] == "idle"
     with transaction() as db:
         assert db.query(Notification).filter_by(event="deposit_success").one().status == "sent"
@@ -204,8 +212,8 @@ def test_expired_deposit_card_is_replaced_by_cancel_notice(bot, fake_provider):
         assert len(deposit_service.expire_deposits(db)) == 1
     bot.deliver_outbox()
     kind, body, _ = bot.client.last
-    assert kind == "send" and "Пополнение отменено" in body and "Не переводите по старым реквизитам" in body
-    assert str(panel) in bot.client.deleted()
+    assert kind == "edit_media" and "Пополнение отменено" in body and "Не переводите по старым реквизитам" in body
+    assert bot.client.media_edits[-1][0] == str(panel) and not bot.client.deleted()
     assert state_of()[0] == "idle"
 
 
@@ -269,7 +277,7 @@ def test_instruction_at_code_step_uses_city_and_address(bot, fake_provider):
     text(bot, "Вывести")
     pick_cash(bot)
     photo(bot)
-    assert "9" in bot.client.deleted()  # client's QR photo is removed once processed
+    assert "9" not in bot.client.deleted()  # the client's QR photo stays in the chat
     text(bot, "123456")
     tap(bot, "instr")
     assert "Город: Бишкек" in bot.client.last[1] and "ул. PayGo Online" in bot.client.last[1] and "back_code" in bot.client.buttons()
@@ -300,13 +308,14 @@ def media(bot, kind="voice", mid=44, **extra):
     bot.handle_update({"update_id": 7, "message": {"message_id": mid, "chat": {"id": CHAT, "type": "private"}, "from": FROM, kind: obj}})
 
 
-def test_voice_during_flow_is_removed(bot):
+def test_voice_during_flow_is_ignored_but_kept(bot):
     text(bot, "/start")
     text(bot, "Пополнить")
     pick_cash(bot)
     assert state_of()[0] == "wait_id"
+    before = len(bot.client.calls)
     media(bot, "voice", mid=44)
-    assert "44" in bot.client.deleted() and state_of()[0] == "wait_id"
+    assert "44" not in bot.client.deleted() and state_of()[0] == "wait_id" and len(bot.client.calls) == before
 
 
 def test_voice_when_idle_opens_operator_dialog(bot):

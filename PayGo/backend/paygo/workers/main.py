@@ -263,9 +263,19 @@ def tick_jobs() -> None:
 # ------------------------------------------------------------------- imap (optional)
 
 def tick_imap() -> None:
+    """Polling fallback (``IMAP_IDLE=false``): one pass over the mailbox per tick."""
     from .imap_source import poll_once
 
     poll_once()
+
+
+def start_imap_reader():
+    """Push mode (``IMAP_IDLE=true``): a daemon thread that keeps the mailbox in IMAP IDLE."""
+    from .imap_source import ImapIdleReader
+
+    reader = ImapIdleReader()
+    reader.start()
+    return reader
 
 
 # ------------------------------------------------------------------- entry point
@@ -293,7 +303,10 @@ def main() -> None:
         ("jobs", tick_jobs, 2.0),
         ("broadcasts", tick_broadcasts, 1.5),
     ]
-    if settings.imap_enabled:
+    imap_reader = None
+    if settings.imap_enabled and settings.imap_idle:
+        imap_reader = start_imap_reader()
+    elif settings.imap_enabled:
         loops.append(("imap", tick_imap, max(2.0, settings.imap_poll_seconds)))
     threads = [threading.Thread(target=_loop, args=(name, fn, interval), name=name, daemon=True) for name, fn, interval in loops]
     for thread in threads:
@@ -310,6 +323,8 @@ def main() -> None:
     while not STOP.is_set():
         STOP.wait(1.0)
     logger.info("worker stopping")
+    if imap_reader is not None:
+        imap_reader.stop()
 
 
 if __name__ == "__main__":

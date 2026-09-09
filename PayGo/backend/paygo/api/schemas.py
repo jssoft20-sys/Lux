@@ -9,6 +9,11 @@ from pydantic import BaseModel, Field
 class LoginBody(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=200)
+    device: str = Field(default="", max_length=200)  # what the browser knows about the phone (model / platform)
+
+
+class LoginStatusBody(BaseModel):
+    request_token: str = Field(min_length=16, max_length=200)
 
 
 class PasswordChangeBody(BaseModel):

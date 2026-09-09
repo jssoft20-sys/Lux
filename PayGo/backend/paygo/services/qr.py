@@ -145,6 +145,58 @@ def render_pay_card(value: str, *, title: str = "ОТСКАНИРУЙТЕ QR", s
     return _remember(key, buf.getvalue())
 
 
+STATUS_STYLES = {
+    "success": ((16, 157, 106), "ОПЛАЧЕНО"),
+    "cancelled": ((189, 52, 74), "ОТМЕНЕНО"),
+    "expired": ((120, 132, 150), "ВРЕМЯ ИСТЕКЛО"),
+}
+
+
+def render_status_card(kind: str, title: str = "", subtitle: str = "", *, watermark: str = "PAYGO") -> bytes:
+    """A card without any payment data: replaces the QR picture once a request is paid / cancelled / expired."""
+    color, default_title = STATUS_STYLES.get(kind, STATUS_STYLES["expired"])
+    title = (title or default_title).strip()
+    key = f"status:{kind}|{title}|{subtitle}|{watermark}"
+    cached = _cached(key)
+    if cached:
+        return cached
+    width, height = 880, 560
+    card = Image.new("RGBA", (width, height), (255, 255, 255, 255))
+    draw = ImageDraw.Draw(card)
+    if watermark:
+        layer = Image.new("RGBA", (width * 2, height * 2), (0, 0, 0, 0))
+        ldraw = ImageDraw.Draw(layer)
+        wfont = _font(30, bold=True)
+        for row, y in enumerate(range(0, height * 2, 90)):
+            offset = (row % 2) * 130
+            for x in range(-260, width * 2, 260):
+                ldraw.text((x + offset, y), watermark, font=wfont, fill=WATERMARK)
+        layer = layer.rotate(30, resample=Image.BICUBIC, expand=False)
+        left, top = (layer.width - width) // 2, (layer.height - height) // 2
+        card.alpha_composite(layer.crop((left, top, left + width, top + height)))
+    draw = ImageDraw.Draw(card)
+    draw.rounded_rectangle([6, 6, width - 7, height - 7], radius=22, outline=color + (255,), width=8)
+    # big status circle with a mark
+    cx, cy, r = width // 2, 190, 92
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=color + (255,))
+    if kind == "success":
+        draw.line([(cx - 44, cy + 4), (cx - 12, cy + 36), (cx + 48, cy - 34)], fill=(255, 255, 255, 255), width=16, joint="curve")
+    else:
+        draw.line([(cx - 36, cy - 36), (cx + 36, cy + 36)], fill=(255, 255, 255, 255), width=16)
+        draw.line([(cx + 36, cy - 36), (cx - 36, cy + 36)], fill=(255, 255, 255, 255), width=16)
+    tfont, sfont = _font(60, bold=True), _font(36, bold=True)
+    y = cy + r + 50
+    for line in _wrap(draw, title, tfont, width - 120):
+        draw.text(((width - _text_width(draw, line, tfont)) // 2, y), line, font=tfont, fill=color + (255,))
+        y += 70
+    for line in _wrap(draw, subtitle, sfont, width - 120)[:2]:
+        draw.text(((width - _text_width(draw, line, sfont)) // 2, y + 6), line, font=sfont, fill=BLACK)
+        y += 46
+    buf = io.BytesIO()
+    card.convert("RGB").save(buf, format="PNG", optimize=True)
+    return _remember(key, buf.getvalue())
+
+
 def render_qr_png(value: str, *, branded: bool = False, box_size: int = 10, border: int = 3) -> bytes:
     """Plain QR (admin panel, payout QR previews). ``branded`` is accepted for backwards compatibility."""
     key = f"plain:{box_size}:{border}:{value}"

@@ -347,6 +347,8 @@ class Reply:
     category: str = "faq"
     subject: str = ""
     resolved: bool = False
+    source: str = "rules"  # rules | ai
+    tools: list[str] = field(default_factory=list)
 
 
 def _btn(text: str, data: str) -> dict[str, str]:
@@ -460,18 +462,41 @@ def respond(
         conv.status = "operator"
         db.flush()
         return None
-    reply = _answer(db, user, conv, intent, text, media_kind)
+    reply = None
+    if not callback:
+        reply = _assistant_reply(db, user, conv, text, media_kind)
+    if reply is None:
+        reply = _answer(db, user, conv, intent, text, media_kind)
     if reply.escalate:
         _escalate(db, user, conv, reply, text)
     elif conv.status == "waiting_operator":
         # already queued — do not spam the operator with duplicates, still answer from data
         pass
     conv.category = intent.category if intent.category != "faq" or conv.category == "faq" else conv.category
-    add_message(db, conv, direction="out", sender="bot", text=reply.text, intent=intent)
+    add_message(db, conv, direction="out", sender="bot", text=reply.text, intent=intent if reply.source != "ai" else Intent("ai", ("ai/" + ",".join(reply.tools))[:20] if reply.tools else "ai", 1.0, intent.language))
     if reply.resolved and conv.status == "auto":
         pass
     db.flush()
     return reply
+
+
+def _assistant_reply(db: Session, user: User, conv: SupportConversation, text: str, media_kind: str) -> Reply | None:
+    """Claude answers from the client's data and fixes what it can; ``None`` → the rules answer."""
+    from . import assistant
+
+    if not assistant.enabled(db):
+        return None
+    db.flush()
+    outcome = assistant.answer(db, user, conv, text, media_kind=media_kind)
+    if outcome is None:
+        return None
+    category = "operator"
+    low = (outcome.subject or text or "").lower()
+    if any(w in low for w in ("вывод", "выплат", "чыгар")):
+        category = "withdrawal"
+    elif any(w in low for w in ("пополн", "депозит", "оплат", "зачисл", "толукто")):
+        category = "deposit"
+    return Reply(outcome.text, escalate=outcome.escalate, category=category if outcome.escalate else "faq", subject=outcome.subject, resolved=not outcome.escalate, source="ai", tools=list(outcome.tools))
 
 
 def _callback_intent(callback: str) -> tuple[str, str, float, str]:

@@ -67,6 +67,10 @@ class XapiAdapter(BaseAdapter):
         {"key": "api_key", "label": "API key", "required": True, "secret": True},
         {"key": "agent_login", "label": "Логин (1win.win, для баланса)", "required": False},
         {"key": "agent_password", "label": "Пароль (1win.win)", "required": False, "secret": True},
+        # the portal accepts the login only with the browser identity it saw once (as in the old panel)
+        {"key": "agent_fingerprint_id", "label": "Fingerprint ID (из старой панели)", "required": False, "advanced": True},
+        {"key": "agent_client_id", "label": "Client ID (из старой панели)", "required": False, "secret": True, "advanced": True},
+        {"key": "agent_user_agent", "label": "User-Agent браузера (из старой панели)", "required": False, "advanced": True},
     ]
 
     @property
@@ -155,10 +159,13 @@ class XapiAdapter(BaseAdapter):
                 detail = str(data.get("message") or data.get("error") or data.get("detail") or "")[:160]
             elif isinstance(data, str):
                 detail = data.strip()[:160]
+            has_identity = bool(self.creds.get("agent_fingerprint_id") or self.creds.get("agent_client_id"))
             if status in (401, 403):
-                msg = "1WIN: вход отклонён (логин/пароль или IP сервера не разрешён в кабинете 1win.win)."
+                msg = "1WIN: вход отклонён — проверьте логин и пароль, разрешение входа с IP сервера в кабинете 1win.win" + ("." if has_identity else " и заполните Fingerprint ID / Client ID из старой панели.")
             elif status == 0 or status >= 500:
                 msg = f"1WIN: 1win.win не отвечает (HTTP {status})."
+            elif status in (400, 422) and not has_identity:
+                msg = f"1WIN: портал не принял вход без идентификации браузера (HTTP {status}) — заполните Fingerprint ID, Client ID и User-Agent из старой панели."
             else:
                 msg = f"1WIN: вход не выполнен (HTTP {status})."
             return {"ok": False, "message": (msg + (" " + detail if detail else "")).strip(), "status": status}

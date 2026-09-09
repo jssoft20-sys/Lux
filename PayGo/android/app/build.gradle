@@ -1,0 +1,95 @@
+plugins {
+    id 'com.android.application'
+}
+
+// ---------------------------------------------------------------------------
+// Release signing. Secrets are NOT stored in the repository. They are read from
+//   1) android/keystore.properties (gitignored) with keys
+//        storeFile, storePassword, keyAlias, keyPassword
+//   2) or environment variables
+//        PAYGO_KEYSTORE_FILE, PAYGO_KEYSTORE_PASSWORD, PAYGO_KEY_ALIAS, PAYGO_KEY_PASSWORD
+// If nothing is configured the release APK is built unsigned.
+// ---------------------------------------------------------------------------
+def keystoreProps = new Properties()
+def keystorePropsFile = rootProject.file('keystore.properties')
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+def signingProp = { String key, String envName ->
+    String v = keystoreProps.getProperty(key)
+    if (v == null || v.trim().isEmpty()) v = System.getenv(envName)
+    return (v == null || v.trim().isEmpty()) ? null : v.trim()
+}
+def releaseStoreFile = signingProp('storeFile', 'PAYGO_KEYSTORE_FILE')
+def releaseStorePassword = signingProp('storePassword', 'PAYGO_KEYSTORE_PASSWORD')
+def releaseKeyAlias = signingProp('keyAlias', 'PAYGO_KEY_ALIAS')
+def releaseKeyPassword = signingProp('keyPassword', 'PAYGO_KEY_PASSWORD')
+def hasReleaseSigning = releaseStoreFile != null && releaseStorePassword != null &&
+        releaseKeyAlias != null && releaseKeyPassword != null
+
+android {
+    namespace 'kg.paygo.admin'
+    compileSdk 34
+    buildToolsVersion '34.0.0'
+
+    defaultConfig {
+        applicationId 'kg.paygo.admin'
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+                enableV1Signing true
+                enableV2Signing true
+                enableV3Signing true
+                enableV4Signing false
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
+        debug {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig false
+    }
+
+    dependenciesInfo {
+        includeInApk false
+        includeInBundle false
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
+
+dependencies {
+    // Only for androidx.core.content.FileProvider (camera capture output).
+    implementation 'androidx.core:core:1.13.1'
+}

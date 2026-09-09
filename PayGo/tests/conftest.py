@@ -23,6 +23,7 @@ os.environ.update({
     "ADMIN_TELEGRAM_CHAT_IDS": "",
     "PAYGO_ENV_FILE": "/nonexistent/.env",
     "QR_DECODE_WORKERS": "0",
+    "LOGIN_APPROVER_TELEGRAM_ID": "0",
 })
 
 

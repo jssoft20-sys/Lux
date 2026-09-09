@@ -127,6 +127,14 @@ class TelegramClient:
             payload["parse_mode"] = parse_mode
         return self.call("editMessageCaption", payload, retries=0)
 
+    def edit_media(self, chat_id: int, message_id: int, photo: bytes, *, caption: str = "", markup: dict | None = None, parse_mode: str | None = None, filename: str = "status.png") -> Any:
+        """Replace the photo of a sent message (a paid/cancelled/expired request loses its QR and links)."""
+        media: dict[str, Any] = {"type": "photo", "media": "attach://photo", "caption": caption[:1024]}
+        if parse_mode:
+            media["parse_mode"] = parse_mode
+        payload: dict[str, Any] = {"chat_id": int(chat_id), "message_id": int(message_id), "media": media, "reply_markup": markup if markup is not None else {"inline_keyboard": []}}
+        return self.call("editMessageMedia", payload, files={"photo": (filename, bytes(photo), "image/png")}, retries=0, timeout=30)
+
     def edit_markup(self, chat_id: int, message_id: int, markup: dict | None) -> Any:
         return self.call("editMessageReplyMarkup", {"chat_id": int(chat_id), "message_id": int(message_id), "reply_markup": markup or {"inline_keyboard": []}}, retries=0)
 
@@ -243,6 +251,16 @@ def url_buttons(buttons: Any) -> dict[str, Any] | None:
         if isinstance(b, dict) and b.get("text") and b.get("url"):
             rows.append([{"text": str(b["text"])[:64], "url": str(b["url"])}])
     return inline_keyboard(*rows) if rows else None
+
+
+def callback_buttons(rows: Any) -> dict[str, Any] | None:
+    """Inline keyboard with callback buttons from an outbox payload ``[[{"text","callback_data"}], ...]``."""
+    out = []
+    for row in rows or []:
+        items = [{"text": str(b["text"])[:64], "callback_data": str(b["callback_data"])[:64]} for b in (row or []) if isinstance(b, dict) and b.get("text") and b.get("callback_data")]
+        if items:
+            out.append(items)
+    return inline_keyboard(*out) if out else None
 
 
 def inline_keyboard(*rows: list[dict[str, Any]]) -> dict[str, Any]:

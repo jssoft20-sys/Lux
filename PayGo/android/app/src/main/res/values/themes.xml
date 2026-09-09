@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Light theme: status bar #f4f7f9 with dark icons; the web app renders in light mode. -->
+    <style name="Base.Theme.PayGo" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/paygo_bg</item>
+        <item name="android:colorPrimary">@color/paygo_blue</item>
+        <item name="android:colorPrimaryDark">@color/paygo_bg</item>
+        <item name="android:colorAccent">@color/paygo_blue</item>
+        <item name="android:statusBarColor">@color/paygo_bg</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:textColorPrimary">@color/paygo_text</item>
+    </style>
+
+    <style name="Theme.PayGo" parent="Base.Theme.PayGo" />
+</resources>

@@ -3,10 +3,11 @@
 UX follows the reference screenshots: a persistent reply keyboard
 (Пополнить / Вывести / Помощь), inline steps for site → ID → amount → QR card,
 withdrawal QR → ID → code with per-cash instruction photos, texts editable in the
-admin panel. Every screen of a flow is one editable message; final results stay
-in the chat; an expired request has its QR removed and replaced by the
-«Пополнение отменено» notice. All state is persisted in the database, every
-button press is acknowledged immediately and processed once.
+admin panel. Every screen of a flow is one editable message; nothing the client
+sent is ever deleted. When a payment request ends (paid / cancelled / expired)
+its QR picture and bank buttons are replaced by a status card, so payment data
+of a closed request never stays in the chat. All state is persisted in the
+database, every button press is acknowledged immediately and processed once.
 """
 from __future__ import annotations
 
@@ -25,6 +26,7 @@ from typing import Any
 from paygo.config import get_settings
 from paygo.db import transaction
 from paygo.models import BotSession, Deposit, Notification, PaymentCash, QrRecord, SupportMessage, User
+from paygo.services import auth as auth_service
 from paygo.services import bot_state, bot_texts, elqr, settings_store
 from paygo.services import cashes as cash_service
 from paygo.services import deposits as deposit_service
@@ -33,7 +35,7 @@ from paygo.services import users as user_service
 from paygo.services import withdrawals as withdrawal_service
 from paygo.services.logs import log_event
 from paygo.services.notifications import admin_event
-from paygo.services.qr import render_pay_card
+from paygo.services.qr import render_pay_card, render_status_card
 from paygo.services.qr_decode import decode_offloaded
 from paygo.services.qr_decode import warm_up as warm_up_qr
 from paygo.utils import as_utc, fmt_local, money, sha256_hex, utcnow
@@ -46,6 +48,7 @@ from .telegram import (
     TelegramClient,
     TelegramError,
     button,
+    callback_buttons,
     inline_keyboard,
     rating_keyboard,
     reply_keyboard,
@@ -138,30 +141,34 @@ class Ctx:
         new_id = int(sent.get("message_id") or 0)
         self.save(state, new_data, new_id)
         if old and old != new_id and not keep_previous:
-            self.bot.delete_later(self.chat_id, old)
+            self.bot.strip_buttons_later(self.chat_id, old)
         return new_id
 
-    def receipt(self, text: str, markup: dict | None = None, *, keep_data: dict[str, Any] | None = None) -> int:
-        """Final result that stays in the chat; the flow screen (QR card etc.) is removed."""
+    def receipt(self, text: str, markup: dict | None = None, *, keep_data: dict[str, Any] | None = None, final: str = "") -> int:
+        """Final result of a flow. A finished payment request (``final`` = success / cancelled /
+        expired) turns its QR card into a status card with the result as the caption — the QR
+        and the bank buttons disappear, nothing is deleted."""
         old = self.panel_id
         old_kind = str(self.data.get("panel_kind") or "text")
-        prompt = int(self.data.get("receipt_prompt_id") or 0)
-        note = int(self.data.get("receipt_note_id") or 0)
-        sent = self.bot.safe_send(self.chat_id, text, markup, protect=True)
+        notice = int(self.data.get("notice_id") or 0)
+        subtitle = ""
+        if self.data.get("pay_amount"):
+            subtitle = f"{self.data.get('pay_amount')} {self.data.get('currency') or ''}".strip() + (f" • ID {self.data.get('player_id')}" if self.data.get("player_id") else "")
         data = self.idle_data()
         if keep_data:
             data.update(keep_data)
         data["panel_kind"] = "receipt"
-        self.save("idle", data, 0)
-        if old:
-            if old_kind == "photo":
-                self.bot.delete_later(self.chat_id, old)
-            else:
+        done_in_place = bool(old and old_kind == "photo" and final and self.bot.finish_card(self.chat_id, old, final, text, subtitle, markup))
+        message_id = old
+        if not done_in_place:
+            sent = self.bot.safe_send(self.chat_id, text, markup, protect=True)
+            message_id = int(sent.get("message_id") or 0)
+            if old:
                 self.bot.strip_buttons_later(self.chat_id, old)
-        for extra in (prompt, note, int(self.data.get("notice_id") or 0)):
-            if extra:
-                self.bot.delete_later(self.chat_id, extra)
-        return int(sent.get("message_id") or 0)
+        self.save("idle", data, 0)
+        if notice:
+            self.bot.strip_buttons_later(self.chat_id, notice)
+        return message_id
 
 
 def media_file_id(message: dict[str, Any]) -> str:
@@ -213,10 +220,36 @@ class MainBot:
         return value
 
     def delete_later(self, chat_id: int, message_id: int) -> None:
+        """Only used for messages the operator deleted in the panel — the bot never auto-deletes."""
         self.side.submit(self.client.delete_message, chat_id, message_id)
 
     def strip_buttons_later(self, chat_id: int, message_id: int) -> None:
         self.side.submit(self.client.edit_markup, chat_id, message_id, None)
+
+    def finish_card(self, chat_id: int, message_id: int, kind: str, caption: str, subtitle: str = "", markup: dict | None = None) -> bool:
+        """Replace the QR picture of a request card with a status card (ОПЛАЧЕНО / ОТМЕНЕНО / ВРЕМЯ ИСТЕКЛО)."""
+        try:
+            image = render_status_card(kind, subtitle=subtitle)
+        except Exception as exc:
+            logger.warning("status card render failed: %s", exc)
+            return False
+        state = self.premium()
+        try:
+            self.client.edit_media(chat_id, message_id, image, caption=bot_texts.premiumize(caption, state), markup=bot_texts.premium_markup(markup, state), parse_mode="HTML")
+            return True
+        except TelegramError as exc:
+            if exc.parse_error:
+                try:
+                    self.client.edit_media(chat_id, message_id, image, caption=bot_texts.strip_html(caption), markup=strip_button_extras(markup))
+                    return True
+                except TelegramError as exc2:
+                    logger.info("status card fallback failed: %s", exc2)
+            elif not exc.fatal_for_chat:
+                logger.info("status card edit failed: %s", exc)
+            return False
+        except Exception as exc:  # a client without editMessageMedia (tests) or a network failure
+            logger.info("status card edit unavailable: %s", exc)
+            return False
 
     def local_file(self, rel: str) -> Path | None:
         """Photo stored by the admin panel (relative to DATA_DIR)."""
@@ -345,7 +378,6 @@ class MainBot:
         ctx = Ctx(self, chat_id, message.get("from") or {})
         ctx.load()
         text = str(message.get("text") or message.get("caption") or "").strip()
-        message_id = int(message.get("message_id") or 0)
         if text.startswith("/start"):
             parts = text.split(maxsplit=1)
             self.start(ctx, parts[1] if len(parts) > 1 else "")
@@ -356,7 +388,6 @@ class MainBot:
         with transaction() as db:
             action = bot_texts.match_menu(db, text) if text else ""
         if action:
-            self.delete_later(chat_id, message_id)
             if action == "help":
                 self.show_help(ctx)
             else:
@@ -366,8 +397,6 @@ class MainBot:
         if media_kind:
             self.on_media(ctx, message, media_kind)
             return
-        if ctx.state in FLOW_STATES:
-            self.delete_later(chat_id, message_id)
         if text.startswith("/"):
             command = text.split()[0].lower().split("@")[0]
             if command == "/help":
@@ -391,7 +420,7 @@ class MainBot:
         elif ctx.state == "wait_qr":
             ctx.panel(self.text("text_send_qr") + "\n\n❌ " + ctx.T("qr_photo_only"), self.cancel_kb(ctx))
         elif ctx.state == "wait_payment":
-            self.delete_later(chat_id, message_id)  # the card stays; stray text is removed
+            pass  # the card stays on screen; stray text is left in the chat
         elif self.support_inbox(ctx, message, text):
             pass  # reply to the operator (dialog carried by this bot) — stays in the chat
         else:
@@ -399,24 +428,19 @@ class MainBot:
 
     def on_media(self, ctx: Ctx, message: dict[str, Any], kind: str) -> None:
         """Photos are receipts / QR codes at the right steps; anything else is passed to the
-        operator (outside a flow) or removed so the chat shows only the current step."""
-        message_id = int(message.get("message_id") or 0)
+        operator (outside a flow); inside a flow they are simply ignored (never deleted)."""
         image = kind == "photo" or (kind == "document" and media_lib.is_image_document(message))
         if ctx.state == "wait_payment" and image:
             self.save_receipt(ctx, message)
-            self.delete_later(ctx.chat_id, message_id)
             return
         if ctx.state == "wait_qr" and image:
             self.on_photo(ctx, message)
             return
         if ctx.state in FLOW_STATES or ctx.state == "wait_payment":
-            self.delete_later(ctx.chat_id, message_id)
             if ctx.state == "wait_qr":
                 ctx.panel(self.text("text_send_qr") + "\n\n❌ " + ctx.T("qr_photo_only"), self.cancel_kb(ctx))
             return
-        if self.support_inbox(ctx, message, str(message.get("caption") or "").strip(), kind, create=True):
-            return
-        self.delete_later(ctx.chat_id, message_id)
+        self.support_inbox(ctx, message, str(message.get("caption") or "").strip(), kind, create=True)
 
     def support_inbox(self, ctx: Ctx, message: dict[str, Any], text: str, kind: str = "", *, create: bool = False) -> bool:
         """Route a message to the operator dialog when this bot carries it (client never opened the support bot)."""
@@ -437,6 +461,9 @@ class MainBot:
         if data.startswith("rate:"):
             self.on_rating(ctx, pressed, data)
             return
+        if data.startswith("login:"):
+            self.on_login_decision(query, chat_id, pressed, callback_id, data)
+            return
         if pressed and ctx.panel_id and pressed != ctx.panel_id and not data.startswith(("noop", "instr", "menu", "act:", "open_active", "help", "dep:", "cancel:")):
             self.strip_buttons_later(chat_id, pressed)  # button on an old screen
             return
@@ -445,7 +472,7 @@ class MainBot:
         if data.startswith("dep:"):
             notice = int(ctx.data.get("notice_id") or 0)
             if notice:
-                self.delete_later(chat_id, notice)
+                self.strip_buttons_later(chat_id, notice)
                 ctx.save(data={k: v for k, v in ctx.data.items() if k != "notice_id"})
             if data == "dep:show":
                 self.show_active_deposit(ctx)
@@ -489,6 +516,30 @@ class MainBot:
                 self.ask_code(ctx, ctx.data)
         else:
             logger.debug("unknown callback %s", data)
+
+    def on_login_decision(self, query: dict[str, Any], chat_id: int, message_id: int, callback_id: str, data: str) -> None:
+        """«✅ Подтвердить» / «❌ Отклонить» under a panel-login request (only the approver may press)."""
+        parts = data.split(":")
+        if len(parts) != 3 or not parts[2].isdigit():
+            return
+        approved, request_id = parts[1] == "ok", int(parts[2])
+        from_id = int((query.get("from") or {}).get("id") or 0)
+        with transaction() as db:
+            allowed = from_id > 0 and from_id == auth_service.approver_telegram_id(db)
+            row = auth_service.decide_login_request(db, request_id, approved, from_id) if allowed else None
+            status, username, device = (row.status, row.username, row.device) if row else ("", "", "")
+        if not allowed:
+            self.client.answer_callback(callback_id, "Подтверждать вход может только владелец", alert=True)
+            return
+        if row is None:
+            self.client.answer_callback(callback_id, "Запрос на вход не найден", alert=True)
+            return
+        label = {"approved": "✅ Вход подтверждён", "rejected": "❌ Вход отклонён", "expired": "⌛ Запрос истёк — попросите войти ещё раз", "used": "✅ Вход уже выполнен"}.get(status, status)
+        try:
+            self.safe_edit(chat_id, message_id, f"🔐 <b>Вход в панель PayGo</b>\n👤 {esc(username)} • {esc(device)}\n\n{label}", None)
+        except TelegramError as exc:
+            logger.info("login decision edit failed: %s", exc)
+        self.client.answer_callback(callback_id, label)
 
     def on_rating(self, ctx: Ctx, message_id: int, data: str) -> None:
         """⭐ under «Обращение закрыто» when the operator dialog was carried by this bot."""
@@ -535,12 +586,12 @@ class MainBot:
                 return
             ctx.save("idle", ctx.idle_data(), 0)
             if old and old_kind != "receipt":
-                self.delete_later(ctx.chat_id, old)
+                self.strip_buttons_later(ctx.chat_id, old)
             self.show_active_deposit(ctx, active)  # the card was replaced by another screen — show it again
             return
         ctx.save("idle", ctx.idle_data(), 0)
         if old and old_kind != "receipt":
-            self.delete_later(ctx.chat_id, old)
+            self.strip_buttons_later(ctx.chat_id, old)
 
     def send_greeting_sticker(self, ctx: Ctx) -> None:
         """One big premium emoji before the greeting (only when the bot may use custom emoji)."""
@@ -620,7 +671,6 @@ class MainBot:
             user = db.get(User, ctx.user_id)
             user.phone = str(contact.get("phone_number") or "")[:32]
             user.phone_verified_at = utcnow()
-        self.delete_later(ctx.chat_id, int(message.get("message_id") or 0))
         self.start(ctx)
 
     # ------------------------------------------------------------ deposit / withdraw common
@@ -898,21 +948,18 @@ class MainBot:
             left = max(0, int((as_utc(deposit.expires_at) - utcnow()).total_seconds() // 60)) if deposit.expires_at else 0
         old = int(ctx.data.get("notice_id") or 0)
         if old:
-            self.delete_later(ctx.chat_id, old)
+            self.strip_buttons_later(ctx.chat_id, old)
         text = f"⏳ У вас есть активная заявка на пополнение <b>{esc(public_id)}</b> на {esc(str(amount))} {esc(cur)}" + (f" (осталось {left} мин)" if left else "") + ".\nСначала оплатите её или отмените — потом можно оформить вывод."
         kb = inline_keyboard([button(ctx.T("show_request"), "dep:show")], [button(ctx.T("cancel_request"), f"cancel:{public_id}")], [button(ctx.T("close"), "dep:close")])
         sent = self.safe_send(ctx.chat_id, text, kb, protect=False)
         ctx.save(data={**ctx.data, "deposit_id": deposit_id, "notice_id": int(sent.get("message_id") or 0)})
 
     def cancel_deposit(self, ctx: Ctx, public_id: str) -> None:
-        notice = int(ctx.data.get("notice_id") or 0)
-        if notice:
-            self.delete_later(ctx.chat_id, notice)
         with transaction() as db:
             deposit = db.execute(select(Deposit).where(Deposit.public_id == public_id, Deposit.user_id == ctx.user_id)).scalar_one_or_none()
             if deposit and deposit.status == "created":
                 deposit_service.cancel_deposit(db, deposit, reason="user_cancelled", actor="user")
-        ctx.receipt(self.text("text_deposit_cancelled"))
+        ctx.receipt(self.text("text_deposit_cancelled"), final="cancelled")
         self.show_menu(ctx)
 
     def save_receipt(self, ctx: Ctx, message: dict[str, Any]) -> None:
@@ -941,12 +988,8 @@ class MainBot:
             deposit.receipt_at = utcnow()
             log_event(db, "Клиент прислал чек", f"{deposit.public_id} • {money(deposit.pay_amount)} {deposit.currency}", category="deposits", entity_type="deposit", entity_id=deposit.public_id)
             admin_event(db, "deposit_receipt", f"deposit_receipt:{deposit.id}:{int(time.time())}", "🧾 Чек к пополнению", f"{deposit.public_id} • {money(deposit.pay_amount)} {deposit.currency} • ID {deposit.player_id} • {ctx.name}", {"deposit_id": deposit.id, "url": f"#/deposits/{deposit.id}"})
-        prompt = int(ctx.data.get("receipt_prompt_id") or 0)
-        if prompt:
-            self.delete_later(ctx.chat_id, prompt)
-        old_note = int(ctx.data.get("receipt_note_id") or 0)
-        if old_note:
-            self.delete_later(ctx.chat_id, old_note)
+        if int(ctx.data.get("receipt_note_id") or 0):
+            return  # the client already got «чек получен» for this request — a second screenshot needs no second notice
         sent = self.safe_send(ctx.chat_id, self.text("text_receipt_ok"), None, protect=False)
         ctx.save(data={**ctx.data, "receipt_prompt_id": 0, "receipt_note_id": int(sent.get("message_id") or 0)})
 
@@ -1004,10 +1047,8 @@ class MainBot:
         self.ask_id(ctx, data)
 
     def on_photo(self, ctx: Ctx, message: dict[str, Any]) -> None:
-        message_id = int(message.get("message_id") or 0)
         if ctx.state == "wait_payment":
             self.save_receipt(ctx, message)
-            self.delete_later(ctx.chat_id, message_id)
             return
         if ctx.state != "wait_qr":
             return
@@ -1031,7 +1072,6 @@ class MainBot:
         with transaction() as db:
             qr = user_service.save_qr(db, db.get(User, ctx.user_id), file_id=file_id, file_url=url, payload=payload, bank_name=bank)
             qr_id, qr_url = qr.id, qr.file_url
-        self.delete_later(ctx.chat_id, message_id)  # the chat keeps only the current step
         self.ask_id(ctx, {**ctx.data, "qr_record_id": qr_id, "qr_file_url": qr_url})
 
     def ask_code(self, ctx: Ctx, data: dict[str, Any], error: str = "") -> None:
@@ -1152,12 +1192,12 @@ class MainBot:
                 self.safe_send(chat_id, body, None, protect=False)
             return
         if bool(data.get("replace")) and ctx.state == "wait_payment" and same_request:
-            ctx.receipt(body)
+            ctx.receipt(body, final=str(data.get("final") or ""))
             return
         if data.get("final") in {"expired", "cancelled", "success"} and same_request:
-            for extra in (int(ctx.data.get("receipt_prompt_id") or 0), int(ctx.data.get("receipt_note_id") or 0), int(ctx.data.get("notice_id") or 0)):
-                if extra:
-                    self.delete_later(chat_id, extra)
+            notice = int(ctx.data.get("notice_id") or 0)
+            if notice:
+                self.strip_buttons_later(chat_id, notice)
             ctx.save("idle", ctx.idle_data())
         tg_id = int(data.get("telegram_message_id") or 0)
         if event == "support_delete":
@@ -1175,7 +1215,7 @@ class MainBot:
                     if not exc.not_modified and not exc.cant_edit:
                         raise
             return
-        markup = url_buttons(data.get("buttons"))
+        markup = url_buttons(data.get("buttons")) or callback_buttons(data.get("inline"))
         if data.get("rating_prompt"):
             markup = rating_keyboard()
         reply_to = int(data.get("reply_to") or 0) or None

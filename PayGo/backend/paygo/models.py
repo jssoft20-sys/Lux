@@ -575,6 +575,28 @@ class AdminSession(Base):
     revoked_reason: Mapped[str] = mapped_column(String(64), default="", nullable=False)
 
 
+class LoginRequest(Base):
+    """A panel login waiting for the owner's ✅ in the main bot (device + IP shown there)."""
+
+    __tablename__ = "login_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    admin_id: Mapped[int] = mapped_column(ForeignKey("admins.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    username: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    ip: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    user_agent: Mapped[str] = mapped_column(String(300), default="", nullable=False)
+    device: Mapped[str] = mapped_column(String(200), default="", nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False, index=True)
+    # pending | approved | rejected | expired | used
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    telegram_message_id: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    session_id: Mapped[int | None] = mapped_column(ForeignKey("sessions.id", ondelete="SET NULL"))
+
+
 class AuthThrottle(Base):
     __tablename__ = "auth_throttle"
 
