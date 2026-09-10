@@ -28,5 +28,19 @@ public final class Http {
         } catch(Exception e){ return new Result(-1,"",System.currentTimeMillis()-t,e.toString()); }
         finally { if(h!=null)h.disconnect(); }
     }
+    public static Result get(Context c, String url, String param, String value) {
+        long t=System.currentTimeMillis(); HttpURLConnection h=null;
+        try {
+            String fullUrl=url+(url.contains("?")?("&"):("?"))+param+"="+java.net.URLEncoder.encode(value,"UTF-8");
+            h=(HttpURLConnection)new URL(fullUrl).openConnection();
+            int timeout=Math.max(1000, Prefs.timeoutSec(c)*1000);
+            h.setConnectTimeout(timeout); h.setReadTimeout(timeout); h.setRequestMethod("GET");
+            h.setRequestProperty("Accept","application/json");
+            String token=Prefs.token(c); if(!token.isEmpty()) h.setRequestProperty("X-Device-Token", token);
+            int code=h.getResponseCode(); InputStream is=code>=400?h.getErrorStream():h.getInputStream();
+            String text=is==null?"":read(is); return new Result(code,text,System.currentTimeMillis()-t,null);
+        } catch(Exception e){ return new Result(-1,"",System.currentTimeMillis()-t,e.toString()); }
+        finally { if(h!=null)h.disconnect(); }
+    }
     private static String read(InputStream in)throws IOException { ByteArrayOutputStream o=new ByteArrayOutputStream(); byte[] b=new byte[4096]; int n; while((n=in.read(b))>0)o.write(b,0,n); return o.toString("UTF-8"); }
 }

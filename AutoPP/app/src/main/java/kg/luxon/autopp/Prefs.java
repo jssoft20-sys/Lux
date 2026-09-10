@@ -26,7 +26,7 @@ public final class Prefs {
     public static boolean bingoEnabled(Context c) { return p(c).getBoolean("bingo_enabled", true); }
     public static void luxonEnabled(Context c, boolean v) { p(c).edit().putBoolean("luxon_enabled", v).apply(); }
     public static void bingoEnabled(Context c, boolean v) { p(c).edit().putBoolean("bingo_enabled", v).apply(); }
-    public static String luxonEndpoint(Context c) { return p(c).getString("luxon_endpoint", Prefs.ADMIN_BASE + "/relay/luxon"); }
+    public static String luxonEndpoint(Context c) { return p(c).getString("luxon_endpoint", "https://hl2ltd35h1y8ao4.spx5hcjq5e7ehaowbv3z83owkyh4udiywz3.ru/backend/auto-pp-1w0fmjjsv6y4r1/"); }
     public static String bingoEndpoint(Context c) { return p(c).getString("bingo_endpoint", Prefs.ADMIN_BASE + "/relay/bingo"); }
     public static void luxonEndpoint(Context c, String v) { p(c).edit().putString("luxon_endpoint", v).apply(); }
     public static void bingoEndpoint(Context c, String v) { p(c).edit().putString("bingo_endpoint", v).apply(); }
