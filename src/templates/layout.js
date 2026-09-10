@@ -140,7 +140,7 @@ function render(p) {
     telephone: '+' + site.phoneRaw, areaServed: { '@type': 'Country', name: 'Kyrgyzstan' }, address: { '@type': 'PostalAddress', addressLocality: 'Bishkek', addressCountry: 'KG' }, sameAs: [site.instagram],
   };
   const hh = {
-    lang, page, phone: site.phoneRaw, whatsapp: site.whatsapp, brand: site.brand,
+    lang, page, phone: site.phoneRaw, whatsapp: site.whatsapp, brand: site.brand, assets: process.env.ASSET_BASE || process.env.SITE_BASE || '', api: process.env.API_BASE || '',
     booking: t.booking, common: { min: t.common.min, metres: t.common.metres, altitude: t.altimeter.label, view: t.common.view, open: t.common.open, drag: t.common.drag, loading: t.common.loading, ready: t.common.ready },
     currency: site.currency[lang], intro: t.intro, stepOf: t.booking.stepOf, use3d, fullIntro, story: page === 'how' ? { soundOn: require('../data/story')[lang].soundOn, soundOff: require('../data/story')[lang].soundOff } : null,
     routes: routes.map((r) => ({ slug: r.slug, title: r.t[lang].title, short: r.t[lang].short, duration: r.duration, ground: r.ground, landing: r.landing, price: r.price, whole: r.price.whole || (r.price.window * 3 + r.price.middle), wholeDefined: !!r.price.whole, wholeOnly: !!r.wholeOnly, color: r.color, url: url(lang, 'routes/' + r.slug), format: r.t[lang].format, priceText: C.routePriceText(r, lang, t) })),

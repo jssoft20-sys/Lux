@@ -7,13 +7,14 @@ const geo = require('../data/kgz.geo.json');
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const attr = esc;
 
+const SITE_BASE = (process.env.SITE_BASE || '').replace(/\/+$/, '');
 function url(lang, path = '') {
   let hash = '';
   const i = path.indexOf('#');
   if (i >= 0) { hash = path.slice(i); path = path.slice(0, i); }
   path = path.replace(/^\/+|\/+$/g, '');
   const prefix = lang === site.defaultLang ? '/' : `/${lang}/`;
-  return prefix + (path ? path + '/' : '') + hash;
+  return SITE_BASE + prefix + (path ? path + '/' : '') + hash;
 }
 
 function fmtNum(n) {

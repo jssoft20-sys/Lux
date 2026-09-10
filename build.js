@@ -14,13 +14,27 @@ const { render } = require('./src/templates/layout');
 const pages = require('./src/templates/pages');
 const { url } = require('./src/templates/components');
 
-const OUT = path.join(__dirname, 'public');
+/**
+ * Environment (all optional):
+ *   OUT_DIR    — output folder (default ./public)
+ *   SITE_BASE  — path prefix for page links when the site is served from a sub-folder, e.g. /Lux (GitHub Pages)
+ *   ASSET_BASE — where /assets, /favicon.svg, /site.webmanifest live, e.g. a CDN URL (default = SITE_BASE)
+ */
+const OUT = process.env.OUT_DIR ? path.resolve(process.env.OUT_DIR) : path.join(__dirname, 'public');
+const SITE_BASE = (process.env.SITE_BASE || '').replace(/\/+$/, '');
+const ASSET_BASE = (process.env.ASSET_BASE || SITE_BASE).replace(/\/+$/, '');
 const version = Date.now().toString(36);
 
+function rebase(html) {
+  if (!ASSET_BASE) return html;
+  return html
+    .replace(/(["'(,\s])\/assets\//g, `$1${ASSET_BASE}/assets/`)
+    .replace(/(["'])\/(favicon\.svg|apple-touch-icon\.png|site\.webmanifest)/g, `$1${ASSET_BASE}/$2`);
+}
 function write(rel, content) {
   const file = path.join(OUT, rel);
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, content);
+  fs.writeFileSync(file, /\.(html|webmanifest)$/.test(rel) ? rebase(content) : content);
 }
 
 function outPath(lang, p) {
@@ -66,4 +80,5 @@ write('robots.txt', `User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: ${site.d
 write('site.webmanifest', JSON.stringify({ name: site.brandFull, short_name: site.brand, start_url: '/', display: 'standalone', background_color: '#07090c', theme_color: '#07090c', icons: [{ src: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }] }, null, 2));
 write('favicon.svg', `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#07090c"/><circle cx="32" cy="32" r="24" fill="none" stroke="#ffffff" stroke-width="2.5"/><path d="M32 32 30 12h4zM32 32l19 9-2 3.5zM32 32 13 41l-2-3.5z" fill="#ffffff"/><circle cx="32" cy="32" r="4" fill="#ffffff"/></svg>`);
 
-console.log(`built ${count} pages (${site.langs.length} languages) → ${OUT}`);
+if (OUT !== path.join(__dirname, 'public')) fs.writeFileSync(path.join(OUT, '.nojekyll'), '');
+console.log(`built ${count} pages (${site.langs.length} languages) → ${OUT}${SITE_BASE ? ' base=' + SITE_BASE : ''}${ASSET_BASE ? ' assets=' + ASSET_BASE : ''}`);

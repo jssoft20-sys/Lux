@@ -590,7 +590,7 @@
     const img = $('[data-summary-img]', bk), title = $('[data-summary-title]', bk), meta = $('[data-summary-meta]', bk), box = $('[data-calc-box]', bk), lines = $('[data-calc-lines]', bk), prepay = $('[data-prepay]', bk);
     if (!r) { title.textContent = b.pickRoute; meta.textContent = ''; box.hidden = true; return; }
     title.textContent = r.dataset.title; meta.textContent = r.dataset.meta || '';
-    if (r.dataset.img && !img.src.includes(`/${r.dataset.img}-480`)) { img.style.opacity = 0; img.onload = () => { img.style.opacity = 1; }; img.src = `/assets/img/${r.dataset.img}-480.webp`; }
+    if (r.dataset.img && !img.src.includes(`/${r.dataset.img}-480`)) { img.style.opacity = 0; img.onload = () => { img.style.opacity = 1; }; img.src = `${HH.assets || ''}/assets/img/${r.dataset.img}-480.webp`; }
     const isType = r.value.startsWith('type:');
     const segs = $$('input[name=seatType]', bk), seatsInput = $('input[name=seats]', bk);
     const wholeOnly = r.dataset.wholeOnly === '1';
@@ -638,7 +638,7 @@
       const payload = { lang: HH.lang, page: location.pathname, type: isType ? r.value.slice(5) : (fd.get('seatType') === 'whole' ? 'whole' : 'flight'), route: r ? r.dataset.title : '', date: fd.get('date') || '', seats: isType ? '' : seatsVal, seatType: isType ? '' : fd.get('seatType'), name: fd.get('name') || '', phone: phone.value, message: (fd.get('message') || '') + (!isType && total ? `\n[${HH.booking.total}: ${total}]` : ''), website: fd.get('website') || '' };
       const btn = $('[data-submit] .btn__label', bk); btn.textContent = btn.dataset.sending;
       let ok = false;
-      try { const res = await fetch('/api/book', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); ok = res.ok; } catch (err) { ok = false; }
+      try { const res = await fetch((HH.api || '') + '/api/book', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); ok = res.ok; } catch (err) { ok = false; }
       btn.textContent = btn.dataset.label;
       const wa = `${HH.whatsapp}?text=${encodeURIComponent(buildWaText(payload))}`;
       if (ok) { $$('.bk__step', bk).forEach((s) => { s.hidden = true; }); const s = $('.bk__success', bk); s.hidden = false; $('[data-wa-success]', s).href = wa; $('.bk__foot', bk).hidden = true; $('[data-progress]', bk).style.width = '100%'; }
