@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">AutoPP</string>
+    <string name="accessibility_description">AutoPP Open Bank: performs small user-configured scroll gestures while the selected bank app is open.</string>
+</resources>

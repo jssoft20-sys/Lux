@@ -1,0 +1,8 @@
+<resources>
+    <color name="black">#050807</color>
+    <color name="panel">#0B100E</color>
+    <color name="line">#26352D</color>
+    <color name="neon">#65FF3D</color>
+    <color name="white">#F4F8F5</color>
+    <color name="muted">#9AA69F</color>
+</resources>
