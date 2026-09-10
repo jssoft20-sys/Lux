@@ -6,3 +6,6 @@ build/
 *.keystore
 *.jks
 dist/
+IMPROVEMENTS.md
+SOURCE_MAP.txt
+src.orig/
