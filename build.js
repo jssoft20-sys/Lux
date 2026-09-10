@@ -23,6 +23,7 @@ const { url } = require('./src/templates/components');
 const OUT = process.env.OUT_DIR ? path.resolve(process.env.OUT_DIR) : path.join(__dirname, 'public');
 const SITE_BASE = (process.env.SITE_BASE || '').replace(/\/+$/, '');
 const ASSET_BASE = (process.env.ASSET_BASE || SITE_BASE).replace(/\/+$/, '');
+const PREVIEW = !!process.env.PREVIEW; // preview builds (GitHub Pages) are not indexed
 const version = Date.now().toString(36);
 
 function rebase(html) {
@@ -38,7 +39,7 @@ function write(rel, content) {
 }
 
 function outPath(lang, p) {
-  const u = url(lang, p).split('#')[0];
+  const u = url(lang, p).split('#')[0].slice(SITE_BASE.length);
   return path.join(u.replace(/^\//, ''), 'index.html');
 }
 
@@ -63,7 +64,7 @@ for (const lang of site.langs) {
   const t = i18n[lang];
   for (const d of defs) {
     const res = d.fn({ lang, t });
-    const html = render({ lang, t, path: d.path, page: d.page, title: res.title, description: res.description, body: res.body, jsonld: res.jsonld, noindex: res.noindex, version });
+    const html = render({ lang, t, path: d.path, page: d.page, title: res.title, description: res.description, body: res.body, jsonld: res.jsonld, noindex: res.noindex || PREVIEW, version });
     write(outPath(lang, d.path), html);
     if (!res.noindex) urls.push(site.domain + url(lang, d.path));
     count++;
@@ -76,7 +77,7 @@ for (const lang of site.langs) {
 
 // sitemap, robots, manifest, favicon
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `  <url><loc>${u}</loc></url>`).join('\n')}\n</urlset>\n`);
-write('robots.txt', `User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: ${site.domain}/sitemap.xml\n`);
+write('robots.txt', PREVIEW ? 'User-agent: *\nDisallow: /\n' : `User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: ${site.domain}/sitemap.xml\n`);
 write('site.webmanifest', JSON.stringify({ name: site.brandFull, short_name: site.brand, start_url: '/', display: 'standalone', background_color: '#07090c', theme_color: '#07090c', icons: [{ src: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }] }, null, 2));
 write('favicon.svg', `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#07090c"/><circle cx="32" cy="32" r="24" fill="none" stroke="#ffffff" stroke-width="2.5"/><path d="M32 32 30 12h4zM32 32l19 9-2 3.5zM32 32 13 41l-2-3.5z" fill="#ffffff"/><circle cx="32" cy="32" r="4" fill="#ffffff"/></svg>`);
 

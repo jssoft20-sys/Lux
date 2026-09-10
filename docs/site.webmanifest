@@ -1,0 +1,15 @@
+{
+  "name": "HeliHop Travel",
+  "short_name": "HeliHop",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07090c",
+  "theme_color": "#07090c",
+  "icons": [
+    {
+      "src": "https://cdn.jsdelivr.net/gh/jssoft20-sys/Lux@32940efd015ed74acb5ddab11b746d33b2f3a2a7/public/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}
