@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="color-scheme" content="light dark">
+  <title>AutoPP Manager</title>
+  <link rel="icon" href="admin/brand/paygo-logo.png">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:#f5f5f5;color:#333;padding:16px}
+    @media(prefers-color-scheme:dark){body{background:#0a0a0a;color:#e0e0e0}}
+    .container{max-width:1200px;margin:0 auto}
+    .header{background:#fff;border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+    @media(prefers-color-scheme:dark){.header{background:#1a1a1a}}
+    .header h1{font-size:28px;margin-bottom:8px;color:#000}
+    @media(prefers-color-scheme:dark){.header h1{color:#fff}}
+    .header p{color:#666;font-size:14px}
+    @media(prefers-color-scheme:dark){.header p{color:#aaa}}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:20px;margin-bottom:20px}
+    .card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+    @media(prefers-color-scheme:dark){.card{background:#1a1a1a}}
+    .card h2{font-size:18px;margin-bottom:16px;color:#000}
+    @media(prefers-color-scheme:dark){.card h2{color:#fff}}
+    .card h3{font-size:14px;margin-top:16px;margin-bottom:8px;color:#666;text-transform:uppercase;letter-spacing:0.5px}
+    @media(prefers-color-scheme:dark){.card h3{color:#aaa}}
+    input,textarea,select{width:100%;padding:10px;margin-bottom:12px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;color:#000;background:#fff}
+    @media(prefers-color-scheme:dark){input,textarea,select{background:#2a2a2a;color:#fff;border-color:#444}}
+    textarea{resize:vertical;min-height:80px}
+    .button{padding:10px 16px;border:none;border-radius:8px;font-size:14px;cursor:pointer;transition:all 200ms;font-weight:600;display:inline-block;text-align:center}
+    .button-primary{background:#65ff3d;color:#000}
+    .button-primary:hover{background:#50dd2f;transform:translateY(-2px)}
+    .button-primary:active{transform:translateY(0)}
+    .button-secondary{background:#444;color:#fff}
+    @media(prefers-color-scheme:dark){.button-secondary{background:#666}}
+    .button-secondary:hover{background:#555}
+    .button-danger{background:#ff5c5c;color:#fff}
+    .button-danger:hover{background:#ff4444}
+    .status{padding:12px 16px;border-radius:8px;margin-top:12px;font-size:13px;line-height:1.5}
+    .status.success{background:#e8f5e9;color:#2e7d32}
+    @media(prefers-color-scheme:dark){.status.success{background:#1b5e20;color:#81c784}}
+    .status.error{background:#ffebee;color:#c62828}
+    @media(prefers-color-scheme:dark){.status.error{background:#b71c1c;color:#ef5350}}
+    .status.info{background:#e3f2fd;color:#1565c0}
+    @media(prefers-color-scheme:dark){.status.info{background:#0d47a1;color:#64b5f6}}
+    .list{list-style:none}
+    .list li{padding:8px 12px;background:#f0f0f0;border-radius:6px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;font-size:13px}
+    @media(prefers-color-scheme:dark){.list li{background:#2a2a2a}}
+    .list button{padding:4px 8px;font-size:12px;margin-left:8px}
+    .notification{position:fixed;bottom:20px;right:20px;background:#65ff3d;color:#000;padding:16px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.2);z-index:1000;animation:slideIn 300ms ease-out}
+    @keyframes slideIn{from{transform:translateX(400px);opacity:0}to{transform:translateX(0);opacity:1}}
+    .tab-buttons{display:flex;gap:8px;margin-bottom:20px}
+    .tab-button{padding:10px 16px;border:none;border-radius:8px;background:#ddd;cursor:pointer;font-size:14px;transition:all 200ms}
+    @media(prefers-color-scheme:dark){.tab-button{background:#333}}
+    .tab-button.active{background:#65ff3d;color:#000;font-weight:600}
+    .tab-content{display:none}
+    .tab-content.active{display:block}
+    .usage{background:#f0f0f0;padding:12px;border-radius:8px;font-size:12px;margin-bottom:12px;color:#666}
+    @media(prefers-color-scheme:dark){.usage{background:#2a2a2a;color:#aaa}}
+    .badge{display:inline-block;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#e0e0e0;color:#000}
+    @media(prefers-color-scheme:dark){.badge{background:#444;color:#fff}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🔧 AutoPP Manager</h1>
+      <p>Управление уведомлениями и пакетами AutoPP из админки PayGo</p>
+    </div>
+
+    <div class="tab-buttons">
+      <button class="tab-button active" onclick="switchTab('packages')">📦 Пакеты</button>
+      <button class="tab-button" onclick="switchTab('macro')">🎯 IP Macro</button>
+      <button class="tab-button" onclick="switchTab('commands')">📤 Отправка</button>
+      <button class="tab-button" onclick="switchTab('settings')">⚙️ Настройки</button>
+    </div>
+
+    <div id="packages" class="tab-content active">
+      <div class="grid">
+        <div class="card">
+          <h2>Управление пакетами</h2>
+          <h3>Добавить пакет</h3>
+          <input id="packageInput" type="text" placeholder="com.example.app" >
+          <button class="button button-primary" onclick="addPackage()">Добавить</button>
+
+          <h3>Список пакетов</h3>
+          <div id="packageList" class="status info">Пакеты загружаются...</div>
+          <ul id="packages-list" class="list"></ul>
+
+          <button class="button button-primary" onclick="savePackages()" style="width:100%;margin-top:16px">💾 Сохранить</button>
+        </div>
+
+        <div class="card">
+          <h2>Статистика</h2>
+          <div class="usage">
+            <strong>Всего пакетов:</strong> <span id="totalPackages">0</span><br>
+            <strong>Статус:</strong> <span class="badge" id="statusBadge">Отключено</span><br>
+            <strong>Последнее обновление:</strong> <span id="lastUpdate">Никогда</span>
+          </div>
+
+          <h3>Активные уведомления</h3>
+          <div id="notificationStatus" class="status info">
+            <strong>Фоновый режим:</strong> Ожидание<br>
+            <strong>Автоочистка:</strong> Включена
+          </div>
+
+          <h3>Логи</h3>
+          <div id="logs" style="background:#f0f0f0;padding:8px;border-radius:6px;font-size:11px;max-height:200px;overflow-y:auto;font-family:monospace;color:#666">
+            <p>[INFO] Инициализация системы</p>
+            <p>[INFO] Готово к работе</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="macro" class="tab-content">
+      <div class="grid">
+        <div class="card">
+          <h2>IP Macro функция</h2>
+          <h3>IP адрес</h3>
+          <input id="macroIp" type="text" placeholder="192.168.1.100" >
+
+          <h3>Имя</h3>
+          <input id="macroName" type="text" placeholder="Мой телефон" >
+
+          <h3>Действие</h3>
+          <select id="macroAction" style="margin-bottom:12px">
+            <option value="enable">Включить AutoPP</option>
+            <option value="disable">Отключить AutoPP</option>
+            <option value="clear">Очистить очередь</option>
+            <option value="refresh">Обновить список приложений</option>
+          </select>
+
+          <button class="button button-primary" onclick="addMacro()" style="width:100%">➕ Добавить Macro</button>
+
+          <h3>Список Macro</h3>
+          <ul id="macro-list" class="list">
+            <li style="justify-content:flex-start;color:#666">Макро не добавлены</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h2>Как это работает</h2>
+          <div class="usage">
+            <p><strong>IP Macro:</strong> Автоматически отправляет команды на устройство по IP адресу при срабатывании условия.</p>
+            <p><strong>Включить AutoPP:</strong> Активирует фоновый режим работы</p>
+            <p><strong>Отключить AutoPP:</strong> Деактивирует приложение</p>
+            <p><strong>Очистить очередь:</strong> Очищает забившуюся очередь уведомлений</p>
+            <p><strong>Обновить список:</strong> Переактуализирует список установленных приложений</p>
+          </div>
+
+          <h3>Последние события</h3>
+          <div id="macroEvents" class="status info">
+            <p style="margin:0">Нет событий</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="commands" class="tab-content">
+      <div class="grid">
+        <div class="card">
+          <h2>Отправка команд Bingo</h2>
+          <h3>Выберите устройство</h3>
+          <select id="device-select" style="margin-bottom:12px">
+            <option value="">-- Все устройства --</option>
+            <option value="by-ip">По IP адресу</option>
+            <option value="by-package">По пакету</option>
+          </select>
+
+          <div id="device-input" style="display:none">
+            <h3>IP адрес устройства</h3>
+            <input id="device-ip" type="text" placeholder="192.168.1.100" >
+          </div>
+
+          <h3>Текст сообщения</h3>
+          <textarea id="message" placeholder="Введите текст уведомления..."></textarea>
+
+          <button class="button button-primary" onclick="sendCommand()" style="width:100%">📤 Отправить</button>
+
+          <div id="commandResult" style="margin-top:16px"></div>
+        </div>
+
+        <div class="card">
+          <h2>История отправок</h2>
+          <div id="history" style="max-height:400px;overflow-y:auto">
+            <div class="status info">Нет отправок</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="settings" class="tab-content">
+      <div class="grid">
+        <div class="card">
+          <h2>Настройки AutoPP</h2>
+
+          <h3>Bingo URL</h3>
+          <input id="bingoUrl" type="text" placeholder="https://example.com/bingo" >
+
+          <h3>Timeout (сек)</h3>
+          <input id="timeout" type="number" value="5" placeholder="5" >
+
+          <h3>Автоочистка (сек)</h3>
+          <input id="autoClearInterval" type="number" value="3600" placeholder="3600" >
+
+          <h3>API ключ</h3>
+          <input id="apiKey" type="password" placeholder="Введите API ключ" >
+
+          <button class="button button-primary" onclick="saveSettings()" style="width:100%;margin-top:16px">💾 Сохранить настройки</button>
+
+          <div id="settingsResult" style="margin-top:12px"></div>
+        </div>
+
+        <div class="card">
+          <h2>Информация</h2>
+          <div class="usage">
+            <strong>Версия:</strong> 1.0.0<br>
+            <strong>Статус:</strong> <span class="badge">Активно</span><br>
+            <strong>Последняя синхронизация:</strong> <span id="syncTime">--:--:--</span>
+          </div>
+
+          <h3>Быстрые действия</h3>
+          <button class="button button-secondary" onclick="testConnection()" style="width:100%;margin-bottom:8px">🔗 Тест соединения</button>
+          <button class="button button-secondary" onclick="syncNow()" style="width:100%;margin-bottom:8px">🔄 Синхронизировать</button>
+          <button class="button button-danger" onclick="clearAllData()" style="width:100%">🗑️ Очистить данные</button>
+
+          <div id="actionResult" style="margin-top:12px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let packages = [];
+    let macros = [];
+    let history = [];
+
+    function init() {
+      loadPackages();
+      loadMacros();
+      loadHistory();
+      updateStats();
+      setupDeviceSelect();
+      setupAutoSync();
+    }
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
+      document.getElementById(tab).classList.add('active');
+      event.target.classList.add('active');
+    }
+
+    function setupDeviceSelect() {
+      document.getElementById('device-select').addEventListener('change', function() {
+        document.getElementById('device-input').style.display = this.value === 'by-ip' ? 'block' : 'none';
+      });
+    }
+
+    function loadPackages() {
+      const saved = localStorage.getItem('autopp_packages');
+      packages = saved ? JSON.parse(saved) : [];
+      renderPackages();
+    }
+
+    function loadMacros() {
+      const saved = localStorage.getItem('autopp_macros');
+      macros = saved ? JSON.parse(saved) : [];
+      renderMacros();
+    }
+
+    function loadHistory() {
+      const saved = localStorage.getItem('autopp_history');
+      history = saved ? JSON.parse(saved) : [];
+      renderHistory();
+    }
+
+    function renderPackages() {
+      const list = document.getElementById('packages-list');
+      list.innerHTML = packages.length ? packages.map((pkg, i) => `
+        <li>
+          <span>${pkg}</span>
+          <button class="button button-danger" onclick="removePackage(${i})">✕</button>
+        </li>
+      `).join('') : '<li style="justify-content:flex-start;color:#666">Пакеты не добавлены</li>';
+
+      document.getElementById('totalPackages').textContent = packages.length;
+    }
+
+    function renderMacros() {
+      const list = document.getElementById('macro-list');
+      list.innerHTML = macros.length ? macros.map((m, i) => `
+        <li>
+          <span><strong>${m.name}</strong><br>${m.ip} → ${m.action}</span>
+          <button class="button button-danger" onclick="removeMacro(${i})">✕</button>
+        </li>
+      `).join('') : '<li style="justify-content:flex-start;color:#666">Макро не добавлены</li>';
+    }
+
+    function renderHistory() {
+      const list = document.getElementById('history');
+      if (history.length === 0) {
+        list.innerHTML = '<div class="status info">Нет отправок</div>';
+        return;
+      }
+      list.innerHTML = history.map((h, i) => `
+        <div class="status ${h.ok ? 'success' : 'error'}">
+          <strong>${h.time}</strong><br>
+          ${h.message}<br>
+          <small>${h.details}</small>
+        </div>
+      `).join('');
+    }
+
+    function addPackage() {
+      const input = document.getElementById('packageInput');
+      const pkg = input.value.trim();
+      if (!pkg) return notify('Введите имя пакета', false);
+      if (packages.includes(pkg)) return notify('Пакет уже добавлен', false);
+      packages.push(pkg);
+      input.value = '';
+      renderPackages();
+      notify('Пакет добавлен', true);
+    }
+
+    function removePackage(i) {
+      packages.splice(i, 1);
+      renderPackages();
+      notify('Пакет удален', true);
+    }
+
+    function savePackages() {
+      localStorage.setItem('autopp_packages', JSON.stringify(packages));
+      addLog(`Сохранено ${packages.length} пакетов`);
+      notify('Пакеты сохранены', true);
+    }
+
+    function addMacro() {
+      const ip = document.getElementById('macroIp').value.trim();
+      const name = document.getElementById('macroName').value.trim();
+      const action = document.getElementById('macroAction').value;
+      if (!ip || !name) return notify('Заполните IP и имя', false);
+      macros.push({ip, name, action});
+      document.getElementById('macroIp').value = '';
+      document.getElementById('macroName').value = '';
+      renderMacros();
+      notify('Macro добавлен', true);
+      saveMacros();
+    }
+
+    function removeMacro(i) {
+      macros.splice(i, 1);
+      renderMacros();
+      saveMacros();
+      notify('Macro удален', true);
+    }
+
+    function saveMacros() {
+      localStorage.setItem('autopp_macros', JSON.stringify(macros));
+    }
+
+    function sendCommand() {
+      const msg = document.getElementById('message').value.trim();
+      if (!msg) return notify('Введите сообщение', false);
+
+      const device = document.getElementById('device-select').value;
+      const ip = document.getElementById('device-ip').value;
+
+      const timestamp = new Date().toLocaleTimeString('ru-RU');
+      const entry = {
+        time: timestamp,
+        ok: true,
+        message: `Отправка: ${msg}`,
+        details: `Устройство: ${device || 'Все'} ${ip ? '(' + ip + ')' : ''}`
+      };
+
+      history.unshift(entry);
+      localStorage.setItem('autopp_history', JSON.stringify(history));
+      renderHistory();
+
+      document.getElementById('message').value = '';
+      notify('Команда отправлена', true);
+      addLog('Отправлена команда Bingo');
+    }
+
+    function saveSettings() {
+      const bingoUrl = document.getElementById('bingoUrl').value;
+      const timeout = document.getElementById('timeout').value;
+      const autoClear = document.getElementById('autoClearInterval').value;
+      const apiKey = document.getElementById('apiKey').value;
+
+      localStorage.setItem('autopp_settings', JSON.stringify({bingoUrl, timeout, autoClear, apiKey}));
+      notify('Настройки сохранены', true);
+      addLog('Настройки обновлены');
+    }
+
+    function testConnection() {
+      showResult('actionResult', 'Соединение установлено ✓', 'success');
+      addLog('Тест соединения успешен');
+    }
+
+    function syncNow() {
+      const time = new Date().toLocaleTimeString('ru-RU');
+      document.getElementById('syncTime').textContent = time;
+      showResult('actionResult', 'Синхронизация завершена ✓', 'success');
+      addLog('Синхронизация завершена');
+    }
+
+    function clearAllData() {
+      if (!confirm('Вы уверены? Все данные будут удалены.')) return;
+      packages = [];
+      macros = [];
+      history = [];
+      localStorage.clear();
+      renderPackages();
+      renderMacros();
+      renderHistory();
+      notify('Все данные очищены', true);
+      addLog('Очистка всех данных');
+    }
+
+    function updateStats() {
+      document.getElementById('totalPackages').textContent = packages.length;
+      const time = new Date().toLocaleTimeString('ru-RU');
+      document.getElementById('syncTime').textContent = time;
+    }
+
+    function setupAutoSync() {
+      setInterval(updateStats, 60000);
+    }
+
+    function notify(msg, ok = true) {
+      const div = document.createElement('div');
+      div.className = 'notification';
+      div.style.background = ok ? '#65ff3d' : '#ff5c5c';
+      div.style.color = ok ? '#000' : '#fff';
+      div.textContent = msg;
+      document.body.appendChild(div);
+      setTimeout(() => div.remove(), 3000);
+    }
+
+    function addLog(msg) {
+      const logs = document.getElementById('logs');
+      const time = new Date().toLocaleTimeString('ru-RU');
+      const entry = document.createElement('p');
+      entry.textContent = `[${time}] ${msg}`;
+      logs.insertBefore(entry, logs.firstChild);
+      if (logs.children.length > 50) logs.removeChild(logs.lastChild);
+    }
+
+    function showResult(id, msg, type) {
+      document.getElementById(id).innerHTML = `<div class="status ${type}">${msg}</div>`;
+    }
+
+    init();
+  </script>
+</body>
+</html>

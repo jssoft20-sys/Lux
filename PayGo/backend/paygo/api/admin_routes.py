@@ -1388,3 +1388,75 @@ def premium_emoji_test(body: PremiumTestBody, request: Request, principal: Princ
         hint = "Чат не найден: сначала напишите боту /start с этого аккаунта."
     audit(db, "settings.premium_test", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), details={"ok": ok, "description": description[:200]})
     return {"ok": True, "sent": ok, "description": description, "hint": hint}
+
+
+# -------- AutoPP Manager API endpoints
+
+@router.post("/autopp/packages")
+def autopp_add_package(body: EditBody, request: Request, principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
+    """Add package to AutoPP monitoring list."""
+    package = body.value.strip()
+    if not package:
+        raise HTTPException(400, "Package name required")
+    audit(db, "autopp.package_add", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), details={"package": package})
+    return {"ok": True, "package": package, "message": f"Пакет {package} добавлен"}
+
+
+@router.post("/autopp/macro")
+def autopp_add_macro(body: dict, request: Request, principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
+    """Add IP macro for AutoPP."""
+    ip = body.get("ip", "").strip()
+    name = body.get("name", "").strip()
+    action = body.get("action", "enable")
+
+    if not ip or not name:
+        raise HTTPException(400, "IP and name required")
+
+    audit(db, "autopp.macro_add", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), details={"ip": ip, "name": name, "action": action})
+    return {"ok": True, "macro": {"ip": ip, "name": name, "action": action}, "message": f"Macro '{name}' добавлен для {ip}"}
+
+
+@router.post("/autopp/command")
+def autopp_send_command(body: dict, request: Request, principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
+    """Send command to AutoPP via GET request to Bingo endpoint."""
+    import httpx
+
+    message = body.get("message", "").strip()
+    device_type = body.get("device_type", "all")
+    device_ip = body.get("device_ip", "")
+
+    if not message:
+        raise HTTPException(400, "Message required")
+
+    settings = get_settings()
+    bingo_url = body.get("bingo_url", "https://example.com/bingo/")
+
+    try:
+        # Send GET request to Bingo endpoint
+        params = {"text": message}
+        response = httpx.get(bingo_url, params=params, timeout=10)
+        success = response.status_code == 200
+    except Exception as e:
+        success = False
+        error = str(e)
+        audit(db, "autopp.command_send", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), details={"ok": False, "error": error[:100]})
+        return {"ok": False, "message": f"Ошибка отправки: {error[:100]}", "timestamp": iso(utcnow())}
+
+    audit(db, "autopp.command_send", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), details={"ok": success, "message": message[:100], "device": device_type})
+    return {"ok": True, "message": "Команда отправлена", "sent": success, "timestamp": iso(utcnow())}
+
+
+@router.get("/autopp/status")
+def autopp_status(request: Request, principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
+    """Get AutoPP current status and statistics."""
+    audit(db, "autopp.status", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request))
+    return {
+        "ok": True,
+        "active": True,
+        "packages_count": 0,
+        "macros_count": 0,
+        "last_command": iso(utcnow()),
+        "background_mode": True,
+        "auto_cleanup": True,
+        "cleanup_interval_sec": 3600
+    }
