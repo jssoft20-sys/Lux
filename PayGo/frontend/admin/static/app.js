@@ -231,24 +231,24 @@
   function parseHash() { const parts = (location.hash || '#/home').replace(/^#\/?/, '').split('/'); return { page: parts[0] || 'home', id: parts[1] || null, sub: parts[2] || null }; }
   window.addEventListener('hashchange', () => { closeSheets(); state.route = parseHash(); render(); window.scrollTo(0, 0); });
   const go = (hash) => { location.hash = hash; };
-  const TOP = ['home', 'history', 'chats', 'search', 'menu'];
-  const NAV = [['home', 'Главная', 'home'], ['history', 'История', 'history'], ['chats', 'Чат', 'chat'], ['search', 'Поиск', 'search'], ['menu', 'Меню', 'menu']];
+  const TOP = ['home', 'history', 'chats', 'search', 'users', 'menu'];
+  const NAV = [['home', 'Главная', 'home'], ['history', 'История', 'history'], ['chats', 'Чат', 'chat'], ['search', 'Поиск', 'search'], ['users', 'Люди', 'user'], ['menu', 'Меню', 'menu']];
   function can(p) { return !!(state.admin && state.admin.permissions.includes(p)); }
   function navBadge(page) { const q = state.live && state.live.queues; if (!q) return 0; if (page === 'home') return q.deposits_failed + q.withdrawals_attention; if (page === 'chats') return q.support_waiting; return 0; }
   function render() {
     const app = $('#app'); app.innerHTML = '';
     if (!state.admin) { app.appendChild(loginView()); return; }
     const page = state.route.page;
-    const noNav = page === 'chats' && !!state.route.id;
+    const noNav = (page === 'chats' || page === 'users') && !!state.route.id;
     const shell = h('div', { class: 'shell page-in ' + (noNav ? 'no-nav' : '') });
     document.documentElement.classList.toggle('chat-open', noNav);
     app.appendChild(shell);
-    const views = { home: homeView, history: historyView, chats: chatsView, search: searchView, menu: menuView, manage: manageView, stats: statsView, cashes: cashesView, events: eventsView, wallets: walletsView, broadcast: broadcastView, security: securityView, quick: quickView, logs: logsView, settings: settingsView, macrodroid: macrodroidView, deposits: (m) => txDetailView(m, 'deposits', state.route.id), withdrawals: (m) => txDetailView(m, 'withdrawals', state.route.id), users: (m) => userDetailView(m, state.route.id), push: pushView, env: envView };
+    const views = { home: homeView, history: historyView, chats: chatsView, search: searchView, users: state.route.id ? (m) => userDetailView(m, state.route.id) : usersView, menu: menuView, manage: manageView, stats: statsView, cashes: cashesView, events: eventsView, wallets: walletsView, broadcast: broadcastView, security: securityView, quick: quickView, logs: logsView, settings: settingsView, macrodroid: macrodroidView, deposits: (m) => txDetailView(m, 'deposits', state.route.id), withdrawals: (m) => txDetailView(m, 'withdrawals', state.route.id), push: pushView, env: envView };
     (views[page] || homeView)(shell);
     if (!noNav) shell.appendChild(bottomNav(page));
   }
   function bottomNav(page) {
-    const active = TOP.includes(page) ? page : (['deposits', 'withdrawals'].includes(page) ? 'home' : page === 'users' ? 'search' : 'menu');
+    const active = TOP.includes(page) ? page : (['deposits', 'withdrawals'].includes(page) ? 'home' : 'menu');
     return h('nav', { class: 'bottom-nav' }, NAV.map(([key, label, icon]) => { const n = navBadge(key); return h('button', { class: 'nav-item ' + (active === key ? 'active' : ''), onclick: () => go('#/' + key) }, h('span', { class: 'nav-icon' }, svg(icon, 20), n ? h('span', { class: 'nav-badge' }, n > 99 ? '99+' : n) : null), label); }));
   }
   function updateBadges() { document.querySelectorAll('.bottom-nav .nav-item').forEach((b, i) => { const key = NAV[i][0]; const old = b.querySelector('.nav-badge'); if (old) old.remove(); const n = navBadge(key); if (n) b.querySelector('.nav-icon').appendChild(h('span', { class: 'nav-badge' }, n > 99 ? '99+' : n)); }); }
@@ -401,6 +401,36 @@
     screen.appendChild(results); run(); setTimeout(() => input.focus(), 50);
   }
 
+  /* ------------------------------------------------------------- users (Люди) */
+  function usersView(shell) {
+    const screen = h('section', { class: 'screen' }); shell.appendChild(screen);
+    const filter = h('select', { class: 'select' }, [['all', 'Все пользователи'], ['active', 'Активные'], ['blocked', 'Заблокированные']].map(([v, l]) => h('option', { value: v }, l)));
+    const search = h('input', { placeholder: 'Поиск по имени или TG ID' });
+    const sortBy = h('select', { class: 'select' }, [['recent', 'По дате (новые)'], ['name', 'По имени'], ['balance', 'По балансу']].map(([v, l]) => h('option', { value: v }, l)));
+    const listBox = h('div');
+    screen.appendChild(h('div', { class: 'card', style: { padding: '11px', marginBottom: '10px' } }, h('div', { class: 'searchbar' }, svg('search', 20), search), h('div', { style: { marginTop: '9px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' } }, filter, sortBy)));
+    screen.appendChild(listBox);
+    async function load() {
+      listBox.innerHTML = ''; listBox.appendChild(loader());
+      try {
+        const q = search.value.trim(); const f = filter.value; const sort = sortBy.value;
+        let url = '/users?size=100';
+        if (q) url += '&q=' + encodeURIComponent(q);
+        if (f === 'active') url += '&blocked=false';
+        if (f === 'blocked') url += '&blocked=true';
+        url += '&sort=' + sort;
+        const r = await api(url);
+        listBox.innerHTML = '';
+        if (!r.items || !r.items.length) return listBox.appendChild(empty('Нет пользователей', f === 'blocked' ? 'Заблокированных пользователей не найдено' : 'Пользователи не найдены', 'user'));
+        const total = r.total || 0;
+        const blocked = r.items.filter(u => u.is_blocked).length;
+        listBox.appendChild(h('div', { class: 'section-title' }, h('h2', null, 'Пользователи · ' + total), h('small', null, blocked ? blocked + ' заблок. · ' : '', r.items.length + ' показано')));
+        r.items.forEach((u) => listBox.appendChild(h('button', { class: 'card row-card', onclick: () => go('#/users/' + u.id) }, h('span', { class: 'avatar mini' }, (u.name || '?').charAt(0).toUpperCase()), h('div', null, h('b', null, u.name, u.username ? ' · @' + u.username : ''), h('small', null, 'TG ' + u.telegram_id + ' · ПП ' + (u.deposits_count || 0) + ' · ВВ ' + (u.withdrawals_count || 0))), u.is_blocked ? h('span', { class: 'pill red' }, u.block_reason ? u.block_reason.slice(0, 20) + (u.block_reason.length > 20 ? '…' : '') : 'блок') : h('span', { class: 'pill' }, u.balance_usd || '0.00' + ' $'))));
+      } catch (e) { listBox.innerHTML = ''; listBox.appendChild(empty('Ошибка', e.message)); }
+    }
+    search.addEventListener('input', debounce(load, 300)); filter.addEventListener('change', load); sortBy.addEventListener('change', load);
+    load();
+  }
 
   /* ------------------------------------------------------------- chats (Чат) */
   function chatsView(shell) {
@@ -750,7 +780,7 @@
   /* ------------------------------------------------------------- users (client profile) */
   function userDetailView(shell, id) {
     const screen = h('section', { class: 'screen' }); shell.appendChild(screen);
-    screen.appendChild(header('Клиент', { back: () => (history.length > 1 ? history.back() : go('#/search')) }));
+    screen.appendChild(header('Клиент', { back: () => (history.length > 1 ? history.back() : go('#/users')) }));
     const box = h('div', null, loader()); screen.appendChild(box);
     const draw = async () => {
       try {
