@@ -1,0 +1,20 @@
+{
+  "name": "luxon-optima-login",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Chromium login helper for the LuxOn Optima Hub (generates the reCAPTCHA captoken and TOTP session).",
+  "bin": {
+    "optima-login": "optima_login.mjs"
+  },
+  "scripts": {
+    "login": "node optima_login.mjs",
+    "postinstall-browser": "playwright install chromium"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "playwright": "^1.63.0"
+  }
+}
