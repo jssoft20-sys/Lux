@@ -1,0 +1,23 @@
+# LuxOn Optima Hub — systemd unit (шаблон).
+# 1) Скопируйте проект в /opt/luxon-optima
+# 2) Отредактируйте User и пути при необходимости
+# 3) sudo cp optima.service /etc/systemd/system/optima.service
+#    sudo systemctl daemon-reload && sudo systemctl enable --now optima
+#    journalctl -u optima -f     # логи
+[Unit]
+Description=LuxOn Optima Hub
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/luxon-optima
+EnvironmentFile=/opt/luxon-optima/.env
+ExecStart=/usr/bin/python3 optima.py --serve
+Restart=always
+RestartSec=3
+# Раскомментируйте и укажите непривилегированного пользователя:
+# User=optima
+# Group=optima
+
+[Install]
+WantedBy=multi-user.target
