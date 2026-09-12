@@ -1,0 +1,25 @@
+{
+  "name": "Sprinter Go — грузоперевозки в Бишкеке",
+  "short_name": "Sprinter Go",
+  "description": "Грузовое такси, переезды, грузчики, упаковка и сборка мебели в Бишкеке. От 1 500 сом.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "lang": "ru",
+  "dir": "ltr",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFDF00",
+  "categories": ["business", "transportation"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Рассчитать стоимость", "url": "/#calc", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Позвонить", "url": "tel:+996755555357" }
+  ]
+}

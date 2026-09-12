@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+Disallow: /deploy/
+Disallow: /server.py
+Disallow: /*.sh$
+Disallow: /README.md
+
+User-agent: Yandex
+Allow: /
+Disallow: /deploy/
+Disallow: /server.py
+Disallow: /*.sh$
+Disallow: /README.md
+
+Sitemap: https://gruzoperevozki.biz.kg/sitemap.xml
