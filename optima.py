@@ -1393,10 +1393,25 @@ def serve() -> None:
     init_db()
     ensure_admin_password()
     seed_from_env()
-    threading.Thread(target=background_worker, daemon=True).start()
-    srv = ThreadingHTTPServer((HOST, PORT), Handler)
+    try:
+        srv = ThreadingHTTPServer((HOST, PORT), Handler)
+    except OSError as e:
+        if getattr(e, "errno", None) == errno.EADDRINUSE:
+            print(
+                f"[ошибка] Порт {PORT} уже занят — вероятно, сервер уже запущен.\n"
+                f"  Проверить:   curl -s http://127.0.0.1:{PORT}/optima/_/health\n"
+                f"  Кто держит:  ss -ltnp | grep :{PORT}\n"
+                f"  Остановить:  pkill -f 'optima.py --serve'\n"
+                f"  Сменить порт: OPTIMA_PORT=7095 в .env",
+                flush=True,
+            )
+            raise SystemExit(1)
+        raise
     srv.daemon_threads = True
+    threading.Thread(target=background_worker, daemon=True).start()
     print(f"LuxOn Optima Hub ready → http://{HOST}:{PORT}/  (admin password protected)", flush=True)
+    if HOST in ("127.0.0.1", "localhost"):
+        print("  [подсказка] слушает только localhost. Для доступа снаружи задайте OPTIMA_HOST=0.0.0.0 в .env", flush=True)
     try:
         srv.serve_forever(poll_interval=0.25)
     except KeyboardInterrupt:
