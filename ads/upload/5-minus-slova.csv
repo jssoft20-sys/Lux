@@ -1,0 +1,84 @@
+﻿Action,Negative keyword list name,Negative keyword,Keyword or list,Match type
+Add,SG минус-слова,работа,Keyword,Phrase match
+Add,SG минус-слова,вакансия,Keyword,Phrase match
+Add,SG минус-слова,вакансии,Keyword,Phrase match
+Add,SG минус-слова,требуется,Keyword,Phrase match
+Add,SG минус-слова,резюме,Keyword,Phrase match
+Add,SG минус-слова,зарплата,Keyword,Phrase match
+Add,SG минус-слова,подработка,Keyword,Phrase match
+Add,SG минус-слова,ищу работу,Keyword,Phrase match
+Add,SG минус-слова,курсы,Keyword,Phrase match
+Add,SG минус-слова,обучение,Keyword,Phrase match
+Add,SG минус-слова,жумуш,Keyword,Phrase match
+Add,SG минус-слова,жумуш керек,Keyword,Phrase match
+Add,SG минус-слова,иш издейм,Keyword,Phrase match
+Add,SG минус-слова,айлык,Keyword,Phrase match
+Add,SG минус-слова,акысыз,Keyword,Phrase match
+Add,SG минус-слова,бекер,Keyword,Phrase match
+Add,SG минус-слова,купить,Keyword,Phrase match
+Add,SG минус-слова,продажа,Keyword,Phrase match
+Add,SG минус-слова,продам,Keyword,Phrase match
+Add,SG минус-слова,продается,Keyword,Phrase match
+Add,SG минус-слова,сатылат,Keyword,Phrase match
+Add,SG минус-слова,сатам,Keyword,Phrase match
+Add,SG минус-слова,бу,Keyword,Phrase match
+Add,SG минус-слова,б у,Keyword,Phrase match
+Add,SG минус-слова,запчасти,Keyword,Phrase match
+Add,SG минус-слова,ремонт,Keyword,Phrase match
+Add,SG минус-слова,шины,Keyword,Phrase match
+Add,SG минус-слова,диски,Keyword,Phrase match
+Add,SG минус-слова,двигатель,Keyword,Phrase match
+Add,SG минус-слова,цена спринтера,Keyword,Phrase match
+Add,SG минус-слова,спринтер купить,Keyword,Phrase match
+Add,SG минус-слова,газель купить,Keyword,Phrase match
+Add,SG минус-слова,портер купить,Keyword,Phrase match
+Add,SG минус-слова,лизинг,Keyword,Phrase match
+Add,SG минус-слова,кредит,Keyword,Phrase match
+Add,SG минус-слова,рассрочка,Keyword,Phrase match
+Add,SG минус-слова,карго,Keyword,Phrase match
+Add,SG минус-слова,из китая,Keyword,Phrase match
+Add,SG минус-слова,из россии,Keyword,Phrase match
+Add,SG минус-слова,международные,Keyword,Phrase match
+Add,SG минус-слова,авиа,Keyword,Phrase match
+Add,SG минус-слова,жд,Keyword,Phrase match
+Add,SG минус-слова,контейнер,Keyword,Phrase match
+Add,SG минус-слова,фура,Keyword,Phrase match
+Add,SG минус-слова,тягач,Keyword,Phrase match
+Add,SG минус-слова,эвакуатор,Keyword,Phrase match
+Add,SG минус-слова,манипулятор,Keyword,Phrase match
+Add,SG минус-слова,кран,Keyword,Phrase match
+Add,SG минус-слова,бетон,Keyword,Phrase match
+Add,SG минус-слова,самосвал,Keyword,Phrase match
+Add,SG минус-слова,вывоз мусора,Keyword,Phrase match
+Add,SG минус-слова,мусор,Keyword,Phrase match
+Add,SG минус-слова,такси пассажирское,Keyword,Phrase match
+Add,SG минус-слова,пассажирские,Keyword,Phrase match
+Add,SG минус-слова,аренда без водителя,Keyword,Phrase match
+Add,SG минус-слова,прокат,Keyword,Phrase match
+Add,SG минус-слова,ош,Keyword,Phrase match
+Add,SG минус-слова,жалал абад,Keyword,Phrase match
+Add,SG минус-слова,джалал абад,Keyword,Phrase match
+Add,SG минус-слова,каракол,Keyword,Phrase match
+Add,SG минус-слова,нарын,Keyword,Phrase match
+Add,SG минус-слова,талас,Keyword,Phrase match
+Add,SG минус-слова,баткен,Keyword,Phrase match
+Add,SG минус-слова,иссык куль,Keyword,Phrase match
+Add,SG минус-слова,алматы,Keyword,Phrase match
+Add,SG минус-слова,казахстан,Keyword,Phrase match
+Add,SG минус-слова,москва,Keyword,Phrase match
+Add,SG минус-слова,россия,Keyword,Phrase match
+Add,SG минус-слова,узбекистан,Keyword,Phrase match
+Add,SG минус-слова,турция,Keyword,Phrase match
+Add,SG минус-слова,своими руками,Keyword,Phrase match
+Add,SG минус-слова,самостоятельно,Keyword,Phrase match
+Add,SG минус-слова,бесплатно,Keyword,Phrase match
+Add,SG минус-слова,скачать,Keyword,Phrase match
+Add,SG минус-слова,видео,Keyword,Phrase match
+Add,SG минус-слова,фото,Keyword,Phrase match
+Add,SG минус-слова,схема,Keyword,Phrase match
+Add,SG минус-слова,инструкция,Keyword,Phrase match
+Add,SG минус-слова,форум,Keyword,Phrase match
+Add,SG минус-слова,что такое,Keyword,Phrase match
+Add,SG минус-слова,как стать,Keyword,Phrase match
+Add,SG минус-слова,кандай,Keyword,Phrase match
+Add,SG минус-слова,деген эмне,Keyword,Phrase match

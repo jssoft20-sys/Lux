@@ -1,0 +1,278 @@
+<section id="calc" class="section calc" aria-labelledby="calcTitle">
+  <div class="wrap calc-wrap">
+
+    <div class="section-head calc-head reveal">
+      <div class="calc-head__copy">
+        <span class="eyebrow"><span class="dot"></span>Онлайн-расчёт · заявки 24/7</span>
+        <h2 class="h2" id="calcTitle">Калькулятор стоимости переезда</h2>
+      </div>
+      <p>Выберите параметры — сразу увидите цену и отправите заявку в WhatsApp. Итог не изменится после подачи машины.</p>
+    </div>
+
+    <div class="calc-layout">
+
+      <!-- Мобильная закреплённая строка итога (скрыта на десктопе) -->
+      <div class="calc-bar" data-calc="bar">
+        <div class="calc-bar__info">
+          <span class="calc-bar__label">Предварительно</span>
+          <span class="calc-bar__total" data-calc="bar-total">3 500 сом</span>
+        </div>
+        <button type="button" class="btn btn--yellow btn--sm calc-bar__btn" data-calc="bar-go">
+          Оформить
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+        </button>
+      </div>
+
+      <!-- ===== Левая панель параметров ===== -->
+      <div class="calc-panel reveal" data-calc="panel">
+
+        <!-- 1. Тип услуги -->
+        <fieldset class="calc-group">
+          <legend class="calc-group__legend">
+            <span class="calc-group__head"><span class="calc-group__num">1</span><span class="calc-group__title">Тип услуги</span></span>
+          </legend>
+          <div class="calc-chips">
+            <label class="calc-chip">
+              <input class="calc-chip__input" type="radio" name="calcService" value="Квартирный переезд" data-key="flat" checked>
+              <span class="calc-chip__body">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>
+                Квартирный переезд
+              </span>
+            </label>
+            <label class="calc-chip">
+              <input class="calc-chip__input" type="radio" name="calcService" value="Офисный переезд" data-key="office">
+              <span class="calc-chip__body">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/><path d="M10 21v-3h4v3"/></svg>
+                Офисный переезд
+              </span>
+            </label>
+            <label class="calc-chip">
+              <input class="calc-chip__input" type="radio" name="calcService" value="Грузоперевозки по городу" data-key="city">
+              <span class="calc-chip__body">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="12" height="10" rx="1.5"/><path d="M14 10h4l3 3v3h-7"/><circle cx="6.5" cy="18" r="2"/><circle cx="17.5" cy="18" r="2"/></svg>
+                Грузоперевозки по городу
+              </span>
+            </label>
+            <label class="calc-chip">
+              <input class="calc-chip__input" type="radio" name="calcService" value="Услуги грузчиков" data-key="loaders">
+              <span class="calc-chip__body">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="5" r="2.5"/><path d="M5 21v-6l2-4h3l2 2"/><path d="M10 21v-4"/><rect x="13" y="9" width="8" height="8" rx="1.5"/><path d="M13 13h8"/></svg>
+                Услуги грузчиков
+              </span>
+            </label>
+            <label class="calc-chip">
+              <input class="calc-chip__input" type="radio" name="calcService" value="Упаковка вещей" data-key="packing">
+              <span class="calc-chip__body">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8l9-4 9 4-9 4z"/><path d="M3 8v9l9 4 9-4V8"/><path d="M12 12v9"/></svg>
+                Упаковка вещей
+              </span>
+            </label>
+            <label class="calc-chip">
+              <input class="calc-chip__input" type="radio" name="calcService" value="Сборка/разборка мебели" data-key="furniture">
+              <span class="calc-chip__body">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.1-2.1z"/></svg>
+                Сборка/разборка мебели
+              </span>
+            </label>
+          </div>
+        </fieldset>
+
+        <!-- 2. Тариф -->
+        <fieldset class="calc-group">
+          <legend class="calc-group__legend">
+            <span class="calc-group__head"><span class="calc-group__num">2</span><span class="calc-group__title">Тариф</span></span>
+          </legend>
+          <div class="calc-tariffs">
+            <label class="calc-tariff">
+              <input class="calc-tariff__input" type="radio" name="calcTariff" value="1500" data-name="Минимальный" data-loaders="2" data-hours="2">
+              <span class="calc-tariff__body">
+                <span class="calc-tariff__top"><span class="calc-tariff__name">Минимальный</span></span>
+                <span class="calc-tariff__price">1 500 <small>сом</small></span>
+                <span class="calc-tariff__desc">Газель до 1.5 т · 2 грузчика · до 2 часов · без упаковки</span>
+                <span class="calc-tariff__for">Для небольших перевозок</span>
+                <span class="calc-tariff__check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></svg></span>
+              </span>
+            </label>
+            <label class="calc-tariff">
+              <input class="calc-tariff__input" type="radio" name="calcTariff" value="3500" data-name="Стандарт" data-loaders="3" data-hours="4" checked>
+              <span class="calc-tariff__body">
+                <span class="calc-tariff__top"><span class="calc-tariff__name">Стандарт</span><span class="tag calc-tariff__tag">Популярный</span></span>
+                <span class="calc-tariff__price">3 500 <small>сом</small></span>
+                <span class="calc-tariff__desc">Грузовик до 3 т · 3 грузчика · до 4 часов · базовая упаковка</span>
+                <span class="calc-tariff__for">Для квартирного переезда</span>
+                <span class="calc-tariff__check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></svg></span>
+              </span>
+            </label>
+            <label class="calc-tariff">
+              <input class="calc-tariff__input" type="radio" name="calcTariff" value="6500" data-name="Премиум" data-loaders="4" data-hours="8">
+              <span class="calc-tariff__body">
+                <span class="calc-tariff__top"><span class="calc-tariff__name">Премиум</span></span>
+                <span class="calc-tariff__price">6 500 <small>сом</small></span>
+                <span class="calc-tariff__desc">Грузовик до 5 т · 4 грузчика · до 8 часов · полная упаковка</span>
+                <span class="calc-tariff__for">Для офисных переездов</span>
+                <span class="calc-tariff__check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></svg></span>
+              </span>
+            </label>
+          </div>
+          <p class="calc-included">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L19 7"/></svg>
+            <span>Включено в тариф: <b data-calc="included">3 грузчика · 4 часа</b></span>
+          </p>
+        </fieldset>
+
+        <!-- 3. Степперы -->
+        <div class="calc-group">
+          <div class="calc-group__head"><span class="calc-group__num">3</span><span class="calc-group__title">Грузчики, время и допуслуги</span></div>
+          <div class="calc-steps">
+
+            <div class="calc-step" role="group" aria-labelledby="calcLblLoaders" data-step-group="loaders">
+              <div class="calc-step__info">
+                <span class="calc-step__label" id="calcLblLoaders">Грузчики</span>
+                <span class="calc-step__hint" data-hint="loaders">в тарифе 3 · сверх — 500 сом/чел.</span>
+              </div>
+              <div class="calc-step__ctrl">
+                <button type="button" class="calc-step__btn" data-step="loaders" data-dir="-1" aria-label="Меньше грузчиков"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+                <output class="calc-step__val" data-val="loaders" aria-label="Грузчики, человек">3</output>
+                <button type="button" class="calc-step__btn" data-step="loaders" data-dir="1" aria-label="Больше грузчиков"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+              </div>
+            </div>
+
+            <div class="calc-step" role="group" aria-labelledby="calcLblHours" data-step-group="hours">
+              <div class="calc-step__info">
+                <span class="calc-step__label" id="calcLblHours">Часы работы</span>
+                <span class="calc-step__hint" data-hint="hours">в тарифе 4 · сверх — 700 сом/час</span>
+              </div>
+              <div class="calc-step__ctrl">
+                <button type="button" class="calc-step__btn" data-step="hours" data-dir="-1" aria-label="Меньше часов"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+                <output class="calc-step__val" data-val="hours" aria-label="Часы работы">4</output>
+                <button type="button" class="calc-step__btn" data-step="hours" data-dir="1" aria-label="Больше часов"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+              </div>
+            </div>
+
+            <div class="calc-step" role="group" aria-labelledby="calcLblFloor" data-step-group="floor">
+              <div class="calc-step__info">
+                <span class="calc-step__label" id="calcLblFloor">Этаж без лифта</span>
+                <span class="calc-step__hint" data-hint="floor">100 сом за этаж</span>
+              </div>
+              <div class="calc-step__ctrl">
+                <button type="button" class="calc-step__btn" data-step="floor" data-dir="-1" aria-label="Этаж ниже"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+                <output class="calc-step__val" data-val="floor" aria-label="Этаж без лифта">0</output>
+                <button type="button" class="calc-step__btn" data-step="floor" data-dir="1" aria-label="Этаж выше"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+              </div>
+            </div>
+
+            <div class="calc-step" role="group" aria-labelledby="calcLblBoxes" data-step-group="boxes">
+              <div class="calc-step__info">
+                <span class="calc-step__label" id="calcLblBoxes">Коробки для упаковки</span>
+                <span class="calc-step__hint" data-hint="boxes">50 сом за коробку</span>
+              </div>
+              <div class="calc-step__ctrl">
+                <button type="button" class="calc-step__btn" data-step="boxes" data-dir="-1" aria-label="Меньше коробок"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+                <output class="calc-step__val" data-val="boxes" aria-label="Коробки, штук">0</output>
+                <button type="button" class="calc-step__btn" data-step="boxes" data-dir="1" aria-label="Больше коробок"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+              </div>
+            </div>
+
+            <div class="calc-step" role="group" aria-labelledby="calcLblAssembly" data-step-group="assembly">
+              <div class="calc-step__info">
+                <span class="calc-step__label" id="calcLblAssembly">Сборка мебели</span>
+                <span class="calc-step__hint" data-hint="assembly">500 сом за предмет</span>
+              </div>
+              <div class="calc-step__ctrl">
+                <button type="button" class="calc-step__btn" data-step="assembly" data-dir="-1" aria-label="Меньше предметов на сборку"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+                <output class="calc-step__val" data-val="assembly" aria-label="Сборка мебели, предметов">0</output>
+                <button type="button" class="calc-step__btn" data-step="assembly" data-dir="1" aria-label="Больше предметов на сборку"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+              </div>
+            </div>
+
+            <div class="calc-step" role="group" aria-labelledby="calcLblDisassembly" data-step-group="disassembly">
+              <div class="calc-step__info">
+                <span class="calc-step__label" id="calcLblDisassembly">Разборка мебели</span>
+                <span class="calc-step__hint" data-hint="disassembly">300 сом за предмет</span>
+              </div>
+              <div class="calc-step__ctrl">
+                <button type="button" class="calc-step__btn" data-step="disassembly" data-dir="-1" aria-label="Меньше предметов на разборку"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+                <output class="calc-step__val" data-val="disassembly" aria-label="Разборка мебели, предметов">0</output>
+                <button type="button" class="calc-step__btn" data-step="disassembly" data-dir="1" aria-label="Больше предметов на разборку"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <p class="calc-panel__foot">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+          Фиксируем цену после расчёта — 0 скрытых платежей. Оплата после выполнения работ.
+        </p>
+      </div>
+
+      <!-- ===== Правая панель «Ваш расчёт» ===== -->
+      <aside class="calc-summary reveal reveal--right" data-delay="1" data-calc="summary" aria-labelledby="calcSumTitle">
+        <div class="calc-summary__top">
+          <div class="calc-summary__head">
+            <span class="calc-summary__title" id="calcSumTitle">Ваш расчёт</span>
+            <span class="tag">онлайн</span>
+          </div>
+
+          <div class="calc-total" aria-live="polite" aria-atomic="true" data-calc="total" data-total="3500">
+            <span class="sr-only" data-calc="total-sr">Итого: 3 500 сом</span>
+            <span class="calc-total__num" aria-hidden="true" data-calc="total-num">3 500</span>
+            <span class="calc-total__cur" aria-hidden="true">сом</span>
+          </div>
+          <p class="calc-summary__note">Предварительная сумма · точную подтвердим в WhatsApp</p>
+
+          <div class="calc-rows" data-calc="rows"></div>
+
+          <div class="calc-summary__cta">
+            <button type="button" class="btn btn--yellow btn--block calc-agree" data-calc="agree" aria-expanded="false" aria-controls="calcFormWrap">
+              <span class="calc-agree__text">Да, меня устраивает</span>
+              <svg class="calc-agree__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="calc-form-wrap" id="calcFormWrap" data-calc="form-wrap" inert>
+          <div class="calc-form-wrap__inner">
+            <form class="calc-form" novalidate data-calc="form">
+              <p class="calc-form__intro">
+                <span class="calc-form__intro-dot" aria-hidden="true"></span>
+                Отлично. Заполните контакты — заявка уйдёт в WhatsApp вместе с расчётом.
+              </p>
+              <div class="calc-form__row">
+                <div class="field">
+                  <label for="calcName">Ваше имя</label>
+                  <input class="input" id="calcName" name="name" type="text" autocomplete="name" placeholder="Например: Рамис">
+                </div>
+                <div class="field">
+                  <label for="calcPhone">Телефон</label>
+                  <input class="input" id="calcPhone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+996 ..." aria-describedby="calcPhoneErr" required>
+                  <span class="calc-form__err" id="calcPhoneErr" data-calc="phone-err">Введите номер — минимум 9 цифр, например +996 755 555 357</span>
+                </div>
+              </div>
+              <div class="field">
+                <label for="calcAddress">Адрес</label>
+                <input class="input" id="calcAddress" name="address" type="text" autocomplete="street-address" placeholder="Откуда → куда">
+              </div>
+              <div class="field">
+                <label for="calcDate">Дата и время</label>
+                <input class="input" id="calcDate" name="date" type="text" placeholder="Например: завтра в 14:00">
+              </div>
+              <div class="field">
+                <label for="calcComment">Комментарий</label>
+                <textarea class="textarea" id="calcComment" name="comment" rows="3" placeholder="Что перевозим, есть ли крупная мебель, техника"></textarea>
+              </div>
+              <button type="submit" class="btn btn--wa btn--block calc-send" data-calc="send">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1-.2.2-.6.8-.8 1-.1.2-.3.2-.5.1-.2-.1-1-.4-2-1.2-.7-.7-1.2-1.5-1.4-1.7-.1-.2 0-.4.1-.5l.4-.4.2-.4v-.5c0-.1-.6-1.4-.8-1.9-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.2.3-.9.9-.9 2.2s.9 2.5 1.1 2.7c.1.2 1.9 2.8 4.5 4 .6.3 1.1.4 1.5.6.6.2 1.2.2 1.6.1.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2l-.5-.3z"/></svg>
+                Отправить заявку в WhatsApp
+              </button>
+              <p class="calc-form__fine">Откроется чат WhatsApp с готовым текстом заявки — останется нажать «Отправить».</p>
+            </form>
+          </div>
+        </div>
+      </aside>
+
+    </div>
+  </div>
+
+  <div class="calc-toast" role="status" aria-live="polite" data-calc="toast"></div>
+</section>

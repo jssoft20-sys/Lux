@@ -1,0 +1,12 @@
+# Sprinter Go — запуск через Docker Compose (из корня сайта):
+#   docker compose -f deploy/docker-compose.yml up -d --build
+# Сайт: http://IP_СЕРВЕРА:7022
+services:
+  sprinter-go:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: sprinter-go
+    ports:
+      - "7022:80"
+    restart: unless-stopped
