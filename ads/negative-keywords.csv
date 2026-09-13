@@ -1,163 +1,84 @@
 ﻿Campaign,Keyword,Criterion Type,Status
 SG | Поиск | Бишкек,работа,Negative Phrase,Enabled
-SG | Звонки,работа,Negative Phrase,Enabled
 SG | Поиск | Бишкек,вакансия,Negative Phrase,Enabled
-SG | Звонки,вакансия,Negative Phrase,Enabled
 SG | Поиск | Бишкек,вакансии,Negative Phrase,Enabled
-SG | Звонки,вакансии,Negative Phrase,Enabled
 SG | Поиск | Бишкек,требуется,Negative Phrase,Enabled
-SG | Звонки,требуется,Negative Phrase,Enabled
 SG | Поиск | Бишкек,резюме,Negative Phrase,Enabled
-SG | Звонки,резюме,Negative Phrase,Enabled
 SG | Поиск | Бишкек,зарплата,Negative Phrase,Enabled
-SG | Звонки,зарплата,Negative Phrase,Enabled
 SG | Поиск | Бишкек,подработка,Negative Phrase,Enabled
-SG | Звонки,подработка,Negative Phrase,Enabled
 SG | Поиск | Бишкек,ищу работу,Negative Phrase,Enabled
-SG | Звонки,ищу работу,Negative Phrase,Enabled
 SG | Поиск | Бишкек,курсы,Negative Phrase,Enabled
-SG | Звонки,курсы,Negative Phrase,Enabled
 SG | Поиск | Бишкек,обучение,Negative Phrase,Enabled
-SG | Звонки,обучение,Negative Phrase,Enabled
 SG | Поиск | Бишкек,жумуш,Negative Phrase,Enabled
-SG | Звонки,жумуш,Negative Phrase,Enabled
 SG | Поиск | Бишкек,жумуш керек,Negative Phrase,Enabled
-SG | Звонки,жумуш керек,Negative Phrase,Enabled
 SG | Поиск | Бишкек,иш издейм,Negative Phrase,Enabled
-SG | Звонки,иш издейм,Negative Phrase,Enabled
 SG | Поиск | Бишкек,айлык,Negative Phrase,Enabled
-SG | Звонки,айлык,Negative Phrase,Enabled
+SG | Поиск | Бишкек,акысыз,Negative Phrase,Enabled
+SG | Поиск | Бишкек,бекер,Negative Phrase,Enabled
 SG | Поиск | Бишкек,купить,Negative Phrase,Enabled
-SG | Звонки,купить,Negative Phrase,Enabled
 SG | Поиск | Бишкек,продажа,Negative Phrase,Enabled
-SG | Звонки,продажа,Negative Phrase,Enabled
 SG | Поиск | Бишкек,продам,Negative Phrase,Enabled
-SG | Звонки,продам,Negative Phrase,Enabled
 SG | Поиск | Бишкек,продается,Negative Phrase,Enabled
-SG | Звонки,продается,Negative Phrase,Enabled
 SG | Поиск | Бишкек,сатылат,Negative Phrase,Enabled
-SG | Звонки,сатылат,Negative Phrase,Enabled
 SG | Поиск | Бишкек,сатам,Negative Phrase,Enabled
-SG | Звонки,сатам,Negative Phrase,Enabled
 SG | Поиск | Бишкек,бу,Negative Phrase,Enabled
-SG | Звонки,бу,Negative Phrase,Enabled
 SG | Поиск | Бишкек,б у,Negative Phrase,Enabled
-SG | Звонки,б у,Negative Phrase,Enabled
 SG | Поиск | Бишкек,запчасти,Negative Phrase,Enabled
-SG | Звонки,запчасти,Negative Phrase,Enabled
 SG | Поиск | Бишкек,ремонт,Negative Phrase,Enabled
-SG | Звонки,ремонт,Negative Phrase,Enabled
 SG | Поиск | Бишкек,шины,Negative Phrase,Enabled
-SG | Звонки,шины,Negative Phrase,Enabled
 SG | Поиск | Бишкек,диски,Negative Phrase,Enabled
-SG | Звонки,диски,Negative Phrase,Enabled
 SG | Поиск | Бишкек,двигатель,Negative Phrase,Enabled
-SG | Звонки,двигатель,Negative Phrase,Enabled
 SG | Поиск | Бишкек,цена спринтера,Negative Phrase,Enabled
-SG | Звонки,цена спринтера,Negative Phrase,Enabled
 SG | Поиск | Бишкек,спринтер купить,Negative Phrase,Enabled
-SG | Звонки,спринтер купить,Negative Phrase,Enabled
 SG | Поиск | Бишкек,газель купить,Negative Phrase,Enabled
-SG | Звонки,газель купить,Negative Phrase,Enabled
 SG | Поиск | Бишкек,портер купить,Negative Phrase,Enabled
-SG | Звонки,портер купить,Negative Phrase,Enabled
 SG | Поиск | Бишкек,лизинг,Negative Phrase,Enabled
-SG | Звонки,лизинг,Negative Phrase,Enabled
 SG | Поиск | Бишкек,кредит,Negative Phrase,Enabled
-SG | Звонки,кредит,Negative Phrase,Enabled
 SG | Поиск | Бишкек,рассрочка,Negative Phrase,Enabled
-SG | Звонки,рассрочка,Negative Phrase,Enabled
 SG | Поиск | Бишкек,карго,Negative Phrase,Enabled
-SG | Звонки,карго,Negative Phrase,Enabled
 SG | Поиск | Бишкек,из китая,Negative Phrase,Enabled
-SG | Звонки,из китая,Negative Phrase,Enabled
 SG | Поиск | Бишкек,из россии,Negative Phrase,Enabled
-SG | Звонки,из россии,Negative Phrase,Enabled
 SG | Поиск | Бишкек,международные,Negative Phrase,Enabled
-SG | Звонки,международные,Negative Phrase,Enabled
 SG | Поиск | Бишкек,авиа,Negative Phrase,Enabled
-SG | Звонки,авиа,Negative Phrase,Enabled
 SG | Поиск | Бишкек,жд,Negative Phrase,Enabled
-SG | Звонки,жд,Negative Phrase,Enabled
 SG | Поиск | Бишкек,контейнер,Negative Phrase,Enabled
-SG | Звонки,контейнер,Negative Phrase,Enabled
 SG | Поиск | Бишкек,фура,Negative Phrase,Enabled
-SG | Звонки,фура,Negative Phrase,Enabled
 SG | Поиск | Бишкек,тягач,Negative Phrase,Enabled
-SG | Звонки,тягач,Negative Phrase,Enabled
 SG | Поиск | Бишкек,эвакуатор,Negative Phrase,Enabled
-SG | Звонки,эвакуатор,Negative Phrase,Enabled
 SG | Поиск | Бишкек,манипулятор,Negative Phrase,Enabled
-SG | Звонки,манипулятор,Negative Phrase,Enabled
 SG | Поиск | Бишкек,кран,Negative Phrase,Enabled
-SG | Звонки,кран,Negative Phrase,Enabled
 SG | Поиск | Бишкек,бетон,Negative Phrase,Enabled
-SG | Звонки,бетон,Negative Phrase,Enabled
 SG | Поиск | Бишкек,самосвал,Negative Phrase,Enabled
-SG | Звонки,самосвал,Negative Phrase,Enabled
 SG | Поиск | Бишкек,вывоз мусора,Negative Phrase,Enabled
-SG | Звонки,вывоз мусора,Negative Phrase,Enabled
 SG | Поиск | Бишкек,мусор,Negative Phrase,Enabled
-SG | Звонки,мусор,Negative Phrase,Enabled
 SG | Поиск | Бишкек,такси пассажирское,Negative Phrase,Enabled
-SG | Звонки,такси пассажирское,Negative Phrase,Enabled
 SG | Поиск | Бишкек,пассажирские,Negative Phrase,Enabled
-SG | Звонки,пассажирские,Negative Phrase,Enabled
 SG | Поиск | Бишкек,аренда без водителя,Negative Phrase,Enabled
-SG | Звонки,аренда без водителя,Negative Phrase,Enabled
 SG | Поиск | Бишкек,прокат,Negative Phrase,Enabled
-SG | Звонки,прокат,Negative Phrase,Enabled
 SG | Поиск | Бишкек,ош,Negative Phrase,Enabled
-SG | Звонки,ош,Negative Phrase,Enabled
 SG | Поиск | Бишкек,жалал абад,Negative Phrase,Enabled
-SG | Звонки,жалал абад,Negative Phrase,Enabled
 SG | Поиск | Бишкек,джалал абад,Negative Phrase,Enabled
-SG | Звонки,джалал абад,Negative Phrase,Enabled
 SG | Поиск | Бишкек,каракол,Negative Phrase,Enabled
-SG | Звонки,каракол,Negative Phrase,Enabled
 SG | Поиск | Бишкек,нарын,Negative Phrase,Enabled
-SG | Звонки,нарын,Negative Phrase,Enabled
 SG | Поиск | Бишкек,талас,Negative Phrase,Enabled
-SG | Звонки,талас,Negative Phrase,Enabled
 SG | Поиск | Бишкек,баткен,Negative Phrase,Enabled
-SG | Звонки,баткен,Negative Phrase,Enabled
 SG | Поиск | Бишкек,иссык куль,Negative Phrase,Enabled
-SG | Звонки,иссык куль,Negative Phrase,Enabled
 SG | Поиск | Бишкек,алматы,Negative Phrase,Enabled
-SG | Звонки,алматы,Negative Phrase,Enabled
 SG | Поиск | Бишкек,казахстан,Negative Phrase,Enabled
-SG | Звонки,казахстан,Negative Phrase,Enabled
 SG | Поиск | Бишкек,москва,Negative Phrase,Enabled
-SG | Звонки,москва,Negative Phrase,Enabled
 SG | Поиск | Бишкек,россия,Negative Phrase,Enabled
-SG | Звонки,россия,Negative Phrase,Enabled
 SG | Поиск | Бишкек,узбекистан,Negative Phrase,Enabled
-SG | Звонки,узбекистан,Negative Phrase,Enabled
 SG | Поиск | Бишкек,турция,Negative Phrase,Enabled
-SG | Звонки,турция,Negative Phrase,Enabled
 SG | Поиск | Бишкек,своими руками,Negative Phrase,Enabled
-SG | Звонки,своими руками,Negative Phrase,Enabled
 SG | Поиск | Бишкек,самостоятельно,Negative Phrase,Enabled
-SG | Звонки,самостоятельно,Negative Phrase,Enabled
 SG | Поиск | Бишкек,бесплатно,Negative Phrase,Enabled
-SG | Звонки,бесплатно,Negative Phrase,Enabled
 SG | Поиск | Бишкек,скачать,Negative Phrase,Enabled
-SG | Звонки,скачать,Negative Phrase,Enabled
 SG | Поиск | Бишкек,видео,Negative Phrase,Enabled
-SG | Звонки,видео,Negative Phrase,Enabled
 SG | Поиск | Бишкек,фото,Negative Phrase,Enabled
-SG | Звонки,фото,Negative Phrase,Enabled
 SG | Поиск | Бишкек,схема,Negative Phrase,Enabled
-SG | Звонки,схема,Negative Phrase,Enabled
 SG | Поиск | Бишкек,инструкция,Negative Phrase,Enabled
-SG | Звонки,инструкция,Negative Phrase,Enabled
 SG | Поиск | Бишкек,форум,Negative Phrase,Enabled
-SG | Звонки,форум,Negative Phrase,Enabled
 SG | Поиск | Бишкек,что такое,Negative Phrase,Enabled
-SG | Звонки,что такое,Negative Phrase,Enabled
 SG | Поиск | Бишкек,как стать,Negative Phrase,Enabled
-SG | Звонки,как стать,Negative Phrase,Enabled
 SG | Поиск | Бишкек,кандай,Negative Phrase,Enabled
-SG | Звонки,кандай,Negative Phrase,Enabled
 SG | Поиск | Бишкек,деген эмне,Negative Phrase,Enabled
-SG | Звонки,деген эмне,Negative Phrase,Enabled

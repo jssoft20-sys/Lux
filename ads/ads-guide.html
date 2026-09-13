@@ -1,0 +1,726 @@
+<title>Google Ads для Sprinter Go</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Manrope:wght@500;600;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#FAF8F2; --surface:#FFFFFF; --surface-2:#F3F0E6;
+  --ink:#16150F; --ink-2:#3E3B30; --muted:#6E6A5C; --line:#E4E0D2; --line-2:#D2CDBA;
+  --accent:#FFDF00; --accent-deep:#9A7D00; --ok:#15803D; --ok-bg:#E7F5EC; --warn:#A4530B; --warn-bg:#FDF1E3;
+  --shadow:0 1px 2px rgba(22,21,15,.05), 0 8px 24px rgba(22,21,15,.05);
+  --display:'Unbounded', ui-sans-serif, system-ui, sans-serif;
+  --body:'Manrope', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --mono:'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#121210; --surface:#1B1A16; --surface-2:#232219;
+    --ink:#F4F1E6; --ink-2:#D8D3C2; --muted:#9C9787; --line:#2E2C25; --line-2:#3D3A30;
+    --accent:#FFDF00; --accent-deep:#FFDF00; --ok:#4ADE80; --ok-bg:#16281C; --warn:#FBBF24; --warn-bg:#2A2113;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+  }
+  :root:not([data-theme="light"]) .tick[aria-pressed="true"]{color:#0C1A11}
+}
+:root[data-theme="dark"]{
+  --ground:#121210; --surface:#1B1A16; --surface-2:#232219;
+  --ink:#F4F1E6; --ink-2:#D8D3C2; --muted:#9C9787; --line:#2E2C25; --line-2:#3D3A30;
+  --accent:#FFDF00; --accent-deep:#FFDF00; --ok:#4ADE80; --ok-bg:#16281C; --warn:#FBBF24; --warn-bg:#2A2113;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--body); font-size:16px; line-height:1.55; font-weight:500;
+  -webkit-text-size-adjust:100%; -webkit-font-smoothing:antialiased;
+}
+.wrap{width:100%; max-width:680px; margin-inline:auto; padding-inline:18px; padding-block:28px 72px}
+h1,h2,h3{font-family:var(--display); margin:0; letter-spacing:-.02em; line-height:1.15; text-wrap:balance}
+p{margin:0}
+a{color:inherit; text-underline-offset:3px; text-decoration-thickness:1.5px}
+
+/* ---------- header ---------- */
+.masthead{display:flex; flex-direction:column; gap:14px; margin-bottom:26px}
+.brandline{display:flex; align-items:center; gap:10px; font-size:12px; font-weight:800;
+  letter-spacing:.12em; text-transform:uppercase; color:var(--muted)}
+.brandmark{width:26px; height:26px; border-radius:8px; background:var(--accent); display:grid; place-items:center; flex:none}
+.brandmark svg{width:17px; height:17px; display:block}
+h1{font-size:clamp(27px,7.2vw,38px); font-weight:800}
+.sub{color:var(--muted); font-size:15.5px; max-width:46ch}
+
+/* ---------- progress ---------- */
+.progress{display:flex; align-items:center; gap:12px; padding:12px 14px; background:var(--surface);
+  border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); margin-bottom:24px}
+.progress-bar{flex:1; height:7px; border-radius:99px; background:var(--surface-2); overflow:hidden}
+.progress-fill{height:100%; width:0%; background:var(--accent); border-radius:99px; transition:width .35s cubic-bezier(.3,.9,.3,1)}
+.progress-txt{font-family:var(--mono); font-size:13px; font-weight:500; color:var(--muted); white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+
+/* ---------- callout ---------- */
+.note{display:flex; gap:12px; padding:15px 16px; border-radius:12px; margin-bottom:28px;
+  background:var(--warn-bg); border:1px solid color-mix(in srgb, var(--warn) 28%, transparent)}
+.note-ico{flex:none; width:22px; height:22px; border-radius:50%; background:var(--warn); color:var(--warn-bg);
+  font-family:var(--display); font-size:14px; font-weight:800; display:grid; place-items:center; margin-top:1px}
+.note b{display:block; font-weight:800; margin-bottom:4px; color:var(--ink)}
+.note p{font-size:14.5px; color:var(--ink-2)}
+.note code{font-family:var(--mono); font-size:13.5px; background:color-mix(in srgb, var(--warn) 14%, transparent);
+  padding:1px 5px; border-radius:4px}
+
+/* ---------- steps ---------- */
+.step{position:relative; padding-left:44px; padding-bottom:34px}
+.step::before{content:""; position:absolute; left:15px; top:32px; bottom:0; width:2px; background:var(--line)}
+.step:last-of-type::before{display:none}
+.step-num{position:absolute; left:0; top:0; width:32px; height:32px; border-radius:10px;
+  background:var(--surface); border:1.5px solid var(--line-2); color:var(--muted);
+  font-family:var(--display); font-size:14px; font-weight:800; display:grid; place-items:center;
+  transition:background .2s, color .2s, border-color .2s}
+.step.done .step-num{background:var(--accent); border-color:var(--accent); color:#16150F}
+.step-head{display:flex; align-items:flex-start; justify-content:space-between; gap:12px; min-height:32px}
+.step h2{font-size:19px; font-weight:700; padding-top:4px}
+.step.done h2{color:var(--muted)}
+.step-body{margin-top:10px; display:flex; flex-direction:column; gap:12px}
+.step p{font-size:15px; color:var(--ink-2)}
+.step ol, .step ul{margin:0; padding-left:20px; display:flex; flex-direction:column; gap:7px;
+  font-size:15px; color:var(--ink-2)}
+.tick{flex:none; width:26px; height:26px; margin-top:5px; border-radius:8px; cursor:pointer;
+  border:1.5px solid var(--line-2); background:var(--surface); display:grid; place-items:center; padding:0;
+  color:transparent; transition:background .18s, border-color .18s, color .18s}
+.tick svg{width:15px; height:15px; display:block}
+.tick[aria-pressed="true"]{background:var(--ok); border-color:var(--ok); color:#fff}
+:root[data-theme="dark"] .tick[aria-pressed="true"]{color:#0C1A11}
+
+/* ---------- copy block ---------- */
+.block{border:1px solid var(--line); border-radius:12px; background:var(--surface); overflow:hidden;
+  box-shadow:var(--shadow)}
+.block-head{display:flex; align-items:center; gap:10px; padding:9px 10px 9px 13px;
+  background:var(--surface-2); border-bottom:1px solid var(--line)}
+.block-name{flex:1; min-width:0; font-size:13.5px; font-weight:800; letter-spacing:-.01em}
+.block-count{font-family:var(--mono); font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; flex:none}
+.copy{flex:none; display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:0 13px; border:0;
+  border-radius:8px; background:var(--ink); color:var(--ground); cursor:pointer;
+  font-family:var(--body); font-size:13px; font-weight:800; transition:background .18s, color .18s}
+.copy svg{width:14px; height:14px; display:block}
+.copy[data-state="ok"]{background:var(--ok); color:#fff}
+.block-body{margin:0; padding:12px 14px; max-height:230px; overflow:auto; -webkit-overflow-scrolling:touch;
+  font-family:var(--mono); font-size:13px; line-height:1.72; white-space:pre-wrap; word-break:break-word;
+  color:var(--ink-2); tab-size:2}
+.block-hint{padding:9px 14px; border-top:1px dashed var(--line); font-size:12.5px; color:var(--muted)}
+
+/* ---------- settings table ---------- */
+.settings{border:1px solid var(--line); border-radius:12px; background:var(--surface); overflow:hidden;
+  box-shadow:var(--shadow)}
+.srow{display:flex; gap:12px; padding:11px 14px; border-bottom:1px solid var(--line); font-size:14.5px}
+.srow:last-child{border-bottom:0}
+.srow dt{flex:0 0 38%; color:var(--muted); font-weight:600; margin:0}
+.srow dd{flex:1; margin:0; font-weight:700; color:var(--ink)}
+.srow dd small{display:block; font-weight:500; color:var(--muted); font-size:13px; margin-top:2px}
+
+/* ---------- misc ---------- */
+.tag{display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:99px; font-size:11.5px;
+  font-weight:800; letter-spacing:.04em; text-transform:uppercase; background:var(--accent); color:#16150F}
+.tag.ghost{background:transparent; border:1px solid var(--line-2); color:var(--muted)}
+.kg{background:var(--ink); color:var(--ground)}
+footer{margin-top:8px; padding-top:22px; border-top:1px solid var(--line); color:var(--muted); font-size:13.5px;
+  display:flex; flex-direction:column; gap:6px}
+button:focus-visible, a:focus-visible{outline:3px solid var(--accent-deep); outline-offset:2px; border-radius:6px}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandline">
+      <span class="brandmark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path fill="#16150F" d="M2.5 15.5V8a2 2 0 0 1 2-2h8.8l3.4 3.8H20a1.8 1.8 0 0 1 1.8 1.8v3.9h-2.4a2.9 2.9 0 0 0-5.6 0H8.1a2.9 2.9 0 0 0-5.6 0Z"/><circle cx="5.3" cy="16.4" r="2" fill="#16150F"/><circle cx="16.9" cy="16.4" r="2" fill="#16150F"/></svg>
+      </span>
+      Sprinter Go · sprintergo.kg
+    </div>
+    <h1>Google Ads: запуск за час</h1>
+    <p class="sub">Две кампании, 83 ключа на русском и кыргызском, бюджет 1 200 сом в день. Копируйте блоки кнопкой и вставляйте в Google&nbsp;Ads.</p>
+  </header>
+
+  <div class="progress">
+    <div class="progress-bar"><div class="progress-fill" id="pfill"></div></div>
+    <span class="progress-txt" id="ptxt">0 / 8</span>
+  </div>
+
+  <div class="note">
+    <span class="note-ico" aria-hidden="true">!</span>
+    <div>
+      <b>С айфона — только через Safari</b>
+      <p>Приложение Google Ads не умеет добавлять минус-слова, вставлять ключи списком и настраивать конверсии. Google Ads Editor для iOS не существует. Откройте <code>ads.google.com</code> в Safari, нажмите <code>ᴀA</code> слева в адресной строке → «Запросить сайт для ПК», поверните телефон горизонтально.</p>
+      <p style="margin-top:8px"><b style="display:inline">Обязательно перед вставкой:</b> Настройки → Основные → Клавиатура → <b style="display:inline">«Умная пунктуация» выключить</b>. Иначе iOS заменит прямые кавычки на «ёлочки», и Google не распознает фразовое соответствие.</p>
+    </div>
+  </div>
+
+  <!-- 1 -->
+  <section class="step" id="s1">
+    <span class="step-num">1</span>
+    <div class="step-head">
+      <h2>Аккаунт и режим эксперта</h2>
+      <button class="tick" data-step="s1" aria-pressed="false" aria-label="Шаг 1 выполнен"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg></button>
+    </div>
+    <div class="step-body">
+      <p>Новый аккаунт заводится в упрощённом режиме, где свои ключевые слова выбрать нельзя. Шестерёнка справа вверху → «Перейти в режим эксперта». Переключение необратимо — это нормально, вам нужен именно он. Кампанию потом создавайте через «Создать кампанию без цели».</p>
+      <dl class="settings">
+        <div class="srow"><dt>Валюта</dt><dd>KGS — сом<small>Поменять потом нельзя</small></dd></div>
+        <div class="srow"><dt>Часовой пояс</dt><dd>(GMT+06:00) Бишкек<small>Тоже без обратного хода</small></dd></div>
+        <div class="srow"><dt>Страна</dt><dd>Кыргызстан</dd></div>
+        <div class="srow"><dt>Способ оплаты</dt><dd>Карта<small>Сначала спишут пробный платёж</small></dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section class="step" id="s2">
+    <span class="step-num">2</span>
+    <div class="step-head">
+      <h2>Конверсии — до запуска</h2>
+      <button class="tick" data-step="s2" aria-pressed="false" aria-label="Шаг 2 выполнен"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg></button>
+    </div>
+    <div class="step-body">
+      <p>Без этого Google не видит, какие клики дают заявки, и просто тратит бюджет. Меню <b>Цели → Конверсии → Новое действие → Веб-сайт</b>, добавляйте вручную три штуки.</p>
+      <dl class="settings">
+        <div class="srow"><dt>WhatsApp</dt><dd>Ценность 300 сом<small>Категория: «Отправка формы для потенциальных клиентов»</small></dd></div>
+        <div class="srow"><dt>Звонок</dt><dd>Ценность 300 сом<small>Категория: «Обращение по телефону»</small></dd></div>
+        <div class="srow"><dt>Заявка из калькулятора</dt><dd>Ценность 500 сом<small>Категория: «Отправка формы»</small></dd></div>
+      </dl>
+      <p>Google выдаст тег <b>AW-XXXXXXXXX</b> и три ярлыка. Вставьте их в <code style="font-family:var(--mono);font-size:13px">index.html</code> перед закрывающим тегом body — заготовка там уже лежит, сайт сам отправляет события при клике на WhatsApp, телефон и отправке заявки.</p>
+      <div class="block">
+        <div class="block-head">
+          <span class="block-name">Код для index.html</span>
+          <button class="copy" data-copy="tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Копировать</button>
+        </div>
+        <pre class="block-body" id="src-tag">&lt;script async src="https://www.googletagmanager.com/gtag/js?id=AW-XXXXXXXXX"&gt;&lt;/script&gt;
+&lt;script&gt;
+window.dataLayer=window.dataLayer||[];
+function gtag(){dataLayer.push(arguments)}
+gtag('js',new Date());
+gtag('config','AW-XXXXXXXXX');
+window.SG_TRACK={ads:{
+  whatsapp:'AW-XXXXXXXXX/ярлык_whatsapp',
+  call:'AW-XXXXXXXXX/ярлык_звонок',
+  form:'AW-XXXXXXXXX/ярлык_заявка'
+}};
+&lt;/script&gt;</pre>
+        <div class="block-hint">Замените AW-XXXXXXXXX и три ярлыка на свои из кабинета.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section class="step" id="s3">
+    <span class="step-num">3</span>
+    <div class="step-head">
+      <h2>Настройки кампании</h2>
+      <button class="tick" data-step="s3" aria-pressed="false" aria-label="Шаг 3 выполнен"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg></button>
+    </div>
+    <div class="step-body">
+      <p>Новая кампания → цель «Потенциальные клиенты» → тип <b>Поисковая</b> → способ достижения: посещения сайта. Название: <b>SG · Поиск · Бишкек</b>.</p>
+      <dl class="settings">
+        <div class="srow"><dt>Бюджет</dt><dd>1 200 сом в день<small>При бюджете 1 000 ставьте 1 000 и вторую кампанию не делайте</small></dd></div>
+        <div class="srow"><dt>Стратегия</dt><dd>Максимум кликов<small>Предельная цена клика 22 сома</small></dd></div>
+        <div class="srow"><dt>Сети</dt><dd>Только поиск<small>Партнёров поиска и КМС выключить</small></dd></div>
+        <div class="srow"><dt>Места</dt><dd>Бишкек + 30 км, Чуйская область<small>Обязательно: «Люди в целевом местоположении», а не «интересующиеся»</small></dd></div>
+        <div class="srow"><dt>Языки</dt><dd>Все языки<small>Google смотрит на язык браузера, а не запроса. Ограничите русским — потеряете половину кыргызских показов</small></dd></div>
+        <div class="srow"><dt>Устройства</dt><dd>Мобильные +20 %</dd></div>
+        <div class="srow"><dt>Расписание</dt><dd>Круглосуточно<small>Заявки в WhatsApp приходят и ночью</small></dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="step" id="s4">
+    <span class="step-num">4</span>
+    <div class="step-head">
+      <h2>Шесть групп с ключами</h2>
+      <button class="tick" data-step="s4" aria-pressed="false" aria-label="Шаг 4 выполнен"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg></button>
+    </div>
+    <div class="step-body">
+      <p>В каждой группе есть поле для ключевых слов — вставляйте туда весь блок целиком, Google разберёт по строкам. <b>Кавычки</b> означают фразовое соответствие, <b>без кавычек</b> — широкое, для охвата.</p>
+
+      <div class="block">
+        <div class="block-head"><span class="block-name">1 · Грузоперевозки и грузовое такси</span><span class="block-count">14</span>
+          <button class="copy" data-copy="k1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Копировать</button></div>
+        <pre class="block-body" id="src-k1">грузоперевозки бишкек
+грузовое такси бишкек
+"грузоперевозки бишкек"
+"грузоперевозки по бишкеку"
+"грузоперевозки недорого"
+"грузовое такси"
+"грузотакси бишкек"
+"грузовое такси с грузчиками"
+"заказать грузоперевозку"
+"перевозка мебели бишкек"
+"перевезти холодильник"
+"перевозка стройматериалов бишкек"
+"перевозка вещей бишкек"
+"доставка мебели из магазина"</pre>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><span class="block-name">2 · Портер, спринтер, газель</span><span class="block-count">14</span>
+          <button class="copy" data-copy="k2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Копировать</button></div>
+        <pre class="block-body" id="src-k2">портер бишкек
+заказать газель бишкек
+"такси портер"
+"портер такси бишкек"
+"портер керек"
+"заказать портер"
+"портер грузоперевозки"
+"заказать спринтер бишкек"
+"спринтер грузоперевозки"
+"газель с грузчиками"
+"газель бишкек заказать"
+"лабо бишкек"
+"машина для перевозки вещей"
+"нанять машину для переезда"</pre>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><span class="block-name">3 · Переезд квартиры и офиса</span><span class="block-count">10</span>
+          <button class="copy" data-copy="k3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Копировать</button></div>
+        <pre class="block-body" id="src-k3">квартирный переезд бишкек
+переезд бишкек
+"квартирный переезд"
+"переезд квартиры бишкек"
+"услуги переезда бишкек"
+"переезд с грузчиками"
+"офисный переезд бишкек"
+"переезд офиса"
+"компания по переезду"
+"помощь при переезде"</pre>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><span class="block-name">4 · Грузчики и сборка мебели</span><span class="block-count">15</span>
+          <button class="copy" data-copy="k4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Копировать</button></div>
+        <pre class="block-body" id="src-k4">грузчики бишкек
+сборка мебели бишкек
+"грузчик керек"
+"грузчики керек"
+"услуги грузчиков бишкек"
+"нанять грузчиков"
+"вызвать грузчиков"
+"грузчики с машиной"
+"грузчики на час"
+"подъём мебели на этаж"
+"сборка мебели"
+"сборщик мебели бишкек"
+"разборка мебели"
+"сборка кухни бишкек"
+"сборка шкафа бишкек"</pre>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><span class="block-name">5 · Кыргызча · машина жана көчүү <span class="tag kg">KG</span></span><span class="block-count">39</span>
+          <button class="copy" data-copy="k5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Копировать</button></div>
+        <pre class="block-body" id="src-k5">жүк ташуу бишкек
+жүк ташуу баасы
+"жүк ташуу"
+"жук ташуу"
+"юк ташуу"
+"жүк ташуучу машина"
+"жук ташуучу машина"
+"жүк ташуучу такси"
+"жүк такси"
+"жук такси бишкек"
+"жүк ташуу канча турат"
+"жүк ташуу баасы бишкек"
+"жук ташуу баасы"
+"арзан жүк ташуу"
+"жүк ташуу номер"
+"жүк ташуу заказ"
+"машина керек"
+"машина керек жүк ташуу"
+"спринтер керек"
+"спринтер керек бишкек"
+"портер керек бишкек"
+"портер чакыруу"
+"газель керек"
+"газель керек бишкек"
+"3 тонналык машина керек"
+"5 тонна машина керек"
+"көчүү үчүн машина"
+"кочуу учун машина"
+"кочуу учун машина керек"
+"көчүү канча турат"
+"көчүү кызматы бишкек"
+"батир көчүрүү"
+"батир кочуруу бишкек"
+"батирден батирге көчүү"
+"үй көчүү бишкек"
+"үй көчүрүү"
+"уй кочуруу"
+"офис көчүрүү"
+"офис кочуруу бишкек"</pre>
+        <div class="block-hint">Варианты без ү, ө, ң добавлены специально — так пишет половина людей.</div>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><span class="block-name">6 · Кыргызча · грузчик жана мебель <span class="tag kg">KG</span></span><span class="block-count">21</span>
+          <button class="copy" data-copy="k6"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Копировать</button></div>
+        <pre class="block-body" id="src-k6">грузчик керек бишкек
+мебель чогултуу
+"грузчиктер керек"
+"грузчик менен машина"
+"грузчик жалдоо"
+"арзан грузчик бишкек"
+"жүкчү керек"
+"жукчу керек"
+"жукчу керек бишкек"
+"жүкчүлөр керек"
+"жүкчү жалдайм"
+"жүкчүлөрдүн баасы"
+"мебель чогултуучу керек"
+"мебель жыйноо"
+"мебель ташуу"
+"мебель ташуучу машина"
+"шкаф чогултуу"
+"кухня чогултуу"
+"диван ташуу"
+"эмерек ташуу"
+"эмерек чогултуу"</pre>
+        <div class="block-hint">«Мебель», а не книжное «эмерек»: в поиске пишут именно так. То же с «грузчик» — его набирают чаще, чем «жүкчү».</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section class="step" id="s5">
+    <span class="step-num">5</span>
+    <div class="step-head">
+      <h2>Минус-слова</h2>
+      <button class="tick" data-step="s5" aria-pressed="false" aria-label="Шаг 5 выполнен"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg></button>
+    </div>
+    <div class="step-body">
+      <p>Уровень кампании: <b>Ключевые слова → Минус-слова → Добавить</b>. Это главная защита бюджета: отсекает тех, кто ищет работу, покупает машину или живёт в другом городе.</p>
+      <div class="block">
+        <div class="block-head"><span class="block-name">Минус-слова, оба языка</span><span class="block-count">83</span>
+          <button class="copy" data-copy="neg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Копировать</button></div>
+        <pre class="block-body" id="src-neg">"работа"
+"вакансия"
+"вакансии"
+"требуется"
+"резюме"
+"зарплата"
+"подработка"
+"ищу работу"
+"курсы"
+"обучение"
+"жумуш"
+"жумуш керек"
+"иш издейм"
+"айлык"
+"акысыз"
+"бекер"
+"купить"
+"продажа"
+"продам"
+"продается"
+"сатылат"
+"сатам"
+"бу"
+"б у"
+"запчасти"
+"ремонт"
+"шины"
+"диски"
+"двигатель"
+"цена спринтера"
+"спринтер купить"
+"газель купить"
+"портер купить"
+"лизинг"
+"кредит"
+"рассрочка"
+"карго"
+"из китая"
+"из россии"
+"международные"
+"авиа"
+"жд"
+"контейнер"
+"фура"
+"тягач"
+"эвакуатор"
+"манипулятор"
+"кран"
+"бетон"
+"самосвал"
+"вывоз мусора"
+"мусор"
+"такси пассажирское"
+"пассажирские"
+"аренда без водителя"
+"прокат"
+"ош"
+"жалал абад"
+"джалал абад"
+"каракол"
+"нарын"
+"талас"
+"баткен"
+"иссык куль"
+"алматы"
+"казахстан"
+"москва"
+"россия"
+"узбекистан"
+"турция"
+"своими руками"
+"самостоятельно"
+"бесплатно"
+"скачать"
+"видео"
+"фото"
+"схема"
+"инструкция"
+"форум"
+"что такое"
+"как стать"
+"кандай"
+"деген эмне"</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section class="step" id="s6">
+    <span class="step-num">6</span>
+    <div class="step-head">
+      <h2>Тексты объявлений</h2>
+      <button class="tick" data-step="s6" aria-pressed="false" aria-label="Шаг 6 выполнен"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg></button>
+    </div>
+    <div class="step-body">
+      <p>В каждой группе — одно адаптивное поисковое объявление: 15 заголовков по 30 символов и 4 описания по 90. Заполняйте все поля, это напрямую влияет на охват. Конечный URL везде <b>https://sprintergo.kg/</b>.</p>
+
+      <div class="block">
+        <div class="block-head"><span class="block-name">Заголовки, группы 1–4</span><span class="block-count">15</span>
+          <button class="copy" data-copy="h-ru"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Копировать</button></div>
+        <pre class="block-body" id="src-h-ru">Грузоперевозки в Бишкеке
+Грузовое такси Бишкек
+Заказать портер в Бишкеке
+Квартирный переезд Бишкек
+Грузчики от 500 сом
+Грузовое такси от 1 500 сом
+Подача в выбранное время
+Цена известна до работ
+0 скрытых платежей
+Грузчики в форме и с опытом
+Работаем с 2015 года
+Заявка в WhatsApp 24/7
+Упаковка и сборка мебели
+Расчёт стоимости онлайн
+Машины до 5 тонн</pre>
+        <div class="block-hint">Первые четыре подставляйте по смыслу группы, остальные одинаковые для всех.</div>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><span class="block-name">Описания, группы 1–4</span><span class="block-count">4</span>
+          <button class="copy" data-copy="d-ru"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Копировать</button></div>
+        <pre class="block-body" id="src-d-ru">Спринтер или газель с грузчиками в выбранное время. Упакуем, перевезём, соберём мебель.
+Фиксированная цена после расчёта, 0 скрытых платежей. Оплата после выполнения работ.
+Переезды и грузоперевозки по Бишкеку и Чуйской области. Договор и чек. Работаем 7 дней.
+Рассчитайте стоимость за минуту и отправьте заявку в WhatsApp. Ответим быстро.</pre>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><span class="block-name">Заголовки, группы 5–6 <span class="tag kg">KG</span></span><span class="block-count">15</span>
+          <button class="copy" data-copy="h-kg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Копировать</button></div>
+        <pre class="block-body" id="src-h-kg">Бишкекте жүк ташуу
+Жүк такси 1500 сомдон
+Машина жана жүкчүлөр
+Портер, спринтер, газель
+Баасын алдын ала айтабыз
+Каалаган убакта келебиз
+WhatsApp аркылуу заказ
+Батир, офис көчүрөбүз
+Мебель чогултуу 500 сомдон
+2015-жылдан бери иштейбиз
+Кошумча төлөм жок
+Иш бүткөндөн кийин төлөйсүз
+Грузчик менен машина керек?
+Портер такси чакырыңыз
+Чүй облусуна да чыгабыз</pre>
+        <div class="block-hint">Тексты проверил носитель языка из Бишкека: «эсептегич» и «эмерек» заменены на живые «калькулятор» и «мебель».</div>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><span class="block-name">Описания, группы 5–6 <span class="tag kg">KG</span></span><span class="block-count">4</span>
+          <button class="copy" data-copy="d-kg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Копировать</button></div>
+        <pre class="block-body" id="src-d-kg">Жүк ташуучу машина жана жүкчүлөр. Батир, офис көчүрөбүз, мебель чогултабыз.
+Баасын сайттагы калькулятордон дароо көрөсүз. Заказ WhatsApp аркылуу, 24 саат.
+Бишкек боюнча жүк ташуу: портер, спринтер, 3 жана 5 тонналык унаалар.
+Келишим жана чек беребиз. Жүгүңүз үчүн толук жооп беребиз.</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 -->
+  <section class="step" id="s7">
+    <span class="step-num">7</span>
+    <div class="step-head">
+      <h2>Расширения</h2>
+      <button class="tick" data-step="s7" aria-pressed="false" aria-label="Шаг 7 выполнен"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg></button>
+    </div>
+    <div class="step-body">
+      <p>Расширения делают объявление выше и заметнее, а клики — дешевле. Добавляются на уровне кампании.</p>
+      <div class="note" style="margin-bottom:0">
+        <span class="note-ico" aria-hidden="true">!</span>
+        <div>
+          <b>Ассет «Номер телефона» вместо кампании со звонками</b>
+          <p>Отдельные объявления «только звонок» Google отключил в феврале 2026, новые создать нельзя. Вместо этого добавьте в кампанию ассет: <b>Объявления и ассеты → Ассеты → Номер телефона</b>, номер <b>+996 755 555 357</b>, страна Кыргызстан. Включите отслеживание звонков и сделайте конверсию по звонку основной.</p>
+        </div>
+      </div>
+      <div class="block">
+        <div class="block-head"><span class="block-name">Дополнительные ссылки</span><span class="block-count">4</span>
+          <button class="copy" data-copy="sl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Копировать</button></div>
+        <pre class="block-body" id="src-sl">Калькулятор стоимости
+Считайте онлайн за минуту
+Цена до подачи машины
+https://sprintergo.kg/#calc
+
+Цены и тарифы
+Минимальный от 1 500 сом
+Стандарт и Премиум
+https://sprintergo.kg/#prices
+
+Автопарк
+Портер, спринтер, газель
+Грузовики 3 и 5 тонн
+https://sprintergo.kg/#fleet
+
+Отзывы клиентов
+Переезды и сборка мебели
+Реальные истории
+https://sprintergo.kg/#reviews</pre>
+      </div>
+      <div class="block">
+        <div class="block-head"><span class="block-name">Уточнения и номер</span><span class="block-count">8</span>
+          <button class="copy" data-copy="co"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Копировать</button></div>
+        <pre class="block-body" id="src-co">Договор и чек
+0 скрытых платежей
+Оплата после работы
+Грузчики в форме
+С 2015 года
+Заявки 24/7
+Подача в выбранное время
+Жүкчүлөр менен</pre>
+        <div class="block-hint">Структурированное описание, тип «Услуги»: Квартирный переезд, Офисный переезд, Грузчики, Упаковка, Сборка мебели, Грузовое такси, Жүк ташуу.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 -->
+  <section class="step" id="s8">
+    <span class="step-num">8</span>
+    <div class="step-head">
+      <h2>Включить и следить</h2>
+      <button class="tick" data-step="s8" aria-pressed="false" aria-label="Шаг 8 выполнен"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg></button>
+    </div>
+    <div class="step-body">
+      <p>Первые дни главное — чистить мусорные запросы. Это единственное действие, которое реально экономит деньги на старте.</p>
+      <ul>
+        <li><b>Раз в два дня:</b> Ключевые слова → Поисковые запросы. Всё лишнее сразу в минус-слова.</li>
+        <li><b>Цена заявки:</b> норма для Бишкека 150–400 сом. Дороже 600 — снижайте ставку ключа или отключайте его.</li>
+        <li><b>Стратегию не трогайте</b> чаще раза в две недели: алгоритму нужно время на обучение.</li>
+        <li><b>После 30 конверсий</b> переключите на «Максимум конверсий» — цена заявки обычно падает на 20–40 %.</li>
+        <li><b>Со второй недели</b> смотрите отчёт по устройствам: если звонки с мобильных дают заявки дешевле, поднимите корректировку с +20 % до +40 %.</li>
+      </ul>
+      <p>Отдельно и бесплатно: карточка в Google Business Profile и 2ГИС. Для гео-бизнеса она часто приносит больше заявок, чем платная реклама.</p>
+    </div>
+  </section>
+
+  <footer>
+    <span>Сайт: <a href="https://sprintergo.kg/">sprintergo.kg</a> · Телефон в объявлениях: +996 755 555 357</span>
+    <span>Отметки о выполнении сохраняются только в этом браузере.</span>
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---- копирование ---- */
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  function flash(btn, ok) {
+    var label = btn.querySelector('svg') ? null : btn;
+    var original = btn.getAttribute('data-label') || btn.textContent.trim();
+    btn.setAttribute('data-label', original);
+    btn.setAttribute('data-state', ok ? 'ok' : 'err');
+    btn.lastChild.nodeValue = ok ? 'Скопировано' : 'Выделите вручную';
+    setTimeout(function () {
+      btn.removeAttribute('data-state');
+      btn.lastChild.nodeValue = original;
+    }, 1800);
+  }
+
+  document.querySelectorAll('.copy').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var src = document.getElementById('src-' + btn.getAttribute('data-copy'));
+      if (!src) return;
+      var text = src.textContent;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { flash(btn, true); })
+          .catch(function () { flash(btn, fallbackCopy(text)); });
+      } else {
+        flash(btn, fallbackCopy(text));
+      }
+    });
+  });
+
+  /* ---- прогресс ---- */
+  var KEY = 'sg-ads-steps-v1';
+  var ticks = Array.prototype.slice.call(document.querySelectorAll('.tick'));
+  var fill = document.getElementById('pfill');
+  var txt = document.getElementById('ptxt');
+
+  function read() {
+    try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; }
+  }
+  function write(state) {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* приватный режим */ }
+  }
+  function render(state) {
+    var done = 0;
+    ticks.forEach(function (t) {
+      var id = t.getAttribute('data-step');
+      var on = !!state[id];
+      if (on) done++;
+      t.setAttribute('aria-pressed', on ? 'true' : 'false');
+      var section = document.getElementById(id);
+      if (section) section.classList.toggle('done', on);
+    });
+    fill.style.width = (done / ticks.length * 100) + '%';
+    txt.textContent = done + ' / ' + ticks.length;
+  }
+
+  var state = read();
+  render(state);
+
+  ticks.forEach(function (t) {
+    t.addEventListener('click', function () {
+      var id = t.getAttribute('data-step');
+      state[id] = !state[id];
+      write(state);
+      render(state);
+    });
+  });
+})();
+</script>
