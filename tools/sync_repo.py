@@ -3,7 +3,7 @@
 import os, shutil, sys, fnmatch
 SP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO = sys.argv[1] if len(sys.argv) > 1 else '/home/user/Lux'
-KEEP_ROOT = {'.git', 'tools', 'src', 'dist'}
+KEEP_ROOT = {'.git', 'tools', 'src', 'dist', 'ads'}
 
 # 1) built site at repo root: remove previous site files (except keep set), then copy
 for name in os.listdir(REPO):
@@ -37,6 +37,11 @@ for f in ('base.css', 'fonts.css'):
     shutil.copy2(os.path.join(SP, 'site', 'assets', 'css', f), os.path.join(base, f))
 for f in ('SPEC.md', 'CONTRACT.md', 'HERO_BRIEF.md'):
     shutil.copy2(os.path.join(SP, f), os.path.join(REPO, 'src', f))
+ads_src = os.path.join(SP, 'ads')
+if os.path.isdir(ads_src):
+    ads_dst = os.path.join(REPO, 'ads')
+    if os.path.isdir(ads_dst): shutil.rmtree(ads_dst)
+    shutil.copytree(ads_src, ads_dst)
 tools = os.path.join(REPO, 'tools'); os.makedirs(tools, exist_ok=True)
 for f in os.listdir(os.path.join(SP, 'tools')):
     if f.endswith(('.py', '.mjs', '.sh', '.js')):

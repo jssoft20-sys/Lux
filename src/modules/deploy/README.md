@@ -132,7 +132,7 @@ Email `info@moveit.kg` и адрес «ул. Чуйкова, 123» взяты с
 1. **Google Search Console** — https://search.google.com/search-console → добавить ресурс `sprintergo.kg`, подтвердить через HTML-тег: раскомментировать `<meta name="google-site-verification">` в `index.html` и вставить код. Отправить `https://sprintergo.kg/sitemap.xml`.
 2. **Яндекс.Вебмастер** — https://webmaster.yandex.ru → аналогично, тег `<meta name="yandex-verification">`, добавить sitemap.
 3. **Google Business Profile** (https://business.google.com) и **Яндекс Бизнес** (https://business.yandex.ru), **2ГИС** — создать карточку компании с тем же названием, телефоном и адресом, что на сайте, категория «Грузоперевозки / Переезды». Это главный фактор для гео-запросов «грузоперевозки Бишкек».
-4. **Счётчики** — вставить Яндекс.Метрику и/или GA4 в блок-заготовку перед `</body>` в `index.html`.
+4. **Счётчики и конверсии** — вставить Яндекс.Метрику, GA4 и тег Google Ads в блок-заготовку перед `</body>` в `index.html`. Сайт уже отправляет события `lead_whatsapp`, `lead_call`, `lead_form`, `calc_agree`: укажите ярлыки конверсий в `window.SG_TRACK`, и Google Ads будет оптимизировать рекламу под заявки. Готовые кампании для импорта — папка `ads/` в репозитории (`google-ads-plan.md`).
 5. **Отзывы** — просить клиентов оставлять отзывы в Google Maps / 2ГИС / Яндекс Картах; добавлять новые на сайт в секцию «Отзывы».
 6. **Проверки**: https://pagespeed.web.dev, https://validator.schema.org, https://search.google.com/test/rich-results, https://developers.facebook.com/tools/debug (OG-картинка).
 7. Регулярно обновлять контент (цены, районы, FAQ) — `dateModified` и `lastmod`.
