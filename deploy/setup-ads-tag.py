@@ -12,7 +12,8 @@ TAG   = os.environ.get('SG_ADS_TAG',   'AW-18448201336')
 LABEL = os.environ.get('SG_ADS_LABEL', 'sD_3CPDWivYcEPjs5NxE')
 ROOT  = os.environ.get('SG_ROOT',      '/home/gotaxi')
 NGINX = os.environ.get('SG_NGINX_GLOBS',
-                       '/etc/nginx/sites-available/*:/etc/nginx/conf.d/*.conf:' + ROOT + '/deploy/*.conf')
+                       '/etc/nginx/sites-available/*:/etc/nginx/sites-enabled/*:'
+                       '/etc/nginx/conf.d/*.conf:' + ROOT + '/deploy/*.conf')
 RELOAD = os.environ.get('SG_RELOAD', '1') == '1'
 
 BEGIN, END = '<!-- SG:google-ads begin -->', '<!-- SG:google-ads end -->'
@@ -79,12 +80,14 @@ io.open(page, 'w', encoding='utf-8').write(html)
 print(f'index.html: тег {TAG} {"обновлён" if had else "вставлен"} перед </head>')
 
 # ── 2. CSP: без этого браузер молча заблокирует запросы Google Ads ────────────
-found = 0
+found, done = 0, set()
 rx = re.compile(r'(add_header\s+Content-Security-Policy\s+")([^"]*)(")')
 for pattern in NGINX.split(':'):
     for conf in sorted(glob.glob(pattern)):
-        if not os.path.isfile(conf) or re.search(r'(\.bak\d*|\.orig|~)$', conf):
+        conf = os.path.realpath(conf)     # симлинк sites-enabled и его цель — один файл
+        if conf in done or not os.path.isfile(conf) or re.search(r'(\.bak\d*|\.orig|~)$', conf):
             continue      # не трогаем собственные резервные копии
+        done.add(conf)
         text = io.open(conf, encoding='utf-8', errors='ignore').read()
         if 'Content-Security-Policy' not in text:
             continue
