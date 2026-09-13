@@ -379,7 +379,7 @@
 
   if (el.agree) {
     el.agree.addEventListener('click', () => {
-      if (isFormOpen()) { closeForm(); return; }
+      if (isFormOpen()) { const first = $('#calcFormWrap input, .calc-form input'); if (first) first.focus({ preventScroll: false }); return; }
       openForm(true);
       if (el.form) window.setTimeout(() => { try { el.form.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' }); } catch (e) { /* noop */ } }, 80);
     });

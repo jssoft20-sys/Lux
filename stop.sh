@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 PIDFILE=".server.pid"
-PORT="${PORT:-7022}"
+PORT="${PORT:-$(cat .server.port 2>/dev/null || echo 7022)}"
 
 stopped=0
 if [[ -f "$PIDFILE" ]]; then
@@ -14,7 +14,7 @@ if [[ -f "$PIDFILE" ]]; then
     kill -9 "$PID" 2>/dev/null || true
     stopped=1
   fi
-  rm -f "$PIDFILE"
+  rm -f "$PIDFILE" .server.port
 fi
 
 # На всякий случай — процессы, запущенные вручную с этим портом

@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 PIDFILE=".server.pid"
-PORT="${PORT:-7022}"
+PORT="${PORT:-$(cat .server.port 2>/dev/null || echo 7022)}"
 
 if [[ -f "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
   IP="$(hostname -I 2>/dev/null | awk '{print $1}')"

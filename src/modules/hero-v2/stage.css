@@ -6,7 +6,7 @@
 .hero-glow{position:absolute;inset:0 0 auto 0;height:70%;background:radial-gradient(55% 46% at 50% -4%,rgba(255,223,0,.17),transparent 70%);pointer-events:none;z-index:0}
 .hero-copy{position:relative;z-index:2;text-align:center;padding-block:clamp(28px,4vw,52px) clamp(18px,2.4vw,28px);max-width:900px}
 .hero-eyebrow{margin:0}
-.hero-h1{color:var(--white);margin:18px auto 16px;max-width:15ch;font-size:clamp(38px,5.6vw,68px)}
+.hero-h1{color:var(--white);margin:18px auto 16px;max-width:min(100%,780px);font-size:clamp(38px,5.6vw,68px)}
 .hero .mark{color:var(--yellow);background:linear-gradient(180deg,transparent 62%,rgba(255,223,0,.2) 62%)}
 .hero-lead{color:rgba(255,255,255,.74);max-width:640px;margin-inline:auto}
 .hero-actions{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:30px}
@@ -94,7 +94,10 @@
   .hero-stats b{font-size:17px}.hero-stats span{font-size:11px}
   .hero-stage{aspect-ratio:1/1;max-height:none}
   .hero-stage::before{height:18%}
-  .st-scene{transform-origin:60% 100%;transform:scale(1.18)}
+  .st-scene{transform:translateX(-5%)}
+  .hero-h1{font-size:clamp(27px,8.2vw,38px)}
+  .hero-eyebrow{font-size:11px;letter-spacing:.05em;padding:8px 12px}
+  .hero-stats span{font-size:12.5px}
   .hero-stats b{white-space:nowrap;font-size:16px}
   .hero-card--2{display:none}
   .hero-card--1{left:12px;top:12px}

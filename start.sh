@@ -31,6 +31,7 @@ fi
 
 nohup python3 server.py --port "$PORT" --host "$HOST" --root "$(pwd)" >"$LOG" 2>&1 &
 echo $! >"$PIDFILE"
+echo "$PORT" >".server.port"
 sleep 1
 
 if ! kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then

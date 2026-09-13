@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SITE="$ROOT/site"
 DIST="${1:-$ROOT/dist}"
 mkdir -p "$DIST"
+DIST="$(cd "$DIST" && pwd)"
 rm -f "$DIST/sprinter-go-site.zip" "$DIST/sprinter-go-site.tar.gz"
 ( cd "$SITE" && zip -qr -X "$DIST/sprinter-go-site.zip" . -x '*.DS_Store' -x '__MACOSX/*' -x '*.pid' -x 'server.log' )
 ( cd "$SITE" && tar --exclude='*.pid' --exclude='server.log' -czf "$DIST/sprinter-go-site.tar.gz" . )

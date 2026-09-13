@@ -166,7 +166,7 @@
   opacity:0;transform:translate(-50%,24px);transition:opacity .3s var(--ease-out),transform .45s var(--ease-spring)}
 .calc-toast.is-show{opacity:1;transform:translate(-50%,0)}
 .calc-toast::before{content:"";flex:none;width:10px;height:10px;border-radius:50%;background:var(--wa);box-shadow:0 0 0 4px rgba(37,211,102,.25)}
-@media (max-width:760px){.calc-toast{bottom:calc(96px + env(safe-area-inset-bottom,0px))}}
+@media (max-width:760px){.calc-toast{left:16px;right:16px;max-width:none;transform:translateY(24px);bottom:calc(96px + env(safe-area-inset-bottom,0px))}.calc-toast.is-show{transform:none}}
 
 /* ---------- Мобильные раскладки ---------- */
 @media (max-width:760px){

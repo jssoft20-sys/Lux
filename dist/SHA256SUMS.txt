@@ -1,0 +1,2 @@
+36c3d8f2990ffe2381329bac2f5d025b95d026b0ae637b05053815681d9dbfcb  sprinter-go-site.zip
+c02049d650f764a9dd89dfcc841707951f0823633a10fc98930d3ba5a6fdc0ed  sprinter-go-site.tar.gz

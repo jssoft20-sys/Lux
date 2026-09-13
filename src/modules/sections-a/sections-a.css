@@ -160,7 +160,7 @@
 .fleet-info{position:relative;z-index:1}
 .fleet-tag{background:var(--yellow);color:var(--black)}
 .fleet-name{margin-top:16px;font-size:clamp(22px,2vw,28px);color:var(--white)}
-.fleet-desc{margin-top:10px;font-size:15px;line-height:1.55;font-weight:600;color:rgba(255,255,255,.66);max-width:52ch}
+.fleet-desc{margin-top:10px;font-size:15px;line-height:1.55;font-weight:600;color:rgba(255,255,255,.66);max-width:520px}
 .fleet-specs{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,.85fr) minmax(0,1.3fr);gap:16px;margin:20px 0 0;padding-top:18px;border-top:1px solid rgba(255,255,255,.1)}
 .fleet-specs>div{display:grid;gap:5px;align-content:start;min-width:0}
 .fleet-specs dt{font-size:12px;font-weight:700;letter-spacing:.02em;color:rgba(255,255,255,.5)}

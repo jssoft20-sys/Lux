@@ -25,6 +25,7 @@ for (const vp of viewports) {
   page.on('response', r => { if (r.status() >= 400) report.failedRequests.push(`[${vp.name}] ${r.status()} ${r.url()}`); });
   await page.goto(url, { waitUntil: 'load' });
   await page.waitForTimeout(1200);
+  const early = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth, vv: window.visualViewport ? window.visualViewport.width : null }));
   // scroll through the page slowly to trigger reveals/counters
   const total = await page.evaluate(() => document.documentElement.scrollHeight);
   for (let y = 0; y < total; y += vp.height * 0.7) {
@@ -60,6 +61,7 @@ for (const vp of viewports) {
       images: [...document.images].filter(i => !i.alt).length,
     };
   });
+  info.earlyScrollWidth = early.scrollWidth; info.earlyInnerWidth = early.innerWidth;
   report.viewports[vp.name] = info;
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
   await page.waitForTimeout(500);
