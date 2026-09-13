@@ -1,256 +1,163 @@
 ﻿Campaign,Keyword,Criterion Type,Status
-SG | Поиск | Грузоперевозки,работа,Negative Phrase,Enabled
-SG | Поиск | Переезды,работа,Negative Phrase,Enabled
-SG | Поиск | Грузчики,работа,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,работа,Negative Phrase,Enabled
-SG | Звонки | Мобильные,работа,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,вакансии,Negative Phrase,Enabled
-SG | Поиск | Переезды,вакансии,Negative Phrase,Enabled
-SG | Поиск | Грузчики,вакансии,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,вакансии,Negative Phrase,Enabled
-SG | Звонки | Мобильные,вакансии,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,вакансия,Negative Phrase,Enabled
-SG | Поиск | Переезды,вакансия,Negative Phrase,Enabled
-SG | Поиск | Грузчики,вакансия,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,вакансия,Negative Phrase,Enabled
-SG | Звонки | Мобильные,вакансия,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,требуется,Negative Phrase,Enabled
-SG | Поиск | Переезды,требуется,Negative Phrase,Enabled
-SG | Поиск | Грузчики,требуется,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,требуется,Negative Phrase,Enabled
-SG | Звонки | Мобильные,требуется,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,резюме,Negative Phrase,Enabled
-SG | Поиск | Переезды,резюме,Negative Phrase,Enabled
-SG | Поиск | Грузчики,резюме,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,резюме,Negative Phrase,Enabled
-SG | Звонки | Мобильные,резюме,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,зарплата,Negative Phrase,Enabled
-SG | Поиск | Переезды,зарплата,Negative Phrase,Enabled
-SG | Поиск | Грузчики,зарплата,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,зарплата,Negative Phrase,Enabled
-SG | Звонки | Мобильные,зарплата,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,водитель,Negative Phrase,Enabled
-SG | Поиск | Переезды,водитель,Negative Phrase,Enabled
-SG | Поиск | Грузчики,водитель,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,водитель,Negative Phrase,Enabled
-SG | Звонки | Мобильные,водитель,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,курсы,Negative Phrase,Enabled
-SG | Поиск | Переезды,курсы,Negative Phrase,Enabled
-SG | Поиск | Грузчики,курсы,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,курсы,Negative Phrase,Enabled
-SG | Звонки | Мобильные,курсы,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,обучение,Negative Phrase,Enabled
-SG | Поиск | Переезды,обучение,Negative Phrase,Enabled
-SG | Поиск | Грузчики,обучение,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,обучение,Negative Phrase,Enabled
-SG | Звонки | Мобильные,обучение,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,купить,Negative Phrase,Enabled
-SG | Поиск | Переезды,купить,Negative Phrase,Enabled
-SG | Поиск | Грузчики,купить,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,купить,Negative Phrase,Enabled
-SG | Звонки | Мобильные,купить,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,продажа,Negative Phrase,Enabled
-SG | Поиск | Переезды,продажа,Negative Phrase,Enabled
-SG | Поиск | Грузчики,продажа,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,продажа,Negative Phrase,Enabled
-SG | Звонки | Мобильные,продажа,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,продам,Negative Phrase,Enabled
-SG | Поиск | Переезды,продам,Negative Phrase,Enabled
-SG | Поиск | Грузчики,продам,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,продам,Negative Phrase,Enabled
-SG | Звонки | Мобильные,продам,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,б/у,Negative Phrase,Enabled
-SG | Поиск | Переезды,б/у,Negative Phrase,Enabled
-SG | Поиск | Грузчики,б/у,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,б/у,Negative Phrase,Enabled
-SG | Звонки | Мобильные,б/у,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,бу,Negative Phrase,Enabled
-SG | Поиск | Переезды,бу,Negative Phrase,Enabled
-SG | Поиск | Грузчики,бу,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,бу,Negative Phrase,Enabled
-SG | Звонки | Мобильные,бу,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,запчасти,Negative Phrase,Enabled
-SG | Поиск | Переезды,запчасти,Negative Phrase,Enabled
-SG | Поиск | Грузчики,запчасти,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,запчасти,Negative Phrase,Enabled
-SG | Звонки | Мобильные,запчасти,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,ремонт,Negative Phrase,Enabled
-SG | Поиск | Переезды,ремонт,Negative Phrase,Enabled
-SG | Поиск | Грузчики,ремонт,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,ремонт,Negative Phrase,Enabled
-SG | Звонки | Мобильные,ремонт,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,диски,Negative Phrase,Enabled
-SG | Поиск | Переезды,диски,Negative Phrase,Enabled
-SG | Поиск | Грузчики,диски,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,диски,Negative Phrase,Enabled
-SG | Звонки | Мобильные,диски,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,шины,Negative Phrase,Enabled
-SG | Поиск | Переезды,шины,Negative Phrase,Enabled
-SG | Поиск | Грузчики,шины,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,шины,Negative Phrase,Enabled
-SG | Звонки | Мобильные,шины,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,аренда без водителя,Negative Phrase,Enabled
-SG | Поиск | Переезды,аренда без водителя,Negative Phrase,Enabled
-SG | Поиск | Грузчики,аренда без водителя,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,аренда без водителя,Negative Phrase,Enabled
-SG | Звонки | Мобильные,аренда без водителя,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,своими руками,Negative Phrase,Enabled
-SG | Поиск | Переезды,своими руками,Negative Phrase,Enabled
-SG | Поиск | Грузчики,своими руками,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,своими руками,Negative Phrase,Enabled
-SG | Звонки | Мобильные,своими руками,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,самостоятельно,Negative Phrase,Enabled
-SG | Поиск | Переезды,самостоятельно,Negative Phrase,Enabled
-SG | Поиск | Грузчики,самостоятельно,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,самостоятельно,Negative Phrase,Enabled
-SG | Звонки | Мобильные,самостоятельно,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,бесплатно,Negative Phrase,Enabled
-SG | Поиск | Переезды,бесплатно,Negative Phrase,Enabled
-SG | Поиск | Грузчики,бесплатно,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,бесплатно,Negative Phrase,Enabled
-SG | Звонки | Мобильные,бесплатно,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,скачать,Negative Phrase,Enabled
-SG | Поиск | Переезды,скачать,Negative Phrase,Enabled
-SG | Поиск | Грузчики,скачать,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,скачать,Negative Phrase,Enabled
-SG | Звонки | Мобильные,скачать,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,видео,Negative Phrase,Enabled
-SG | Поиск | Переезды,видео,Negative Phrase,Enabled
-SG | Поиск | Грузчики,видео,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,видео,Negative Phrase,Enabled
-SG | Звонки | Мобильные,видео,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,фото,Negative Phrase,Enabled
-SG | Поиск | Переезды,фото,Negative Phrase,Enabled
-SG | Поиск | Грузчики,фото,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,фото,Negative Phrase,Enabled
-SG | Звонки | Мобильные,фото,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,игра,Negative Phrase,Enabled
-SG | Поиск | Переезды,игра,Negative Phrase,Enabled
-SG | Поиск | Грузчики,игра,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,игра,Negative Phrase,Enabled
-SG | Звонки | Мобильные,игра,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,форум,Negative Phrase,Enabled
-SG | Поиск | Переезды,форум,Negative Phrase,Enabled
-SG | Поиск | Грузчики,форум,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,форум,Negative Phrase,Enabled
-SG | Звонки | Мобильные,форум,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,отзывы о,Negative Phrase,Enabled
-SG | Поиск | Переезды,отзывы о,Negative Phrase,Enabled
-SG | Поиск | Грузчики,отзывы о,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,отзывы о,Negative Phrase,Enabled
-SG | Звонки | Мобильные,отзывы о,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,ош,Negative Phrase,Enabled
-SG | Поиск | Переезды,ош,Negative Phrase,Enabled
-SG | Поиск | Грузчики,ош,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,ош,Negative Phrase,Enabled
-SG | Звонки | Мобильные,ош,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,джалал-абад,Negative Phrase,Enabled
-SG | Поиск | Переезды,джалал-абад,Negative Phrase,Enabled
-SG | Поиск | Грузчики,джалал-абад,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,джалал-абад,Negative Phrase,Enabled
-SG | Звонки | Мобильные,джалал-абад,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,каракол,Negative Phrase,Enabled
-SG | Поиск | Переезды,каракол,Negative Phrase,Enabled
-SG | Поиск | Грузчики,каракол,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,каракол,Negative Phrase,Enabled
-SG | Звонки | Мобильные,каракол,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,нарын,Negative Phrase,Enabled
-SG | Поиск | Переезды,нарын,Negative Phrase,Enabled
-SG | Поиск | Грузчики,нарын,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,нарын,Negative Phrase,Enabled
-SG | Звонки | Мобильные,нарын,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,талас,Negative Phrase,Enabled
-SG | Поиск | Переезды,талас,Negative Phrase,Enabled
-SG | Поиск | Грузчики,талас,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,талас,Negative Phrase,Enabled
-SG | Звонки | Мобильные,талас,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,баткен,Negative Phrase,Enabled
-SG | Поиск | Переезды,баткен,Negative Phrase,Enabled
-SG | Поиск | Грузчики,баткен,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,баткен,Negative Phrase,Enabled
-SG | Звонки | Мобильные,баткен,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,алматы,Negative Phrase,Enabled
-SG | Поиск | Переезды,алматы,Negative Phrase,Enabled
-SG | Поиск | Грузчики,алматы,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,алматы,Negative Phrase,Enabled
-SG | Звонки | Мобильные,алматы,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,казахстан,Negative Phrase,Enabled
-SG | Поиск | Переезды,казахстан,Negative Phrase,Enabled
-SG | Поиск | Грузчики,казахстан,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,казахстан,Negative Phrase,Enabled
-SG | Звонки | Мобильные,казахстан,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,россия,Negative Phrase,Enabled
-SG | Поиск | Переезды,россия,Negative Phrase,Enabled
-SG | Поиск | Грузчики,россия,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,россия,Negative Phrase,Enabled
-SG | Звонки | Мобильные,россия,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,москва,Negative Phrase,Enabled
-SG | Поиск | Переезды,москва,Negative Phrase,Enabled
-SG | Поиск | Грузчики,москва,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,москва,Negative Phrase,Enabled
-SG | Звонки | Мобильные,москва,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,международные,Negative Phrase,Enabled
-SG | Поиск | Переезды,международные,Negative Phrase,Enabled
-SG | Поиск | Грузчики,международные,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,международные,Negative Phrase,Enabled
-SG | Звонки | Мобильные,международные,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,из китая,Negative Phrase,Enabled
-SG | Поиск | Переезды,из китая,Negative Phrase,Enabled
-SG | Поиск | Грузчики,из китая,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,из китая,Negative Phrase,Enabled
-SG | Звонки | Мобильные,из китая,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,из россии,Negative Phrase,Enabled
-SG | Поиск | Переезды,из россии,Negative Phrase,Enabled
-SG | Поиск | Грузчики,из россии,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,из россии,Negative Phrase,Enabled
-SG | Звонки | Мобильные,из россии,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,карго,Negative Phrase,Enabled
-SG | Поиск | Переезды,карго,Negative Phrase,Enabled
-SG | Поиск | Грузчики,карго,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,карго,Negative Phrase,Enabled
-SG | Звонки | Мобильные,карго,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,авиа,Negative Phrase,Enabled
-SG | Поиск | Переезды,авиа,Negative Phrase,Enabled
-SG | Поиск | Грузчики,авиа,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,авиа,Negative Phrase,Enabled
-SG | Звонки | Мобильные,авиа,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,жд,Negative Phrase,Enabled
-SG | Поиск | Переезды,жд,Negative Phrase,Enabled
-SG | Поиск | Грузчики,жд,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,жд,Negative Phrase,Enabled
-SG | Звонки | Мобильные,жд,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,контейнер,Negative Phrase,Enabled
-SG | Поиск | Переезды,контейнер,Negative Phrase,Enabled
-SG | Поиск | Грузчики,контейнер,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,контейнер,Negative Phrase,Enabled
-SG | Звонки | Мобильные,контейнер,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,фура,Negative Phrase,Enabled
-SG | Поиск | Переезды,фура,Negative Phrase,Enabled
-SG | Поиск | Грузчики,фура,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,фура,Negative Phrase,Enabled
-SG | Звонки | Мобильные,фура,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,тягач,Negative Phrase,Enabled
-SG | Поиск | Переезды,тягач,Negative Phrase,Enabled
-SG | Поиск | Грузчики,тягач,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,тягач,Negative Phrase,Enabled
-SG | Звонки | Мобильные,тягач,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,мерседес спринтер цена,Negative Phrase,Enabled
-SG | Поиск | Переезды,мерседес спринтер цена,Negative Phrase,Enabled
-SG | Поиск | Грузчики,мерседес спринтер цена,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,мерседес спринтер цена,Negative Phrase,Enabled
-SG | Звонки | Мобильные,мерседес спринтер цена,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,sprinter цена,Negative Phrase,Enabled
-SG | Поиск | Переезды,sprinter цена,Negative Phrase,Enabled
-SG | Поиск | Грузчики,sprinter цена,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,sprinter цена,Negative Phrase,Enabled
-SG | Звонки | Мобильные,sprinter цена,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,сборка мебели видео,Negative Phrase,Enabled
-SG | Поиск | Переезды,сборка мебели видео,Negative Phrase,Enabled
-SG | Поиск | Грузчики,сборка мебели видео,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,сборка мебели видео,Negative Phrase,Enabled
-SG | Звонки | Мобильные,сборка мебели видео,Negative Phrase,Enabled
-SG | Поиск | Грузоперевозки,инструкция,Negative Phrase,Enabled
-SG | Поиск | Переезды,инструкция,Negative Phrase,Enabled
-SG | Поиск | Грузчики,инструкция,Negative Phrase,Enabled
-SG | Поиск | Сборка мебели,инструкция,Negative Phrase,Enabled
-SG | Звонки | Мобильные,инструкция,Negative Phrase,Enabled
+SG | Поиск | Бишкек,работа,Negative Phrase,Enabled
+SG | Звонки,работа,Negative Phrase,Enabled
+SG | Поиск | Бишкек,вакансия,Negative Phrase,Enabled
+SG | Звонки,вакансия,Negative Phrase,Enabled
+SG | Поиск | Бишкек,вакансии,Negative Phrase,Enabled
+SG | Звонки,вакансии,Negative Phrase,Enabled
+SG | Поиск | Бишкек,требуется,Negative Phrase,Enabled
+SG | Звонки,требуется,Negative Phrase,Enabled
+SG | Поиск | Бишкек,резюме,Negative Phrase,Enabled
+SG | Звонки,резюме,Negative Phrase,Enabled
+SG | Поиск | Бишкек,зарплата,Negative Phrase,Enabled
+SG | Звонки,зарплата,Negative Phrase,Enabled
+SG | Поиск | Бишкек,подработка,Negative Phrase,Enabled
+SG | Звонки,подработка,Negative Phrase,Enabled
+SG | Поиск | Бишкек,ищу работу,Negative Phrase,Enabled
+SG | Звонки,ищу работу,Negative Phrase,Enabled
+SG | Поиск | Бишкек,курсы,Negative Phrase,Enabled
+SG | Звонки,курсы,Negative Phrase,Enabled
+SG | Поиск | Бишкек,обучение,Negative Phrase,Enabled
+SG | Звонки,обучение,Negative Phrase,Enabled
+SG | Поиск | Бишкек,жумуш,Negative Phrase,Enabled
+SG | Звонки,жумуш,Negative Phrase,Enabled
+SG | Поиск | Бишкек,жумуш керек,Negative Phrase,Enabled
+SG | Звонки,жумуш керек,Negative Phrase,Enabled
+SG | Поиск | Бишкек,иш издейм,Negative Phrase,Enabled
+SG | Звонки,иш издейм,Negative Phrase,Enabled
+SG | Поиск | Бишкек,айлык,Negative Phrase,Enabled
+SG | Звонки,айлык,Negative Phrase,Enabled
+SG | Поиск | Бишкек,купить,Negative Phrase,Enabled
+SG | Звонки,купить,Negative Phrase,Enabled
+SG | Поиск | Бишкек,продажа,Negative Phrase,Enabled
+SG | Звонки,продажа,Negative Phrase,Enabled
+SG | Поиск | Бишкек,продам,Negative Phrase,Enabled
+SG | Звонки,продам,Negative Phrase,Enabled
+SG | Поиск | Бишкек,продается,Negative Phrase,Enabled
+SG | Звонки,продается,Negative Phrase,Enabled
+SG | Поиск | Бишкек,сатылат,Negative Phrase,Enabled
+SG | Звонки,сатылат,Negative Phrase,Enabled
+SG | Поиск | Бишкек,сатам,Negative Phrase,Enabled
+SG | Звонки,сатам,Negative Phrase,Enabled
+SG | Поиск | Бишкек,бу,Negative Phrase,Enabled
+SG | Звонки,бу,Negative Phrase,Enabled
+SG | Поиск | Бишкек,б у,Negative Phrase,Enabled
+SG | Звонки,б у,Negative Phrase,Enabled
+SG | Поиск | Бишкек,запчасти,Negative Phrase,Enabled
+SG | Звонки,запчасти,Negative Phrase,Enabled
+SG | Поиск | Бишкек,ремонт,Negative Phrase,Enabled
+SG | Звонки,ремонт,Negative Phrase,Enabled
+SG | Поиск | Бишкек,шины,Negative Phrase,Enabled
+SG | Звонки,шины,Negative Phrase,Enabled
+SG | Поиск | Бишкек,диски,Negative Phrase,Enabled
+SG | Звонки,диски,Negative Phrase,Enabled
+SG | Поиск | Бишкек,двигатель,Negative Phrase,Enabled
+SG | Звонки,двигатель,Negative Phrase,Enabled
+SG | Поиск | Бишкек,цена спринтера,Negative Phrase,Enabled
+SG | Звонки,цена спринтера,Negative Phrase,Enabled
+SG | Поиск | Бишкек,спринтер купить,Negative Phrase,Enabled
+SG | Звонки,спринтер купить,Negative Phrase,Enabled
+SG | Поиск | Бишкек,газель купить,Negative Phrase,Enabled
+SG | Звонки,газель купить,Negative Phrase,Enabled
+SG | Поиск | Бишкек,портер купить,Negative Phrase,Enabled
+SG | Звонки,портер купить,Negative Phrase,Enabled
+SG | Поиск | Бишкек,лизинг,Negative Phrase,Enabled
+SG | Звонки,лизинг,Negative Phrase,Enabled
+SG | Поиск | Бишкек,кредит,Negative Phrase,Enabled
+SG | Звонки,кредит,Negative Phrase,Enabled
+SG | Поиск | Бишкек,рассрочка,Negative Phrase,Enabled
+SG | Звонки,рассрочка,Negative Phrase,Enabled
+SG | Поиск | Бишкек,карго,Negative Phrase,Enabled
+SG | Звонки,карго,Negative Phrase,Enabled
+SG | Поиск | Бишкек,из китая,Negative Phrase,Enabled
+SG | Звонки,из китая,Negative Phrase,Enabled
+SG | Поиск | Бишкек,из россии,Negative Phrase,Enabled
+SG | Звонки,из россии,Negative Phrase,Enabled
+SG | Поиск | Бишкек,международные,Negative Phrase,Enabled
+SG | Звонки,международные,Negative Phrase,Enabled
+SG | Поиск | Бишкек,авиа,Negative Phrase,Enabled
+SG | Звонки,авиа,Negative Phrase,Enabled
+SG | Поиск | Бишкек,жд,Negative Phrase,Enabled
+SG | Звонки,жд,Negative Phrase,Enabled
+SG | Поиск | Бишкек,контейнер,Negative Phrase,Enabled
+SG | Звонки,контейнер,Negative Phrase,Enabled
+SG | Поиск | Бишкек,фура,Negative Phrase,Enabled
+SG | Звонки,фура,Negative Phrase,Enabled
+SG | Поиск | Бишкек,тягач,Negative Phrase,Enabled
+SG | Звонки,тягач,Negative Phrase,Enabled
+SG | Поиск | Бишкек,эвакуатор,Negative Phrase,Enabled
+SG | Звонки,эвакуатор,Negative Phrase,Enabled
+SG | Поиск | Бишкек,манипулятор,Negative Phrase,Enabled
+SG | Звонки,манипулятор,Negative Phrase,Enabled
+SG | Поиск | Бишкек,кран,Negative Phrase,Enabled
+SG | Звонки,кран,Negative Phrase,Enabled
+SG | Поиск | Бишкек,бетон,Negative Phrase,Enabled
+SG | Звонки,бетон,Negative Phrase,Enabled
+SG | Поиск | Бишкек,самосвал,Negative Phrase,Enabled
+SG | Звонки,самосвал,Negative Phrase,Enabled
+SG | Поиск | Бишкек,вывоз мусора,Negative Phrase,Enabled
+SG | Звонки,вывоз мусора,Negative Phrase,Enabled
+SG | Поиск | Бишкек,мусор,Negative Phrase,Enabled
+SG | Звонки,мусор,Negative Phrase,Enabled
+SG | Поиск | Бишкек,такси пассажирское,Negative Phrase,Enabled
+SG | Звонки,такси пассажирское,Negative Phrase,Enabled
+SG | Поиск | Бишкек,пассажирские,Negative Phrase,Enabled
+SG | Звонки,пассажирские,Negative Phrase,Enabled
+SG | Поиск | Бишкек,аренда без водителя,Negative Phrase,Enabled
+SG | Звонки,аренда без водителя,Negative Phrase,Enabled
+SG | Поиск | Бишкек,прокат,Negative Phrase,Enabled
+SG | Звонки,прокат,Negative Phrase,Enabled
+SG | Поиск | Бишкек,ош,Negative Phrase,Enabled
+SG | Звонки,ош,Negative Phrase,Enabled
+SG | Поиск | Бишкек,жалал абад,Negative Phrase,Enabled
+SG | Звонки,жалал абад,Negative Phrase,Enabled
+SG | Поиск | Бишкек,джалал абад,Negative Phrase,Enabled
+SG | Звонки,джалал абад,Negative Phrase,Enabled
+SG | Поиск | Бишкек,каракол,Negative Phrase,Enabled
+SG | Звонки,каракол,Negative Phrase,Enabled
+SG | Поиск | Бишкек,нарын,Negative Phrase,Enabled
+SG | Звонки,нарын,Negative Phrase,Enabled
+SG | Поиск | Бишкек,талас,Negative Phrase,Enabled
+SG | Звонки,талас,Negative Phrase,Enabled
+SG | Поиск | Бишкек,баткен,Negative Phrase,Enabled
+SG | Звонки,баткен,Negative Phrase,Enabled
+SG | Поиск | Бишкек,иссык куль,Negative Phrase,Enabled
+SG | Звонки,иссык куль,Negative Phrase,Enabled
+SG | Поиск | Бишкек,алматы,Negative Phrase,Enabled
+SG | Звонки,алматы,Negative Phrase,Enabled
+SG | Поиск | Бишкек,казахстан,Negative Phrase,Enabled
+SG | Звонки,казахстан,Negative Phrase,Enabled
+SG | Поиск | Бишкек,москва,Negative Phrase,Enabled
+SG | Звонки,москва,Negative Phrase,Enabled
+SG | Поиск | Бишкек,россия,Negative Phrase,Enabled
+SG | Звонки,россия,Negative Phrase,Enabled
+SG | Поиск | Бишкек,узбекистан,Negative Phrase,Enabled
+SG | Звонки,узбекистан,Negative Phrase,Enabled
+SG | Поиск | Бишкек,турция,Negative Phrase,Enabled
+SG | Звонки,турция,Negative Phrase,Enabled
+SG | Поиск | Бишкек,своими руками,Negative Phrase,Enabled
+SG | Звонки,своими руками,Negative Phrase,Enabled
+SG | Поиск | Бишкек,самостоятельно,Negative Phrase,Enabled
+SG | Звонки,самостоятельно,Negative Phrase,Enabled
+SG | Поиск | Бишкек,бесплатно,Negative Phrase,Enabled
+SG | Звонки,бесплатно,Negative Phrase,Enabled
+SG | Поиск | Бишкек,скачать,Negative Phrase,Enabled
+SG | Звонки,скачать,Negative Phrase,Enabled
+SG | Поиск | Бишкек,видео,Negative Phrase,Enabled
+SG | Звонки,видео,Negative Phrase,Enabled
+SG | Поиск | Бишкек,фото,Negative Phrase,Enabled
+SG | Звонки,фото,Negative Phrase,Enabled
+SG | Поиск | Бишкек,схема,Negative Phrase,Enabled
+SG | Звонки,схема,Negative Phrase,Enabled
+SG | Поиск | Бишкек,инструкция,Negative Phrase,Enabled
+SG | Звонки,инструкция,Negative Phrase,Enabled
+SG | Поиск | Бишкек,форум,Negative Phrase,Enabled
+SG | Звонки,форум,Negative Phrase,Enabled
+SG | Поиск | Бишкек,что такое,Negative Phrase,Enabled
+SG | Звонки,что такое,Negative Phrase,Enabled
+SG | Поиск | Бишкек,как стать,Negative Phrase,Enabled
+SG | Звонки,как стать,Negative Phrase,Enabled
+SG | Поиск | Бишкек,кандай,Negative Phrase,Enabled
+SG | Звонки,кандай,Negative Phrase,Enabled
+SG | Поиск | Бишкек,деген эмне,Negative Phrase,Enabled
+SG | Звонки,деген эмне,Negative Phrase,Enabled
