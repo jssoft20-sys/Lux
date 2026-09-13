@@ -106,6 +106,23 @@ h1{font-size:clamp(27px,7.2vw,38px); font-weight:800}
   color:var(--ink-2); tab-size:2}
 .block-hint{padding:9px 14px; border-top:1px dashed var(--line); font-size:12.5px; color:var(--muted)}
 
+/* ---------- быстрый путь ---------- */
+.fast{border:2px solid var(--accent); border-radius:14px; background:var(--surface); overflow:hidden;
+  box-shadow:var(--shadow); margin-bottom:30px}
+.fast-head{padding:14px 16px; background:var(--accent); color:#16150F}
+.fast-head b{font-family:var(--display); font-size:16px; font-weight:800; display:block}
+.fast-head span{font-size:13.5px; font-weight:600; opacity:.78}
+.fast-body{padding:14px 16px; display:flex; flex-direction:column; gap:12px}
+.fast-body p{font-size:14.5px; color:var(--ink-2)}
+.files{display:flex; flex-direction:column; gap:0; border:1px solid var(--line); border-radius:10px; overflow:hidden}
+.file{display:flex; align-items:baseline; gap:10px; padding:9px 12px; border-bottom:1px solid var(--line);
+  font-size:14px}
+.file:last-child{border-bottom:0}
+.file-n{flex:none; width:20px; font-family:var(--mono); font-size:12px; color:var(--muted);
+  font-variant-numeric:tabular-nums}
+.file-name{flex:1; font-family:var(--mono); font-size:12.5px; color:var(--ink)}
+.file-what{flex:none; color:var(--muted); font-size:13px}
+
 /* ---------- settings table ---------- */
 .settings{border:1px solid var(--line); border-radius:12px; background:var(--surface); overflow:hidden;
   box-shadow:var(--shadow)}
@@ -150,6 +167,28 @@ button:focus-visible, a:focus-visible{outline:3px solid var(--accent-deep); outl
       <b>С айфона — только через Safari</b>
       <p>Приложение Google Ads не умеет добавлять минус-слова, вставлять ключи списком и настраивать конверсии. Google Ads Editor для iOS не существует. Откройте <code>ads.google.com</code> в Safari, нажмите <code>ᴀA</code> слева в адресной строке → «Запросить сайт для ПК», поверните телефон горизонтально.</p>
       <p style="margin-top:8px"><b style="display:inline">Обязательно перед вставкой:</b> Настройки → Основные → Клавиатура → <b style="display:inline">«Умная пунктуация» выключить</b>. Иначе iOS заменит прямые кавычки на «ёлочки», и Google не распознает фразовое соответствие.</p>
+    </div>
+  </div>
+
+  <div class="fast">
+    <div class="fast-head">
+      <b>Быстрый путь: восемь файлов вместо ручного ввода</b>
+      <span>Массовая загрузка работает прямо в браузере, Google Ads Editor не нужен</span>
+    </div>
+    <div class="fast-body">
+      <p>Сохраните файлы из архива в «Файлы» на телефоне. В Google Ads откройте страницу <b>Кампании</b> → значок <b>три точки</b> над таблицей → значок загрузки → выберите файл → <b>Просмотр</b> → <b>Применить</b>. И так восемь раз.</p>
+      <div class="files">
+        <div class="file"><span class="file-n">1</span><span class="file-name">1-kampaniya.csv</span><span class="file-what">кампания</span></div>
+        <div class="file"><span class="file-n">2</span><span class="file-name">2-gruppy.csv</span><span class="file-what">6 групп</span></div>
+        <div class="file"><span class="file-n">3</span><span class="file-name">3-klyuchevye-slova.csv</span><span class="file-what">113 ключей</span></div>
+        <div class="file"><span class="file-n">4</span><span class="file-name">4-obyavleniya.csv</span><span class="file-what">6 объявлений</span></div>
+        <div class="file"><span class="file-n">5</span><span class="file-name">5-minus-slova.csv</span><span class="file-what">83 минус-слова</span></div>
+        <div class="file"><span class="file-n">6</span><span class="file-name">6-privyazka-minus-slov.csv</span><span class="file-what">связать со списком</span></div>
+        <div class="file"><span class="file-n">7</span><span class="file-name">7-dop-ssylki.csv</span><span class="file-what">4 ссылки</span></div>
+        <div class="file"><span class="file-n">8</span><span class="file-name">8-utochneniya.csv</span><span class="file-what">8 уточнений</span></div>
+      </div>
+      <p><b style="display:inline">Порядок обязателен:</b> файлы ссылаются друг на друга по имени кампании и группы. Зальёте ключи раньше групп — Google ответит «ad group not found».</p>
+      <p>Всё создаётся <b>на паузе</b>. Шаги 1, 2, 3 и 8 ниже всё равно нужны: аккаунт, конверсии, проверка настроек и запуск. Шаги 4–7 при загрузке файлами можно пропустить — там те же данные для ручного ввода.</p>
     </div>
   </div>
 
@@ -216,13 +255,13 @@ window.SG_TRACK={ads:{
       <button class="tick" data-step="s3" aria-pressed="false" aria-label="Шаг 3 выполнен"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg></button>
     </div>
     <div class="step-body">
-      <p>Новая кампания → цель «Потенциальные клиенты» → тип <b>Поисковая</b> → способ достижения: посещения сайта. Название: <b>SG · Поиск · Бишкек</b>.</p>
+      <p>Если грузите файлами — кампания создастся сама, но эти настройки файлом не задаются, проверьте их вручную. Если вводите руками: новая кампания → цель «Потенциальные клиенты» → тип <b>Поисковая</b> → посещения сайта. Название: <b>SG Поиск Бишкек</b>.</p>
       <dl class="settings">
         <div class="srow"><dt>Бюджет</dt><dd>1 200 сом в день<small>При бюджете 1 000 ставьте 1 000 и вторую кампанию не делайте</small></dd></div>
         <div class="srow"><dt>Стратегия</dt><dd>Максимум кликов<small>Предельная цена клика 22 сома</small></dd></div>
         <div class="srow"><dt>Сети</dt><dd>Только поиск<small>Партнёров поиска и КМС выключить</small></dd></div>
-        <div class="srow"><dt>Места</dt><dd>Бишкек + 30 км, Чуйская область<small>Обязательно: «Люди в целевом местоположении», а не «интересующиеся»</small></dd></div>
-        <div class="srow"><dt>Языки</dt><dd>Все языки<small>Google смотрит на язык браузера, а не запроса. Ограничите русским — потеряете половину кыргызских показов</small></dd></div>
+        <div class="srow"><dt>Места</dt><dd>Бишкек + 30 км, Чуйская область<small>В файле только Бишкек — Чуйскую область добавьте руками. И обязательно: «Люди в целевом местоположении», а не «интересующиеся»</small></dd></div>
+        <div class="srow"><dt>Языки</dt><dd>Все языки<small>В файле стоят русский, кыргызский, английский. Google смотрит на язык браузера, а не запроса — ограничите русским и потеряете половину кыргызских показов</small></dd></div>
         <div class="srow"><dt>Устройства</dt><dd>Мобильные +20 %</dd></div>
         <div class="srow"><dt>Расписание</dt><dd>Круглосуточно<small>Заявки в WhatsApp приходят и ночью</small></dd></div>
       </dl>
@@ -234,6 +273,7 @@ window.SG_TRACK={ads:{
     <span class="step-num">4</span>
     <div class="step-head">
       <h2>Шесть групп с ключами</h2>
+      <span class="tag ghost" style="margin-left:auto;align-self:center">файлом быстрее</span>
       <button class="tick" data-step="s4" aria-pressed="false" aria-label="Шаг 4 выполнен"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg></button>
     </div>
     <div class="step-body">
@@ -391,6 +431,7 @@ window.SG_TRACK={ads:{
     <span class="step-num">5</span>
     <div class="step-head">
       <h2>Минус-слова</h2>
+      <span class="tag ghost" style="margin-left:auto;align-self:center">файлом быстрее</span>
       <button class="tick" data-step="s5" aria-pressed="false" aria-label="Шаг 5 выполнен"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg></button>
     </div>
     <div class="step-body">
@@ -490,6 +531,7 @@ window.SG_TRACK={ads:{
     <span class="step-num">6</span>
     <div class="step-head">
       <h2>Тексты объявлений</h2>
+      <span class="tag ghost" style="margin-left:auto;align-self:center">файлом быстрее</span>
       <button class="tick" data-step="s6" aria-pressed="false" aria-label="Шаг 6 выполнен"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg></button>
     </div>
     <div class="step-body">
@@ -562,6 +604,7 @@ WhatsApp аркылуу заказ
     <span class="step-num">7</span>
     <div class="step-head">
       <h2>Расширения</h2>
+      <span class="tag ghost" style="margin-left:auto;align-self:center">файлом быстрее</span>
       <button class="tick" data-step="s7" aria-pressed="false" aria-label="Шаг 7 выполнен"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg></button>
     </div>
     <div class="step-body">
