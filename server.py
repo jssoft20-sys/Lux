@@ -116,18 +116,7 @@ FORBIDDEN_TOP_DIRS = {"deploy", "__pycache__", "node_modules"}
 # счётчики можно вставить без правки сервера.
 # ---------------------------------------------------------------------------
 CSP = (
-    "default-src 'self'; "
-    "base-uri 'self'; "
-    "object-src 'none'; "
-    "img-src 'self' data: https://mc.yandex.ru https://www.google-analytics.com "
-    "https://www.googletagmanager.com https://*.google-analytics.com; "
-    "style-src 'self' 'unsafe-inline'; "
-    "script-src 'self' 'unsafe-inline' https://mc.yandex.ru https://www.googletagmanager.com "
-    "https://www.google-analytics.com; "
-    "font-src 'self'; "
-    "connect-src 'self' https://mc.yandex.ru https://www.google-analytics.com "
-    "https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com; "
-    "frame-ancestors 'self'"
+    "default-src 'self'; base-uri 'self'; object-src 'none'; img-src 'self' data: https://mc.yandex.ru https://www.google-analytics.com https://www.googletagmanager.com https://googleads.g.doubleclick.net https://td.doubleclick.net https://stats.g.doubleclick.net https://www.google.com https://www.google.kg https://www.googleadservices.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://mc.yandex.ru https://www.googletagmanager.com https://www.google-analytics.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://td.doubleclick.net; font-src 'self'; connect-src 'self' https://mc.yandex.ru https://www.google-analytics.com https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com https://googleads.g.doubleclick.net https://td.doubleclick.net https://www.google.com https://pagead2.googlesyndication.com; frame-src https://td.doubleclick.net https://bid.g.doubleclick.net https://www.googletagmanager.com; frame-ancestors 'self'"
 )
 
 SECURITY_HEADERS = (

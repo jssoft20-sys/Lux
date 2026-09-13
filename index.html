@@ -56,6 +56,23 @@
 <!-- Счётчики аналитики (Яндекс.Метрика, Google Analytics 4) вставляются перед закрывающим </body> — см. блок в конце index.html -->
 <link rel="stylesheet" href="/assets/css/site.css?v=439655d0">
 <script defer src="/assets/js/site.js?v=7c5af849"></script>
+<!-- SG:google-ads begin -->
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=AW-18448201336"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'AW-18448201336');
+  /* Ярлык конверсии привязан к заявкам, а не к открытию страницы: событие уходит
+     при клике по WhatsApp, по номеру телефона и при отправке расчёта из калькулятора. */
+  window.SG_TRACK = { ads: {
+    whatsapp: 'AW-18448201336/sD_3CPDWivYcEPjs5NxE',
+    call:     'AW-18448201336/sD_3CPDWivYcEPjs5NxE',
+    form:     'AW-18448201336/sD_3CPDWivYcEPjs5NxE'
+  }, ym: 0 };
+</script>
+<!-- SG:google-ads end -->
 </head>
 <body>
 <header class="topbar" id="top">
