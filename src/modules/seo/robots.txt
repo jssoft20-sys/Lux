@@ -12,4 +12,4 @@ Disallow: /server.py
 Disallow: /*.sh$
 Disallow: /README.md
 
-Sitemap: https://gruzoperevozki.biz.kg/sitemap.xml
+Sitemap: https://sprintergo.kg/sitemap.xml

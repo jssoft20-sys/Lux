@@ -62,7 +62,16 @@ journalctl -u sprinter-go -f
 
 ## 3. Боевой запуск на домене с HTTPS (nginx + certbot)
 
-1. В DNS домена `gruzoperevozki.biz.kg` создайте A-записи `@` и `www` → IP сервера (подождите обновления DNS).
+**Одной командой** (после того как A-записи `@` и `www` домена указывают на сервер):
+
+```bash
+sudo bash /home/gotaxi/deploy/setup-domain.sh sprintergo.kg
+```
+
+Скрипт ставит nginx и certbot, подключает конфиг, открывает 80/443 в файрволе, выпускает сертификат и включает редирект на https. Ниже — те же шаги вручную.
+
+
+1. В DNS домена `sprintergo.kg` создайте A-записи `@` и `www` → IP сервера (подождите обновления DNS).
 2. Установите nginx и certbot:
 
 ```bash
@@ -72,18 +81,18 @@ sudo apt install -y nginx certbot python3-certbot-nginx
 3. Подключите конфиг сайта:
 
 ```bash
-sudo cp /home/gotaxi/deploy/nginx.conf /etc/nginx/sites-available/gruzoperevozki.biz.kg
-sudo ln -s /etc/nginx/sites-available/gruzoperevozki.biz.kg /etc/nginx/sites-enabled/
+sudo cp /home/gotaxi/deploy/nginx.conf /etc/nginx/sites-available/sprintergo.kg
+sudo ln -s /etc/nginx/sites-available/sprintergo.kg /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
 4. Выпустите сертификат (certbot сам настроит редирект на https):
 
 ```bash
-sudo certbot --nginx -d gruzoperevozki.biz.kg -d www.gruzoperevozki.biz.kg
+sudo certbot --nginx -d sprintergo.kg -d www.sprintergo.kg
 ```
 
-5. Проверьте: `https://gruzoperevozki.biz.kg/`. Python-сервер на 7022 при этом можно остановить (`./stop.sh`) — nginx отдаёт файлы из `/home/gotaxi` напрямую. Если хотите оставить python-сервер, в `nginx.conf` есть готовый закомментированный блок `proxy_pass`.
+5. Проверьте: `https://sprintergo.kg/`. Python-сервер на 7022 при этом можно остановить (`./stop.sh`) — nginx отдаёт файлы из `/home/gotaxi` напрямую. Если хотите оставить python-сервер, в `nginx.conf` есть готовый закомментированный блок `proxy_pass`.
 
 Права: `sudo chown -R www-data:www-data /home/gotaxi` (для nginx на Debian/Ubuntu) или `nginx:nginx` на CentOS; убедитесь, что у `/home` и `/home/gotaxi` есть право на чтение и вход (`chmod 755`).
 
@@ -120,7 +129,7 @@ Email `info@moveit.kg` и адрес «ул. Чуйкова, 123» взяты с
 
 ## 6. SEO: что сделать после запуска (важно для топ-1)
 
-1. **Google Search Console** — https://search.google.com/search-console → добавить ресурс `gruzoperevozki.biz.kg`, подтвердить через HTML-тег: раскомментировать `<meta name="google-site-verification">` в `index.html` и вставить код. Отправить `https://gruzoperevozki.biz.kg/sitemap.xml`.
+1. **Google Search Console** — https://search.google.com/search-console → добавить ресурс `sprintergo.kg`, подтвердить через HTML-тег: раскомментировать `<meta name="google-site-verification">` в `index.html` и вставить код. Отправить `https://sprintergo.kg/sitemap.xml`.
 2. **Яндекс.Вебмастер** — https://webmaster.yandex.ru → аналогично, тег `<meta name="yandex-verification">`, добавить sitemap.
 3. **Google Business Profile** (https://business.google.com) и **Яндекс Бизнес** (https://business.yandex.ru), **2ГИС** — создать карточку компании с тем же названием, телефоном и адресом, что на сайте, категория «Грузоперевозки / Переезды». Это главный фактор для гео-запросов «грузоперевозки Бишкек».
 4. **Счётчики** — вставить Яндекс.Метрику и/или GA4 в блок-заготовку перед `</body>` в `index.html`.
@@ -145,6 +154,7 @@ robots.txt, sitemap.xml  — для поисковиков
 server.py                — python-сервер (для запуска по IP:7022 без nginx)
 start.sh / stop.sh / status.sh / restart.sh — управление сервером
 deploy/nginx.conf        — конфиг nginx для домена
+deploy/setup-domain.sh   — привязка домена + HTTPS одной командой
 deploy/sprinter-go.service, deploy/install-service.sh — автозапуск (systemd)
 deploy/Dockerfile, deploy/docker-compose.yml, deploy/nginx-docker.conf — Docker-вариант
 ```
