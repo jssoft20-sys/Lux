@@ -11,7 +11,10 @@ trap 'rm -rf "$TMP"' EXIT
 
 mkdir -p "$TMP/$NAME"
 cd "$ROOT"
-for item in app.py server web scripts deploy README.md SPEC.md; do
+# tools нужны на сервере: mkadmin и mkcourier заводят администратора и водителя
+# руками, когда до админки не добраться. Без них обновление командой из README
+# спотыкалось о несуществующую папку.
+for item in app.py server web scripts deploy tools README.md SPEC.md; do
   [ -e "$item" ] && cp -r "$item" "$TMP/$NAME/"
 done
 mkdir -p "$TMP/$NAME/data"
@@ -19,6 +22,9 @@ cat > "$TMP/$NAME/data/.gitkeep" <<'EOF'
 Здесь появится база sprintergo.sqlite3 после первого запуска.
 Это единственный файл, который нужно включать в резервную копию.
 EOF
+
+rm -f "$TMP/$NAME"/tools/{api_test.py,ui_test.mjs,flow_test.mjs,core_test.py,icons.mjs} 2>/dev/null || true
+rm -f "$TMP/$NAME"/tools/*workflow*.js 2>/dev/null || true
 
 # в архив не тащим мусор разработки
 find "$TMP/$NAME" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
