@@ -887,3 +887,40 @@ html[data-screen='app'] #app { display: grid; }
 /* ══════════════════════════════════════════════════════ вкладки настроек */
 
 .tabs { flex-wrap: wrap; overflow: visible; }
+
+/* ── Проверка документов ─────────────────────────────────────────────────────
+   Карточка на всю ширину: фото должно быть крупным, иначе решение приходится
+   принимать вслепую. На телефоне фото уезжает наверх, кнопки — во всю ширину. */
+.vf-list { display: grid; gap: var(--sp-3); }
+
+.vf {
+  display: grid; grid-template-columns: 132px 1fr; gap: var(--sp-4);
+  align-items: start; padding: var(--sp-4);
+}
+.vf__photo {
+  width: 132px; aspect-ratio: 3 / 4; border-radius: var(--r-md);
+  overflow: hidden; border: 1px solid var(--line); background: var(--surface-2);
+  padding: 0; cursor: zoom-in; display: block;
+  transition: transform var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+.vf__photo:hover { border-color: var(--accent-line); }
+.vf__photo:active { transform: scale(.98); }
+.vf__photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vf__photo--empty {
+  display: grid; place-items: center; text-align: center; cursor: default;
+  color: var(--muted-2); font-size: var(--fs-xs); padding: var(--sp-3);
+}
+.vf__body { display: grid; gap: var(--sp-2); min-width: 0; }
+.vf__head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.vf__meta { font-size: var(--fs-sm); line-height: 1.5; }
+.vf__note {
+  padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm);
+  background: var(--err-soft); color: var(--text); font-size: var(--fs-sm);
+}
+.vf__actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-1); }
+
+@media (max-width: 620px) {
+  .vf { grid-template-columns: 1fr; }
+  .vf__photo { width: 100%; aspect-ratio: 4 / 3; }
+  .vf__actions .btn { flex: 1 1 140px; }
+}

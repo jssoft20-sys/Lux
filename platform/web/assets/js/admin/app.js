@@ -15,13 +15,14 @@ import { setTimeZone } from '../core/fmt.js';
 import { t, guardLeave, errText } from './forms.js';
 import {
   renderOverview, renderLive, renderOrders, renderOrder,
-  renderCouriers, renderCourier, renderClients,
+  renderCouriers, renderCourier, renderClients, renderVerify,
   renderTariffs, renderExtras, renderSettings,
 } from './pages.js';
 
 /* ─────────────────────────────────────────────────────── иконки меню */
 
 const ICONS = {
+  shield: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 5.9v5.2c0 4.3 2.9 8.3 7 9.5 4.1-1.2 7-5.2 7-9.5V5.9z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m9.2 11.9 2 2 3.6-3.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   grid: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h4v7H4zM10 4h4v16h-4zM16 9h4v11h-4z" fill="currentColor"/></svg>',
   map: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8c-3.2 0-5.8 2.5-5.8 5.6 0 4.2 5.8 12.8 5.8 12.8s5.8-8.6 5.8-12.8c0-3.1-2.6-5.6-5.8-5.6zm0 7.9a2.3 2.3 0 1 1 0-4.6 2.3 2.3 0 0 1 0 4.6z" fill="currentColor"/></svg>',
   orders: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14v15l-3-2-2 2-2-2-2 2-2-2-3 2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.5 9h7M8.5 13h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
@@ -40,6 +41,7 @@ const SECTIONS = [
   { path: '/map', title: 'admin.nav_map', icon: 'map', dock: true },
   { path: '/orders', title: 'admin.nav_orders', icon: 'orders', dock: true },
   { path: '/couriers', title: 'admin.nav_couriers', icon: 'car', dock: true },
+  { path: '/verify', title: 'adm.vf_title', icon: 'shield' },
   { path: '/clients', title: 'admin.nav_clients', icon: 'user' },
   { path: '/tariffs', title: 'admin.nav_tariffs', icon: 'tag' },
   { path: '/extras', title: 'admin.nav_extras', icon: 'plus' },
@@ -338,6 +340,7 @@ function routes() {
       draw: (host) => renderCourier(host, ctx, r.params.id),
       path: '/couriers/' + r.params.id,
     }),
+    '/verify': at('/verify', (host) => renderVerify(host, ctx)),
     '/clients': (r) => render('/clients', {
       draw: (host) => renderClients(host, ctx, r.query),
       path: '/clients',

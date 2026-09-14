@@ -11,14 +11,14 @@
 */
 
 import { api, ApiError } from '../core/api.js';
-import { el, toast, sheet, confirm as ask, skeleton, haptic, mountStars } from '../core/ui.js';
+import { el, toast, sheet, confirm as ask, skeleton, haptic, mountStars, photoViewer } from '../core/ui.js';
 import {
   money, num, distance as fmtDistance, duration as fmtDuration,
   time as fmtTime, date as fmtDate, dateTime, timeAgo, phone as fmtPhone,
   plate as fmtPlate, initials,
 } from '../core/fmt.js';
 import { createMap, pin } from '../core/map.js';
-import { getLang } from '../core/i18n.js';
+import { getLang, extend } from '../core/i18n.js';
 import {
   t, tp, createForm, quoteTariff, tiyinToSom, errText, parseNum,
 } from './forms.js';
@@ -2314,4 +2314,216 @@ function mailPanel(ctx, data) {
       send),
       meta.mail_ready ? null : el('p', { className: 'muted t-sm' }, t('adm.mail_off'))),
     block(t('admin.mail_log'), logBox));
+}
+
+
+/* ─────────────────────────────────────────────────────── проверка документов */
+
+extend({
+  ru: {
+    'adm.vf_title': 'Проверка документов',
+    'adm.vf_none': 'Никто не ждёт проверки',
+    'adm.vf_none_all': 'Пока никто не присылал документы',
+    'adm.vf_pending': 'Ждут решения',
+    'adm.vf_approved': 'Проверены',
+    'adm.vf_rejected': 'Отказано',
+    'adm.vf_all': 'Все',
+    'adm.vf_open': 'Открыть фото',
+    'adm.vf_nophoto': 'Фото ещё не прислано',
+    'adm.vf_approve': 'Одобрить',
+    'adm.vf_reject': 'Отказать',
+    'adm.vf_sent': 'Прислано',
+    'adm.vf_registered': 'Зарегистрирован',
+    'adm.vf_reason_title': 'Что не так с документами?',
+    'adm.vf_reason_hint': 'Курьер увидит это и пришлёт фото заново',
+    'adm.vf_reason_ph': 'Например: лицо не видно, паспорт закрыт пальцем',
+    'adm.vf_reason_need': 'Напишите причину — человек должен понимать, что переснять',
+    'adm.vf_ok': 'Доступ к заказам открыт',
+    'adm.vf_no': 'Отказано, курьер получит замечание',
+    'adm.vf_confirm': 'Открыть этому курьеру доступ к заказам?',
+    'adm.vf_note_was': 'Замечание',
+    'adm.vf_orders': 'заказов',
+  },
+  ky: {
+    'adm.vf_title': 'Документтерди текшерүү',
+    'adm.vf_none': 'Текшерүүнү күткөндөр жок',
+    'adm.vf_none_all': 'Азырынча эч ким документ жиберген жок',
+    'adm.vf_pending': 'Чечим күтүүдө',
+    'adm.vf_approved': 'Текшерилген',
+    'adm.vf_rejected': 'Четке кагылган',
+    'adm.vf_all': 'Баары',
+    'adm.vf_open': 'Сүрөттү ачуу',
+    'adm.vf_nophoto': 'Сүрөт жиберилген жок',
+    'adm.vf_approve': 'Уруксат берүү',
+    'adm.vf_reject': 'Четке кагуу',
+    'adm.vf_sent': 'Жиберилген',
+    'adm.vf_registered': 'Катталган',
+    'adm.vf_reason_title': 'Документте эмне туура эмес?',
+    'adm.vf_reason_hint': 'Курьер муну окуп, сүрөттү кайра жиберет',
+    'adm.vf_reason_ph': 'Мисалы: жүзү көрүнбөйт, паспортту манжа жаап турат',
+    'adm.vf_reason_need': 'Себебин жазыңыз: адам эмнени кайра тартууну билиши керек',
+    'adm.vf_ok': 'Заказдарга уруксат ачылды',
+    'adm.vf_no': 'Четке кагылды, курьер эскертүү алат',
+    'adm.vf_confirm': 'Бул курьерге заказдарга уруксат берелиби?',
+    'adm.vf_note_was': 'Эскертүү',
+    'adm.vf_orders': 'заказ',
+  },
+});
+
+const verifyState = { status: 'pending', page: 1 };
+
+/** Очередь на проверку документов курьеров.
+ *
+ *  Отдельный раздел, а не вкладка внутри курьеров: это ежедневная работа,
+ *  за которой человек заходит специально, и ждущие решения не должны
+ *  теряться среди сотни строк общего списка.
+ */
+export function renderVerify(host, ctx) {
+  let alive = true;
+  const chips = el('div', { className: 'chips' });
+  const body = el('div');
+  host.replaceChildren(el('div', { className: 'sect' },
+    sectionTitle(t('adm.vf_title')), chips, body));
+
+  function paintChips(data) {
+    const c = data.counts || {};
+    const items = [
+      ['pending', t('adm.vf_pending'), c.pending],
+      ['approved', t('adm.vf_approved'), c.approved],
+      ['rejected', t('adm.vf_rejected'), c.rejected],
+      ['all', t('adm.vf_all'), data.total],
+    ];
+    chips.replaceChildren(...items.map(([code, label, n]) => el('button', {
+      className: 'chip' + (verifyState.status === code ? ' chip--on' : ''),
+      type: 'button',
+      onClick: () => { verifyState.status = code; verifyState.page = 1; load(); },
+    }, label + (n === undefined ? '' : ' · ' + n))));
+  }
+
+  async function decide(row, status) {
+    let note = '';
+    if (status === 'rejected') {
+      note = await askReason();
+      if (note === null) return;
+    } else if (!await ask({ title: t('adm.vf_confirm'), ok: t('adm.vf_approve') })) {
+      return;
+    }
+    try {
+      await api.patch('/admin/verify/' + row.user_id, { status, note });
+      haptic();
+      toast(status === 'approved' ? t('adm.vf_ok') : t('adm.vf_no'), { type: 'ok' });
+      load();
+    } catch (e) {
+      toast(errText(e), { type: 'err' });
+    }
+  }
+
+  /** Причина отказа: без неё курьер не поймёт, что переснимать. */
+  function askReason() {
+    return new Promise((resolve) => {
+      const input = el('textarea', {
+        className: 'field__input', rows: 3, placeholder: t('adm.vf_reason_ph'),
+      });
+      let done = false;
+      const finish = (value) => { if (!done) { done = true; resolve(value); } };
+      sheet({
+        title: t('adm.vf_reason_title'),
+        content: el('div', { className: 'col gap-3' },
+          el('p', { className: 'muted' }, t('adm.vf_reason_hint')),
+          el('label', { className: 'field' }, input)),
+        actions: [
+          { label: t('common.cancel'), kind: 'ghost', onClick: () => finish(null) },
+          {
+            label: t('adm.vf_reject'), kind: 'danger',
+            onClick: () => {
+              const v = input.value.trim();
+              // Возврат false держит шторку открытой: человеку есть что исправить.
+              if (!v) { toast(t('adm.vf_reason_need'), { type: 'err' }); input.focus(); return false; }
+              finish(v);
+              return true;
+            },
+          },
+        ],
+        // Закрыли крестиком, тапом мимо или свайпом — считаем это отменой,
+        // иначе обещание повисло бы навсегда.
+        onClose: () => finish(null),
+      });
+      setTimeout(() => input.focus(), 120);
+    });
+  }
+
+  function card(row) {
+    const car = row.car || {};
+    const thumb = row.photo_url
+      ? el('button', {
+          className: 'vf__photo', type: 'button', title: t('adm.vf_open'),
+          onClick: () => photoViewer(row.photo_url, { alt: row.name }),
+        }, el('img', { src: row.photo_url, alt: row.name, loading: 'lazy' }))
+      : el('div', { className: 'vf__photo vf__photo--empty' }, t('adm.vf_nophoto'));
+
+    const when = row.verified_at || row.registered_at;
+    const meta = [
+      car.model && car.plate ? car.model + ' · ' + fmtPlate(car.plate) : car.model || '',
+      row.phone ? fmtPhone(row.phone) : '',
+      when ? t('adm.vf_sent') + ': ' + dateTime(when) : '',
+      row.orders_done ? row.orders_done + ' ' + t('adm.vf_orders') : '',
+    ].filter(Boolean);
+
+    const buttons = [];
+    if (row.verify_status !== 'approved') {
+      buttons.push(el('button', {
+        className: 'btn btn--primary', type: 'button',
+        onClick: () => decide(row, 'approved'),
+      }, t('adm.vf_approve')));
+    }
+    if (row.verify_status !== 'rejected') {
+      buttons.push(el('button', {
+        className: 'btn btn--danger', type: 'button',
+        onClick: () => decide(row, 'rejected'),
+      }, t('adm.vf_reject')));
+    }
+
+    return el('article', { className: 'card vf' },
+      thumb,
+      el('div', { className: 'vf__body' },
+        el('div', { className: 'vf__head' },
+          el('strong', {}, row.name || '—'),
+          el('span', {
+            className: 'badge badge--' + (row.verify_status === 'approved' ? 'ok'
+              : row.verify_status === 'rejected' ? 'err' : 'warn'),
+          }, row.verify_name || row.verify_status)),
+        el('div', { className: 'vf__meta muted' }, meta.join(' · ')),
+        row.verify_note
+          ? el('div', { className: 'vf__note' }, t('adm.vf_note_was') + ': ' + row.verify_note)
+          : null,
+        el('div', { className: 'vf__actions' }, ...buttons,
+          el('a', { className: 'btn btn--ghost', href: '#/couriers/' + row.user_id },
+            t('admin.nav_couriers')))));
+  }
+
+  async function load() {
+    rowsSkeleton(body, 4);
+    try {
+      const data = await api.get('/admin/verify', {
+        status: verifyState.status, page: verifyState.page,
+      });
+      if (!alive) return;
+      paintChips(data);
+      const items = data.items || [];
+      if (!items.length) {
+        body.replaceChildren(emptyBox(
+          verifyState.status === 'pending' ? t('adm.vf_none') : t('adm.vf_none_all')));
+        return;
+      }
+      const list = el('div', { className: 'vf-list' }, ...items.map(card));
+      const nav = pager(data, (p) => { verifyState.page = p; load(); });
+      body.replaceChildren(nav ? el('div', {}, list, nav) : list);
+    } catch (e) {
+      if (!alive) return;
+      body.replaceChildren(emptyBox(errText(e)));
+    }
+  }
+
+  load();
+  return () => { alive = false; };
 }
