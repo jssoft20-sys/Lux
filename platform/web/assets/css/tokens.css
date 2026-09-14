@@ -1,0 +1,156 @@
+/* Дизайн-система Sprinter Go.
+   Тёмная тема основная: сервисом пользуются ночью и на улице, тёмный экран
+   меньше слепит и экономит батарею. Светлая поддерживается полностью.
+   Все цвета определены на голом :root, темы только переопределяют значения —
+   иначе при системной теме часть переменных осталась бы неопределённой. */
+
+:root {
+  color-scheme: dark light;
+
+  /* поверхности */
+  --bg: #0E0E10;
+  --bg-soft: #141417;
+  --surface: #17171A;
+  --surface-2: #202024;
+  --surface-3: #2A2A30;
+  --line: #2E2E36;
+  --line-soft: #24242B;
+  --overlay: rgba(6, 6, 8, .72);
+
+  /* текст */
+  --text: #F6F6F8;
+  --muted: #9A9AA5;
+  --muted-2: #6E6E78;
+  --on-accent: #16150F;
+
+  /* акценты */
+  --accent: #FFDF00;
+  --accent-press: #EBCD00;
+  --accent-soft: rgba(255, 223, 0, .14);
+  --accent-line: rgba(255, 223, 0, .38);
+
+  --ok: #24C07A;
+  --ok-soft: rgba(36, 192, 122, .16);
+  --warn: #FFA726;
+  --warn-soft: rgba(255, 167, 38, .16);
+  --err: #FF5A5A;
+  --err-soft: rgba(255, 90, 90, .16);
+  --info: #4DA3FF;
+  --info-soft: rgba(77, 163, 255, .16);
+
+  /* радиусы */
+  --r-xs: 8px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+  --r-full: 999px;
+
+  /* отступы */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-7: 32px; --sp-8: 40px;
+
+  /* тени */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .32);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, .38);
+  --shadow-3: 0 18px 48px rgba(0, 0, 0, .46);
+  --shadow-sheet: 0 -12px 40px rgba(0, 0, 0, .5);
+  --shadow-accent: 0 6px 20px rgba(255, 223, 0, .24);
+
+  /* движение */
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --ease-in: cubic-bezier(.5, 0, .75, 0);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --dur-1: 140ms;
+  --dur-2: 240ms;
+  --dur-3: 380ms;
+  --dur-4: 560ms;
+
+  /* шрифты */
+  --font-display: 'Onest', 'Onest Fallback', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-text: 'Inter', 'Inter Fallback', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+
+  /* размеры текста: подобраны под 360–430 px, дальше растут через clamp */
+  --fs-display: clamp(26px, 7vw, 34px);
+  --fs-h1: clamp(22px, 5.6vw, 28px);
+  --fs-h2: clamp(18px, 4.6vw, 22px);
+  --fs-h3: 16px;
+  --fs-body: 15px;
+  --fs-sm: 13px;
+  --fs-xs: 11px;
+
+  /* раскладка */
+  --header-h: 56px;
+  --dock-h: 76px;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --sheet-max: 560px;
+  --page-max: 720px;
+
+  --z-map: 1;
+  --z-ui: 10;
+  --z-sheet: 100;
+  --z-modal: 200;
+  --z-toast: 300;
+}
+
+/* Светлая тема: системная, если пользователь не выбрал явно тёмную. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #F4F4F6;
+    --bg-soft: #FFFFFF;
+    --surface: #FFFFFF;
+    --surface-2: #F2F2F5;
+    --surface-3: #E7E7EC;
+    --line: #E2E2E8;
+    --line-soft: #EDEDF1;
+    --overlay: rgba(20, 20, 24, .42);
+    --text: #131317;
+    --muted: #6B6B76;
+    --muted-2: #93939E;
+    --shadow-1: 0 1px 2px rgba(16, 16, 24, .08);
+    --shadow-2: 0 8px 24px rgba(16, 16, 24, .10);
+    --shadow-3: 0 18px 48px rgba(16, 16, 24, .14);
+    --shadow-sheet: 0 -12px 40px rgba(16, 16, 24, .14);
+  }
+}
+
+/* Явный выбор пользователя побеждает системную настройку в обе стороны. */
+:root[data-theme="light"] {
+  --bg: #F4F4F6;
+  --bg-soft: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-2: #F2F2F5;
+  --surface-3: #E7E7EC;
+  --line: #E2E2E8;
+  --line-soft: #EDEDF1;
+  --overlay: rgba(20, 20, 24, .42);
+  --text: #131317;
+  --muted: #6B6B76;
+  --muted-2: #93939E;
+  --shadow-1: 0 1px 2px rgba(16, 16, 24, .08);
+  --shadow-2: 0 8px 24px rgba(16, 16, 24, .10);
+  --shadow-3: 0 18px 48px rgba(16, 16, 24, .14);
+  --shadow-sheet: 0 -12px 40px rgba(16, 16, 24, .14);
+}
+
+:root[data-theme="dark"] {
+  --bg: #0E0E10;
+  --surface: #17171A;
+  --text: #F6F6F8;
+}
+
+/* Кто просил меньше движения — тот получает мгновенные переходы.
+   Значение 1ms, а не .001ms: минификаторы ломают вторую запись, превращая её в NaN. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-1: 1ms; --dur-2: 1ms; --dur-3: 1ms; --dur-4: 1ms;
+  }
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}

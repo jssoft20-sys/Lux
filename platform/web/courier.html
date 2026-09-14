@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<title>Sprinter Go — курьер</title>
+<meta name="description" content="Рабочее приложение водителя Sprinter Go: смена, заказы, заработок.">
+<meta name="theme-color" content="#0E0E10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sprinter Go">
+<meta name="robots" content="noindex,nofollow">
+
+<link rel="manifest" href="/manifest-courier.webmanifest">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+<link rel="preload" href="/assets/fonts/onest-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/inter-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+
+<link rel="stylesheet" href="/assets/css/fonts.css">
+<link rel="stylesheet" href="/assets/css/tokens.css">
+<link rel="stylesheet" href="/assets/css/base.css">
+<link rel="stylesheet" href="/assets/css/components.css">
+<link rel="stylesheet" href="/assets/css/map.css">
+<link rel="stylesheet" href="/assets/css/courier.css">
+
+<script>
+  /* Пара строк до первой отрисовки: если токен уже лежит, форма входа не должна
+     мигнуть перед рабочим экраном. Модульный скрипт выполняется отложенно
+     и на это опоздал бы. Без атрибута показывается вход — так надёжнее. */
+  try {
+    if (localStorage.getItem('sg_token')) document.documentElement.dataset.screen = 'app';
+  } catch (e) { /* приватный режим: покажем вход, дальше разберётся приложение */ }
+</script>
+</head>
+<body>
+
+<!-- ── вход и регистрация ─────────────────────────────────────────────────
+     Эти два экрана лежат прямо в разметке: это первое, что видит человек,
+     и ждать загрузки скриптов ради формы входа незачем. -->
+<section class="gate" id="gate" aria-labelledby="gate-title">
+  <div class="gate__head">
+    <img class="gate__logo" src="/assets/img/logo.svg" width="56" height="56" alt="" aria-hidden="true">
+    <h1 class="gate__title" id="gate-title" data-t="courier.app">Sprinter Go для курьеров</h1>
+    <p class="gate__sub">Заказы, смена и заработок в одном месте</p>
+  </div>
+
+  <div class="segmented gate__tabs" role="tablist" aria-label="Вход или регистрация">
+    <button class="segmented__i is-on" type="button" role="tab" aria-selected="true"
+            aria-controls="form-login" id="tab-login" data-gate-tab="login"
+            data-t="courier.login">Вход</button>
+    <button class="segmented__i" type="button" role="tab" aria-selected="false"
+            aria-controls="form-register" id="tab-register" data-gate-tab="register"
+            data-t="courier.register">Регистрация</button>
+  </div>
+
+  <!-- ── вход ── -->
+  <form class="gate__form" id="form-login" role="tabpanel" aria-labelledby="tab-login" novalidate>
+    <label class="field">
+      <input class="field__input" type="email" name="email" id="login-email" placeholder=" "
+             autocomplete="username" inputmode="email" enterkeyhint="next" required>
+      <span class="field__label" data-t="courier.email">Почта</span>
+    </label>
+
+    <label class="field">
+      <input class="field__input" type="password" name="password" id="login-password" placeholder=" "
+             autocomplete="current-password" enterkeyhint="go" required>
+      <span class="field__label" data-t="courier.password">Пароль</span>
+      <button class="field__eye" type="button" data-eye="login-password"
+              aria-label="Показать пароль" title="Показать пароль"></button>
+    </label>
+
+    <p class="gate__err" id="login-err" role="alert" hidden></p>
+
+    <button class="btn btn--primary btn--lg btn--block" type="submit"
+            data-t="courier.login_btn">Войти</button>
+
+    <button class="gate__link" type="button" id="forgot"
+            data-t="courier.forgot">Забыли пароль?</button>
+  </form>
+
+  <!-- ── регистрация ── -->
+  <form class="gate__form" id="form-register" role="tabpanel" aria-labelledby="tab-register" novalidate hidden>
+    <p class="gate__hint" data-t="courier.register_hint">Заполните анкету, проверим в течение дня</p>
+
+    <label class="field">
+      <input class="field__input" type="text" name="name" placeholder=" "
+             autocomplete="name" enterkeyhint="next" maxlength="80" required>
+      <span class="field__label" data-t="courier.name">Имя и фамилия</span>
+    </label>
+
+    <label class="field">
+      <input class="field__input" type="email" name="email" placeholder=" "
+             autocomplete="email" inputmode="email" enterkeyhint="next" required>
+      <span class="field__label" data-t="courier.email">Почта</span>
+    </label>
+
+    <label class="field">
+      <input class="field__input" type="tel" name="phone" placeholder=" "
+             autocomplete="tel" inputmode="tel" enterkeyhint="next" required>
+      <span class="field__label" data-t="courier.phone">Телефон</span>
+      <span class="field__hint" data-t="common.phone_ph">+996 700 000 000</span>
+    </label>
+
+    <label class="field">
+      <input class="field__input" type="password" name="password" id="reg-password" placeholder=" "
+             autocomplete="new-password" enterkeyhint="next" required>
+      <span class="field__label" data-t="courier.password">Пароль</span>
+      <button class="field__eye" type="button" data-eye="reg-password"
+              aria-label="Показать пароль" title="Показать пароль"></button>
+      <span class="field__hint">Не короче восьми символов</span>
+    </label>
+
+    <h2 class="gate__group" data-t="courier.car">Автомобиль</h2>
+
+    <label class="field field--sel field--fill">
+      <select class="field__input" name="vehicle_class" id="reg-class" required>
+        <option value="">Выберите класс</option>
+      </select>
+      <span class="field__label" data-t="courier.vehicle_class">Класс машины</span>
+    </label>
+
+    <label class="field">
+      <input class="field__input" type="text" name="car_model" placeholder=" "
+             autocomplete="off" enterkeyhint="next" maxlength="60" required>
+      <span class="field__label" data-t="courier.car_model">Марка и модель</span>
+      <span class="field__hint" data-t="courier.car_model_ph">Mercedes Sprinter</span>
+    </label>
+
+    <div class="gate__pair">
+      <label class="field">
+        <input class="field__input" type="text" name="car_plate" placeholder=" "
+               autocomplete="off" enterkeyhint="next" required>
+        <span class="field__label" data-t="courier.car_plate">Госномер</span>
+      </label>
+      <label class="field">
+        <input class="field__input" type="text" name="car_color" placeholder=" "
+               autocomplete="off" enterkeyhint="next" maxlength="30">
+        <span class="field__label" data-t="courier.car_color">Цвет</span>
+      </label>
+    </div>
+
+    <label class="field">
+      <input class="field__input" type="number" name="capacity_kg" placeholder=" "
+             inputmode="numeric" min="1" max="20000" enterkeyhint="next" required>
+      <span class="field__label" data-t="courier.capacity">Грузоподъёмность, кг</span>
+    </label>
+
+    <h2 class="gate__group" data-t="courier.body">Кузов, см</h2>
+    <div class="gate__trio">
+      <label class="field">
+        <input class="field__input" type="number" name="body_d" placeholder=" "
+               inputmode="numeric" min="1" max="900" enterkeyhint="next">
+        <span class="field__label" data-t="courier.body_d">Длина</span>
+      </label>
+      <label class="field">
+        <input class="field__input" type="number" name="body_w" placeholder=" "
+               inputmode="numeric" min="1" max="400" enterkeyhint="next">
+        <span class="field__label" data-t="courier.body_w">Ширина</span>
+      </label>
+      <label class="field">
+        <input class="field__input" type="number" name="body_h" placeholder=" "
+               inputmode="numeric" min="1" max="400" enterkeyhint="go">
+        <span class="field__label" data-t="courier.body_h">Высота</span>
+      </label>
+    </div>
+
+    <p class="gate__err" id="register-err" role="alert" hidden></p>
+
+    <button class="btn btn--primary btn--lg btn--block" type="submit"
+            data-t="courier.register_btn">Отправить заявку</button>
+  </form>
+
+  <div class="gate__foot">
+    <button class="gate__lang" type="button" data-lang="ru">Русский</button>
+    <span class="gate__dot" aria-hidden="true"></span>
+    <button class="gate__lang" type="button" data-lang="ky">Кыргызча</button>
+  </div>
+</section>
+
+<!-- ── рабочее приложение ─────────────────────────────────────────────── -->
+<div class="app" id="app">
+  <header class="app__top" id="app-top"></header>
+  <main class="app__main" id="app-main" tabindex="-1">
+    <div class="boot" id="boot"><span class="boot__ring" aria-hidden="true"></span></div>
+  </main>
+  <nav class="dock" id="dock" aria-label="Разделы"></nav>
+</div>
+
+<!-- Полноэкранное предложение заказа живёт поверх всего. -->
+<div class="offer" id="offer" hidden></div>
+
+<script type="module" src="/assets/js/courier/app.js"></script>
+</body>
+</html>

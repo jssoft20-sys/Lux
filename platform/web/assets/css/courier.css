@@ -1,0 +1,1049 @@
+/* Приложение курьера: вход, смена, предложение заказа, работа, деньги, профиль.
+   Подключается последним — после tokens, base, components и map.
+
+   Экран водителя живёт особняком от клиентского: телефон стоит в держателе,
+   человек за рулём, и всё важное должно попадаться пальцу без прицеливания.
+   Отсюда крупные кнопки, высокий контраст и минимум мелкого текста. */
+
+/* ══════════════════════════════════════════════════════ переключение экранов */
+
+/* Без атрибута data-screen показывается вход: если скрипт в шапке не отработал,
+   человек увидит форму, а не пустую страницу. */
+#gate { display: flex; }
+#app { display: none; }
+
+html[data-screen='app'] #gate { display: none; }
+html[data-screen='app'] #app { display: flex; }
+
+/* ══════════════════════════════════════════════════════ вход и регистрация */
+
+.gate {
+  flex-direction: column;
+  gap: var(--sp-4);
+  width: 100%;
+  max-width: 460px;
+  margin-inline: auto;
+  padding: calc(var(--sp-6) + var(--safe-t)) var(--sp-4) calc(var(--sp-6) + var(--safe-b));
+}
+
+.gate__head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  text-align: center;
+  padding-bottom: var(--sp-2);
+}
+
+.gate__logo {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-md);
+}
+
+.gate__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: 800;
+  letter-spacing: -.02em;
+}
+
+.gate__sub {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.gate__tabs { width: 100%; }
+
+/* Базовый сегмент рассчитан на 34 px — за рулём в него не попасть.
+   Везде, где переключатель нажимают пальцем, поднимаем до нормальной кнопки. */
+.gate__tabs .segmented__i,
+.seg-wrap .segmented__i { min-height: 44px; }
+
+.gate__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.gate__hint {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.gate__group {
+  margin-top: var(--sp-2);
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.gate__pair,
+.gate__trio {
+  display: grid;
+  gap: var(--sp-3);
+  grid-template-columns: 1fr 1fr;
+}
+.gate__trio { grid-template-columns: repeat(3, 1fr); }
+
+/* На 360 px три поля кузова в ряд дают по 96 px — метка «Ширина» уже не влезает,
+   поэтому в самом узком случае они складываются в два ряда. */
+@media (max-width: 379px) {
+  .gate__trio { grid-template-columns: 1fr 1fr; }
+}
+
+.gate__err {
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--err-soft);
+  color: var(--err);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+.gate__link {
+  align-self: center;
+  min-height: 44px;
+  padding: 0 var(--sp-3);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.gate__link:active { color: var(--text); }
+
+.gate__foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  margin-top: auto;
+  padding-top: var(--sp-5);
+}
+
+.gate__lang {
+  min-height: 40px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-full);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.gate__lang.is-on { background: var(--surface-2); color: var(--text); }
+
+.gate__dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+/* Глаз у поля пароля. Поле само тянется на всю ширину, кнопка ложится поверх. */
+.field__eye {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: var(--r-sm);
+  color: var(--muted);
+}
+.field__eye::before {
+  content: '';
+  width: 20px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+}
+.field__eye::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.field__eye.is-on { color: var(--accent); }
+.field__eye.is-on::after { box-shadow: 0 0 0 4px var(--surface-2); }
+.field__eye:active { transform: scale(.92); }
+
+/* Экран «заявка принята»: занимает всё, дальше идти некуда. */
+.gate__done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-7) var(--sp-4);
+  text-align: center;
+}
+
+.gate__done-mark {
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  border-radius: var(--r-full);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.gate__done-mark > svg { width: 36px; height: 36px; }
+
+/* ══════════════════════════════════════════════════════ каркас приложения */
+
+.app {
+  flex-direction: column;
+  min-height: 100dvh;
+  max-width: var(--page-max);
+  margin-inline: auto;
+}
+
+.app__top {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-ui);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--header-h);
+  padding: var(--safe-t) var(--sp-4) 0;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.app__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+}
+
+.app__sub {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.app__main {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--sp-4) var(--sp-4) calc(var(--dock-h) + var(--safe-b) + var(--sp-4));
+}
+
+.app__main--flush { padding-inline: 0; }
+
+/* Загрузочный кружок до первой отрисовки. */
+.boot {
+  display: grid;
+  place-items: center;
+  min-height: 50dvh;
+}
+.boot__ring {
+  width: 34px;
+  height: 34px;
+  border: 3px solid var(--surface-3);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: sg-spin 680ms linear infinite;
+}
+
+/* ── нижняя панель разделов ─────────────────────────────────────────────── */
+
+.dock {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  z-index: var(--z-ui);
+  display: flex;
+  width: 100%;
+  max-width: var(--page-max);
+  transform: translateX(-50%);
+  padding: var(--sp-2) var(--sp-2) calc(var(--sp-2) + var(--safe-b));
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--line-soft);
+}
+
+.dock__i {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 56px;
+  border-radius: var(--r-md);
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  transition: color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+
+.dock__i > svg { width: 24px; height: 24px; }
+.dock__i:active { background: var(--surface-2); }
+.dock__i.is-on { color: var(--accent); }
+
+/* Точка на разделе «Заказ», когда заказ в работе. */
+.dock__mark {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  margin-left: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* ══════════════════════════════════════════════════════ смена */
+
+.shift {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* Главный переключатель смены. Это единственная кнопка, которую ищут
+   на бегу, поэтому она крупная и меняет цвет целиком. */
+.shift__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  width: 100%;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  text-align: left;
+  transition: background-color var(--dur-2) var(--ease),
+              border-color var(--dur-2) var(--ease),
+              transform var(--dur-1) var(--ease);
+}
+.shift__toggle:active { transform: scale(.99); }
+
+.shift__toggle.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.shift__state {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 800;
+  letter-spacing: -.01em;
+}
+
+.shift__note {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-family: var(--font-text);
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+.shift__toggle.is-on .shift__note { color: rgba(22, 21, 15, .72); }
+
+/* Кружок-лампа: гаснет и загорается вместе со сменой. */
+.shift__lamp {
+  position: relative;
+  flex: none;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  transition: background-color var(--dur-2) var(--ease);
+}
+.shift__lamp::after {
+  content: '';
+  position: absolute;
+  inset: 18px;
+  border-radius: 50%;
+  background: var(--muted-2);
+  transition: background-color var(--dur-2) var(--ease), transform var(--dur-2) var(--ease-spring);
+}
+.shift__toggle.is-on .shift__lamp { background: rgba(22, 21, 15, .16); }
+.shift__toggle.is-on .shift__lamp::after { background: var(--on-accent); transform: scale(1.28); }
+
+/* Пульсирующее кольцо, пока ждём заказ. */
+.shift__toggle.is-on .shift__lamp::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--on-accent);
+  opacity: 0;
+  animation: sg-pulse-ring 2.2s var(--ease) infinite;
+}
+
+@keyframes sg-pulse-ring {
+  0% { transform: scale(.7); opacity: .5; }
+  70% { transform: scale(1.25); opacity: 0; }
+  100% { opacity: 0; }
+}
+
+.shift__map {
+  position: relative;
+  height: clamp(220px, 38dvh, 340px);
+  border-radius: var(--r-lg);
+}
+
+/* Плашка «включите геолокацию» поверх карты. */
+.shift__geo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+.shift__geo .btn { flex: none; }
+
+/* ── плитки статистики ──────────────────────────────────────────────────── */
+
+.tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+}
+
+.tile {
+  padding: var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+}
+
+.tile__k {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.tile__v {
+  margin-top: 4px;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+}
+
+.tile--accent { background: var(--accent-soft); border-color: var(--accent-line); }
+.tile--accent .tile__v { color: var(--accent); }
+.tile--wide { grid-column: 1 / -1; }
+
+/* ══════════════════════════════════════════════════════ предложение заказа */
+
+.offer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  animation: sg-offer-in var(--dur-2) var(--ease) both;
+}
+
+@keyframes sg-offer-in {
+  from { opacity: 0; transform: translateY(16px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.offer__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: calc(var(--sp-5) + var(--safe-t)) var(--sp-4) var(--sp-4);
+}
+
+.offer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.offer__kind {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: 800;
+  letter-spacing: -.02em;
+}
+
+.offer__pay {
+  padding: var(--sp-4) var(--sp-5);
+  border-radius: var(--r-lg);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  text-align: center;
+}
+
+.offer__pay-k {
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.offer__pay-v {
+  font-family: var(--font-display);
+  font-size: var(--fs-display);
+  font-weight: 800;
+  color: var(--accent);
+  line-height: 1.05;
+  letter-spacing: -.02em;
+}
+
+.offer__pay-note {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.offer__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
+
+/* Адрес с точкой и ниткой между точками. */
+.point {
+  position: relative;
+  display: flex;
+  gap: var(--sp-3);
+  padding-left: 2px;
+}
+
+.point__mark {
+  flex: none;
+  position: relative;
+  width: 22px;
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
+}
+
+.point__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.point--to .point__dot {
+  border-radius: 3px;
+  background: var(--text);
+  box-shadow: 0 0 0 3px var(--surface-3);
+}
+
+/* Нитка тянется от точки вниз до следующей. */
+.point:not(:last-child) .point__mark::after {
+  content: '';
+  position: absolute;
+  top: 20px;
+  bottom: -14px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.point__body { flex: 1 1 auto; min-width: 0; }
+
+.point__addr {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.point__extra {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+.point__note {
+  margin-top: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+.point__acts {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+/* «Позвонить», «Навигатор», «Ожидание» нажимают на ходу и часто в перчатках —
+   мелкая кнопка из общей библиотеки здесь не годится. */
+.point__acts .btn,
+.wait .btn { min-height: 44px; padding-inline: var(--sp-4); }
+
+/* Нижняя часть предложения: «Пропустить» и кнопка с кольцом таймера. */
+.offer__foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  padding-bottom: calc(var(--sp-4) + var(--safe-b));
+  border-top: 1px solid var(--line-soft);
+  background: var(--surface);
+}
+
+.offer__skip {
+  flex: 1 1 auto;
+  min-height: 54px;
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 600;
+}
+.offer__skip:active { transform: scale(.97); }
+
+/* Кнопка «Принять» в кольце обратного отсчёта. */
+.ring {
+  position: relative;
+  flex: none;
+  width: 116px;
+  height: 116px;
+}
+
+.ring__svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+  overflow: visible;
+}
+
+.ring__track { stroke: var(--surface-3); }
+
+.ring__bar {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transition: stroke var(--dur-2) var(--ease);
+}
+.ring__bar.is-hot { stroke: var(--err); }
+
+.ring__btn {
+  position: absolute;
+  inset: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 800;
+  box-shadow: var(--shadow-accent);
+  transition: transform var(--dur-1) var(--ease);
+}
+.ring__btn:active { transform: scale(.94); }
+.ring__btn:disabled { opacity: .5; }
+
+.ring__left {
+  font-family: var(--font-text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  opacity: .72;
+}
+
+/* ══════════════════════════════════════════════════════ активный заказ */
+
+.job {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.job__map {
+  position: relative;
+  height: clamp(200px, 34dvh, 320px);
+  border-radius: var(--r-lg);
+}
+
+.job__status {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.job__client {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+}
+
+.job__client-name {
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.job__money {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+}
+
+.job__money-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.job__money-row b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.job__money-row--big { font-size: var(--fs-body); }
+.job__money-row--big b {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  color: var(--accent);
+  letter-spacing: -.02em;
+}
+
+/* Счётчик ожидания. Пока идёт — подсвечен. */
+.wait {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  border: 1px solid transparent;
+}
+.wait.is-on { background: var(--warn-soft); border-color: rgba(255, 167, 38, .32); }
+
+.wait__body { flex: 1 1 auto; min-width: 0; }
+
+.wait__t {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.wait.is-on .wait__t { color: var(--warn); }
+
+.wait__note {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+}
+
+/* ── нижняя панель с главным действием ──────────────────────────────────── */
+
+.act {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  z-index: var(--z-ui);
+  width: 100%;
+  max-width: var(--page-max);
+  transform: translateX(-50%);
+  padding: var(--sp-3) var(--sp-4) calc(var(--sp-3) + var(--safe-b));
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--line-soft);
+}
+
+.act__step {
+  display: block;
+  margin-bottom: var(--sp-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  text-align: center;
+}
+
+/* Пока открыт заказ, панель действий заменяет нижнее меню. */
+.app--job .dock { display: none; }
+.app--job .app__main { padding-bottom: calc(120px + var(--safe-b)); }
+
+/* ── свайп «завершить» ──────────────────────────────────────────────────── */
+
+/* Последний шаг подтверждается протяжкой: случайное касание не должно
+   закрывать заказ и списывать деньги. */
+.swipe {
+  position: relative;
+  height: 60px;
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  overflow: hidden;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.swipe__fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: var(--ok-soft);
+  transition: width var(--dur-2) var(--ease);
+}
+.swipe.is-drag .swipe__fill { transition: none; }
+
+.swipe__text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 40px;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.swipe__knob {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  display: grid;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+  border-radius: var(--r-md);
+  background: var(--ok);
+  color: #07120C;
+  transition: transform var(--dur-2) var(--ease);
+}
+.swipe.is-drag .swipe__knob { transition: none; }
+.swipe__knob > svg { width: 24px; height: 24px; }
+
+.swipe.is-done .swipe__fill { width: 100% !important; }
+.swipe.is-done .swipe__text { color: var(--ok); }
+
+/* ══════════════════════════════════════════════════════ история и деньги */
+
+.hist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.hist__sum {
+  padding: var(--sp-5);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  text-align: center;
+}
+
+.hist__sum-k {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.hist__sum-v {
+  margin-top: 2px;
+  font-family: var(--font-display);
+  font-size: var(--fs-display);
+  font-weight: 800;
+  letter-spacing: -.03em;
+  line-height: 1.05;
+}
+
+.hist__sum-row {
+  display: flex;
+  justify-content: center;
+  gap: var(--sp-5);
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line-soft);
+}
+
+.hist__sum-cell { text-align: center; }
+
+.hist__sum-cell b {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-variant-numeric: tabular-nums;
+}
+
+.hist__sum-cell span {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.hist__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.hist__when {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  padding-top: 2px;
+}
+
+.hist__where { flex: 1 1 auto; min-width: 0; }
+
+.hist__addr {
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+.hist__addr + .hist__addr { color: var(--muted); }
+
+.hist__pay {
+  flex: none;
+  text-align: right;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hist__pay small {
+  display: block;
+  color: var(--muted);
+  font-family: var(--font-text);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+}
+
+/* ══════════════════════════════════════════════════════ профиль */
+
+.me {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.me__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+}
+
+.me__name {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.me__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.me__kv {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  min-height: 52px;
+  padding: var(--sp-2) var(--sp-4);
+}
+
+.me__kv + .me__kv { border-top: 1px solid var(--line-soft); }
+
+.me__k { color: var(--muted); font-size: var(--fs-sm); }
+.me__v { text-align: right; font-weight: 600; }
+
+.me__sect {
+  margin: var(--sp-2) 0 calc(var(--sp-2) * -1);
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+/* ══════════════════════════════════════════════════════ мелочи */
+
+/* Плашка «нет связи» — приезжает сверху и не перекрывает ничего важного. */
+.link-lost {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 6px var(--sp-3);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pill > svg { width: 14px; height: 14px; }
+
+.seg-wrap { padding: 2px 0; }
+
+@media (min-width: 640px) {
+  .tiles { grid-template-columns: repeat(4, 1fr); }
+  .tile--wide { grid-column: span 2; }
+}

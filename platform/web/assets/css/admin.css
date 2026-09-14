@@ -1,0 +1,889 @@
+/* Панель управления Sprinter Go.
+
+   Работают с ней чаще с ноутбука, поэтому здесь появляется то, чего нет
+   в клиентских экранах: боковое меню, плотные таблицы, две колонки.
+   Но телефон никто не отменял: на узком экране меню уезжает вниз,
+   таблицы превращаются в карточки, а формы — в одну колонку.
+   Горизонтальной прокрутки нет нигде: таскать таблицу пальцем невозможно. */
+
+/* ══════════════════════════════════════════════════════ переключение экранов */
+
+/* Без атрибута data-screen показывается вход: если скрипт в шапке не отработал,
+   человек увидит форму, а не пустую страницу. */
+#gate { display: flex; }
+#app { display: none; }
+
+html[data-screen='app'] #gate { display: none; }
+html[data-screen='app'] #app { display: grid; }
+
+/* ══════════════════════════════════════════════════════ вход */
+
+.gate {
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: var(--sp-4);
+}
+
+.gate__card {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-6) var(--sp-5) var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+}
+
+.gate__logo { width: 48px; height: 48px; }
+
+.gate__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 700;
+}
+
+.gate__sub { color: var(--muted); margin-top: calc(var(--sp-2) * -1); }
+
+.gate__card form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.gate__err {
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--err-soft);
+  color: var(--err);
+  font-size: var(--fs-sm);
+}
+
+.gate__foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  color: var(--muted-2);
+  font-size: var(--fs-sm);
+}
+
+/* Палец толще курсора: даём переключателю языка нормальную зону нажатия,
+   19 пикселей высоты на телефоне промахиваются. */
+.gate__lang {
+  color: inherit; font-size: inherit; cursor: pointer;
+  min-height: 44px; padding: 0 12px; border-radius: var(--r-sm);
+  display: inline-flex; align-items: center;
+  transition: color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
+.gate__lang:hover { color: var(--text); background: var(--surface-2); }
+.gate__lang[aria-pressed="true"], .gate__lang.is-on { color: var(--accent); }
+.gate__dot { width: 3px; height: 3px; border-radius: 50%; background: currentColor; }
+
+/* Глазок в поле пароля: своя кнопка, потому что системную мы не показываем. */
+.field__eye {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.field__eye::before,
+.field__eye::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.field__eye::before {
+  width: 18px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-radius: 12px 12px 10px 10px / 10px 10px 12px 12px;
+}
+
+.field__eye::after {
+  width: 6px;
+  height: 6px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.field__eye.is-on { color: var(--accent); }
+
+/* ══════════════════════════════════════════════════════ каркас */
+
+.adm {
+  grid-template-columns: 1fr;
+  min-height: 100dvh;
+}
+
+.adm__side { display: none; }
+
+.adm__col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.adm__top {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-ui);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--header-h);
+  padding: var(--sp-2) var(--sp-4);
+  padding-top: calc(var(--sp-2) + var(--safe-t));
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.adm__title { font-size: var(--fs-h2); }
+.adm__sub { color: var(--muted-2); font-size: var(--fs-xs); }
+
+.adm__main {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sp-4) var(--sp-4) calc(var(--dock-h) + var(--safe-b) + var(--sp-4));
+}
+
+.adm__dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-ui);
+  display: flex;
+  padding: var(--sp-2) var(--sp-2) calc(var(--sp-2) + var(--safe-b));
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--line-soft);
+}
+
+.dock__i {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 54px;
+  min-width: 0;
+  padding: 0 2px;
+  border-radius: var(--r-md);
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+
+.dock__i > span { display: block; }
+.dock__i svg { width: 22px; height: 22px; }
+.dock__i:active { background: var(--surface-2); }
+.dock__i.is-on { color: var(--accent); }
+
+/* ── боковое меню появляется на широком экране ─────────────────────────── */
+
+@media (min-width: 900px) {
+  .adm { grid-template-columns: 240px minmax(0, 1fr); }
+
+  .adm__side {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    height: 100dvh;
+    padding: var(--sp-4) var(--sp-3);
+    border-right: 1px solid var(--line);
+    background: var(--surface);
+  }
+
+  .adm__dock { display: none; }
+
+  .adm__main {
+    padding: var(--sp-5) var(--sp-6) var(--sp-8);
+  }
+}
+
+.adm__logo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+}
+
+.adm__logo img { width: 28px; height: 28px; }
+
+.adm__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.adm__side-foot {
+  margin-top: auto;
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line-soft);
+}
+
+.navi {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 10px var(--sp-3);
+  border-radius: var(--r-md);
+  color: var(--muted);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.navi:hover { background: var(--surface-2); color: var(--text); }
+.navi.is-on { background: var(--accent-soft); color: var(--accent); }
+.navi__ico { display: block; flex: none; }
+.navi__ico svg { width: 20px; height: 20px; }
+.navi__txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ══════════════════════════════════════════════════════ раздел */
+
+.sect {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: 1240px;
+}
+
+.sect__title { font-size: var(--fs-h2); }
+
+.toolbar { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+
+.phead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.phead__back { flex: none; }
+.phead__title { font-family: var(--font-display); font-size: var(--fs-h2); font-weight: 700; }
+.phead__sub { color: var(--muted); font-size: var(--fs-sm); }
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.block__head {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+}
+
+.two-col {
+  display: grid;
+  gap: var(--sp-4);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1000px) {
+  .two-col { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ── фильтры ───────────────────────────────────────────────────────────── */
+
+.filters {
+  display: grid;
+  gap: var(--sp-2);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.filters > .btn,
+.filters > .chip { justify-self: start; }
+
+@media (min-width: 760px) {
+  .filters {
+    grid-template-columns: minmax(200px, 2fr) minmax(150px, 1fr) auto auto auto;
+    align-items: center;
+  }
+  .filters__search { grid-column: span 1; }
+}
+
+.filters__day .field__input { min-height: 52px; }
+
+/* ══════════════════════════════════════════════════════ плитки */
+
+.tiles {
+  display: grid;
+  gap: var(--sp-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 760px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .tiles { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+@media (min-width: 760px) { .tiles--sm { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .tiles--sm { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.tile__cap {
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.tile__val {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.tile__hint { color: var(--muted); font-size: var(--fs-xs); }
+
+/* ══════════════════════════════════════════════════════ таблицы */
+
+/* Таблица шире карточки не обрезается: на широком экране появляется своя
+   прокрутка, на телефоне таблицы всё равно превращаются в карточки. */
+.tbl-wrap {
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.tbl th {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.tbl td {
+  padding: 11px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: middle;
+}
+
+.tbl tr:last-child td { border-bottom: 0; }
+.tbl__wide { max-width: 340px; }
+.tbl__row--tap { cursor: pointer; }
+.tbl__row--tap:hover td { background: var(--surface-2); }
+.tbl__row--tap:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Узкие колонки уходят первыми: на ноутбуке важнее видеть строки целиком. */
+@media (max-width: 1100px) {
+  .tbl .tbl__hide { display: none; }
+}
+
+/* Колонка с маршрутом — единственная, которая умеет сжиматься: адрес обрежется
+   многоточием, а сумма и статус останутся на месте. */
+@media (min-width: 861px) {
+  .tbl__wide { overflow: hidden; }
+}
+
+/* На телефоне строка превращается в карточку: подпись слева, значение справа. */
+@media (max-width: 860px) {
+  .tbl-wrap { overflow-x: visible; }
+  .tbl, .tbl thead, .tbl tbody, .tbl tr, .tbl td { display: block; }
+  .tbl thead { display: none; }
+
+  .tbl tr {
+    margin-bottom: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--surface);
+  }
+
+  .tbl td,
+  .tbl td.tbl__hide {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    padding: 5px 0;
+    border: 0;
+    max-width: none;
+    text-align: left;
+  }
+
+  .tbl td::before {
+    content: attr(data-label);
+    flex: none;
+    color: var(--muted-2);
+    font-size: var(--fs-xs);
+  }
+
+  .tbl__row--tap:hover td { background: transparent; }
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding-top: var(--sp-2);
+}
+
+.pager__now { color: var(--muted); font-size: var(--fs-sm); }
+
+/* ══════════════════════════════════════════════════════ графики */
+
+.chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 150px;
+}
+
+.chart__col {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 100%;
+}
+
+.chart__bar {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  max-width: 28px;
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+}
+
+.chart__fill {
+  width: 100%;
+  border-radius: var(--r-xs);
+  background: var(--accent);
+  transition: height var(--dur-2) var(--ease);
+}
+
+.chart__bar.is-zero .chart__fill { background: var(--surface-3); }
+
+.chart__x {
+  color: var(--muted-2);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart--dense .chart__bar { max-width: 18px; }
+
+@media (max-width: 600px) {
+  .chart--dense .chart__x { display: none; }
+  .chart { gap: 2px; }
+}
+
+/* ══════════════════════════════════════════════════════ строки и списки */
+
+.route-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.route-line__arrow { flex: none; color: var(--muted-2); }
+.route-line .truncate { flex: 1 1 0; min-width: 0; max-width: 170px; }
+
+.list__row.is-on { background: var(--accent-soft); }
+
+.kv { display: flex; flex-direction: column; gap: 2px; }
+
+.kv__i {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 7px 0;
+  border-bottom: 1px dashed var(--line-soft);
+}
+
+.kv__i:last-child { border-bottom: 0; }
+.kv__k { color: var(--muted); font-size: var(--fs-sm); min-width: 0; }
+.kv__v { text-align: right; font-weight: 600; }
+
+.kv__i--total {
+  margin-top: var(--sp-1);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+  font-size: var(--fs-h3);
+}
+
+.kv__i--total .kv__k { color: var(--text); font-size: inherit; font-weight: 700; }
+.kv__i--total .kv__v { font-family: var(--font-display); font-size: var(--fs-h2); }
+
+.note {
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.point__no {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-full);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+/* Лента событий заказа. */
+.tl { display: flex; flex-direction: column; }
+
+.tl__i {
+  position: relative;
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0 var(--sp-2) var(--sp-4);
+}
+
+.tl__i::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 16px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.tl__i::after {
+  content: '';
+  position: absolute;
+  left: 7.5px;
+  top: 24px;
+  bottom: -4px;
+  width: 1px;
+  background: var(--line);
+}
+
+.tl__i:last-child::after { display: none; }
+.tl__time { flex: none; color: var(--muted-2); font-size: var(--fs-sm); }
+
+/* ══════════════════════════════════════════════════════ живая карта */
+
+.live {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  height: calc(100dvh - var(--header-h) - var(--dock-h) - var(--sp-6));
+  min-height: 400px;
+}
+
+@media (min-width: 900px) {
+  .live { height: calc(100dvh - var(--header-h) - var(--sp-8) - var(--sp-6)); }
+}
+
+.live__map {
+  position: relative;
+  flex: 1;
+  min-height: 260px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+.live__filters { flex: none; }
+
+.live__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.legend__i { display: inline-flex; align-items: center; gap: 6px; }
+
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted-2); }
+.dot--free { background: var(--ok); }
+.dot--busy { background: var(--accent); }
+.dot--off { background: var(--surface-3); border: 1px solid var(--line); }
+.dot--order { background: var(--info); }
+
+/* Цвет машины на карте — это её состояние, и другого способа его увидеть нет. */
+.car { display: block; }
+.car.is-free .map-pin--car { background: var(--ok); color: #05240f; }
+.car.is-free .map-pin--car::after { border-bottom-color: var(--ok); }
+.car.is-busy .map-pin--car { background: var(--accent); color: var(--on-accent); }
+.car.is-busy .map-pin--car::after { border-bottom-color: var(--accent); }
+.car.is-off .map-pin--car { background: var(--surface-3); color: var(--muted); }
+.car.is-off .map-pin--car::after { border-bottom-color: var(--surface-3); }
+
+.order-pin .map-pin--a { background: var(--info); }
+.order-pin .map-pin--a::after { border-color: var(--info); }
+
+.order__map {
+  position: relative;
+  height: 260px;
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+@media (min-width: 900px) { .order__map { height: 340px; } }
+
+/* ══════════════════════════════════════════════════════ формы */
+
+.form { display: flex; flex-direction: column; gap: var(--sp-4); }
+
+.form__grid {
+  display: grid;
+  gap: var(--sp-3);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 700px) {
+  .form__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .form__f { grid-column: span var(--span, 1); }
+  .form__head { grid-column: span 2; }
+}
+
+.form__head {
+  margin-top: var(--sp-2);
+  color: var(--muted-2);
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.form__f { min-width: 0; }
+
+/* Подписи в админке длинные («Грузоподъёмность, кг»), и плавающая метка
+   наезжает на значение. Поэтому здесь метка стоит над полем и спокойно
+   переносится на вторую строку. */
+.form__f.field,
+.calc .field {
+  display: flex;
+  flex-direction: column;
+}
+
+.form__f.field > .field__input,
+.calc .field > .field__input {
+  order: 2;
+  min-height: 46px;
+  padding: 11px var(--sp-3);
+}
+
+.form__f.field > textarea.field__input,
+.calc .field > textarea.field__input {
+  min-height: 80px;
+  padding-top: 10px;
+}
+
+.form__f.field > .field__label,
+.calc .field > .field__label {
+  order: 1;
+  position: static;
+  transform: none;
+  margin: 0 0 5px 2px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  white-space: normal;
+}
+
+.form__f.field > .field__hint,
+.calc .field > .field__hint { order: 3; }
+
+.form__f.field:focus-within > .field__label { color: var(--accent); }
+
+/* Стрелку выпадающего списка опускаем к самому полю. */
+.form__f.field--sel::after { top: auto; bottom: 19px; }
+
+.form__f--sw {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.form__f--range {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.form__cap { display: block; font-size: var(--fs-sm); font-weight: 600; }
+.form__range-val { color: var(--accent); font-size: var(--fs-h3); }
+
+.form__range {
+  width: 100%;
+  height: 28px;
+  background: transparent;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.form__chips { flex-wrap: wrap; overflow: visible; }
+
+.form__foot {
+  position: sticky;
+  bottom: calc(var(--dock-h) + var(--safe-b));
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-top: var(--sp-2);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line-soft);
+  background: var(--surface);
+}
+
+@media (min-width: 900px) { .form__foot { bottom: 0; } }
+
+.form__mark {
+  display: none;
+  color: var(--warn);
+  font-size: var(--fs-sm);
+}
+
+.form.is-dirty .form__mark { display: inline; }
+
+.form__f--err .form__cap { color: var(--err); }
+
+/* ══════════════════════════════════════════════════════ справочники */
+
+.catalog {
+  display: grid;
+  gap: var(--sp-4);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+@media (min-width: 1000px) {
+  .catalog { grid-template-columns: 300px minmax(0, 1fr); }
+}
+
+/* На телефоне список и форма не помещаются рядом: пока правим — виден редактор. */
+@media (max-width: 999px) {
+  .catalog.is-editing .catalog__list { display: none; }
+}
+
+.catalog__list { align-self: start; }
+
+.catalog__edit {
+  display: grid;
+  gap: var(--sp-4);
+  grid-template-columns: minmax(0, 1fr);
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+@media (min-width: 1240px) {
+  .catalog__edit { grid-template-columns: minmax(0, 1fr) 280px; }
+}
+
+.catalog__form { min-width: 0; }
+
+/* ── калькулятор рядом с тарифом ───────────────────────────────────────── */
+
+.calc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  align-self: start;
+  padding: var(--sp-4);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-lg);
+  background: var(--bg-soft);
+}
+
+@media (min-width: 1240px) { .calc { position: sticky; top: calc(var(--header-h) + var(--sp-4)); } }
+
+.calc__head { font-family: var(--font-display); font-size: var(--fs-h3); font-weight: 700; }
+
+.calc__grid {
+  display: grid;
+  gap: var(--sp-2);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.calc__out { display: flex; flex-direction: column; gap: var(--sp-1); }
+
+.calc__total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
+  font-weight: 600;
+}
+
+.calc__total b { font-family: var(--font-display); font-size: var(--fs-h2); color: var(--accent); }
+.calc__hint { color: var(--muted-2); font-size: var(--fs-xs); }
+
+/* ══════════════════════════════════════════════════════ вкладки настроек */
+
+.tabs { flex-wrap: wrap; overflow: visible; }

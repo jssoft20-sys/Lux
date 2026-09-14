@@ -1,0 +1,1048 @@
+/* Клиентское приложение: карта во весь экран и нижняя шторка поверх неё.
+   Подключается последним, поэтому здесь только то, чего нет в components.css.
+   Всё меряется от 360 px: на этой ширине ничего не обрезается и не переносится.
+
+   Правило одно: цвета и размеры — только переменные из tokens.css. */
+
+/* ══════════════════════════════════════════════════════════ каркас */
+
+/* Страница не прокручивается: прокрутка живёт внутри шторки, а карта тянется
+   жестами. Иначе на телефоне экран ездит вверх-вниз вместе с картой. */
+.sg-app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.sg-map {
+  position: absolute;
+  inset: 0;
+  /* кнопки карты поднимаем над шторкой — высоту шторки проставляет app.js */
+  --map-ui-bottom: calc(var(--sg-panel-h, 240px) + var(--sp-3));
+}
+
+/* ══════════════════════════════════════════════════════════ шапка */
+
+.sg-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--z-ui);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: calc(var(--safe-t) + var(--sp-2)) var(--sp-3) 0;
+  pointer-events: none;
+}
+
+.sg-top > * { pointer-events: auto; }
+
+.sg-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 44px;
+  padding: 0 var(--sp-3) 0 var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+}
+
+.sg-brand__logo {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-xs);
+}
+
+.sg-brand__name {
+  max-width: 40vw;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+
+.sg-lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: 0 5px;
+  border-radius: var(--r-full);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+}
+
+.sg-lang__i {
+  display: grid;
+  place-items: center;
+  min-width: 36px;
+  height: 34px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-full);
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.sg-lang__i.is-on {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ══════════════════════════════════════════════════════════ шторка */
+
+.sg-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.sg-panel__box {
+  position: relative;
+  width: 100%;
+  max-width: var(--sheet-max);
+  max-height: 86dvh;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: var(--safe-b);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-sheet);
+  pointer-events: auto;
+}
+
+/* Экран поиска адреса занимает почти весь экран — карта остаётся полоской сверху.
+   Высоту задаём самому шагу: тогда шторка доедет до неё плавно, как и все остальные. */
+.sg-step--tall { height: min(74dvh, 620px); }
+
+/* Слот меняет высоту вместе с шагом: app.js на время перехода задаёт её числом. */
+.sg-panel__slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  transition: height var(--dur-2) var(--ease);
+}
+
+.sg-step {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  opacity: 1;
+  transform: none;
+  transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease);
+}
+
+/* Новый шаг приходит снизу, старый уходит вверх — движение читается как «дальше». */
+.sg-step--enter { opacity: 0; transform: translateY(12px); }
+
+.sg-step--out {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+}
+
+/* Шаг, который идёт назад, движется в обратную сторону. */
+.sg-step--back.sg-step--enter { transform: translateY(-12px); }
+.sg-step--out.sg-step--back-out { transform: translateY(10px); }
+
+.sg-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-4) var(--sp-2);
+}
+
+.sg-head__text { flex: 1 1 auto; min-width: 0; }
+
+.sg-head__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -.01em;
+}
+
+.sg-head__sub {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+
+.sg-back {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-left: -6px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--text);
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+.sg-back:active { transform: scale(.92); background: var(--surface-3); }
+.sg-back > svg { width: 22px; height: 22px; }
+
+.sg-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 var(--sp-4);
+}
+
+.sg-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+}
+
+/* ══════════════════════════════════════════════════════════ адреса */
+
+.sg-points {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.sg-point {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-4);
+}
+
+.sg-point + .sg-point { border-top: 1px solid var(--surface-3); }
+
+.sg-point__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 48px;
+  padding: 0;
+  border-radius: var(--r-sm);
+  text-align: left;
+  transition: opacity var(--dur-1) var(--ease);
+}
+.sg-point__main:active { opacity: .6; }
+
+.sg-point__dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-full);
+  background: var(--muted-2);
+}
+
+.sg-point__dot--a { background: var(--accent); }
+.sg-point__dot--b { border-radius: 3px; background: var(--text); }
+
+.sg-point__text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-body);
+}
+
+.sg-point__text--empty { color: var(--muted-2); }
+
+.sg-point__note {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+}
+
+.sg-point__act {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-full);
+  color: var(--muted);
+  transition: color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+.sg-point__act:active { background: var(--surface-3); color: var(--text); }
+.sg-point__act > svg { width: 20px; height: 20px; }
+.sg-point__act.is-set { color: var(--accent); }
+
+.sg-add {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 44px;
+  margin-top: var(--sp-2);
+  padding: 0 var(--sp-3) 0 var(--sp-2);
+  border-radius: var(--r-full);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  transition: color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+.sg-add:active { background: var(--surface-2); color: var(--text); }
+.sg-add > svg { width: 20px; height: 20px; }
+
+/* Сжатая строка маршрута на шаге выбора машины: откуда и куда одной кнопкой. */
+.sg-route {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 52px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  text-align: left;
+}
+.sg-route:active { background: var(--surface-3); }
+
+.sg-route__line {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.sg-route__line i {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+}
+.sg-route__line i:last-child { background: var(--text); border-radius: 2px; }
+.sg-route__line b { width: 2px; height: 10px; border-radius: 1px; background: var(--surface-3); }
+
+.sg-route__text { flex: 1 1 auto; min-width: 0; }
+
+.sg-route__row {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+.sg-route__row + .sg-route__row { color: var(--muted); }
+
+.sg-route__meta {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ══════════════════════════════════════════════════════════ тарифы */
+
+.sg-tariffs {
+  display: flex;
+  gap: var(--sp-2);
+  margin: 0 calc(var(--sp-4) * -1);
+  padding: var(--sp-1) var(--sp-4) var(--sp-3);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.sg-tariffs::-webkit-scrollbar { display: none; }
+
+.sg-tariff {
+  flex: none;
+  scroll-snap-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 132px;
+  padding: var(--sp-3) var(--sp-3) var(--sp-3);
+  border: 1.5px solid transparent;
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  text-align: left;
+  transition: transform var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
+              background-color var(--dur-1) var(--ease);
+}
+.sg-tariff:active { transform: scale(.97); }
+
+.sg-tariff.is-on {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.sg-tariff__icon {
+  display: block;
+  height: 34px;
+  margin-bottom: 2px;
+  color: var(--muted);
+}
+.sg-tariff__icon > svg { width: 46px; height: 34px; }
+.sg-tariff.is-on .sg-tariff__icon { color: var(--accent); }
+
+.sg-tariff__name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.sg-tariff__sub {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.sg-tariff__price {
+  margin-top: 2px;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sg-tariff__price.is-wait {
+  width: 64px;
+  height: 16px;
+  margin-top: 6px;
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  color: transparent;
+  animation: sg-pulse 1.5s ease-in-out infinite;
+}
+
+/* ══════════════════════════════════════════════════════════ строки-опции */
+
+.sg-opt {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--sp-2) 0;
+  text-align: left;
+}
+
+.sg-opt + .sg-opt { border-top: 1px solid var(--line-soft); }
+
+.sg-opt__text { flex: 1 1 auto; min-width: 0; }
+
+.sg-opt__title {
+  display: block;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.sg-opt__sub {
+  display: block;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+}
+
+.sg-opt__price {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sg-opt__total {
+  flex: none;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sg-opt__go {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--muted-2);
+}
+.sg-opt__go > svg { width: 20px; height: 20px; }
+
+/* Палец в 34 px попадает мимо, поэтому в клиенте счётчик крупнее базового. */
+.sg-panel .stepper__btn,
+.sheet .stepper__btn { width: 44px; height: 44px; }
+
+/* ══════════════════════════════════════════════════════════ главная кнопка */
+
+.sg-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 56px;
+  padding: 0 var(--sp-5);
+  border-radius: var(--r-lg);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-display);
+  transition: transform var(--dur-1) var(--ease), opacity var(--dur-1) var(--ease),
+              box-shadow var(--dur-1) var(--ease);
+}
+.sg-cta:active:not(:disabled) { transform: scale(.98); }
+.sg-cta:disabled { opacity: .45; }
+
+.sg-cta__label {
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  letter-spacing: .01em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sg-cta__price {
+  font-size: var(--fs-h3);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sg-cta__price.is-wait {
+  width: 72px;
+  height: 14px;
+  border-radius: var(--r-sm);
+  background: rgba(22, 21, 15, .22);
+  color: transparent;
+  animation: sg-pulse 1.5s ease-in-out infinite;
+}
+
+.sg-note {
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+  text-align: center;
+}
+
+/* ══════════════════════════════════════════════════════════ поиск адреса */
+
+.sg-find {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 var(--sp-4) var(--sp-3);
+  padding: 0 var(--sp-2) 0 var(--sp-4);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  transition: border-color var(--dur-1) var(--ease);
+}
+.sg-find:focus-within { border-color: var(--accent-line); }
+
+.sg-find__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 52px;
+  background: none;
+  color: var(--text);
+  font-size: var(--fs-body);
+}
+
+/* Рамку фокуса рисует сама коробка поиска, вторая внутри неё только мешает. */
+.sg-find__input:focus-visible { outline: none; }
+
+.sg-find__clear {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-full);
+  color: var(--muted);
+}
+.sg-find__clear:active { background: var(--surface-3); }
+.sg-find__clear > svg { width: 18px; height: 18px; }
+
+.sg-list { display: flex; flex-direction: column; }
+
+.sg-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 58px;
+  padding: var(--sp-2) 0;
+  text-align: left;
+  transition: background-color var(--dur-1) var(--ease);
+}
+.sg-item + .sg-item { border-top: 1px solid var(--line-soft); }
+.sg-item:active { background: var(--surface-2); }
+
+.sg-item__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.sg-item__icon > svg { width: 20px; height: 20px; }
+.sg-item__icon--accent { background: var(--accent-soft); color: var(--accent); }
+
+.sg-item__text { flex: 1 1 auto; min-width: 0; }
+
+.sg-item__title {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-body);
+  line-height: 1.35;
+}
+
+.sg-item__sub {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+}
+
+.sg-group {
+  padding: var(--sp-3) 0 var(--sp-1);
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+/* Шторка заняла больше половины экрана (поиск адреса) — кнопки карты под ней
+   всё равно не нажать, поэтому убираем их, чтобы не лезли в шапку. */
+.sg-app.is-deep .map__ctrl,
+.sg-app.is-deep .map__btn--locate {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-2) var(--ease);
+}
+
+/* ══════════════════════════════════════════════════════════ точка на карте */
+
+/* Коробка метки стоит так, чтобы её низ приходился ровно на центр карты:
+   именно эта точка и станет адресом. */
+.sg-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: var(--z-ui);
+  width: 30px;
+  height: 42px;
+  margin: -40px 0 0 -15px;
+  pointer-events: none;
+}
+
+.sg-center__pin {
+  position: absolute;
+  left: 2px;
+  top: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-full) var(--r-full) 2px var(--r-full);
+  background: var(--accent);
+  border: 3px solid var(--map-ring, #15151A);
+  transform: rotate(45deg);
+  transition: transform var(--dur-2) var(--ease-spring);
+  animation: sg-drop var(--dur-3) var(--ease) both;
+}
+
+.sg-center__shadow {
+  position: absolute;
+  left: 9px;
+  bottom: 0;
+  width: 12px;
+  height: 4px;
+  border-radius: var(--r-full);
+  background: rgba(0, 0, 0, .38);
+}
+
+/* Пока карту двигают, метка приподнимается — как булавка, которую подняли. */
+.sg-app.is-dragging .sg-center__pin { transform: rotate(45deg) translate(-4px, -4px); }
+
+@keyframes sg-drop {
+  from { opacity: 0; transform: rotate(45deg) translate(-10px, -10px); }
+  to   { opacity: 1; }
+}
+
+/* ══════════════════════════════════════════════════════════ поиск машины */
+
+.sg-radar {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  border: 3px solid var(--map-ring, #15151A);
+}
+
+.sg-radar::before,
+.sg-radar::after {
+  content: '';
+  position: absolute;
+  inset: -66px;
+  border-radius: var(--r-full);
+  border: 2px solid var(--accent);
+  opacity: 0;
+  animation: sg-radar 2.6s var(--ease) infinite;
+}
+.sg-radar::after { animation-delay: 1.3s; }
+
+@keyframes sg-radar {
+  0%   { opacity: .75; transform: scale(.14); }
+  70%  { opacity: 0;   transform: scale(1); }
+  100% { opacity: 0;   transform: scale(1); }
+}
+
+.sg-search-line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-1) 0 var(--sp-3);
+}
+
+.sg-search-line .progress { flex: 1 1 auto; }
+
+/* ══════════════════════════════════════════════════════════ курьер */
+
+.sg-courier {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+}
+
+.sg-courier__text { flex: 1 1 auto; min-width: 0; }
+
+.sg-courier__name {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+}
+
+.sg-courier__car {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.sg-courier__rate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.sg-plate {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.sg-acts {
+  display: flex;
+  gap: var(--sp-2);
+  padding-bottom: var(--sp-2);
+}
+.sg-acts > .btn { flex: 1 1 0; }
+
+/* ══════════════════════════════════════════════════════════ деньги и детали */
+
+.sg-sum {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  font-size: var(--fs-sm);
+}
+.sg-sum + .sg-sum { border-top: 1px solid var(--line-soft); }
+.sg-sum__name { color: var(--muted); }
+.sg-sum__val { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sg-sum--total { font-size: var(--fs-h3); }
+.sg-sum--total .sg-sum__name { color: var(--text); font-weight: 700; }
+.sg-sum--total .sg-sum__val { font-family: var(--font-display); font-weight: 800; }
+
+/* Итог в подвале шторки допуслуг: слева подпись, справа сумма. */
+.sg-total {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.sg-total__name {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.2;
+}
+
+.sg-total__val {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sg-fields { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+.sg-agree {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  min-height: 48px;
+  padding: var(--sp-2) 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  text-align: left;
+}
+
+.sg-agree__box {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  border: 2px solid var(--line);
+  border-radius: var(--r-xs);
+  color: transparent;
+  transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
+              color var(--dur-1) var(--ease);
+}
+.sg-agree__box > svg { width: 16px; height: 16px; }
+
+.sg-agree.is-on .sg-agree__box {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ══════════════════════════════════════════════════════════ состояния */
+
+.sg-boot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-7) var(--sp-5) var(--sp-8);
+}
+
+.sg-boot__bar {
+  width: 120px;
+  height: 4px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.sg-boot__bar i {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  animation: sg-slide 1.3s var(--ease) infinite;
+}
+
+.sg-boot__text { color: var(--muted); font-size: var(--fs-sm); }
+
+.sg-wait {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0 var(--sp-4);
+}
+
+.sg-fail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-5) var(--sp-2) var(--sp-4);
+  text-align: center;
+}
+
+.sg-fail__icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: var(--sp-1);
+  border-radius: var(--r-full);
+  background: var(--err-soft);
+  color: var(--err);
+}
+.sg-fail__icon > svg { width: 26px; height: 26px; }
+
+.sg-fail__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+}
+
+.sg-fail__text {
+  max-width: 34ch;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+/* Связь пропала: тонкая полоска над шторкой, чтобы не пугать модальным окном. */
+.sg-offline {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px var(--sp-4);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.sg-noscript {
+  position: fixed;
+  left: var(--sp-4);
+  right: var(--sp-4);
+  bottom: calc(var(--sp-4) + var(--safe-b));
+  z-index: var(--z-modal);
+  padding: var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  box-shadow: var(--shadow-2);
+}
+
+/* ══════════════════════════════════════════════════════════ мелочи */
+
+.sg-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 0 var(--sp-3);
+}
+
+.sg-chips .chip { min-height: 44px; }
+
+.sg-extra {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+}
+.sg-extra + .sg-extra { border-top: 1px solid var(--line-soft); }
+
+.sg-rate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0 var(--sp-4);
+}
+
+/* Звёзды крупные, но попасть пальцем всё равно тяжело — расширяем зону нажатия
+   на шесть пикселей вверх и вниз, до тех же 44 px, что и у остальных кнопок. */
+.sg-rate .stars { padding: 6px 0; }
+.sg-rate .stars__hit { inset: -6px 0; }
+
+/* ══════════════════════════════════════════════════════════ широкий экран */
+
+@media (min-width: 620px) {
+  .sg-panel { justify-content: flex-start; padding: 0 0 var(--sp-4) var(--sp-4); }
+  .sg-panel__box {
+    max-width: 420px;
+    border-radius: var(--r-xl);
+  }
+  .sg-step--tall { height: min(70dvh, 620px); }
+  .sg-map { --map-ui-bottom: calc(var(--sp-4) + var(--safe-b)); }
+}
+
+/* На совсем узких экранах ужимаем отступы, но не высоту кнопок. */
+@media (max-width: 359px) {
+  .sg-head, .sg-body, .sg-foot { padding-left: var(--sp-3); padding-right: var(--sp-3); }
+  .sg-tariffs { margin: 0 calc(var(--sp-3) * -1); padding-left: var(--sp-3); padding-right: var(--sp-3); }
+  .sg-tariff { width: 124px; }
+  .sg-brand__name { display: none; }
+}

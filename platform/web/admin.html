@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sprinter Go — панель управления</title>
+<meta name="description" content="Панель управления сервисом грузоперевозок Sprinter Go.">
+<meta name="theme-color" content="#0E0E10">
+<meta name="robots" content="noindex,nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+<link rel="preload" href="/assets/fonts/onest-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/inter-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+
+<link rel="stylesheet" href="/assets/css/fonts.css">
+<link rel="stylesheet" href="/assets/css/tokens.css">
+<link rel="stylesheet" href="/assets/css/base.css">
+<link rel="stylesheet" href="/assets/css/components.css">
+<link rel="stylesheet" href="/assets/css/map.css">
+<link rel="stylesheet" href="/assets/css/admin.css">
+
+<script>
+  /* Две вещи до первой отрисовки, чтобы ничего не мигало: выбранная тема
+     и признак «токен есть» — иначе форма входа успевает показаться поверх
+     панели. Модульный скрипт выполняется отложенно и на это опоздал бы. */
+  try {
+    var theme = localStorage.getItem('sg_theme');
+    if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+    else if (theme === 'auto') delete document.documentElement.dataset.theme;
+    if (localStorage.getItem('sg_token')) document.documentElement.dataset.screen = 'app';
+  } catch (e) { /* приватный режим: покажем вход, дальше разберётся приложение */ }
+</script>
+</head>
+<body>
+
+<!-- ── вход ───────────────────────────────────────────────────────────────
+     Форма лежит прямо в разметке: это первое, что видит человек, и ждать
+     загрузки скриптов ради двух полей незачем. -->
+<section class="gate" id="gate" aria-labelledby="gate-title">
+  <div class="gate__card">
+    <img class="gate__logo" src="/assets/img/logo.svg" width="48" height="48" alt="" aria-hidden="true">
+    <h1 class="gate__title" id="gate-title" data-t="admin.login_title">Вход в админку</h1>
+    <p class="gate__sub" id="gate-sub">Панель управления сервисом</p>
+
+    <form id="form-login" novalidate>
+      <label class="field">
+        <input class="field__input" type="email" name="email" id="login-email" placeholder=" "
+               autocomplete="username" inputmode="email" enterkeyhint="next" required>
+        <span class="field__label" data-t="common.email">Почта</span>
+      </label>
+
+      <label class="field">
+        <input class="field__input" type="password" name="password" id="login-password" placeholder=" "
+               autocomplete="current-password" enterkeyhint="go" required>
+        <span class="field__label" data-t="common.password">Пароль</span>
+        <button class="field__eye" type="button" data-eye="login-password"
+                aria-label="Показать пароль" title="Показать пароль"></button>
+      </label>
+
+      <p class="gate__err" id="login-err" role="alert" hidden></p>
+
+      <button class="btn btn--primary btn--lg btn--block" type="submit">Войти</button>
+    </form>
+
+    <div class="gate__foot">
+      <button class="gate__lang" type="button" data-lang="ru">Русский</button>
+      <span class="gate__dot" aria-hidden="true"></span>
+      <button class="gate__lang" type="button" data-lang="ky">Кыргызча</button>
+    </div>
+  </div>
+</section>
+
+<!-- ── панель ─────────────────────────────────────────────────────────── -->
+<div class="adm" id="app">
+  <aside class="adm__side">
+    <div class="adm__logo">
+      <img src="/assets/img/logo.svg" width="28" height="28" alt="" aria-hidden="true">
+      <span>Sprinter Go</span>
+    </div>
+    <nav class="adm__nav" id="nav" aria-label="Разделы"></nav>
+    <div class="adm__side-foot" id="side-foot"></div>
+  </aside>
+
+  <div class="adm__col">
+    <header class="adm__top" id="top"></header>
+    <main class="adm__main" id="main" tabindex="-1"></main>
+  </div>
+
+  <nav class="adm__dock" id="dock" aria-label="Разделы"></nav>
+</div>
+
+<script type="module" src="/assets/js/admin/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+9536007112a7d4651311a264f61465711c08836e3136254dabfbcab0867b3ad5  sprintergo-platform.zip
+4fce0a208b1cb47d4aab6a0273f59bd912a204af9e6dea17e26cae0d7947f91a  sprintergo-platform.tar.gz

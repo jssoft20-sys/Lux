@@ -1,0 +1,408 @@
+/* Карта: слои плиток, маркеры, маршруты, кнопки и атрибуция.
+   Работает в паре с core/map.js — имена классов оттуда, менять их в одиночку нельзя.
+   Подключается после components.css.
+
+   Цвета карты отдельные от цветов интерфейса: карта может быть тёмной внутри
+   светлого приложения и наоборот, поэтому все её оттенки живут в своих переменных. */
+
+.map {
+  --map-bg: #101014;                       /* чем залито, пока плитки не пришли */
+  --map-ink: #F6F6F8;                      /* ножки флажков, подписи поверх карты */
+  --map-ring: #15151A;                     /* обводка вокруг цветных точек */
+  --map-route-case: rgba(0, 0, 0, .55);
+  --map-route: var(--accent);
+  --map-me: #4DA3FF;
+  --map-ui-bottom: calc(var(--sp-4) + var(--safe-b));   /* приложение поднимает кнопки над шторкой */
+  --map-tile-fade: 220ms;
+
+  overflow: hidden;
+  background: var(--map-bg);
+  touch-action: none;                      /* жесты обрабатываем сами, иначе браузер уведёт страницу */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  isolation: isolate;
+  contain: paint;
+}
+
+/* Нулевая специфичность: если экран задал карте position: absolute, он победит. */
+:where(.map) { position: relative; }
+
+/* Тёмная карта — состояние по умолчанию, её цвета заданы выше в .map. */
+.map--light {
+  --map-bg: #E9E6E0;
+  --map-ink: #131317;
+  --map-ring: #FFFFFF;
+  --map-route-case: rgba(255, 255, 255, .85);
+}
+
+/* Карта-картинка: не перехватывает ни жесты, ни прокрутку страницы. */
+.map--static { touch-action: auto; }
+
+@media (hover: hover) and (pointer: fine) {
+  .map:not(.map--static) { cursor: grab; }
+  .map:not(.map--static):active { cursor: grabbing; }
+}
+
+/* ══════════════════════════════════════════════════════════ слой плиток */
+
+.map__tiles {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-map);
+  overflow: hidden;
+}
+
+.map__level {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.map__tile {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 256px;
+  height: 256px;
+  /* base.css ужимает картинки до ширины родителя, а родитель здесь нулевой */
+  max-width: none;
+  max-height: none;
+  opacity: 0;
+  transition: opacity var(--map-tile-fade) ease-out;
+  will-change: transform, opacity;
+  -webkit-user-drag: none;
+}
+
+.map__tile.is-on { opacity: 1; }
+
+/* Во время зума слой растянут дробно, и между плитками появляются волосяные щели.
+   Лишний пиксель их закрывает; на целом зуме класс снимается, и картинка снова острая. */
+.map__level.is-scaled .map__tile {
+  width: 257px;
+  height: 257px;
+}
+
+/* ══════════════════════════════════════════════════════════ маршруты и маркеры */
+
+.map__pane {
+  position: absolute;
+  inset: 0;
+  z-index: calc(var(--z-map) + 1);
+  pointer-events: none;
+  will-change: transform;
+}
+
+.map__vector {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.map__route-case,
+.map__route-line {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  /* толщина и пунктир считаются в экранных пикселях, а не в координатах группы */
+  vector-effect: non-scaling-stroke;
+}
+
+.map__route-case { stroke: var(--map-route-case); }
+.map__route-line { stroke: var(--map-route); }
+
+.map__markers {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+.map__marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+}
+
+.map__marker--tap {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* Точка привязки: центр иконки либо её «носок» — как у булавки. */
+.map__marker-in {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.map__marker-in--center { transform: translate(-50%, -50%); }
+.map__marker-in--bottom { transform: translate(-50%, -100%); }
+
+/* Разворот по курсу движения крутит только иконку, привязка не съезжает. */
+.map__marker-rot {
+  display: block;
+  transform-origin: 50% 50%;
+}
+
+/* ══════════════════════════════════════════════════════════ типовые метки */
+
+.map-pin {
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+}
+
+/* Точка А — откуда забираем груз. */
+.map-pin--a {
+  width: 18px;
+  height: 18px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  border: 3px solid var(--map-ring);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .45);
+}
+
+.map-pin--a::after {
+  content: '';
+  position: absolute;
+  inset: -9px;
+  border-radius: var(--r-full);
+  border: 2px solid var(--accent);
+  opacity: 0;
+  animation: map-pulse 2.2s var(--ease) infinite;
+}
+
+/* Точка Б — флажок на тонком древке, привязка по низу древка. */
+.map-pin--b {
+  width: 2px;
+  height: 28px;
+  border-radius: 1px;
+  background: var(--map-ink);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, .4);
+}
+
+.map-pin--b::before {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: 0;
+  width: 17px;
+  height: 13px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+}
+
+.map-pin--b::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -3px;
+  width: 9px;
+  height: 9px;
+  margin-left: -4.5px;
+  border-radius: var(--r-full);
+  background: var(--map-ink);
+  border: 2px solid var(--map-ring);
+}
+
+/* Номер точки прямо на полотнище: маршрут из трёх адресов читается сразу.
+   Общий вид подписи здесь не нужен — сбрасываем фон, рамку и сдвиг. */
+.map-pin--b .map-pin__label {
+  left: 2px;
+  top: 0;
+  transform: none;
+  width: 15px;
+  height: 13px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  color: var(--on-accent);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Машина курьера: кружок с иконкой и «носом» по направлению движения. */
+.map-pin--car {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--on-accent);
+  border: 2px solid var(--map-ring);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .45);
+}
+
+.map-pin--car > svg {
+  width: 22px;
+  height: 22px;
+}
+
+.map-pin--car::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -9px;
+  margin-left: -5px;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 7px solid var(--accent);
+  filter: drop-shadow(0 -1px 1px rgba(0, 0, 0, .35));
+}
+
+/* Моё местоположение: синяя точка с расходящимся кругом. */
+.map-pin--me {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--r-full);
+  background: var(--map-me);
+  border: 3px solid #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .4);
+}
+
+.map-pin--me::after {
+  content: '';
+  position: absolute;
+  inset: -13px;
+  border-radius: var(--r-full);
+  background: rgba(77, 163, 255, .18);
+  animation: map-pulse 2.4s var(--ease) infinite;
+}
+
+/* Подпись рядом с меткой: цена, время подачи, имя адреса. */
+.map-pin__label {
+  position: absolute;
+  left: calc(100% + 6px);
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 3px var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-1);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+@keyframes map-pulse {
+  0%   { opacity: .9; transform: scale(.5); }
+  70%  { opacity: 0;  transform: scale(1.25); }
+  100% { opacity: 0;  transform: scale(1.25); }
+}
+
+/* ══════════════════════════════════════════════════════════ кнопки и атрибуция */
+
+.map__ctrl {
+  position: absolute;
+  right: var(--sp-4);
+  bottom: calc(var(--map-ui-bottom) + 52px);
+  z-index: var(--z-ui);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+}
+
+.map__btn {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: var(--surface);
+  color: var(--text);
+  transition: background-color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
+}
+
+.map__btn > svg {
+  width: 22px;
+  height: 22px;
+}
+
+.map__btn:active { transform: scale(.92); }
+
+@media (hover: hover) {
+  .map__btn:hover { background: var(--surface-2); }
+}
+
+.map__btn--out { border-top: 1px solid var(--line); }
+
+.map__btn--locate {
+  position: absolute;
+  right: var(--sp-4);
+  bottom: var(--map-ui-bottom);
+  z-index: var(--z-ui);
+  border-radius: var(--r-full);
+  box-shadow: var(--shadow-2);
+}
+
+.map__btn--locate.is-busy {
+  color: var(--accent);
+  pointer-events: none;
+}
+
+.map__btn--locate.is-busy > svg {
+  animation: map-spin 1s linear infinite;
+}
+
+@keyframes map-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Подпись обязательна по лицензии OSM и CARTO — прячем мелко, но не убираем. */
+.map__attr {
+  position: absolute;
+  left: 0;
+  bottom: var(--map-ui-bottom);
+  z-index: var(--z-ui);
+  max-width: 60%;
+  padding: 2px var(--sp-2);
+  border-radius: 0 var(--r-xs) var(--r-xs) 0;
+  background: rgba(0, 0, 0, .38);
+  background: color-mix(in srgb, var(--map-bg) 74%, transparent);
+  color: var(--map-ink);
+  opacity: .66;
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: .01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: auto;
+}
+
+.map__attr a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* На узких экранах кнопки жмутся к краю плотнее — место дороже. */
+@media (max-width: 380px) {
+  .map__ctrl,
+  .map__btn--locate { right: var(--sp-3); }
+}
+
+/* На тесном экране кнопки чуть мельче: карта важнее органов управления. */
+@media (max-width: 380px) {
+  .map__btn { width: 40px; height: 40px; }
+  .map__ctrl { bottom: calc(var(--map-ui-bottom) + 48px); }
+}

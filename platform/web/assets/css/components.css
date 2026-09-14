@@ -1,0 +1,869 @@
+/* Компоненты интерфейса: кнопки, поля, карточки, шторки, тосты и всё остальное,
+   из чего собраны три приложения. Правило одно — только переменные из tokens.css,
+   ни одного цвета «на глаз», иначе светлая тема поедет.
+   Подключается после base.css. */
+
+/* ══════════════════════════════════════════════════════════ кнопки */
+
+.btn {
+  --btn-bg: var(--surface-2);
+  --btn-fg: var(--text);
+  --btn-line: transparent;
+  --btn-hover: var(--surface-3);
+  --btn-press: var(--surface-3);
+
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-height: 46px;
+  padding: 0 var(--sp-5);
+  border: 1px solid var(--btn-line);
+  border-radius: var(--r-md);
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: .01em;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform var(--dur-1) var(--ease),
+              background-color var(--dur-1) var(--ease),
+              border-color var(--dur-1) var(--ease),
+              box-shadow var(--dur-1) var(--ease),
+              opacity var(--dur-1) var(--ease);
+}
+
+.btn > svg { flex: none; width: 20px; height: 20px; }
+
+@media (hover: hover) {
+  .btn:hover:not(:disabled):not(.is-loading) { background: var(--btn-hover); }
+  .btn--primary:hover:not(:disabled):not(.is-loading) { box-shadow: var(--shadow-accent); }
+}
+
+/* Нажатие слегка «проминает» кнопку — палец видит, что попал. */
+.btn:active:not(:disabled):not(.is-loading) {
+  transform: scale(.97);
+  background: var(--btn-press);
+}
+
+.btn:disabled,
+.btn[aria-disabled='true'],
+.btn.is-disabled {
+  opacity: .42;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn--primary {
+  --btn-bg: var(--accent);
+  --btn-fg: var(--on-accent);
+  --btn-hover: var(--accent);
+  --btn-press: var(--accent-press);
+  font-weight: 700;
+}
+
+.btn--ghost {
+  --btn-bg: transparent;
+  --btn-fg: var(--text);
+  --btn-line: var(--line);
+  --btn-hover: var(--surface-2);
+  --btn-press: var(--surface-2);
+}
+
+.btn--danger {
+  --btn-bg: var(--err-soft);
+  --btn-fg: var(--err);
+  --btn-hover: var(--err-soft);
+  --btn-press: var(--err-soft);
+}
+
+.btn--sm {
+  min-height: 34px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+}
+
+.btn--lg {
+  min-height: 54px;
+  padding: 0 var(--sp-6);
+  border-radius: var(--r-lg);
+  font-size: var(--fs-h3);
+}
+
+.btn--block { display: flex; width: 100%; }
+
+.btn--icon {
+  width: 46px;
+  min-width: 46px;
+  padding: 0;
+  border-radius: var(--r-full);
+}
+.btn--icon.btn--sm { width: 34px; min-width: 34px; }
+.btn--icon.btn--lg { width: 54px; min-width: 54px; }
+
+/* ── состояние загрузки ──────────────────────────────────────────────
+   spinner(el, on) из ui.js вешает .is-loading на любой узел: на кнопке
+   текст прячется и крутится колесо, на блоке сверху ложится вуаль. */
+
+.is-loading {
+  position: relative;
+  pointer-events: none;
+}
+
+.is-loading::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  background: var(--surface);
+  opacity: .58;
+}
+
+.is-loading::after {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border: 2px solid var(--muted);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: sg-spin 640ms linear infinite;
+}
+
+.btn.is-loading { color: transparent; }
+.btn.is-loading::before { display: none; }
+.btn.is-loading::after {
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  border-color: var(--btn-fg);
+  border-top-color: transparent;
+}
+
+/* ══════════════════════════════════════════════════════════ поля ввода */
+
+/* Разметка поля с плавающей меткой:
+     <label class="field">
+       <input class="field__input" placeholder=" ">
+       <span class="field__label">Телефон</span>
+       <span class="field__hint">Подсказка</span>
+     </label>
+   Метка стоит ПОСЛЕ поля — так соседний селектор ловит :focus и :placeholder-shown.
+   Пробел в placeholder обязателен, иначе метка не поднимется. Для select и полей,
+   которые всегда заполнены, вешаем на обёртку .field--fill. */
+
+.field {
+  position: relative;
+  display: block;
+}
+
+.field__input {
+  width: 100%;
+  min-height: 58px;
+  padding: 24px var(--sp-4) 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--fs-body);
+  line-height: 1.3;
+  transition: border-color var(--dur-1) var(--ease),
+              background-color var(--dur-1) var(--ease);
+}
+
+textarea.field__input {
+  min-height: 104px;
+  padding-top: 26px;
+  line-height: 1.4;
+}
+
+select.field__input {
+  padding-right: var(--sp-7);
+  cursor: pointer;
+}
+
+.field__input::placeholder { color: transparent; }
+.field__input:focus { border-color: var(--accent-line); }
+.field__input:disabled { opacity: .5; cursor: not-allowed; }
+
+.field__label {
+  position: absolute;
+  left: calc(var(--sp-4) + 1px);
+  top: 20px;
+  transform-origin: left top;
+  color: var(--muted);
+  font-size: var(--fs-body);
+  line-height: 1;
+  pointer-events: none;
+  transition: transform var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.field__input:focus ~ .field__label,
+.field__input:not(:placeholder-shown) ~ .field__label,
+.field--fill .field__label {
+  transform: translateY(-11px) scale(.78);
+}
+
+.field__input:focus ~ .field__label { color: var(--accent); }
+
+/* Стрелка у выпадающего списка — своя, потому что системную мы срезали. */
+.field--sel::after {
+  content: '';
+  position: absolute;
+  right: var(--sp-4);
+  top: 26px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+.field__hint {
+  display: block;
+  margin: 6px var(--sp-2) 0;
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+}
+
+.field--err .field__input { border-color: var(--err); background: var(--err-soft); }
+.field--err .field__label,
+.field--err .field__hint { color: var(--err); }
+
+/* ══════════════════════════════════════════════════════════ карточки */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  padding: var(--sp-4);
+}
+
+.card--flat { background: var(--surface-2); border-color: transparent; }
+
+.card--tap {
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+.card--tap:active { transform: scale(.985); background: var(--surface-2); }
+
+.card__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+}
+
+/* ══════════════════════════════════════════════════════════ списки */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.list--bare { border: 0; background: none; border-radius: 0; }
+
+.list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 58px;
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.list__row + .list__row { border-top: 1px solid var(--line-soft); }
+
+.list__row--tap {
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease);
+}
+.list__row--tap:active { background: var(--surface-2); }
+
+@media (hover: hover) {
+  .list__row--tap:hover { background: var(--surface-2); }
+}
+
+/* ══════════════════════════════════════════════════════════ чипы */
+
+.chips {
+  display: flex;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  padding: 2px;
+}
+.chips::-webkit-scrollbar { display: none; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  min-height: 36px;
+  padding: 0 var(--sp-4);
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease),
+              background-color var(--dur-1) var(--ease),
+              border-color var(--dur-1) var(--ease),
+              color var(--dur-1) var(--ease);
+}
+.chip:active { transform: scale(.96); }
+.chip > svg { width: 16px; height: 16px; }
+
+.chip--on {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+/* ══════════════════════════════════════════════════════════ сегменты */
+
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+}
+
+.segmented__i {
+  flex: 1;
+  min-height: 34px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-full);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.segmented__i.is-on {
+  background: var(--surface-3);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
+}
+
+.segmented--accent .segmented__i.is-on {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: none;
+}
+
+/* ══════════════════════════════════════════════════════════ нижняя шторка */
+
+/* Разметка (её собирает sheet() из ui.js):
+     <div class="sheet">
+       <div class="sheet__scrim"></div>
+       <div class="sheet__box">
+         <div class="sheet__grip"></div>
+         <div class="sheet__head">…</div>
+         <div class="sheet__body">…</div>
+         <div class="sheet__foot">…</div>
+       </div>
+     </div>
+   Затемнение — отдельный слой, а не потомок панели: панель двигается через transform,
+   а внутри трансформированного элемента position: fixed перестаёт быть «во весь экран». */
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-sheet);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sheet__scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--overlay);
+  opacity: 0;
+  transition: opacity var(--dur-2) var(--ease);
+}
+
+.sheet__box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--sheet-max);
+  max-height: 88vh;
+  max-height: 88dvh;
+  padding-bottom: var(--safe-b);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-sheet);
+  transform: translateY(101%);
+  transition: transform var(--dur-2) var(--ease);
+  will-change: transform;
+}
+
+.sheet--in .sheet__scrim { opacity: 1; }
+.sheet--in .sheet__box { transform: translateY(0); }
+
+/* Пока палец тянет панель, анимация только мешает — она догоняет, а не ведёт. */
+.sheet--drag .sheet__box,
+.sheet--drag .sheet__scrim { transition: none; }
+
+.sheet--full .sheet__box {
+  height: 94vh;
+  height: 94dvh;
+  max-height: 94dvh;
+}
+
+.sheet__grip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  cursor: grab;
+  touch-action: none;
+}
+.sheet__grip::after {
+  content: '';
+  width: 40px;
+  height: 4px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+}
+.sheet__grip:active { cursor: grabbing; }
+
+.sheet__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-1) var(--sp-5) var(--sp-3);
+  touch-action: none;
+}
+
+.sheet__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.sheet__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 var(--sp-5) var(--sp-4);
+}
+
+.sheet__text {
+  color: var(--muted);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  padding-bottom: var(--sp-2);
+}
+
+.sheet__foot {
+  flex: none;
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5) var(--sp-4);
+  border-top: 1px solid var(--line-soft);
+  background: var(--surface);
+}
+.sheet__foot > .btn { flex: 1 1 auto; }
+
+@media (min-width: 620px) {
+  .sheet { align-items: center; }
+  .sheet__box {
+    max-height: 84vh;
+    max-height: 84dvh;
+    border-radius: var(--r-xl);
+    transform: translateY(24px) scale(.98);
+    opacity: 0;
+    transition: transform var(--dur-2) var(--ease), opacity var(--dur-2) var(--ease);
+  }
+  .sheet--in .sheet__box { transform: none; opacity: 1; }
+}
+
+/* ══════════════════════════════════════════════════════════ тосты */
+
+.toasts {
+  position: fixed;
+  top: calc(var(--safe-t) + var(--sp-3));
+  left: 0;
+  right: 0;
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3);
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: fit-content;
+  max-width: min(440px, 100%);
+  padding: var(--sp-3) var(--sp-4);
+  border-left: 3px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+  box-shadow: var(--shadow-2);
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  will-change: transform;
+  animation: sg-toast-in var(--dur-2) var(--ease) both;
+}
+
+.toast--ok { border-left-color: var(--ok); }
+.toast--err { border-left-color: var(--err); }
+.toast--warn { border-left-color: var(--warn); }
+.toast--info { border-left-color: var(--info); }
+
+.toast.is-out { animation: sg-toast-out var(--dur-1) var(--ease-in) both; }
+/* Пока тост тянут пальцем, анимацией управляет ui.js через inline-стиль. */
+.toast.is-drag { animation: none; }
+
+/* ══════════════════════════════════════════════════════════ аватар */
+
+.avatar {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-full);
+  overflow: hidden;
+  background: var(--surface-3);
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Фото ложится поверх инициалов: не загрузилось — остаются буквы. */
+.avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar--lg { width: 64px; height: 64px; font-size: 22px; }
+.avatar--sm { width: 30px; height: 30px; font-size: 12px; }
+.avatar--accent { background: var(--accent-soft); color: var(--accent); }
+
+/* ══════════════════════════════════════════════════════════ звёзды */
+
+/* Нижний ряд — пустые звёзды, поверх него обрезанный по ширине ряд жёлтых:
+   так же честно рисуется и 4,7 из 5, и целая оценка. */
+
+.stars {
+  position: relative;
+  display: inline-flex;
+  line-height: 0;
+  color: var(--surface-3);
+}
+
+.stars__row { display: flex; gap: 2px; }
+
+.stars__clip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  overflow: hidden;
+  color: var(--accent);
+  pointer-events: none;
+  transition: width var(--dur-1) var(--ease);
+}
+.stars__clip .stars__row { width: max-content; }
+
+.stars__hit { position: absolute; inset: 0; display: flex; }
+
+.stars__i {
+  flex: 1;
+  border-radius: var(--r-xs);
+  cursor: pointer;
+}
+
+.stars svg { width: 18px; height: 18px; }
+.stars--lg svg { width: 32px; height: 32px; }
+.stars--lg .stars__row { gap: var(--sp-1); }
+.stars--tap { cursor: pointer; }
+
+/* ══════════════════════════════════════════════════════════ бейджи */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+
+.badge > svg { width: 12px; height: 12px; }
+
+.badge--ok { background: var(--ok-soft); color: var(--ok); }
+.badge--warn { background: var(--warn-soft); color: var(--warn); }
+.badge--err { background: var(--err-soft); color: var(--err); }
+.badge--info { background: var(--info-soft); color: var(--info); }
+.badge--accent { background: var(--accent-soft); color: var(--accent); }
+
+/* Точка-индикатор внутри бейджа: «на линии», «в пути». */
+.badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* ══════════════════════════════════════════════════════════ скелет */
+
+.skeleton {
+  height: 14px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  animation: sg-pulse 1.5s ease-in-out infinite;
+}
+
+.skeleton--title { height: 20px; border-radius: var(--r-sm); }
+.skeleton--box { height: 84px; border-radius: var(--r-md); }
+.skeleton--round { width: 40px; height: 40px; border-radius: 50%; }
+
+/* ══════════════════════════════════════════════════════════ переключатель */
+
+/* <label class="switch"><input type="checkbox"><span class="switch__track"></span></label> */
+
+.switch {
+  position: relative;
+  flex: none;
+  display: inline-block;
+  width: 48px;
+  height: 28px;
+  cursor: pointer;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.switch__track {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  transition: background-color var(--dur-1) var(--ease);
+}
+
+.switch__track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--muted);
+  box-shadow: var(--shadow-1);
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+
+.switch input:checked ~ .switch__track { background: var(--accent); }
+.switch input:checked ~ .switch__track::after {
+  transform: translateX(20px);
+  background: var(--on-accent);
+}
+
+.switch input:disabled ~ .switch__track { opacity: .45; }
+.switch input:focus-visible ~ .switch__track { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ══════════════════════════════════════════════════════════ счётчик */
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 3px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+}
+
+.stepper__btn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1;
+  transition: transform var(--dur-1) var(--ease), opacity var(--dur-1) var(--ease);
+}
+.stepper__btn:active:not(:disabled) { transform: scale(.9); }
+.stepper__btn:disabled { opacity: .35; cursor: not-allowed; }
+.stepper__btn > svg { width: 16px; height: 16px; }
+
+.stepper__val {
+  min-width: 44px;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ══════════════════════════════════════════════════════════ прогресс */
+
+.progress {
+  position: relative;
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.progress__bar {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--dur-2) var(--ease);
+}
+
+/* Когда конца не видно (ищем машину) — полоса бегает сама. */
+.progress--wait .progress__bar {
+  width: 40%;
+  animation: sg-slide 1.3s var(--ease) infinite;
+}
+
+/* ══════════════════════════════════════════════════════════ разделитель */
+
+.divider {
+  height: 1px;
+  margin: var(--sp-4) 0;
+  background: var(--line-soft);
+}
+.divider--tight { margin: var(--sp-2) 0; }
+.divider--v { width: 1px; height: auto; align-self: stretch; margin: 0; }
+
+/* ══════════════════════════════════════════════════════════ пустое состояние */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-7) var(--sp-5);
+  text-align: center;
+  color: var(--muted);
+}
+
+.empty__icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: var(--sp-1);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--muted-2);
+}
+.empty__icon > svg { width: 26px; height: 26px; }
+
+.empty__title {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+}
+
+.empty__text {
+  max-width: 32ch;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+/* ══════════════════════════════════════════════════════════ движение */
+
+@keyframes sg-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes sg-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .42; }
+}
+
+@keyframes sg-toast-in {
+  from { opacity: 0; transform: translateY(-14px) scale(.97); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes sg-toast-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(-10px) scale(.97); }
+}
+
+@keyframes sg-slide {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(260%); }
+}

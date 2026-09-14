@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ru" data-app="client">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sprinter Go — грузоперевозки по Бишкеку</title>
+<meta name="description" content="Спринтер, газель или грузовик с грузчиками. Цена известна до заказа, машину видно на карте.">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0E0E10" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F4F4F6" media="(prefers-color-scheme: light)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="format-detection" content="telephone=no">
+
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+<!-- Кириллица нужна на первом же экране, поэтому её грузим вперёд остальных подмножеств. -->
+<link rel="preload" as="font" type="font/woff2" href="/assets/fonts/onest-cyrillic.woff2" crossorigin>
+<link rel="preload" as="font" type="font/woff2" href="/assets/fonts/inter-cyrillic.woff2" crossorigin>
+
+<link rel="stylesheet" href="/assets/css/fonts.css">
+<link rel="stylesheet" href="/assets/css/tokens.css">
+<link rel="stylesheet" href="/assets/css/base.css">
+<link rel="stylesheet" href="/assets/css/components.css">
+<link rel="stylesheet" href="/assets/css/map.css">
+<link rel="stylesheet" href="/assets/css/client.css">
+
+<script type="module" src="/assets/js/client/app.js"></script>
+</head>
+<body>
+
+<div class="sg-app">
+
+  <!-- Карта во весь экран: всё остальное лежит поверх неё. -->
+  <div class="sg-map" id="map" data-map></div>
+
+  <!-- Метка выбора точки: видна, только когда адрес ставят пальцем по карте. -->
+  <div class="sg-center" id="center-pin" hidden aria-hidden="true">
+    <span class="sg-center__pin"></span>
+    <span class="sg-center__shadow"></span>
+  </div>
+
+  <header class="sg-top">
+    <a class="sg-brand" href="/" aria-label="Sprinter Go">
+      <img class="sg-brand__logo" src="/assets/img/logo.svg" width="30" height="30" alt="">
+      <span class="sg-brand__name" id="brand-name">Sprinter Go</span>
+    </a>
+
+    <!-- Один переключатель на два языка: нажатие всегда меняет язык на второй. -->
+    <button type="button" class="sg-lang lang-switch" id="lang-switch" data-lang data-t-aria="common.language" aria-label="Язык">
+      <span class="sg-lang__i" data-lang-code="ru">RU</span>
+      <span class="sg-lang__i" data-lang-code="ky">KY</span>
+    </button>
+  </header>
+
+  <!-- Нижняя шторка: содержимое меняется по шагам заказа. -->
+  <div class="sg-panel" id="panel" data-sheet>
+    <div class="sg-panel__box">
+      <div class="sg-panel__slot" id="panel-slot">
+        <div class="sg-boot">
+          <div class="sg-boot__bar"><i></i></div>
+          <div class="sg-boot__text" data-t="common.loading">Загружаем</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<noscript>
+  <div class="sg-noscript">
+    Для заказа машины нужен включённый JavaScript. Включите его в настройках браузера
+    или позвоните нам, и диспетчер оформит заказ сам.
+  </div>
+</noscript>
+
+</body>
+</html>
