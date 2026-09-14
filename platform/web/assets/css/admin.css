@@ -185,6 +185,8 @@ html[data-screen='app'] #app { display: grid; }
   min-height: 54px;
   min-width: 0;
   padding: 0 2px;
+  overflow: hidden;
+  white-space: nowrap;
   border-radius: var(--r-md);
   color: var(--muted-2);
   font-size: var(--fs-xs);
@@ -775,12 +777,61 @@ html[data-screen='app'] #app { display: grid; }
 .form__cap { display: block; font-size: var(--fs-sm); font-weight: 600; }
 .form__range-val { color: var(--accent); font-size: var(--fs-h3); }
 
+/* Ползунок рисуем сами: системный на тёмной карточке сливается с фоном —
+   виден один бегунок, а дорожки будто и нет. Высота 44 px не для красоты,
+   а чтобы в него попадали пальцем. */
 .form__range {
   width: 100%;
-  height: 28px;
+  height: 44px;
   background: transparent;
   cursor: pointer;
   accent-color: var(--accent);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.form__range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+}
+
+.form__range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  margin-top: -8px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: var(--shadow-1);
+}
+
+.form__range::-moz-range-track {
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+}
+
+.form__range::-moz-range-progress {
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+}
+
+.form__range::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.form__range:focus-visible::-webkit-slider-thumb,
+.form__range:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }
 
 .form__chips { flex-wrap: wrap; overflow: visible; }
@@ -923,4 +974,313 @@ html[data-screen='app'] #app { display: grid; }
   .vf { grid-template-columns: 1fr; }
   .vf__photo { width: 100%; aspect-ratio: 4 / 3; }
   .vf__actions .btn { flex: 1 1 140px; }
+}
+
+/* ══════════════════════════════════════════════════════ отчёты, оплата, бонусы */
+
+/* Заголовок блока с кнопкой справа: «CSV», «Прогнать сгорание» и прочее,
+   что относится ровно к этому блоку, а не ко всей странице. */
+.block__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.block__bar .block__head { margin: 0; }
+
+/* Две даты и сброс — своя сетка: в общей .filters первая колонка вдвое шире,
+   и поле «с даты» растянулось бы на пол-экрана. */
+.filters--dates { grid-template-columns: minmax(0, 1fr); }
+
+@media (min-width: 760px) {
+  .filters--dates { grid-template-columns: repeat(2, minmax(140px, 210px)) auto; }
+}
+
+/* ── графики ─────────────────────────────────────────────────────────────
+
+   Высота коробки задана здесь, а не в скрипте: считать пиксели в JS,
+   когда это умеет CSS, — лишний способ разойтись с вёрсткой.
+   --plot-x — полоса под подписями оси X, по ней выравнивается и левая ось,
+   и сетка, и линия. */
+
+.plot {
+  --plot-h: 172px;
+  --plot-x: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  margin: 0;
+}
+
+.plot__read {
+  min-height: 19px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.plot__wrap {
+  display: flex;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.plot__axis {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  width: 56px;
+  height: var(--plot-h);
+  padding-bottom: var(--plot-x);
+  color: var(--muted-2);
+  font-size: 10px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.plot__body {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  height: var(--plot-h);
+}
+
+.plot__grid {
+  position: absolute;
+  inset: 0 0 var(--plot-x) 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.plot__grid i {
+  display: block;
+  height: 1px;
+  background: var(--line-soft);
+}
+
+.plot__cols {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 100%;
+}
+
+.plot__col {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.plot__slot {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
+}
+
+.plot__bar {
+  width: 100%;
+  max-width: 34px;
+  border-radius: var(--r-xs) var(--r-xs) 2px 2px;
+  background: var(--accent);
+  transition: background-color var(--dur-1) var(--ease);
+}
+
+.plot__bar.is-zero { background: var(--surface-3); }
+.plot__col.is-on .plot__bar { background: var(--accent-press); }
+.plot__col.is-on .plot__bar.is-zero { background: var(--line); }
+
+/* Точка стоит ровно на своём значении, поэтому её сдвигают на половину себя. */
+.plot__dot {
+  position: absolute;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin: 0 0 -4px -4px;
+  border-radius: 50%;
+  background: var(--accent);
+  transition: width var(--dur-1) var(--ease), height var(--dur-1) var(--ease);
+}
+
+.plot__col.is-on .plot__dot { width: 12px; height: 12px; margin: 0 0 -6px -6px; }
+
+.plot__x {
+  height: var(--plot-x);
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--muted-2);
+  font-size: 10px;
+  line-height: var(--plot-x);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.plot__col.is-on .plot__x { color: var(--text); }
+
+/* Линия лежит под точками: так видно и ход, и каждое значение. */
+.plot__line {
+  position: absolute;
+  inset: 0 0 var(--plot-x) 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.plot__line svg { display: block; width: 100%; height: 100%; }
+.plot__fill { fill: var(--accent-soft); }
+
+.plot__stroke {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.plot--dense .plot__bar { max-width: 15px; }
+
+/* Плотный график: столбцов больше трёх десятков, зазор между ними съел бы
+   всю ширину экрана. */
+.plot--tight .plot__cols { gap: 0; }
+.plot--tight .plot__bar { border-radius: 1px; }
+
+.plot--tight .plot__dot {
+  width: 5px;
+  height: 5px;
+  margin: 0 0 -2.5px -2.5px;
+}
+
+.plot--tight .plot__col.is-on .plot__dot {
+  width: 10px;
+  height: 10px;
+  margin: 0 0 -5px -5px;
+}
+
+@media (max-width: 520px) {
+  .plot { --plot-h: 150px; }
+  .plot__axis { width: 46px; }
+  .plot--dense .plot__x { font-size: 9px; }
+}
+
+/* ── выбор торговой точки ────────────────────────────────────────────── */
+
+.pick { align-items: flex-start; }
+
+.pick__mark {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 3px;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+}
+
+.pick__mark.is-on {
+  border-color: var(--accent);
+  background: radial-gradient(circle at center, var(--accent) 0 5px, transparent 5px);
+}
+
+.pick__name,
+.pick__addr { display: block; }
+.pick__addr { margin-top: 2px; line-height: 1.4; }
+
+.pick__cash {
+  margin-top: var(--sp-2);
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+/* ── строка «скопировать» ────────────────────────────────────────────── */
+
+.copyline {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.copyline__cap {
+  flex: none;
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+/* Адрес обработчика длинный, и на телефоне он должен переноситься,
+   а не уезжать за край карточки. */
+.copyline__val {
+  flex: 1 1 180px;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* ── живые пояснения ─────────────────────────────────────────────────── */
+
+.example {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px dashed var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+}
+
+.example__head {
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.hintline {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.hints {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.hints .hintline { color: var(--muted); }
+.hints .hintline::before { content: '· '; color: var(--accent); }
+
+.note--warn { background: var(--warn-soft); color: var(--warn); }
+
+/* Приход и расход бонусов различаются цветом: в журнале это первое,
+   что ищут глазами. */
+.amt--in { color: var(--ok); }
+.amt--out { color: var(--err); }
+
+/* Шестая кнопка в нижней полосе появилась вместе с отчётами: на 360 px
+   подписям тесно, поэтому ужимаем их, а не ломаем строку. */
+@media (max-width: 400px) {
+  .dock__i { font-size: 10px; }
 }

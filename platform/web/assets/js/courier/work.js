@@ -117,6 +117,7 @@ extend({
     'earn.cash': 'Собрано наличными',
     'earn.by_days': 'По дням',
     'earn.best': 'Лучший день',
+    'earn.picked': 'Выбранный день',
     'earn.best_none': 'Заказов пока не было',
     'earn.chart_alt': 'Заработок по дням, всего {sum}',
     'earn.more': 'Показать ещё',
@@ -207,6 +208,7 @@ extend({
     'earn.cash': 'Накталай чогулду',
     'earn.by_days': 'Күндөр боюнча',
     'earn.best': 'Эң мыкты күн',
+    'earn.picked': 'Тандалган күн',
     'earn.best_none': 'Заказ азырынча болгон жок',
     'earn.chart_alt': 'Күндөр боюнча киреше, бардыгы {sum}',
     'earn.more': 'Дагы көрсөтүү',
@@ -384,6 +386,11 @@ const OWN_CSS = `
   min-width: 56px;
   height: 56px;
 }
+
+/* Кнопки самой карты рассчитаны на спокойные руки. На этом экране руки заняты
+   рулём, поэтому здесь они тоже вырастают. */
+.job--full .map__btn { width: 56px; height: 56px; }
+.job--full .map__btn > svg { width: 24px; height: 24px; }
 
 /* ── верхняя строка: куда едем прямо сейчас ────────────────────────────── */
 
@@ -833,7 +840,6 @@ const OWN_CSS = `
   font-size: var(--fs-body);
   font-weight: 600;
 }
-.sg-goal--empty > svg { width: 20px; height: 20px; }
 
 .sg-goal__row {
   display: flex;
@@ -928,24 +934,24 @@ const OWN_CSS = `
   border: 1px solid var(--line-soft);
 }
 
+/* Подпись дня стоит отдельной строкой, а не сбоку: «Лучший день: 14 сентября ·
+   2 300 сом · 3 заказа» в одну строку с заголовком не влезает на 360 px, а
+   обрезать в ней нечего — там каждое слово по делу. */
 .sg-bars__head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--sp-3);
+  flex-direction: column;
+  gap: 2px;
   color: var(--muted);
   font-size: var(--fs-sm);
 }
 
 .sg-bars__pick {
-  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--text);
   font-weight: 600;
-  text-align: right;
 }
 
 /* Столбики — не кнопки: за месяц их тридцать, и каждый был бы уже пальца.
@@ -969,11 +975,13 @@ const OWN_CSS = `
   height: 100%;
 }
 
+/* Приглушённый жёлтый, а не совсем прозрачный: на светлой теме заливка в
+   четырнадцать процентов на белом почти не видна. */
 .sg-bars__bar {
   width: 100%;
   min-height: 3px;
   border-radius: var(--r-xs) var(--r-xs) 2px 2px;
-  background: var(--accent-soft);
+  background: var(--accent-line);
   transition: height var(--dur-3) var(--ease), background-color var(--dur-2) var(--ease);
 }
 .sg-bars__col.is-on .sg-bars__bar { background: var(--accent); }
@@ -983,7 +991,9 @@ const OWN_CSS = `
 .sg-bars__cap {
   flex: 1 1 0;
   min-width: 0;
-  overflow: hidden;
+  /* В месяце столбик уже двузначного числа, но подписан только каждый пятый
+     день — соседние пустые, и «15» спокойно ложится поверх них. */
+  overflow: visible;
   color: var(--muted-2);
   font-size: 10px;
   line-height: 14px;
@@ -1100,8 +1110,30 @@ function readClock() {
   return clock;
 }
 
+/* Часы, посчитанные сервером. Он ведёт их по-настоящему: водитель меняет
+   телефон, чистит браузер, заходит со второго устройства — и цифра остаётся
+   та же. Память телефона остаётся запасным вариантом на случай старого
+   сервера, который про online_s ещё не знает. */
+const serverClock = { secs: 0, at: 0, online: false, known: false };
+
+/** Принять часы с сервера. Зовётся на каждое состояние и на сводку по деньгам. */
+export function takeServerShift(state) {
+  if (!state || typeof state.online_s !== 'number') return;
+  serverClock.secs = Math.max(0, Math.floor(state.online_s));
+  serverClock.at = Math.floor(Date.now() / 1000);
+  serverClock.online = !!state.online;
+  serverClock.known = true;
+}
+
 /** Сколько секунд курьер сегодня на линии, вместе с идущей прямо сейчас сменой. */
 export function shiftSeconds() {
+  if (serverClock.known) {
+    // Между ответами сервера досчитываем сами, иначе цифра стояла бы на месте
+    // полминуты и казалась сломанной.
+    const drift = serverClock.online
+      ? Math.max(0, Math.floor(Date.now() / 1000) - serverClock.at) : 0;
+    return serverClock.secs + drift;
+  }
   const clock = readClock();
   const now = Math.floor(Date.now() / 1000);
   return clock.secs + (clock.since ? Math.max(0, now - clock.since) : 0);
@@ -1926,7 +1958,8 @@ export function renderShift(root, ctx) {
     unlockAudio();          // заодно первое касание разрешает звук предложений
     try {
       const res = await api.post('/courier/online', { online: next });
-      markShift(!!res.online);          // часы на линии считаем сами, сервер их не ведёт
+      takeServerShift(res);             // часы на линии ведёт сервер
+      markShift(!!res.online);          // запасной счёт в телефоне — на случай старого сервера
       ctx.store.set({
         online: !!res.online,
         busy: !!res.busy,
@@ -2942,6 +2975,9 @@ function onLongPress(node, ms, onLong) {
 
   return {
     long: () => fired,
+    /* Снять отметку долгого нажатия: без этого следующий вызов с клавиатуры,
+       где pointerdown не бывает, тоже посчитали бы долгим. */
+    reset() { fired = false; },
     destroy() {
       cancel();
       node.removeEventListener('pointerdown', down);
@@ -3236,13 +3272,26 @@ export function renderJob(root, ctx) {
   const longAddr = onLongPress(nextBtn, 520, () => openNavTo(preferredNav()));
   stop.push(() => longAddr.destroy());
 
-  nextBtn.addEventListener('click', () => {
-    if (longAddr.long()) return;        // навигатор уже открылся, копировать не надо
+  /* Куда едем прямо сейчас. targetPoint знает только точки с координатами,
+     а показать и скопировать надо любой адрес, даже без них. */
+  function nextPoint() {
     const order = ctx.store.get().order;
-    const to = order ? targetPoint(order) : null;
-    const addr = to && to.addr;
-    if (!addr) return;
-    copyText(addr, t('job.copied'));
+    const points = (order && order.points) || [];
+    if (!points.length) return null;
+    const toPickup = TO_PICKUP.indexOf(order.status) >= 0;
+    return targetPoint(order) || (toPickup ? points[0] : points[points.length - 1]);
+  }
+
+  nextBtn.addEventListener('click', () => {
+    if (longAddr.long()) {              // навигатор уже открылся, копировать не надо
+      longAddr.reset();
+      return;
+    }
+    const point = nextPoint();
+    // Копируем адрес целиком, вместе с городом: его диктуют по телефону
+    // и отправляют в мессенджер, а там сокращения только мешают.
+    if (!point || !point.addr) return;
+    copyText(point.addr, t('job.copied'));
   });
 
   /* Город в начале адреса не несёт ничего: курьер и так в нём. Убираем его —
@@ -3257,10 +3306,8 @@ export function renderJob(root, ctx) {
 
   function paintNext() {
     const order = ctx.store.get().order;
-    const points = (order && order.points) || [];
     const toPickup = !order || TO_PICKUP.indexOf(order.status) >= 0;
-    const point = (order && targetPoint(order)) ||
-      (toPickup ? points[0] : points[points.length - 1]);
+    const point = order ? nextPoint() : null;
     const addr = point && point.addr ? shortAddr(point.addr) : t('order.on_map');
     const kicker = toPickup ? t('courier.offer_pickup') : t('courier.offer_drop');
     if (nextKicker.textContent !== kicker) nextKicker.textContent = kicker;
@@ -3842,15 +3889,24 @@ const DAY_SHORT = {
 
 /* Дни считаем по часам телефона: курьер и его телефон стоят в одном городе,
    и полночь у них общая. Полдень внутри дня берём нарочно — так подпись под
-   столбиком не съезжает на сутки из-за часового пояса сервиса. */
+   столбиком не съезжает на сутки из-за часового пояса сервиса.
+
+   Неделю и месяц показываем целиком, вместе с днями, которые ещё не наступили:
+   в понедельник иначе получился бы один столбик во весь экран, а так сразу
+   видно, что неделя только началась. */
 function chartRange(period) {
   const day = new Date();
   day.setHours(0, 0, 0, 0);
   const start = new Date(day.getTime());
-  if (period === 'week') start.setDate(start.getDate() - ((day.getDay() + 6) % 7));
-  else if (period === 'month') start.setDate(1);
-  else start.setDate(start.getDate() - 6);     // «сегодня» — на фоне недели
-  const days = Math.round((day.getTime() - start.getTime()) / 86400000) + 1;
+  let days = 7;
+  if (period === 'week') {
+    start.setDate(start.getDate() - ((day.getDay() + 6) % 7));
+  } else if (period === 'month') {
+    start.setDate(1);
+    days = new Date(day.getFullYear(), day.getMonth() + 1, 0).getDate();
+  } else {
+    start.setDate(start.getDate() - 6);        // «сегодня» — на фоне недели
+  }
   return { from: Math.floor(start.getTime() / 1000), days };
 }
 
@@ -3884,10 +3940,10 @@ function daySeries(items, fromSec, days) {
 function createBars() {
   const grid = el('div', { className: 'sg-bars__grid', role: 'img' });
   const caps = el('div', { className: 'sg-bars__caps', 'aria-hidden': 'true' });
+  const kicker = el('span', null, t('earn.by_days'));
   const caption = el('b', { className: 'sg-bars__pick' });
   const box = el('div', { className: 'sg-bars' },
-    el('div', { className: 'sg-bars__head' },
-      el('span', null, t('earn.by_days')), caption),
+    el('div', { className: 'sg-bars__head' }, kicker, caption),
     grid, caps);
 
   let series = [];
@@ -3902,8 +3958,8 @@ function createBars() {
       if (caps.children[i]) caps.children[i].classList.toggle('is-on', i === picked);
     }
     const day = series[index];
-    caption.textContent = (index === bestAt ? t('earn.best') + ': ' : '') +
-      date(day.at) + ' · ' + money(day.sum) +
+    kicker.textContent = index === bestAt ? t('earn.best') : t('earn.picked');
+    caption.textContent = date(day.at) + ' · ' + money(day.sum) +
       (day.orders ? ' · ' + tp(day.orders, 'common.n_order') : '');
   }
 
@@ -3954,6 +4010,7 @@ function createBars() {
       if (max > 0) {
         select(bestAt);
       } else {
+        kicker.textContent = t('earn.by_days');
         caption.textContent = t('earn.best_none');
       }
     },
@@ -4209,5 +4266,5 @@ export default {
   showOffer, createGeoTracker, startAlert, stopAlert, unlockAudio,
   chime, getSoundPrefs, setSoundPrefs, soundStatus, soundSettings, mountSoundSettings,
   handleStreamEvent, getTheme, applyTheme, bindPlate, ICONS,
-  markShift, shiftSeconds, getGoal, setGoal,
+  markShift, takeServerShift, shiftSeconds, getGoal, setGoal,
 };

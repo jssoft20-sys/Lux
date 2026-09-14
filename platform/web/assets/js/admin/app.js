@@ -17,6 +17,7 @@ import {
   renderOverview, renderLive, renderOrders, renderOrder,
   renderCouriers, renderCourier, renderClients, renderVerify,
   renderTariffs, renderExtras, renderSettings,
+  renderReports, renderPay, renderBonus,
 } from './pages.js';
 
 /* ─────────────────────────────────────────────────────── иконки меню */
@@ -32,19 +33,27 @@ const ICONS = {
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 8.5v7M8.5 12h7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   gear: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4 6 18M18 18l-1.6-1.6M7.6 7.6 6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   more: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="18" cy="12" r="1.8" fill="currentColor"/></svg>',
+  report: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.2h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="m5 15 4.3-4.5 3.1 2.6L18.4 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="18.6" cy="6.6" r="1.7" fill="currentColor"/></svg>',
+  wallet: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 9V7.4A1.9 1.9 0 0 1 6.4 5.5h9.2A1.9 1.9 0 0 1 17.5 7.4V9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><rect x="3.5" y="9" width="17" height="9.5" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="16.4" cy="13.8" r="1.4" fill="currentColor"/></svg>',
+  gift: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.8" y="10" width="16.4" height="9.8" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 10h18M12 10v9.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12 10S10.7 4.6 8.4 4.6a2.1 2.1 0 1 0 0 5.4zM12 10s1.3-5.4 3.6-5.4a2.1 2.1 0 1 1 0 5.4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
 };
 
 /* ─────────────────────────────────────────────────────── разделы */
 
+/* Порядок — это и есть подсказка, чем тут занимаются. Отчёты стоят в нижней
+   полосе: за ними владелец заходит каждый день, и искать их в «Ещё» глупо. */
 const SECTIONS = [
   { path: '/overview', title: 'admin.nav_overview', icon: 'grid', dock: true },
   { path: '/map', title: 'admin.nav_map', icon: 'map', dock: true },
   { path: '/orders', title: 'admin.nav_orders', icon: 'orders', dock: true },
   { path: '/couriers', title: 'admin.nav_couriers', icon: 'car', dock: true },
+  { path: '/reports', title: 'rep.nav', icon: 'report', dock: true },
   { path: '/verify', title: 'adm.vf_title', icon: 'shield' },
   { path: '/clients', title: 'admin.nav_clients', icon: 'user' },
   { path: '/tariffs', title: 'admin.nav_tariffs', icon: 'tag' },
   { path: '/extras', title: 'admin.nav_extras', icon: 'plus' },
+  { path: '/pay', title: 'apay.nav', icon: 'wallet' },
+  { path: '/bonus', title: 'abn.nav', icon: 'gift' },
   { path: '/settings', title: 'admin.nav_settings', icon: 'gear' },
 ];
 
@@ -347,6 +356,9 @@ function routes() {
     }),
     '/tariffs': at('/tariffs', (host) => renderTariffs(host, ctx)),
     '/extras': at('/extras', (host) => renderExtras(host, ctx)),
+    '/reports': at('/reports', (host) => renderReports(host, ctx)),
+    '/pay': at('/pay', (host) => renderPay(host, ctx)),
+    '/bonus': at('/bonus', (host) => renderBonus(host, ctx)),
     '/settings': at('/settings', (host) => renderSettings(host, ctx)),
     '*': at('/overview', (host) => renderOverview(host, ctx)),
   };

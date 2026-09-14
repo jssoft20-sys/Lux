@@ -27,7 +27,7 @@ import {
 import {
   renderShift, renderJob, renderHistory,
   showOffer, createGeoTracker, stopAlert, unlockAudio,
-  getTheme, applyTheme, markShift,
+  getTheme, applyTheme, markShift, takeServerShift,
 } from './work.js';
 
 /* ─────────────────────────────────────────────────────── состояние */
@@ -324,9 +324,10 @@ function pump() {
 function applyState(data) {
   if (!data) return;
   const order = data.order && data.order.id === closedOrder ? null : (data.order || null);
-  // Часы на линии сервер не ведёт, их считает телефон. Сообщаем ему правду
-  // о смене на каждом состоянии: повторный вызов с тем же значением ничего
-  // не меняет, зато после сна и перезапуска счётчик снова верен.
+  // Часы на линии ведёт сервер: водитель меняет телефон и чистит браузер, а
+  // цифра, на которую он смотрит всю смену, должна быть одна и та же. Счёт в
+  // телефоне остаётся запасным — на случай, если сервер ещё старой версии.
+  takeServerShift(data);   // часы на линии считает сервер — они одни на все устройства
   markShift(!!data.online);
   store.set({
     online: !!data.online,

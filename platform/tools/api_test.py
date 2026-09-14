@@ -238,6 +238,30 @@ def main():
                           {'lat': 42.8750, 'lng': 74.5700, 'heading': 90, 'speed': 0}, token=ctoken)
             check('геопозиция принята', code == 200)
 
+        # Часы на линии считает сервер: водитель меняет телефон и чистит
+        # браузер, а цифра, на которую он смотрит весь день, должна быть одна.
+        if ctoken:
+            code, st1 = req('GET', '/courier/stats', token=ctoken)
+            check('часы на линии приходят с сервера', 'online_s' in (st1 or {}),
+                  str(st1)[:160])
+            time.sleep(2.2)
+            code, st2 = req('GET', '/courier/stats', token=ctoken)
+            check('и идут, пока курьер на линии',
+                  (st2 or {}).get('online_s', 0) > (st1 or {}).get('online_s', -1),
+                  f"было {(st1 or {}).get('online_s')}, стало {(st2 or {}).get('online_s')}")
+            req('POST', '/courier/online', {'online': False}, token=ctoken)
+            code, st3 = req('GET', '/courier/stats', token=ctoken)
+            worked = (st3 or {}).get('online_s', 0)
+            time.sleep(1.2)
+            code, st4 = req('GET', '/courier/stats', token=ctoken)
+            check('ушёл с линии — часы встали, а не обнулились',
+                  (st4 or {}).get('online_s') == worked and worked > 0,
+                  f'после ухода {worked}, через секунду {(st4 or {}).get("online_s")}')
+            req('POST', '/courier/online', {'online': True}, token=ctoken)
+            code, st5 = req('GET', '/courier/stats', token=ctoken)
+            check('вернулся — счёт продолжился с накопленного',
+                  (st5 or {}).get('online_s', 0) >= worked,
+                  f'было {worked}, стало {(st5 or {}).get("online_s")}')
         # ── 5. заказ целиком ─────────────────────────────────────────────────
         print('\n\033[1m5. Заказ\033[0m')
         order_body = {

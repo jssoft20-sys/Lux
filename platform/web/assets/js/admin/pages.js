@@ -11,16 +11,18 @@
 */
 
 import { api, ApiError } from '../core/api.js';
-import { el, toast, sheet, confirm as ask, skeleton, haptic, mountStars, photoViewer } from '../core/ui.js';
 import {
-  money, num, distance as fmtDistance, duration as fmtDuration,
+  el, toast, sheet, confirm as ask, skeleton, haptic, mountStars, photoViewer, copyText,
+} from '../core/ui.js';
+import {
+  money, moneyShort, num, distance as fmtDistance, duration as fmtDuration,
   time as fmtTime, date as fmtDate, dateTime, timeAgo, phone as fmtPhone,
   plate as fmtPlate, initials,
 } from '../core/fmt.js';
 import { createMap, pin } from '../core/map.js';
 import { getLang, extend } from '../core/i18n.js';
 import {
-  t, tp, createForm, quoteTariff, tiyinToSom, errText, parseNum,
+  t, tp, createForm, quoteTariff, tiyinToSom, somToTiyin, commissionFor, errText, parseNum,
 } from './forms.js';
 
 /* ─────────────────────────────────────────────────────── мелочи */
@@ -2524,6 +2526,1516 @@ export function renderVerify(host, ctx) {
     }
   }
 
+  load();
+  return () => { alive = false; };
+}
+
+/* ═══════════════════════════════════════════════════════ оплата, бонусы, отчёты
+
+   Три раздела, за которыми владелец заходит в панель чаще всего: куда падают
+   деньги, чем возвращаем людей и что вообще происходит с сервисом. Свои тексты
+   они приносят с собой — общий словарь для этого трогать не нужно. */
+
+extend({
+  ru: {
+    /* ── оплата ── */
+    'apay.nav': 'Оплата',
+    'apay.title': 'Приём оплаты',
+    'apay.bank': 'Связь с Оптима Банком',
+    'apay.on': 'Принимать бронь онлайн',
+    'apay.on_hint': 'Выключите — и заказы пойдут без предоплаты, деньги курьеру наличными',
+    'apay.way': 'Как принимаем деньги',
+    'apay.key': 'API-ключ Оптимы',
+    'apay.key_hint': 'Выдают в кабинете Оптима Бизнес, раздел интеграций',
+    'apay.key_set': 'Ключ задан и спрятан',
+    'apay.key_none': 'Ключ ещё не задан',
+    'apay.key_replace': 'Заменить ключ',
+    'apay.key_keep': 'Оставить прежний',
+    'apay.key_new': 'Новый API-ключ',
+    'apay.company': 'ID компании',
+    'apay.company_hint': 'legalPartyId — число из кабинета Оптимы',
+    'apay.check': 'Проверить связь',
+    'apay.checking': 'Спрашиваем банк…',
+    'apay.points': 'Торговая точка и касса',
+    'apay.points_hint': 'Руками их вводить не нужно: список присылает сам банк',
+    'apay.points_ask': 'Нажмите «Проверить связь» — подтянем точки и кассы из банка',
+    'apay.point_one': 'Точка одна, выбрали её без вопросов',
+    'apay.point_pick': 'Точек несколько — выберите, через какую проводим оплату',
+    'apay.point_now': 'Работаем через эту точку',
+    'apay.cash': 'Касса',
+    'apay.cash_pick': 'Касса в этой точке',
+    'apay.no_points': 'Банк не прислал ни одной точки. Проверьте ключ и ID компании.',
+    'apay.point_saved': 'Точка и касса сохранены',
+    'apay.prepay': 'Размер брони',
+    'apay.prepay_hint': 'Вперёд человек платит только бронь — это подтверждение, что он настоящий. Остальное отдаёт курьеру наличными.',
+    'apay.percent': 'Процент от заказа',
+    'apay.percent_hint': 'Ноль — считаем бронь от комиссии сервиса',
+    'apay.min': 'Бронь не меньше',
+    'apay.max': 'Бронь не больше',
+    'apay.max_hint': 'Ноль — верхней границы нет',
+    'apay.example': 'Живой пример',
+    'apay.example_order': 'Заказ на сумму',
+    'apay.example_text': 'С заказа на {total} клиент заплатит вперёд {prepay}, курьеру наличными — {rest}',
+    'apay.qr': 'Код оплаты',
+    'apay.ttl': 'Код живёт, секунд',
+    'apay.note': 'Назначение платежа',
+    'apay.note_hint': 'Эту строку человек увидит в приложении банка, а вы — в выписке',
+    'apay.cb': 'Уведомление банка об оплате',
+    'apay.cb_hint': 'Сразу после оплаты банк стучится на наш адрес. Без этого заказ будет ждать денег, которые уже пришли.',
+    'apay.cb_url': 'Адрес нашего обработчика',
+    'apay.cb_login': 'Логин',
+    'apay.cb_pass': 'Пароль',
+    'apay.cb_set': 'Логин и пароль созданы',
+    'apay.cb_none': 'Логин и пароль ещё не созданы',
+    'apay.cb_make': 'Создать логин и пароль',
+    'apay.cb_again': 'Создать заново',
+    'apay.cb_once': 'Пароль показан один раз. Скопируйте его сейчас — второй раз мы его не покажем.',
+    'apay.cb_where': 'Кабинет Оптима Бизнес → интеграции → обратное уведомление. Там три поля: адрес, логин, пароль — впишите то, что ниже.',
+    'apay.cb_warn': 'Старый пароль сразу перестанет работать. Не забудьте вписать новый в кабинете Оптимы.',
+    'apay.copy': 'Скопировать',
+    'apay.ready': 'Готово к работе',
+    'apay.not_ready': 'Ещё не настроено',
+    'apay.off': 'Оплата выключена',
+    'apay.manual_note': 'Сейчас оплату отмечает оператор вручную',
+
+    /* ── бонусы ── */
+    'abn.nav': 'Бонусы',
+    'abn.title': 'Бонусы клиентам',
+    'abn.rules': 'Правила',
+    'abn.on': 'Бонусы включены',
+    'abn.on_hint': 'Выключите — начисления остановятся, накопленное сохранится',
+    'abn.percent': 'Кэшбек с заказа',
+    'abn.max_share': 'Можно закрыть бонусами',
+    'abn.expire_days': 'Сгорают без заказов, дней',
+    'abn.warn_days': 'Предупредить за, дней',
+    'abn.invite_friend': 'Другу за код',
+    'abn.invite_owner': 'Тому, кто позвал',
+    'abn.review': 'За отзыв',
+    'abn.signup': 'Новому клиенту',
+    'abn.group_invite': 'Приглашения',
+    'abn.ex_percent': 'С заказа на {total} вернётся {sum}',
+    'abn.ex_share': 'В заказе на {total} бонусами можно закрыть не больше {sum}',
+    'abn.ex_expire': 'Заказал сегодня — бонусы доживут до {date}, напомним {warn}',
+    'abn.ex_invite': 'За одного приглашённого сервис отдаст {sum}: {friend} другу и {owner} позвавшему',
+    'abn.ex_review': 'Каждый отзыв стоит {sum}',
+    'abn.ex_signup': 'Каждый новый клиент сразу получает {sum}',
+    'abn.ex_signup_off': 'Приветственных бонусов нет',
+    'abn.money': 'Что с деньгами',
+    'abn.issued': 'Выдано всего',
+    'abn.spent': 'Списано в заказах',
+    'abn.burned': 'Сгорело',
+    'abn.live': 'Висит сейчас',
+    'abn.live_hint': 'Это обязательство сервиса: люди придут и потратят',
+    'abn.clients': 'С бонусами на счету',
+    'abn.invites': 'Пришли по коду',
+    'abn.invites_paid': 'Из них доехали',
+    'abn.moves': 'Последние движения',
+    'abn.moves_empty': 'Движений пока не было',
+    'abn.col_when': 'Когда',
+    'abn.col_who': 'Клиент',
+    'abn.col_what': 'За что',
+    'abn.col_sum': 'Сумма',
+    'abn.col_rest': 'Остаток',
+    'abn.expire_run': 'Прогнать сгорание',
+    'abn.expire_ask': 'Сжечь бонусы всем, кто давно не заказывал?',
+    'abn.expire_done': 'Сгорело у {n}: {sum}',
+    'abn.expire_none': 'Сжигать нечего',
+    'abn.off': 'Выключены',
+    'abn.off_note': 'Бонусы выключены: начисления не идут, списать тоже нельзя',
+
+    /* ── отчёты ── */
+    'rep.nav': 'Отчёты',
+    'rep.title': 'Отчёты',
+    'rep.period': 'Период',
+    'rep.money': 'Деньги за период',
+    'rep.revenue': 'Выручка',
+    'rep.revenue_hint': 'Сумма выполненных заказов',
+    'rep.commission': 'Комиссия сервиса',
+    'rep.payout': 'Курьерам',
+    'rep.avg': 'Средний чек',
+    'rep.orders': 'Заказов',
+    'rep.done': 'Выполнено',
+    'rep.cancelled': 'Отменено',
+    'rep.expired': 'Без машины',
+    'rep.conv': 'Нашли машину',
+    'rep.conv_hint': 'Доля поисков, которые закончились назначенным курьером',
+    'rep.by_day': 'Выручка по дням',
+    'rep.by_day_hint': 'Линия — выручка выполненных заказов за сутки',
+    'rep.by_hour': 'По часам суток',
+    'rep.by_hour_hint': 'Когда ставить больше машин на линию',
+    'rep.by_dow': 'По дням недели',
+    'rep.by_tariff': 'По тарифам',
+    'rep.top': 'Топ курьеров',
+    'rep.top_hint': 'За период: сколько привезли и как отвечают на предложения',
+    'rep.clients': 'Клиенты',
+    'rep.cancels': 'Отмены',
+    'rep.cancels_hint': 'Отмена до поиска ничего не стоит, отмена после подачи — стоит курьеру дороги',
+    'rep.csv': 'CSV',
+    'rep.csv_hint': 'Скачать таблицу',
+    'rep.hover': 'Коснитесь столбца — покажем точные цифры',
+    'rep.empty': 'За этот период данных нет',
+    'rep.col_metric': 'Показатель',
+    'rep.col_value': 'Значение',
+    'rep.col_date': 'Дата',
+    'rep.col_hour': 'Час',
+    'rep.col_dow': 'День недели',
+    'rep.col_tariff': 'Тариф',
+    'rep.col_orders': 'Заказов',
+    'rep.col_done': 'Выполнено',
+    'rep.col_sum': 'Сумма',
+    'rep.col_share': 'Доля',
+    'rep.col_courier': 'Курьер',
+    'rep.col_rating': 'Рейтинг',
+    'rep.col_decline': 'Отказы',
+    'rep.col_reason': 'Причина',
+    'rep.col_count': 'Сколько',
+    'rep.col_step': 'На каком шаге',
+    'rep.decline_hint': 'Доля предложений, на которые курьер не ответил или отказался',
+    'rep.cli_new': 'Новые',
+    'rep.cli_back': 'Вернувшиеся',
+    'rep.cli_active': 'Заказывали',
+    'rep.cli_repeat': 'Больше одного заказа',
+    'rep.cli_per': 'Заказов на клиента',
+    'rep.cli_hint': 'Вернувшийся — тот, кто завёлся раньше, а заказал в этом периоде',
+    'rep.step_before': 'До поиска машины',
+    'rep.step_search': 'Пока искали машину',
+    'rep.step_assigned': 'Курьер уже ехал',
+    'rep.step_before_s': 'До поиска',
+    'rep.step_search_s': 'В поиске',
+    'rep.step_assigned_s': 'С курьером',
+    'rep.by_whom': 'Кто отменил',
+    'rep.whom_client': 'Клиент',
+    'rep.whom_courier': 'Курьер',
+    'rep.whom_admin': 'Оператор',
+    'rep.whom_system': 'Сервис',
+    'rep.no_reason': 'Без причины',
+    'rep.dow_1': 'Пн', 'rep.dow_2': 'Вт', 'rep.dow_3': 'Ср', 'rep.dow_4': 'Чт',
+    'rep.dow_5': 'Пт', 'rep.dow_6': 'Сб', 'rep.dow_7': 'Вс',
+  },
+  ky: {
+    /* ── төлөм ── */
+    'apay.nav': 'Төлөм',
+    'apay.title': 'Төлөмдү кабыл алуу',
+    'apay.bank': 'Оптима Банк менен байланыш',
+    'apay.on': 'Бронду онлайн кабыл алуу',
+    'apay.on_hint': 'Өчүрсөңүз, заказдар алдын ала төлөмсүз кетет, акча курьерге накталай берилет',
+    'apay.way': 'Акчаны кантип алабыз',
+    'apay.key': 'Оптиманын API-ачкычы',
+    'apay.key_hint': 'Оптима Бизнес кабинетинде, интеграция бөлүмүндө берилет',
+    'apay.key_set': 'Ачкыч коюлган жана жашырылган',
+    'apay.key_none': 'Ачкыч азырынча коюла элек',
+    'apay.key_replace': 'Ачкычты алмаштыруу',
+    'apay.key_keep': 'Мурункусун калтыруу',
+    'apay.key_new': 'Жаңы API-ачкыч',
+    'apay.company': 'Компаниянын ID',
+    'apay.company_hint': 'legalPartyId — Оптима кабинетиндеги сан',
+    'apay.check': 'Байланышты текшерүү',
+    'apay.checking': 'Банктан сурап жатабыз…',
+    'apay.points': 'Соода түйүнү жана касса',
+    'apay.points_hint': 'Аларды кол менен жазуунун кереги жок: тизмени банк өзү берет',
+    'apay.points_ask': '«Байланышты текшерүү» дегенди басыңыз — түйүндөрдү банктан тартып алабыз',
+    'apay.point_one': 'Түйүн бирөө экен, аны сурабай эле тандап койдук',
+    'apay.point_pick': 'Түйүн бир нече — төлөм кайсынысы аркылуу өтөрүн тандаңыз',
+    'apay.point_now': 'Ушул түйүн аркылуу иштеп жатабыз',
+    'apay.cash': 'Касса',
+    'apay.cash_pick': 'Бул түйүндөгү касса',
+    'apay.no_points': 'Банк бир да түйүн бербеди. Ачкычты жана компаниянын ID ин текшериңиз.',
+    'apay.point_saved': 'Түйүн менен касса сакталды',
+    'apay.prepay': 'Брондун өлчөмү',
+    'apay.prepay_hint': 'Адам алдын ала бронду гана төлөйт — бул анын чын экенин ырастайт. Калганын курьерге накталай берет.',
+    'apay.percent': 'Заказдан пайыз',
+    'apay.percent_hint': 'Нөл болсо, бронду сервистин комиссиясынан эсептейбиз',
+    'apay.min': 'Брон кем дегенде',
+    'apay.max': 'Брон көп дегенде',
+    'apay.max_hint': 'Нөл болсо, жогорку чек жок',
+    'apay.example': 'Тирүү мисал',
+    'apay.example_order': 'Заказдын суммасы',
+    'apay.example_text': '{total} заказдан кардар {prepay} алдын ала төлөйт, курьерге накталай — {rest}',
+    'apay.qr': 'Төлөм коду',
+    'apay.ttl': 'Код канча секунд жашайт',
+    'apay.note': 'Төлөмдүн багыты',
+    'apay.note_hint': 'Бул сапты адам банк тиркемесинен, сиз выпискадан көрөсүз',
+    'apay.cb': 'Банктын төлөм жөнүндө кабары',
+    'apay.cb_hint': 'Төлөм өткөн замат банк биздин дарекке кабар берет. Ансыз заказ келип калган акчаны күтүп тура берет.',
+    'apay.cb_url': 'Биздин дарегибиз',
+    'apay.cb_login': 'Логин',
+    'apay.cb_pass': 'Сырсөз',
+    'apay.cb_set': 'Логин менен сырсөз түзүлгөн',
+    'apay.cb_none': 'Логин менен сырсөз түзүлө элек',
+    'apay.cb_make': 'Логин жана сырсөз түзүү',
+    'apay.cb_again': 'Кайрадан түзүү',
+    'apay.cb_once': 'Сырсөз бир жолу гана көрүнөт. Азыр көчүрүп алыңыз — экинчи жолу көрсөтпөйбүз.',
+    'apay.cb_where': 'Оптима Бизнес кабинети → интеграциялар → кайтарым кабар. Ал жерде үч талаа бар: дарек, логин, сырсөз — төмөндөгүнү жазыңыз.',
+    'apay.cb_warn': 'Эски сырсөз ошол замат иштебей калат. Жаңысын Оптима кабинетине жазууну унутпаңыз.',
+    'apay.copy': 'Көчүрүү',
+    'apay.ready': 'Иштөөгө даяр',
+    'apay.not_ready': 'Дагы жөндөлө элек',
+    'apay.off': 'Төлөм өчүрүлгөн',
+    'apay.manual_note': 'Азыр төлөмдү оператор кол менен белгилейт',
+
+    /* ── бонустар ── */
+    'abn.nav': 'Бонустар',
+    'abn.title': 'Кардарларга бонус',
+    'abn.rules': 'Эрежелер',
+    'abn.on': 'Бонустар күйүк',
+    'abn.on_hint': 'Өчүрсөңүз, эсептөө токтойт, чогулганы сакталат',
+    'abn.percent': 'Заказдан кэшбек',
+    'abn.max_share': 'Бонус менен жабууга болот',
+    'abn.expire_days': 'Заказсыз күйөт, күн',
+    'abn.warn_days': 'Канча күн мурун эскертебиз',
+    'abn.invite_friend': 'Код киргизген доско',
+    'abn.invite_owner': 'Чакырган кишиге',
+    'abn.review': 'Пикир үчүн',
+    'abn.signup': 'Жаңы кардарга',
+    'abn.group_invite': 'Чакыруулар',
+    'abn.ex_percent': '{total} заказдан {sum} кайтат',
+    'abn.ex_share': '{total} заказда бонус менен {sum} чейин гана жабууга болот',
+    'abn.ex_expire': 'Бүгүн заказ кылса, бонус {date} чейин жашайт, {warn} эскертебиз',
+    'abn.ex_invite': 'Бир чакырылган киши үчүн сервис {sum} берет: {friend} доско, {owner} чакырганга',
+    'abn.ex_review': 'Ар бир пикир {sum} турат',
+    'abn.ex_signup': 'Ар бир жаңы кардар дароо {sum} алат',
+    'abn.ex_signup_off': 'Тааныштык белеги жок',
+    'abn.money': 'Акча кандай',
+    'abn.issued': 'Баары берилди',
+    'abn.spent': 'Заказдарда пайдаланылды',
+    'abn.burned': 'Күйүп кетти',
+    'abn.live': 'Азыр турат',
+    'abn.live_hint': 'Бул сервистин милдети: адамдар келип жумшайт',
+    'abn.clients': 'Эсебинде бонусу барлар',
+    'abn.invites': 'Код менен келгендер',
+    'abn.invites_paid': 'Алардын жүргөндөрү',
+    'abn.moves': 'Акыркы кыймылдар',
+    'abn.moves_empty': 'Азырынча кыймыл болгон жок',
+    'abn.col_when': 'Качан',
+    'abn.col_who': 'Кардар',
+    'abn.col_what': 'Эмне үчүн',
+    'abn.col_sum': 'Сумма',
+    'abn.col_rest': 'Калдыгы',
+    'abn.expire_run': 'Күйүүнү айдоо',
+    'abn.expire_ask': 'Көптөн бери заказ кылбагандардын бонусун күйгүзөлүбү?',
+    'abn.expire_done': '{n} кардардын {sum} күйдү',
+    'abn.expire_none': 'Күйгүзө турган эч нерсе жок',
+    'abn.off': 'Өчүк',
+    'abn.off_note': 'Бонустар өчүк: эсептелбейт да, пайдаланылбайт да',
+
+    /* ── отчёттор ── */
+    'rep.nav': 'Отчёттор',
+    'rep.title': 'Отчёттор',
+    'rep.period': 'Мезгил',
+    'rep.money': 'Мезгилдеги акча',
+    'rep.revenue': 'Түшкөн акча',
+    'rep.revenue_hint': 'Аткарылган заказдардын суммасы',
+    'rep.commission': 'Сервистин комиссиясы',
+    'rep.payout': 'Курьерлерге',
+    'rep.avg': 'Орточо чек',
+    'rep.orders': 'Заказдар',
+    'rep.done': 'Аткарылды',
+    'rep.cancelled': 'Жокко чыгарылды',
+    'rep.expired': 'Унаа табылбады',
+    'rep.conv': 'Унаа табылды',
+    'rep.conv_hint': 'Курьер дайындалган издөөлөрдүн үлүшү',
+    'rep.by_day': 'Күндөр боюнча түшкөн акча',
+    'rep.by_day_hint': 'Сызык — бир күндө аткарылган заказдардын суммасы',
+    'rep.by_hour': 'Суткадагы сааттар боюнча',
+    'rep.by_hour_hint': 'Качан линияга көбүрөөк унаа коюу керек',
+    'rep.by_dow': 'Жума күндөрү боюнча',
+    'rep.by_tariff': 'Тарифтер боюнча',
+    'rep.top': 'Мыкты курьерлер',
+    'rep.top_hint': 'Мезгил ичинде: канча ташышты жана сунуштарга кандай жооп беришет',
+    'rep.clients': 'Кардарлар',
+    'rep.cancels': 'Жокко чыгаруулар',
+    'rep.cancels_hint': 'Издөөгө чейинки баш тартуу бекер, унаа чыккандан кийинкиси курьерге жолго туура келет',
+    'rep.csv': 'CSV',
+    'rep.csv_hint': 'Таблицаны жүктөп алуу',
+    'rep.hover': 'Мамычага тийиңиз — так сандарды көрсөтөбүз',
+    'rep.empty': 'Бул мезгилде маалымат жок',
+    'rep.col_metric': 'Көрсөткүч',
+    'rep.col_value': 'Мааниси',
+    'rep.col_date': 'Күнү',
+    'rep.col_hour': 'Саат',
+    'rep.col_dow': 'Жума күнү',
+    'rep.col_tariff': 'Тариф',
+    'rep.col_orders': 'Заказдар',
+    'rep.col_done': 'Аткарылды',
+    'rep.col_sum': 'Сумма',
+    'rep.col_share': 'Үлүшү',
+    'rep.col_courier': 'Курьер',
+    'rep.col_rating': 'Рейтинг',
+    'rep.col_decline': 'Баш тартуу',
+    'rep.decline_hint': 'Курьер жооп бербеген же баш тарткан сунуштардын үлүшү',
+    'rep.cli_new': 'Жаңылар',
+    'rep.cli_back': 'Кайра келгендер',
+    'rep.cli_active': 'Заказ кылгандар',
+    'rep.cli_repeat': 'Бирден көп заказ',
+    'rep.cli_per': 'Бир кардарга заказ',
+    'rep.cli_hint': 'Кайра келген — мурун катталып, ушул мезгилде заказ кылган киши',
+    'rep.step_before': 'Издөөгө чейин',
+    'rep.step_search': 'Унаа издеп жатканда',
+    'rep.step_assigned': 'Курьер жолдо баратканда',
+    'rep.step_before_s': 'Издөөгө чейин',
+    'rep.step_search_s': 'Издөөдө',
+    'rep.step_assigned_s': 'Курьер менен',
+    'rep.by_whom': 'Ким жокко чыгарды',
+    'rep.whom_client': 'Кардар',
+    'rep.whom_courier': 'Курьер',
+    'rep.whom_admin': 'Оператор',
+    'rep.whom_system': 'Сервис',
+    'rep.no_reason': 'Себепсиз',
+    'rep.dow_1': 'Дүй', 'rep.dow_2': 'Шей', 'rep.dow_3': 'Шар', 'rep.dow_4': 'Бей',
+    'rep.dow_5': 'Жум', 'rep.dow_6': 'Ише', 'rep.dow_7': 'Жек',
+  },
+});
+
+/* ─────────────────────────────────────────────────────── графики руками
+
+   Библиотек в проекте нет, поэтому рисуем сами. Столбцы — обычные блоки:
+   так подписи остаются нормального размера на телефоне, чего не бывает,
+   когда весь график ужимают через viewBox. Линия — svg поверх тех же
+   столбцов, растянутый по их коробке. Значение показывается строкой над
+   графиком: на телефоне наводить нечем, а тыкать пальцем в столбик удобно. */
+
+/** Круглый потолок оси: 137 → 150, 1 240 → 1 500. Чтобы подписи читались. */
+function niceTop(max) {
+  const v = Math.max(1, Math.ceil(Number(max) || 0));
+  const pow = Math.pow(10, Math.floor(Math.log10(v)));
+  const head = v / pow;
+  const step = head <= 1 ? 1 : head <= 2 ? 2 : head <= 2.5 ? 2.5 : head <= 5 ? 5 : 10;
+  return Math.round(step * pow);
+}
+
+/**
+ * График. spec = {
+ *   items: [{label, value, note}], kind: 'bars'|'line',
+ *   format: (v) => строка, dense: подписи через одну, axis: (v) => строка оси
+ * }
+ */
+function plot(spec) {
+  const items = (spec.items || []).map((i) => ({
+    label: String(i.label === undefined ? '' : i.label),
+    value: Math.max(0, Number(i.value) || 0),
+    note: i.note || '',
+  }));
+  const fmt = spec.format || ((v) => num(v));
+  const axisFmt = spec.axis || fmt;
+  const line = spec.kind === 'line';
+  const top = niceTop(Math.max(0, ...items.map((i) => i.value)));
+  const read = el('div', { className: 'plot__read' }, spec.hint || t('rep.hover'));
+
+  // Подписи по оси X: на телефоне двадцать четыре часа рядом не поместятся,
+  // поэтому оставляем около дюжины — форма графика важнее, чем каждая цифра.
+  const every = Math.max(1, Math.ceil(items.length / 12));
+  // За год столбцов набирается триста с лишним: с зазорами они не влезут
+  // в экран ни при какой ширине, поэтому у плотного графика зазора нет.
+  const tight = items.length > 32;
+
+  const cols = el('div', { className: 'plot__cols' });
+  items.forEach((item, i) => {
+    const pct = top > 0 ? Math.min(100, (item.value / top) * 100) : 0;
+    const mark = line
+      ? el('span', { className: 'plot__dot', style: { bottom: pct + '%' } })
+      : el('span', {
+          className: 'plot__bar' + (item.value ? '' : ' is-zero'),
+          style: { height: Math.max(item.value ? 3 : 2, pct) + '%' },
+        });
+    cols.appendChild(el('div', {
+      className: 'plot__col',
+      dataset: { i: String(i) },
+      title: item.label + ' — ' + fmt(item.value) + (item.note ? ' · ' + item.note : ''),
+    },
+      el('span', { className: 'plot__slot' }, mark),
+      el('span', { className: 'plot__x' }, i % every === 0 ? item.label : '')));
+  });
+
+  const body = el('div', { className: 'plot__body' },
+    el('div', { className: 'plot__grid' },
+      el('i'), el('i'), el('i'), el('i')),
+    cols);
+
+  if (line && items.length) {
+    // preserveAspectRatio="none" растягивает координаты по коробке, а
+    // vector-effect держит толщину линии настоящей, а не растянутой.
+    const step = items.length > 1 ? 100 / (items.length - 1) : 0;
+    const pts = items.map((item, i) => {
+      const x = items.length > 1 ? i * step : 50;
+      const y = 100 - (top > 0 ? Math.min(100, (item.value / top) * 100) : 0);
+      return x.toFixed(2) + ',' + y.toFixed(2);
+    });
+    const area = '0,100 ' + pts.join(' ') + ' 100,100';
+    // svg собираем разметкой: createElement('svg') дал бы обычный html-узел,
+    // который браузер не рисует.
+    body.appendChild(el('div', {
+      className: 'plot__line', 'aria-hidden': 'true',
+      html: '<svg viewBox="0 0 100 100" preserveAspectRatio="none">' +
+        '<polygon class="plot__fill" points="' + area + '"></polygon>' +
+        '<polyline class="plot__stroke" fill="none" vector-effect="non-scaling-stroke" ' +
+        'points="' + pts.join(' ') + '"></polyline></svg>',
+    }));
+  }
+
+  // Середину показываем, только если она честно делится: на шкале из двух
+  // заказов подписи «1 и 1» выглядят как ошибка.
+  const half = top / 2;
+  const axis = el('div', { className: 'plot__axis' },
+    el('span', {}, axisFmt(top)),
+    el('span', {}, Number.isInteger(half) && top >= 2 ? axisFmt(half) : ''),
+    el('span', {}, axisFmt(0)));
+
+  function show(i) {
+    for (const node of cols.children) node.classList.remove('is-on');
+    if (i < 0 || !items[i]) {
+      read.textContent = spec.hint || t('rep.hover');
+      return;
+    }
+    cols.children[i].classList.add('is-on');
+    read.textContent = items[i].label + ' — ' + fmt(items[i].value) +
+      (items[i].note ? ' · ' + items[i].note : '');
+  }
+
+  const at = (e) => {
+    const col = e.target.closest ? e.target.closest('.plot__col') : null;
+    if (col) show(Number(col.dataset.i));
+  };
+  cols.addEventListener('pointerover', at);
+  cols.addEventListener('click', at);
+  cols.addEventListener('pointerleave', () => show(-1));
+
+  // Для программы чтения с экрана график бесполезен, поэтому те же числа
+  // лежат рядом обычным текстом.
+  const words = items.map((i) => i.label + ': ' + fmt(i.value)).join(', ');
+  return el('figure', {
+    className: 'plot' + (spec.dense ? ' plot--dense' : '') + (tight ? ' plot--tight' : ''),
+  },
+    read,
+    el('div', { className: 'plot__wrap' }, axis, body),
+    el('figcaption', { className: 'sr-only' }, words));
+}
+
+/* ─────────────────────────────────────────────────────── выгрузка в CSV
+
+   Файл собирается прямо в браузере из тех же чисел, что показаны на экране.
+   Разделитель — точка с запятой, дробная часть через запятую, в начале BOM:
+   так файл открывается двойным щелчком в Excel с русскими настройками,
+   а не рассыпается в один столбец. */
+
+function csvCell(value) {
+  const s = value === null || value === undefined ? '' : String(value);
+  return /[";\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function downloadCsv(name, header, rows) {
+  const lines = [header, ...rows].map((r) => r.map(csvCell).join(';'));
+  // BOM пишем escape-последовательностью: живой невидимый символ в исходнике
+  // рано или поздно вычистит чей-нибудь редактор, и Excel сломается.
+  const blob = new Blob(['\uFEFF' + lines.join('\r\n') + '\r\n'],
+    { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = el('a', { href: url, download: name, style: { display: 'none' } });
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Ссылку держим до конца тика: Safari успевает начать скачивание, а память
+  // не течёт при десятке выгрузок подряд.
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/** Кнопка «CSV» для заголовка блока. build() возвращает {name, header, rows}. */
+function csvButton(build) {
+  return el('button', {
+    className: 'btn btn--ghost btn--sm', type: 'button', title: t('rep.csv_hint'),
+    onClick: () => {
+      const data = build();
+      if (!data || !data.rows.length) { toast(t('rep.empty'), { type: 'info' }); return; }
+      downloadCsv(data.name, data.header, data.rows);
+      haptic();
+    },
+  }, t('rep.csv'));
+}
+
+/** Заголовок блока с кнопкой справа. */
+function panel(title, right, ...kids) {
+  return el('section', { className: 'block' },
+    el('div', { className: 'block__bar' },
+      el('h2', { className: 'block__head' }, title),
+      right || null),
+    ...kids);
+}
+
+function pctOf(part, whole) {
+  const w = Number(whole) || 0;
+  if (w <= 0) return '0%';
+  return (Math.round((Number(part) || 0) * 1000 / w) / 10).toString().replace('.', ',') + '%';
+}
+
+/** Дата вида 2026-03-14 из unix-времени с поправкой на часовой пояс сервиса. */
+function dayIso(unix, offset) {
+  const d = new Date(((Number(unix) || 0) + (Number(offset) || 0)) * 1000);
+  return d.toISOString().slice(0, 10);
+}
+
+/* ═══════════════════════════════════════════════════════ оплата */
+
+/* Что видит владелец: два поля и кнопка. Всё остальное — точка, касса,
+   логин с паролем для уведомления — появляется само. */
+
+const PREPAY_SAMPLE = 150000;      // заказ на 1500 сом: с него и считаем пример
+
+export function renderPay(host, ctx) {
+  let alive = true;
+  let data = null;            // последний ответ сервера
+  let points = [];            // торговые точки из банка
+  let replaceKey = false;     // владелец нажал «Заменить ключ»
+  let sample = PREPAY_SAMPLE;
+  // Раздел перерисовывается целиком после каждого ответа банка. Старые формы
+  // надо гасить, иначе они останутся в списке несохранённых и панель начнёт
+  // спрашивать «уходим?» на пустом месте.
+  let forms = [];
+
+  const body = el('div', { className: 'col gap-4' });
+  host.replaceChildren(el('div', { className: 'sect' },
+    sectionTitle(t('apay.title')), body));
+
+  /* ── бронь: тот же расчёт, что в server/pricing.py ──────────────────
+     Повторяем формулу, чтобы пример оживал прямо под пальцем, до сохранения.
+     Настоящую бронь всё равно считает сервер. */
+  function prepayFor(total, rule) {
+    const sum = Math.max(0, Math.round(Number(total) || 0));
+    if (sum <= 0) return 0;
+    const share = Math.max(0, Number(rule.percent) || 0);
+    let base = share > 0
+      ? Math.floor((sum * Math.round(share * 100) + 5000) / 10000)
+      : commissionFor(sum, {
+        kind: ctx.setting('commission.kind', 'percent'),
+        value: ctx.setting('commission.value', 10),
+        min: ctx.setting('commission.min', 0),
+        max: ctx.setting('commission.max', 0),
+      });
+    const pctLow = Math.max(0, Number(ctx.setting('payment.prepay_pct_min', 5)) || 0);
+    const pctHigh = Math.max(pctLow, Number(ctx.setting('payment.prepay_pct_max', 10)) || 0);
+    if (pctHigh > 0) base = Math.min(base, Math.floor((sum * pctHigh + 50) / 100));
+    if (pctLow > 0) base = Math.max(base, Math.floor((sum * pctLow + 50) / 100));
+    const low = Math.max(0, Math.round(Number(rule.min) || 0));
+    const high = Math.max(0, Math.round(Number(rule.max) || 0));
+    if (low > 0) base = Math.max(base, low);
+    if (high > 0) base = Math.min(base, high);
+    return Math.max(0, Math.min(base, sum));
+  }
+
+  async function load(showSkeleton) {
+    if (showSkeleton !== false) rowsSkeleton(body, 8);
+    try {
+      const res = await api.get('/admin/pay/settings');
+      if (!alive) return;
+      apply(res);
+    } catch (e) {
+      if (!alive || (e instanceof ApiError && e.isAuth)) return;
+      body.replaceChildren(failBox(e, () => load()));
+    }
+  }
+
+  function apply(res) {
+    data = res;
+    if (Array.isArray(res.points) && res.points.length) points = res.points;
+    paint();
+  }
+
+  /** Сохранить то, что изменили, и показать ответ банка. */
+  async function put(patch, okMessage) {
+    const res = await api.put('/admin/pay/settings', patch);
+    if (!alive) return res;
+    // Ключ уже на сервере — поле ввода закрываем, дальше о нём говорит значок.
+    if (patch && patch.key) replaceKey = false;
+    apply(res);
+    const text = res.message || okMessage || t('admin.set_saved');
+    toast(text, { type: res.ok === false ? 'warn' : 'ok', ms: res.ok === false ? 7000 : 3000 });
+    return res;
+  }
+
+  /* ── блок «связь с банком» ──────────────────────────────────────── */
+
+  function bankBlock() {
+    const s = data.settings || {};
+    const keySet = !!s.key_set;
+    const showKey = replaceKey || !keySet;
+
+    // Первыми идут те самые два поля, ради которых человек сюда зашёл,
+    // и только потом — переключатели. Заголовок у первой группы не нужен:
+    // он уже написан на самом блоке.
+    const fields = [
+      {
+        name: 'company', kind: 'text', label: 'apay.company', hint: 'apay.company_hint',
+        maxlength: 32,
+      },
+    ];
+    if (showKey) {
+      fields.push({
+        name: 'key', kind: 'password', label: keySet ? 'apay.key_new' : 'apay.key',
+        hint: 'apay.key_hint', maxlength: 200, span: 2, autocomplete: 'new-password',
+      });
+    }
+    fields.push({
+      name: 'enabled', kind: 'switch', label: 'apay.on', hint: 'apay.on_hint',
+      span: 2, group: 'apay.way',
+    }, {
+      name: 'provider', kind: 'select', label: 'admin.pay_provider', span: 2,
+      options: (s.providers || []).map((p) => ({
+        value: p.code,
+        text: p.title + (p.ready ? '' : ' · ' + t('apay.not_ready')),
+      })),
+    });
+
+    const form = createForm({
+      fields,
+      values: {
+        enabled: !!s.enabled,
+        provider: s.provider || 'none',
+        company: s.company || '',
+        key: '',
+      },
+      submit: 'common.save',
+      extra: [{
+        label: 'apay.check', kind: 'ghost',
+        onClick: (f) => check(f),
+      }],
+      onSubmit: async (values, changed) => {
+        const patch = pickPatch(values, changed);
+        if (!patch) { toast(t('adm.nothing_changed'), { type: 'info' }); return false; }
+        await put(patch);
+        return true;
+      },
+    });
+    forms.push(form);
+
+    const keyState = el('div', { className: 'row gap-2 wrap' },
+      el('span', { className: 'badge ' + (keySet ? 'badge--ok' : 'badge--warn') },
+        keySet ? t('apay.key_set') : t('apay.key_none')),
+      keySet ? el('button', {
+        className: 'btn btn--ghost btn--sm', type: 'button',
+        onClick: () => { replaceKey = !replaceKey; paint(); },
+      }, replaceKey ? t('apay.key_keep') : t('apay.key_replace')) : null);
+
+    const state = el('div', { className: 'row gap-2 wrap' },
+      el('span', {
+        className: 'badge ' + (s.active === 'optima' ? 'badge--ok'
+          : s.active === 'manual' ? 'badge--info' : 'badge--warn'),
+      }, s.active === 'optima' ? t('apay.ready')
+        : s.active === 'manual' ? t('apay.manual_note') : t('apay.off')));
+
+    return panel(t('apay.bank'), state, keyState, form.el);
+  }
+
+  /** Что из формы связи уходит на сервер: пустой ключ значит «не трогать». */
+  function pickPatch(values, changed) {
+    const patch = {};
+    if ('enabled' in changed) patch.enabled = !!values.enabled;
+    if ('provider' in changed) patch.provider = values.provider;
+    if ('company' in changed) patch.company = String(values.company || '').trim();
+    if (values.key) patch.key = values.key;
+    return Object.keys(patch).length ? patch : null;
+  }
+
+  /** Проверка связи: сначала сохраняем введённое, потом спрашиваем банк. */
+  async function check(form) {
+    const patch = pickPatch(form.values(), form.changed());
+    try {
+      if (patch) await put(patch);
+      const res = await api.post('/admin/pay/test', {});
+      if (!alive) return;
+      apply(res);
+      toast(res.message || t('apay.ready'),
+        { type: res.ok ? 'ok' : 'err', ms: res.ok ? 4000 : 8000 });
+    } catch (e) {
+      toast(errText(e), { type: 'err', ms: 8000 });
+    }
+  }
+
+  /* ── блок «точка и касса» ───────────────────────────────────────── */
+
+  function pointsBlock() {
+    const s = data.settings || {};
+    const chosen = Number(s.sale_point) || 0;
+    const chosenCash = Number(s.cash) || 0;
+
+    if (!points.length) {
+      return panel(t('apay.points'), null,
+        el('p', { className: 'muted t-sm' }, t('apay.points_hint')),
+        emptyBox(s.ready ? t('apay.points_ask') : t('apay.no_points')));
+    }
+
+    const list = el('div', { className: 'list' });
+    for (const point of points) {
+      const on = point.code === chosen;
+      const cashes = point.cashes || [];
+      const row = el('div', {
+        className: 'list__row list__row--tap pick' + (on ? ' is-on' : ''),
+        role: 'button',
+        tabIndex: 0,
+      },
+        el('span', { className: 'pick__mark' + (on ? ' is-on' : '') }),
+        el('span', { className: 'grow' },
+          el('b', { className: 'pick__name' }, point.name),
+          el('span', { className: 'pick__addr muted t-sm' },
+            [point.address, point.account ? '№ ' + point.account : '']
+              .filter(Boolean).join(' · ')),
+          on && cashes.length > 1
+            ? el('span', { className: 'chips pick__cash' }, ...cashes.map((c) => el('button', {
+              className: 'chip' + (c.code === chosenCash ? ' chip--on' : ''),
+              type: 'button',
+              onClick: (e) => {
+                e.stopPropagation();
+                pickPoint(point.code, c.code);
+              },
+            }, c.name)))
+            : el('span', { className: 'pick__addr muted t-sm' },
+              t('apay.cash') + ': ' +
+              ((cashes.find((c) => c.code === chosenCash) || cashes[0] || {}).name || '—'))));
+      const tap = () => pickPoint(point.code, on ? chosenCash : (cashes[0] || {}).code);
+      row.addEventListener('click', tap);
+      row.addEventListener('keydown', (e) => {
+        // Нажатие на чипе кассы всплывает сюда же; чужие клавиши не наши.
+        if (e.target !== row) return;
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tap(); }
+      });
+      list.appendChild(row);
+    }
+
+    const note = points.length === 1 ? t('apay.point_one')
+      : chosen ? t('apay.point_now') : t('apay.point_pick');
+    return panel(t('apay.points'), null,
+      el('p', { className: 'muted t-sm' }, note), list);
+  }
+
+  async function pickPoint(code, cash) {
+    try {
+      await put({ sale_point: code, cash: cash || 0 }, t('apay.point_saved'));
+      haptic();
+    } catch (e) {
+      toast(errText(e), { type: 'err' });
+    }
+  }
+
+  /* ── блок «размер брони» ────────────────────────────────────────── */
+
+  function prepayBlock() {
+    const s = data.settings || {};
+    const rule = s.prepay || {};
+    const hint = el('p', { className: 'hintline' });
+    const sampleInput = el('input', {
+      className: 'field__input', type: 'text', inputMode: 'decimal',
+      placeholder: ' ', value: tiyinToSom(sample),
+    });
+
+    const form = createForm({
+      fields: [
+        {
+          name: 'prepay_percent', kind: 'number', label: 'apay.percent',
+          hint: 'apay.percent_hint', min: 0, max: 100, group: 'apay.prepay',
+        },
+        { name: 'prepay_min', kind: 'money', label: 'apay.min', min: 0, max: 1000000 },
+        {
+          name: 'prepay_max', kind: 'money', label: 'apay.max', hint: 'apay.max_hint',
+          min: 0, max: 1000000,
+        },
+        { name: 'qr_ttl_s', kind: 'number', label: 'apay.ttl', min: 120, max: 3600, group: 'apay.qr' },
+        {
+          name: 'note', kind: 'text', label: 'apay.note', hint: 'apay.note_hint',
+          maxlength: 100, span: 2,
+        },
+      ],
+      values: {
+        prepay_percent: Number(rule.percent) || 0,
+        prepay_min: Number(rule.min) || 0,
+        prepay_max: Number(rule.max) || 0,
+        qr_ttl_s: Number(s.qr_ttl_s) || 600,
+        note: s.note || '',
+      },
+      submit: 'common.save',
+      onChange: () => redraw(),
+      onSubmit: async (values, changed) => {
+        const patch = {};
+        // Пустое поле — это ноль, а не «ничего»: сервер ждёт число.
+        for (const [key, v] of Object.entries(changed)) patch[key] = v === null ? 0 : v;
+        if (!Object.keys(patch).length) {
+          toast(t('adm.nothing_changed'), { type: 'info' });
+          return false;
+        }
+        await put(patch);
+        return true;
+      },
+    });
+    forms.push(form);
+
+    function redraw() {
+      const v = form.values();
+      const prepay = prepayFor(sample, {
+        percent: v.prepay_percent, min: v.prepay_min, max: v.prepay_max,
+      });
+      hint.textContent = t('apay.example_text', {
+        total: money(sample),
+        prepay: money(prepay),
+        rest: money(Math.max(0, sample - prepay)),
+      });
+    }
+
+    sampleInput.addEventListener('input', () => {
+      const v = somToTiyin(sampleInput.value);
+      sample = Number.isFinite(v) && v > 0 ? v : PREPAY_SAMPLE;
+      redraw();
+    });
+    redraw();
+
+    return panel(t('apay.prepay'), null,
+      el('p', { className: 'muted t-sm' }, t('apay.prepay_hint')),
+      form.el,
+      el('div', { className: 'example' },
+        el('div', { className: 'example__head' }, t('apay.example')),
+        el('label', { className: 'field field--fill' },
+          sampleInput, el('span', { className: 'field__label' }, t('apay.example_order'))),
+        hint));
+  }
+
+  /* ── блок «уведомление банка» ───────────────────────────────────── */
+
+  function callbackBlock() {
+    const s = data.settings || {};
+    const url = data.callback_url || '';
+    const has = !!s.callback_login && !!s.callback_password_set;
+
+    const make = el('button', {
+      className: 'btn ' + (has ? 'btn--ghost' : 'btn--primary'), type: 'button',
+      onClick: async () => {
+        if (has && !(await ask({
+          title: t('apay.cb_again'), text: t('apay.cb_warn'),
+          ok: t('apay.cb_again'), cancel: t('common.cancel'), danger: true,
+        }))) return;
+        make.disabled = true;
+        try {
+          const res = await api.put('/admin/pay/settings', { generate_callback: true });
+          if (!alive) return;
+          apply(res);
+          if (res.callback) showCreds(res.callback);
+        } catch (e) {
+          toast(errText(e), { type: 'err' });
+        } finally {
+          make.disabled = false;
+        }
+      },
+    }, has ? t('apay.cb_again') : t('apay.cb_make'));
+
+    return panel(t('apay.cb'),
+      el('span', { className: 'badge ' + (has ? 'badge--ok' : 'badge--warn') },
+        has ? t('apay.cb_set') : t('apay.cb_none')),
+      el('p', { className: 'muted t-sm' }, t('apay.cb_hint')),
+      copyLine(t('apay.cb_url'), url),
+      s.callback_login ? copyLine(t('apay.cb_login'), s.callback_login) : null,
+      el('p', { className: 'muted t-sm' }, t('apay.cb_where')),
+      el('div', { className: 'row gap-2 wrap' }, make));
+  }
+
+  /** Строка «подпись — значение — скопировать». */
+  function copyLine(label, value) {
+    return el('div', { className: 'copyline' },
+      el('span', { className: 'copyline__cap' }, label),
+      el('code', { className: 'copyline__val' }, value || '—'),
+      el('button', {
+        className: 'btn btn--ghost btn--sm', type: 'button', disabled: !value,
+        onClick: () => copyText(value, t('common.copied')),
+      }, t('apay.copy')));
+  }
+
+  /** Логин и пароль показываются ровно один раз — здесь. */
+  function showCreds(creds) {
+    sheet({
+      title: t('apay.cb_make'),
+      content: el('div', { className: 'col gap-3' },
+        el('p', { className: 'sheet__text' }, t('apay.cb_where')),
+        copyLine(t('apay.cb_url'), creds.url),
+        copyLine(t('apay.cb_login'), creds.login),
+        copyLine(t('apay.cb_pass'), creds.password),
+        el('p', { className: 'note note--warn' }, t('apay.cb_once'))),
+      actions: [{ label: t('common.close'), kind: 'primary' }],
+    });
+  }
+
+  function paint() {
+    for (const f of forms) f.destroy();
+    forms = [];
+    body.replaceChildren(
+      bankBlock(),
+      pointsBlock(),
+      prepayBlock(),
+      callbackBlock());
+  }
+
+  load();
+  return () => {
+    alive = false;
+    for (const f of forms) f.destroy();
+    forms = [];
+  };
+}
+
+/* ═══════════════════════════════════════════════════════ бонусы */
+
+const BONUS_SAMPLE = 150000;       // тот же заказ на 1500 сом, что и в оплате
+
+export function renderBonus(host, ctx) {
+  let alive = true;
+  let data = null;
+  let forms = [];             // гасим старые формы перед каждой перерисовкой
+
+  const body = el('div', { className: 'col gap-4' });
+  host.replaceChildren(el('div', { className: 'sect' },
+    sectionTitle(t('abn.title')), body));
+
+  async function load(showSkeleton) {
+    if (showSkeleton !== false) rowsSkeleton(body, 8);
+    try {
+      const res = await api.get('/admin/bonus', { limit: 40 });
+      if (!alive) return;
+      data = res;
+      paint();
+    } catch (e) {
+      if (!alive || (e instanceof ApiError && e.isAuth)) return;
+      body.replaceChildren(failBox(e, () => load()));
+    }
+  }
+
+  /* Кэшбек считается так же, как в server/bonus.py: процент от суммы и вниз
+     до целого сома. Баланс с копейками выглядит как ошибка, а не как подарок. */
+  function cashback(total, percent) {
+    const hundredths = Math.round((Number(percent) || 0) * 100);
+    if (hundredths <= 0 || total <= 0) return 0;
+    const v = Math.floor((total * hundredths + 5000) / 10000);
+    return Math.floor(v / 100) * 100;
+  }
+
+  function rulesBlock() {
+    const s = data.settings || {};
+    const hints = {};
+    const hintNode = (name) => {
+      hints[name] = el('p', { className: 'hintline' });
+      return hints[name];
+    };
+
+    const form = createForm({
+      fields: [
+        { name: 'enabled', kind: 'switch', label: 'abn.on', hint: 'abn.on_hint', span: 2 },
+        { name: 'percent', kind: 'range', label: 'abn.percent', min: 0, max: 50, step: 0.5, suffix: '%', span: 2 },
+        { name: 'max_share', kind: 'range', label: 'abn.max_share', min: 0, max: 100, step: 1, suffix: '%', span: 2 },
+        { name: 'expire_days', kind: 'number', label: 'abn.expire_days', min: 1, max: 3650, required: true },
+        { name: 'warn_days', kind: 'number', label: 'abn.warn_days', min: 0, max: 90 },
+        { name: 'invite_friend', kind: 'money', label: 'abn.invite_friend', min: 0, max: 1000000, group: 'abn.group_invite' },
+        { name: 'invite_owner', kind: 'money', label: 'abn.invite_owner', min: 0, max: 1000000 },
+        { name: 'review', kind: 'money', label: 'abn.review', min: 0, max: 100000 },
+        { name: 'signup', kind: 'money', label: 'abn.signup', min: 0, max: 1000000 },
+      ],
+      values: {
+        enabled: !!s.enabled,
+        percent: Number(s.percent) || 0,
+        max_share: Number(s.max_share) || 0,
+        expire_days: Number(s.expire_days) || 180,
+        warn_days: Number(s.warn_days) || 7,
+        invite_friend: Number(s.invite_friend) || 0,
+        invite_owner: Number(s.invite_owner) || 0,
+        review: Number(s.review) || 0,
+        signup: Number(s.signup) || 0,
+      },
+      submit: 'common.save',
+      onChange: () => redraw(),
+      onSubmit: async (values, changed) => {
+        if (!Object.keys(changed).length) {
+          toast(t('adm.nothing_changed'), { type: 'info' });
+          return false;
+        }
+        const patch = {};
+        for (const [key, v] of Object.entries(changed)) patch[key] = v === null ? 0 : v;
+        const res = await api.put('/admin/bonus/settings', patch);
+        if (!alive) return true;
+        data.settings = res.settings || data.settings;
+        toast(t('admin.set_saved'), { type: 'ok' });
+        // Сводка считается по журналу, но значок «включено» и пояснения
+        // зависят от настроек — перечитываем раздел целиком.
+        load(false);
+        return true;
+      },
+    });
+    forms.push(form);
+
+    const box = el('div', { className: 'hints' },
+      hintNode('percent'), hintNode('share'), hintNode('expire'),
+      hintNode('invite'), hintNode('review'), hintNode('signup'));
+
+    function redraw() {
+      const v = form.values();
+      const day = 86400;
+      const now = Math.floor(Date.now() / 1000);
+      const till = now + Math.max(1, Number(v.expire_days) || 1) * day;
+      hints.percent.textContent = t('abn.ex_percent', {
+        total: money(BONUS_SAMPLE),
+        sum: money(cashback(BONUS_SAMPLE, v.percent)),
+      });
+      hints.share.textContent = t('abn.ex_share', {
+        total: money(BONUS_SAMPLE),
+        sum: money(cashback(BONUS_SAMPLE, v.max_share)),
+      });
+      hints.expire.textContent = t('abn.ex_expire', {
+        date: fmtDate(till),
+        warn: fmtDate(till - Math.max(0, Number(v.warn_days) || 0) * day),
+      });
+      hints.invite.textContent = t('abn.ex_invite', {
+        sum: money((Number(v.invite_friend) || 0) + (Number(v.invite_owner) || 0)),
+        friend: money(v.invite_friend || 0),
+        owner: money(v.invite_owner || 0),
+      });
+      hints.review.textContent = t('abn.ex_review', { sum: money(v.review || 0) });
+      hints.signup.textContent = (Number(v.signup) || 0) > 0
+        ? t('abn.ex_signup', { sum: money(v.signup) })
+        : t('abn.ex_signup_off');
+    }
+
+    redraw();
+    return panel(t('abn.rules'),
+      el('span', { className: 'badge ' + (s.enabled ? 'badge--ok' : 'badge--warn') },
+        s.enabled ? t('abn.on') : t('abn.off')),
+      s.enabled ? null : el('p', { className: 'note note--warn' }, t('abn.off_note')),
+      form.el, box);
+  }
+
+  function moneyBlock() {
+    const burn = el('button', {
+      className: 'btn btn--ghost btn--sm', type: 'button',
+      onClick: async () => {
+        if (!(await ask({ title: t('abn.expire_run'), text: t('abn.expire_ask'),
+          ok: t('abn.expire_run'), cancel: t('common.cancel'), danger: true }))) return;
+        burn.disabled = true;
+        try {
+          const res = await api.post('/admin/bonus/expire', {});
+          toast(res.burned
+            ? t('abn.expire_done', { n: num(res.burned), sum: money(res.amount || 0) })
+            : t('abn.expire_none'), { type: 'ok' });
+          load(false);
+        } catch (e) {
+          toast(errText(e), { type: 'err' });
+        } finally {
+          burn.disabled = false;
+        }
+      },
+    }, t('abn.expire_run'));
+
+    const tiles = el('div', { className: 'tiles tiles--sm' },
+      tile(t('abn.issued'), money(data.issued || 0)),
+      tile(t('abn.spent'), money(data.spent || 0)),
+      tile(t('abn.burned'), money(data.burned || 0)),
+      tile(t('abn.live'), money(data.live || 0), t('abn.live_hint')));
+
+    const counts = el('div', { className: 'row gap-2 wrap' },
+      el('span', { className: 'badge' }, t('abn.clients') + ': ' + num(data.clients || 0)),
+      el('span', { className: 'badge' }, t('abn.invites') + ': ' + num(data.invites || 0)),
+      el('span', { className: 'badge badge--ok' },
+        t('abn.invites_paid') + ': ' + num(data.invites_paid || 0)));
+
+    return panel(t('abn.money'), burn, tiles, counts);
+  }
+
+  function movesBlock() {
+    const moves = data.moves || [];
+    const csv = csvButton(() => ({
+      name: 'sprintergo-bonus.csv',
+      header: [t('abn.col_when'), t('abn.col_who'), t('common.phone'), t('abn.col_what'),
+        t('abn.col_sum'), t('abn.col_rest'), t('admin.col_id')],
+      rows: moves.map((m) => [dateTime(m.at), m.client || '', m.phone || '', m.text || '',
+        tiyinToSom(m.amount), tiyinToSom(m.balance), m.order || '']),
+    }));
+
+    if (!moves.length) {
+      return panel(t('abn.moves'), csv, emptyBox(t('abn.moves_empty')));
+    }
+
+    const table = dataTable([
+      {
+        key: 'at', label: t('abn.col_when'),
+        cell: (r) => el('span', { title: dateTime(r.at) }, timeAgo(r.at)),
+      },
+      {
+        key: 'client', label: t('abn.col_who'),
+        cell: (r) => el('span', { className: 'truncate' },
+          r.client || fmtPhone(r.phone) || '—'),
+      },
+      { key: 'text', label: t('abn.col_what'), cell: (r) => r.text || '—', wide: true },
+      {
+        key: 'amount', label: t('abn.col_sum'), num: true,
+        cell: (r) => el('b', { className: (r.amount || 0) < 0 ? 'amt amt--out' : 'amt amt--in' },
+          ((r.amount || 0) > 0 ? '+' : '') + money(r.amount || 0)),
+      },
+      { key: 'balance', label: t('abn.col_rest'), num: true, cell: (r) => money(r.balance || 0), hide: true },
+    ], moves, {
+      onRow: (r) => { if (r.phone) ctx.go('/clients', { q: r.phone }); },
+    });
+
+    return panel(t('abn.moves'), csv, table);
+  }
+
+  function paint() {
+    for (const f of forms) f.destroy();
+    forms = [];
+    body.replaceChildren(rulesBlock(), moneyBlock(), movesBlock());
+  }
+
+  load();
+  return () => {
+    alive = false;
+    for (const f of forms) f.destroy();
+    forms = [];
+  };
+}
+
+/* ═══════════════════════════════════════════════════════ отчёты */
+
+const repState = { period: 'month', from: '', to: '' };
+
+export function renderReports(host, ctx) {
+  let alive = true;
+  const tools = el('div', { className: 'col gap-2' });
+  const body = el('div', { className: 'col gap-4' });
+  host.replaceChildren(el('div', { className: 'sect' },
+    sectionTitle(t('rep.title')), tools, body));
+
+  function params() {
+    if (repState.from || repState.to) {
+      return { from: repState.from || null, to: repState.to || null };
+    }
+    return { period: repState.period };
+  }
+
+  function paintTools() {
+    const days = el('div', { className: 'filters filters--dates' },
+      dayInput(repState.from, (v) => { repState.from = v; paintTools(); load(); },
+        t('admin.orders_from')),
+      dayInput(repState.to, (v) => { repState.to = v; paintTools(); load(); },
+        t('admin.orders_to')),
+      (repState.from || repState.to) ? el('button', {
+        className: 'btn btn--ghost btn--sm', type: 'button',
+        onClick: () => {
+          repState.from = '';
+          repState.to = '';
+          paintTools();
+          load();
+        },
+      }, t('adm.reset_filters')) : null);
+
+    tools.replaceChildren(
+      periodChips(repState.from || repState.to ? '' : repState.period, (code) => {
+        repState.period = code;
+        repState.from = '';
+        repState.to = '';
+        paintTools();
+        load();
+      }),
+      days);
+  }
+
+  async function load() {
+    rowsSkeleton(body, 10);
+    try {
+      const [stats, first] = await Promise.all([
+        api.get('/admin/stats', params()),
+        api.get('/admin/couriers', { per_page: 100 }),
+      ]);
+      if (!alive) return;
+      // Рейтинг и отказы лежат в списке курьеров, а он постраничный. Топ может
+      // оказаться на второй странице, поэтому дочитываем — но не бесконечно.
+      let couriers = first.items || [];
+      const pages = Math.min(Number(first.pages) || 1, 5);
+      if (pages > 1) {
+        const rest = await Promise.all(Array.from({ length: pages - 1 },
+          (unused, i) => api.get('/admin/couriers', { per_page: 100, page: i + 2 })));
+        if (!alive) return;
+        for (const page of rest) couriers = couriers.concat(page.items || []);
+      }
+      paint(stats, couriers);
+    } catch (e) {
+      if (!alive || (e instanceof ApiError && e.isAuth)) return;
+      body.replaceChildren(failBox(e, load));
+    }
+  }
+
+  function paint(stats, couriers) {
+    const period = stats.period || {};
+    const off = Number(period.tz_offset) || 0;
+    const tail = dayIso(period.from, off) + '_' + dayIso(Math.max(0, (period.to || 0) - 1), off);
+    const fileName = (part) => 'sprintergo-' + part + '-' + tail + '.csv';
+
+    const m = stats.money || {};
+    const o = stats.orders || {};
+    const conv = stats.conversion || {};
+
+    /* ── итоги ─────────────────────────────────────────────────────── */
+    const totals = [
+      [t('rep.revenue'), tiyinToSom(m.revenue || 0)],
+      [t('rep.commission'), tiyinToSom(m.commission || 0)],
+      [t('rep.payout'), tiyinToSom(m.payout || 0)],
+      [t('rep.avg'), tiyinToSom(m.avg_check || 0)],
+      [t('rep.orders'), String(o.total || 0)],
+      [t('rep.done'), String(o.done || 0)],
+      [t('rep.cancelled'), String(o.cancelled || 0)],
+      [t('rep.expired'), String(o.expired || 0)],
+      [t('rep.conv'), String(conv.percent || 0).replace('.', ',') + '%'],
+    ];
+
+    const moneyBlock = panel(t('rep.money'),
+      csvButton(() => ({
+        name: fileName('itogi'),
+        header: [t('rep.col_metric'), t('rep.col_value')],
+        rows: totals,
+      })),
+      el('div', { className: 'tiles' },
+        tile(t('rep.revenue'), money(m.revenue || 0), t('rep.revenue_hint')),
+        tile(t('rep.commission'), money(m.commission || 0),
+          t('rep.payout') + ': ' + money(m.payout || 0)),
+        tile(t('rep.avg'), money(m.avg_check || 0)),
+        tile(t('rep.orders'), num(o.total || 0),
+          t('rep.done') + ': ' + num(o.done || 0)),
+        tile(t('rep.cancelled'), num(o.cancelled || 0),
+          t('rep.expired') + ': ' + num(o.expired || 0)),
+        tile(t('rep.conv'), String(conv.percent || 0).replace('.', ',') + '%',
+          t('rep.conv_hint'))));
+
+    /* ── по дням ───────────────────────────────────────────────────── */
+    const byDay = stats.by_day || [];
+    const dayItems = byDay.map((d) => ({
+      label: (d.d || '').slice(8),
+      value: d.revenue || 0,
+      note: tp(d.n || 0, 'common.n_order'),
+    }));
+    const dayBlock = panel(t('rep.by_day'),
+      csvButton(() => ({
+        name: fileName('po-dnyam'),
+        header: [t('rep.col_date'), t('rep.col_orders'), t('rep.col_sum')],
+        rows: byDay.map((d) => [d.d, d.n || 0, tiyinToSom(d.revenue || 0)]),
+      })),
+      el('p', { className: 'muted t-sm' }, t('rep.by_day_hint')),
+      dayItems.length
+        ? plot({ items: dayItems, kind: 'line', format: money, axis: moneyShort })
+        : emptyBox(t('rep.empty')));
+
+    /* ── по часам ──────────────────────────────────────────────────── */
+    const byHour = stats.by_hour || [];
+    const hourItems = byHour.map((h) => ({
+      label: String(h.hour).padStart(2, '0'),
+      value: h.orders || 0,
+      note: money(h.total || 0),
+    }));
+    const hourBlock = panel(t('rep.by_hour'),
+      csvButton(() => ({
+        name: fileName('po-chasam'),
+        header: [t('rep.col_hour'), t('rep.col_orders'), t('rep.col_sum')],
+        rows: byHour.map((h) => [String(h.hour).padStart(2, '0') + ':00',
+          h.orders || 0, tiyinToSom(h.total || 0)]),
+      })),
+      el('p', { className: 'muted t-sm' }, t('rep.by_hour_hint')),
+      plot({ items: hourItems, dense: true, axis: num, format: (v) => tp(v, 'common.n_order') }));
+
+    /* ── по дням недели ────────────────────────────────────────────── */
+    /* Сервер отдаёт дни как есть; неделю собираем из них сами — для этого
+       достаточно даты, а лишний запрос гонять незачем. */
+    const dow = [1, 2, 3, 4, 5, 6, 7].map((i) => ({ n: 0, revenue: 0, i }));
+    for (const d of byDay) {
+      const parts = String(d.d || '').split('-');
+      if (parts.length !== 3) continue;
+      const js = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])));
+      const idx = (js.getUTCDay() + 6) % 7;        // понедельник первым
+      dow[idx].n += d.n || 0;
+      dow[idx].revenue += d.revenue || 0;
+    }
+    const dowBlock = panel(t('rep.by_dow'),
+      csvButton(() => ({
+        name: fileName('po-dnyam-nedeli'),
+        header: [t('rep.col_dow'), t('rep.col_orders'), t('rep.col_sum')],
+        rows: dow.map((d) => [t('rep.dow_' + d.i), d.n, tiyinToSom(d.revenue)]),
+      })),
+      plot({
+        items: dow.map((d) => ({
+          label: t('rep.dow_' + d.i), value: d.n, note: money(d.revenue),
+        })),
+        axis: num,
+        format: (v) => tp(v, 'common.n_order'),
+      }));
+
+    /* ── по тарифам ────────────────────────────────────────────────── */
+    const byTariff = stats.by_tariff || [];
+    const tariffTotal = byTariff.reduce((acc, r) => acc + (r.n || 0), 0);
+    const tariffName = (r) => localName(r) || r.code || '—';
+    const tariffBlock = panel(t('rep.by_tariff'),
+      csvButton(() => ({
+        name: fileName('po-tarifam'),
+        header: [t('rep.col_tariff'), t('rep.col_orders'), t('rep.col_done'),
+          t('rep.col_sum'), t('rep.col_share')],
+        rows: byTariff.map((r) => [tariffName(r), r.n || 0, r.done || 0,
+          tiyinToSom(r.total || 0), pctOf(r.n, tariffTotal)]),
+      })),
+      byTariff.length ? el('div', { className: 'col gap-3' },
+        plot({
+          items: byTariff.map((r) => ({
+            label: tariffName(r), value: r.n || 0, note: money(r.total || 0),
+          })),
+          axis: num,
+          format: (v) => tp(v, 'common.n_order'),
+        }),
+        dataTable([
+          { key: 'name', label: t('rep.col_tariff'), cell: tariffName, wide: true },
+          { key: 'n', label: t('rep.col_orders'), num: true, cell: (r) => num(r.n || 0) },
+          { key: 'done', label: t('rep.col_done'), num: true, cell: (r) => num(r.done || 0) },
+          { key: 'total', label: t('rep.col_sum'), num: true, cell: (r) => money(r.total || 0) },
+          { key: 'share', label: t('rep.col_share'), num: true, cell: (r) => pctOf(r.n, tariffTotal) },
+        ], byTariff))
+        : emptyBox(t('rep.empty')));
+
+    /* ── топ курьеров ──────────────────────────────────────────────── */
+    const byId = new Map(couriers.map((c) => [c.id, c]));
+    const top = (stats.couriers || {}).top || [];
+    const declineOf = (row) => {
+      const c = byId.get(row.id);
+      if (!c || !c.offers_sent) return null;
+      return 1 - (Number(c.acceptance) || 0);
+    };
+    const ratingOf = (row) => {
+      const c = byId.get(row.id);
+      return c && c.rating ? c.rating : null;
+    };
+    const topBlock = panel(t('rep.top'),
+      csvButton(() => ({
+        name: fileName('kurery'),
+        header: [t('rep.col_courier'), t('common.phone'), t('rep.col_orders'),
+          t('rep.col_sum'), t('adm.ov_payout'), t('rep.col_rating'), t('rep.col_decline')],
+        rows: top.map((r) => {
+          const d = declineOf(r);
+          return [r.name || '', r.phone || '', r.n || 0, tiyinToSom(r.revenue || 0),
+            tiyinToSom(r.payout || 0), ratingOf(r) === null ? '' : String(ratingOf(r)).replace('.', ','),
+            d === null ? '' : Math.round(d * 100) + '%'];
+        }),
+      })),
+      el('p', { className: 'muted t-sm' }, t('rep.top_hint')),
+      top.length ? dataTable([
+        {
+          key: 'name', label: t('rep.col_courier'),
+          cell: (r) => el('div', { className: 'row gap-2' }, avatarFor(r.name),
+            el('span', { className: 'truncate' }, r.name || '—')),
+          wide: true,
+        },
+        { key: 'n', label: t('rep.col_orders'), num: true, cell: (r) => num(r.n || 0) },
+        { key: 'revenue', label: t('rep.col_sum'), num: true, cell: (r) => money(r.revenue || 0) },
+        {
+          key: 'payout', label: t('adm.ov_payout'), num: true,
+          cell: (r) => money(r.payout || 0), hide: true,
+        },
+        {
+          key: 'rating', label: t('rep.col_rating'), num: true,
+          cell: (r) => (ratingOf(r) === null ? '—' : String(ratingOf(r)).replace('.', ',')),
+        },
+        {
+          key: 'decline', label: t('rep.col_decline'), num: true,
+          cell: (r) => {
+            const d = declineOf(r);
+            if (d === null) return '—';
+            const share = Math.round(d * 100);
+            return el('span', {
+              className: 'badge ' + (share > 50 ? 'badge--err' : share > 25 ? 'badge--warn' : 'badge--ok'),
+              title: t('rep.decline_hint'),
+            }, share + '%');
+          },
+        },
+      ], top, { onRow: (r) => ctx.go('/couriers/' + r.id) })
+        : emptyBox(t('rep.empty')));
+
+    /* ── клиенты ───────────────────────────────────────────────────── */
+    const c = stats.clients || {};
+    const perClient = ((c.orders_per_client || 0) / 100).toFixed(2).replace('.', ',');
+    const clientRows = [
+      [t('rep.cli_new'), String(c.new || 0)],
+      [t('rep.cli_back'), String(c.returning || 0)],
+      [t('rep.cli_active'), String(c.active || 0)],
+      [t('rep.cli_repeat'), String(c.repeat || 0)],
+      [t('rep.cli_per'), perClient],
+    ];
+    const fresh = Math.max(0, (c.active || 0) - (c.returning || 0));
+    const clientsBlock = panel(t('rep.clients'),
+      csvButton(() => ({
+        name: fileName('klienty'),
+        header: [t('rep.col_metric'), t('rep.col_value')],
+        rows: clientRows,
+      })),
+      el('p', { className: 'muted t-sm' }, t('rep.cli_hint')),
+      el('div', { className: 'tiles tiles--sm' },
+        tile(t('rep.cli_new'), num(c.new || 0)),
+        tile(t('rep.cli_back'), num(c.returning || 0),
+          pctOf(c.returning || 0, c.active || 0)),
+        tile(t('rep.cli_repeat'), num(c.repeat || 0)),
+        tile(t('rep.cli_per'), perClient)),
+      plot({
+        items: [
+          { label: t('rep.cli_new'), value: fresh },
+          { label: t('rep.cli_back'), value: c.returning || 0 },
+        ],
+        format: (v) => num(v),
+      }));
+
+    /* ── отмены ────────────────────────────────────────────────────── */
+    const cancels = stats.cancels || {};
+    const steps = cancels.by_step || {};
+    const whom = cancels.by_whom || {};
+    const reasons = cancels.reasons || [];
+    // Под столбцом помещается одно-два слова, поэтому у шага есть короткое имя
+    // для подписи и полное — для подсказки и выгрузки.
+    const stepItems = [
+      { label: t('rep.step_before'), short: t('rep.step_before_s'), value: steps.before_search || 0 },
+      { label: t('rep.step_search'), short: t('rep.step_search_s'), value: steps.searching || 0 },
+      { label: t('rep.step_assigned'), short: t('rep.step_assigned_s'), value: steps.assigned || 0 },
+    ];
+    // Незнакомого «кто отменил» быть не должно, но если сервер добавит нового,
+    // покажем код как есть, а не пустое место.
+    const WHOM = { client: 'rep.whom_client', courier: 'rep.whom_courier',
+      admin: 'rep.whom_admin', system: 'rep.whom_system' };
+    const whomName = (code) => (WHOM[code] ? t(WHOM[code]) : code);
+    const cancelBlock = panel(t('rep.cancels'),
+      csvButton(() => ({
+        name: fileName('otmeny'),
+        header: [t('rep.col_reason'), t('rep.col_count'), t('rep.col_share')],
+        rows: reasons.map((r) => [r.reason === '—' ? t('rep.no_reason') : r.reason,
+          r.count, pctOf(r.count, cancels.total || 0)])
+          .concat(stepItems.map((s) => [s.label, s.value, pctOf(s.value, cancels.total || 0)])),
+      })),
+      el('p', { className: 'muted t-sm' }, t('rep.cancels_hint')),
+      el('div', { className: 'row gap-2 wrap' },
+        el('span', { className: 'badge badge--err' },
+          t('rep.cancelled') + ': ' + num(cancels.total || 0)),
+        ...Object.keys(whom).map((code) => el('span', { className: 'badge' },
+          whomName(code) + ': ' + num(whom[code])))),
+      (cancels.total || 0) ? el('div', { className: 'col gap-3' },
+        plot({
+          items: stepItems.map((s) => ({
+            label: s.short, value: s.value,
+            note: s.label + ' · ' + pctOf(s.value, cancels.total || 0),
+          })),
+          format: (v) => num(v),
+        }),
+        reasons.length ? dataTable([
+          {
+            key: 'reason', label: t('rep.col_reason'), wide: true,
+            cell: (r) => (r.reason === '—' ? t('rep.no_reason') : r.reason),
+          },
+          { key: 'count', label: t('rep.col_count'), num: true, cell: (r) => num(r.count) },
+          {
+            key: 'share', label: t('rep.col_share'), num: true,
+            cell: (r) => pctOf(r.count, cancels.total || 0),
+          },
+        ], reasons) : null)
+        : emptyBox(t('rep.empty')));
+
+    body.replaceChildren(moneyBlock, dayBlock, hourBlock, dowBlock,
+      tariffBlock, topBlock, clientsBlock, cancelBlock);
+  }
+
+  paintTools();
   load();
   return () => { alive = false; };
 }

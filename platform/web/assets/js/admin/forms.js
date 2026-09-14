@@ -117,6 +117,8 @@ const EXTRA = {
     'adm.stay': 'Остаться',
     'adm.need_number': 'Здесь нужно число',
     'adm.range_hint': 'От {min} до {max}',
+    'adm.range_from': 'Не меньше {min}',
+    'adm.range_to': 'Не больше {max}',
     'adm.set_router': 'Маршрутизатор',
     'adm.set_base_url': 'Адрес сайта',
     'adm.set_base_url_hint': 'По нему собираются ссылки в письмах и ссылка отслеживания заказа',
@@ -250,6 +252,8 @@ const EXTRA = {
     'adm.stay': 'Калуу',
     'adm.need_number': 'Бул жерге сан керек',
     'adm.range_hint': '{min} менен {max} ортосунда',
+    'adm.range_from': '{min} дегенден аз болбосун',
+    'adm.range_to': '{max} дегенден көп болбосун',
     'adm.set_router': 'Маршрутизатор',
     'adm.set_base_url': 'Сайттын дареги',
     'adm.set_base_url_hint': 'Каттардагы жана заказды көзөмөлдөө шилтемелери ушундан чогулат',
@@ -732,6 +736,16 @@ export function createForm(spec) {
     }
   }
 
+  /* Подсказка о границах. У половины полей задан только пол или только
+     потолок — писать «от 0 до undefined» нельзя. */
+  function rangeText(def) {
+    const low = def.minText !== undefined ? def.minText : def.min;
+    const high = def.maxText !== undefined ? def.maxText : def.max;
+    if (def.max === undefined) return t('adm.range_from', { min: low });
+    if (def.min === undefined) return t('adm.range_to', { max: high });
+    return t('adm.range_hint', { min: low, max: high });
+  }
+
   /** Проверка до отправки: обязательные поля, числа и границы. */
   function validate() {
     const bad = [];
@@ -745,13 +759,8 @@ export function createForm(spec) {
           if (def.required) { cell.error(t('common.required')); bad.push(name); }
           continue;
         }
-        if (def.min !== undefined && v < def.min) {
-          cell.error(t('adm.range_hint', { min: def.minText || low, max: def.maxText || def.max }));
-          bad.push(name);
-          continue;
-        }
-        if (def.max !== undefined && v > def.max) {
-          cell.error(t('adm.range_hint', { min: def.minText || def.min, max: def.maxText || def.max }));
+        if ((def.min !== undefined && v < def.min) || (def.max !== undefined && v > def.max)) {
+          cell.error(rangeText(def));
           bad.push(name);
         }
         continue;

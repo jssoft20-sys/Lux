@@ -11,7 +11,7 @@
 """
 import json, os, sqlite3, threading, time
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 _local = threading.local()
 _path = None
 _write_lock = threading.RLock()      # sqlite не любит параллельную запись даже в WAL
@@ -246,6 +246,12 @@ ADDED_COLUMNS = {
         ('verify_note', 'TEXT'),                             # причина отказа
         ('verified_at', 'INTEGER'),
         ('photo', 'TEXT'),                                   # аватар курьера
+        # Часы на линии. Считаем на сервере, а не в телефоне: водитель меняет
+        # телефон, чистит браузер, выходит с двух устройств — а цифра, на
+        # которую он смотрит весь день, должна быть одна и та же.
+        ('online_since', 'INTEGER'),                         # когда вышел на линию
+        ('online_s', 'INTEGER NOT NULL DEFAULT 0'),          # накоплено за сегодня
+        ('online_day', 'INTEGER NOT NULL DEFAULT 0'),        # за какой день накоплено
     ],
     'clients': [
         ('token', 'TEXT'),          # опознаём вернувшегося клиента без регистрации

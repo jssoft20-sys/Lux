@@ -155,6 +155,9 @@ def _state(user, profile=None, order=None):
     return {
         'online': bool(profile['online']),
         'busy': bool(profile['busy']),
+        # Часы на линии приходят с каждым состоянием: экран смены показывает их
+        # постоянно, и отдельный запрос ради одной цифры был бы лишним.
+        'online_s': shift_seconds(profile),
         'geo_fresh': _geo_fresh(profile),
         'at': [profile['lat'], profile['lng']] if profile['lat'] is not None else None,
         'geo_at': profile['geo_at'],
@@ -178,6 +181,8 @@ def _courier_state_for_admin(user, profile):
         'online': bool(profile['online']), 'busy': bool(profile['busy']),
         'at': [profile['lat'], profile['lng']] if profile['lat'] is not None else None,
         'heading': profile['heading'], 'speed': profile['speed'], 'geo_at': profile['geo_at'],
+        # Часы на линии за сегодня: цифра общая для всех устройств водителя.
+        'online_s': shift_seconds(profile),
         'rating': auth.rating_of(profile['rating_sum'], profile['rating_count']),
         'orders_done': profile['orders_done'],
         # Оператор на живой карте должен сразу видеть, кто на линии без проверки:
@@ -187,6 +192,40 @@ def _courier_state_for_admin(user, profile):
 
 
 # ─────────────────────────────────────────────────────────────── линия и геопозиция
+
+# Дольше этого одна смена не бывает: человек забыл уйти с линии, а не работал
+# сутки. Приписывать ему эти часы — врать и себе, и ему.
+MAX_SHIFT_S = 12 * 3600
+
+
+def _day_start(t=None):
+    d = i18n.local_dt(t if t is not None else db.now())
+    return int(d.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+
+
+def shift_seconds(profile, t=None):
+    """Сколько человек сегодня на линии, включая идущую смену."""
+    t = db.now() if t is None else t
+    day = _day_start(t)
+    done = int(profile.get('online_s') or 0) if int(profile.get('online_day') or 0) == day else 0
+    since = int(profile.get('online_since') or 0)
+    if since:
+        # Смена, начатая вчера, засчитывается с полуночи: иначе в шесть утра
+        # у ночного водителя будет «на линии 14 часов», и цифре перестанут верить.
+        live = min(t - max(since, day), MAX_SHIFT_S)
+        done += max(0, live)
+    return max(0, done)
+
+
+def _close_shift(profile, t):
+    """Свести идущую смену в накопленное. Возвращает, что записать в базу."""
+    day = _day_start(t)
+    done = int(profile.get('online_s') or 0) if int(profile.get('online_day') or 0) == day else 0
+    since = int(profile.get('online_since') or 0)
+    if since:
+        done += max(0, min(t - max(since, day), MAX_SHIFT_S))
+    return {'online_s': done, 'online_day': day, 'online_since': None}
+
 
 @router.post(API + '/courier/online')
 def set_online(ctx):
@@ -201,7 +240,17 @@ def set_online(ctx):
     online = 1 if ctx.field('online', bool, default=False) else 0
 
     profile = _profile(user['id'])
-    db.update('couriers', {'online': online}, 'user_id=?', (user['id'],))
+    t = db.now()
+    patch = {'online': online}
+    if online and not profile.get('online_since'):
+        patch['online_since'] = t
+        if int(profile.get('online_day') or 0) != _day_start(t):
+            patch['online_s'] = 0            # новый день — счётчик с нуля
+            patch['online_day'] = _day_start(t)
+    elif not online:
+        patch.update(_close_shift(profile, t))
+    db.update('couriers', patch, 'user_id=?', (user['id'],))
+    profile.update(patch)
     profile['online'] = online
 
     order = _active_order(user['id'])
@@ -741,6 +790,8 @@ def stats(ctx):
             'earned': db.value("SELECT COALESCE(SUM(courier_payout),0) FROM orders "
                                "WHERE courier_id=? AND status='done'", (user['id'],), 0),
         },
+        # Часы на линии за сегодня: цифра общая для всех устройств водителя.
+        'online_s': shift_seconds(profile, t),
         'rating': auth.rating_of(profile['rating_sum'], profile['rating_count']),
         'rating_count': profile['rating_count'],
         'acceptance': round(taken / float(sent), 2) if sent else None,
