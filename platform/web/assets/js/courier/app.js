@@ -27,7 +27,7 @@ import {
 import {
   renderShift, renderJob, renderHistory,
   showOffer, createGeoTracker, stopAlert, unlockAudio,
-  getTheme, applyTheme,
+  getTheme, applyTheme, markShift,
 } from './work.js';
 
 /* ─────────────────────────────────────────────────────── состояние */
@@ -324,6 +324,10 @@ function pump() {
 function applyState(data) {
   if (!data) return;
   const order = data.order && data.order.id === closedOrder ? null : (data.order || null);
+  // Часы на линии сервер не ведёт, их считает телефон. Сообщаем ему правду
+  // о смене на каждом состоянии: повторный вызов с тем же значением ничего
+  // не меняет, зато после сна и перезапуска счётчик снова верен.
+  markShift(!!data.online);
   store.set({
     online: !!data.online,
     busy: !!data.busy,
@@ -407,6 +411,7 @@ async function signOut() {
 function teardown() {
   tracker.stop();
   stopAlert();
+  markShift(false);        // вышли из аккаунта — смена закончилась, часы стоят
   if (source) source.close();
   source = null;
   queue.length = 0;

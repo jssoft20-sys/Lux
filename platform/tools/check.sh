@@ -50,6 +50,7 @@ else
   done
 
   run "вёрстка на телефоне"   env TEST_PORT=$UIPORT SG_DATA="$UIDATA" node tools/ui_test.mjs
+  run "экран оплаты"          env TEST_PORT=$UIPORT SG_DATA="$UIDATA" node tools/payui_test.mjs
   run "карта: серые дыры"     env TEST_PORT=$UIPORT SG_DATA="$UIDATA" node tools/map_test.mjs
   run "сценарий: заказ вживую" env TEST_PORT=$UIPORT SG_DATA="$UIDATA" node tools/flow_test.mjs
 

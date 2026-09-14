@@ -462,6 +462,22 @@ def main():
                              headers={'X-Client-Token': 'x' * 48})
             check('чужой токен клиента не пускает', code in (401, 403, 404), f'код {code}')
 
+            # Списание в новом заказе: просим списать всё, что можно, и смотрим,
+            # что со счёта ушло ровно столько, сколько сервер сам и разрешил.
+            before = bal
+            code, spend_order = req('POST', '/orders',
+                                    dict(order_body, phone='0555123456', bonus_spend=True))
+            spent = ((spend_order or {}).get('price') or {}).get('bonus_spent') or 0
+            check('бонусы списались в заказ', code in (200, 201) and spent > 0,
+                  f'списано {spent}, было на счету {before}')
+            code, after_b = req('GET', '/client/bonus', headers=hdr)
+            check('на счету стало ровно на списанное меньше',
+                  (after_b or {}).get('balance') == before - spent,
+                  f"было {before}, списали {spent}, стало {(after_b or {}).get('balance')}")
+            check('курьеру скидка не в убыток: его доля не тронута',
+                  ((spend_order or {}).get('price') or {}).get('courier_payout', 0) > 0,
+                  str((spend_order or {}).get('price'))[:200])
+
         if atoken:
             code, ab = req('GET', '/admin/bonus', token=atoken)
             check('сводка по бонусам в админке', code == 200 and isinstance(ab, dict),

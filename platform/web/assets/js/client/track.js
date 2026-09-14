@@ -26,6 +26,7 @@ import {
   el, toast, sheet, haptic, mountStars, copyText, photoViewer,
 } from '../core/ui.js';
 import { pin, distanceM } from '../core/map.js';
+import { createPayStep } from './pay.js';
 import {
   money, distance, duration, time as clock, date as day,
   plate as fmtPlate, initials,
@@ -88,7 +89,6 @@ extend({
     'mood.fav_badge': 'Ваш курьер',
 
     'live.almost': 'Почти на месте',
-    'live.left': 'Осталось {distance}',
 
     'give.what': 'Отследите мой заказ: видно статус и время в пути.',
     'give.copied': 'Ссылка скопирована — по ней видно только статус и время',
@@ -148,7 +148,6 @@ extend({
     'mood.fav_badge': 'Сиздин курьер',
 
     'live.almost': 'Дээрлик жетти',
-    'live.left': '{distance} калды',
 
     'give.what': 'Заказымды карап туруңуз: абалы жана жолдогу убакыты көрүнөт.',
     'give.copied': 'Шилтеме көчүрүлдү — анда заказдын абалы менен убактысы гана көрүнөт',
@@ -1303,8 +1302,9 @@ export function mountTrack(app, pid, token) {
     const left = eta.at - Math.floor(Date.now() / 1000);
     if (left <= 60) return eta.goal === 'pick' ? t('track.arriving') : t('live.almost');
     const time = duration(left);
-    const head = eta.goal === 'pick' ? t('track.eta', { time }) : t('track.eta_drop', { time });
-    return eta.gap > 0 ? head + ' · ' + t('live.left', { distance: distance(eta.gap) }) : head;
+    // Только время: расстояние до машины и так стоит табличкой в карточке
+    // курьера, а две цифры про одно и то же на экране спорят друг с другом.
+    return eta.goal === 'pick' ? t('track.eta', { time }) : t('track.eta_drop', { time });
   }
 
   /* Пока живой цифры нет (машина ещё не прислала координаты), показываем то,
@@ -1762,6 +1762,15 @@ export function mountTrack(app, pid, token) {
     store.set({ online: true });
   }
 
+  /* Экран оплаты хочет знать, что заказ изменился. Свой поток он открывать умеет,
+     но вкладка держит не больше шести — отдаём ему тот, что уже открыт. */
+  const payWatchers = new Set();
+
+  function watchPay(fn) {
+    payWatchers.add(fn);
+    return () => payWatchers.delete(fn);
+  }
+
   function listen() {
     if (stream || dead) return;
     stream = api.stream(base + '/stream', {
@@ -1776,6 +1785,7 @@ export function mountTrack(app, pid, token) {
           const merged = Object.assign({}, store.get().order || {}, data);
           markOnline();
           store.set({ order: merged });
+          for (const fn of payWatchers) { try { fn(merged); } catch (e) { /* чужая беда */ } }
           if (CLOSED.indexOf(merged.status) >= 0) app.forgetOrder();
           return;
         }
@@ -2192,20 +2202,6 @@ export function mountTrack(app, pid, token) {
     const body = el('div', { className: 'sg-body' }, routeRow(order), priceRow(order));
     const foot = el('div', { className: 'sg-foot' });
 
-    /* Кэшбек за закрытый заказ сервер начисляет сам. Строка ведёт туда, где его
-       видно: без неё человек узнаёт о бонусах случайно и через месяц. */
-    if (app.bonus && typeof app.bonus.on === 'function' && app.bonus.on()) {
-      body.appendChild(el('button', {
-        type: 'button', className: 'sg-item',
-        onClick: () => { haptic(); app.bonus.open(); },
-      },
-        el('span', { className: 'sg-item__icon sg-item__icon--accent', html: icon('gift') }),
-        el('span', { className: 'sg-item__text' },
-          el('span', { className: 'sg-item__title' }, t('gift.title')),
-          el('span', { className: 'sg-item__sub' }, t('gift.after_ride'))),
-        el('span', { className: 'sg-opt__go', html: icon('go') })));
-    }
-
     if (store.get().rated) {
       body.appendChild(el('div', { className: 'sg-rate' },
         el('div', { className: 'sg-mood sg-mood--glad' },
@@ -2337,6 +2333,21 @@ export function mountTrack(app, pid, token) {
       foot.appendChild(send);
     }
 
+    /* Кэшбек за закрытый заказ сервер начисляет сам. Строка ведёт туда, где его
+       видно: без неё человек узнаёт о своих бонусах случайно и через месяц.
+       Ставим её под оценкой: сначала главное дело экрана, потом приятное. */
+    if (app.bonus && typeof app.bonus.on === 'function' && app.bonus.on()) {
+      body.appendChild(el('button', {
+        type: 'button', className: 'sg-item',
+        onClick: () => { haptic(); app.bonus.open(); },
+      },
+        el('span', { className: 'sg-item__icon sg-item__icon--accent', html: icon('gift') }),
+        el('span', { className: 'sg-item__text' },
+          el('span', { className: 'sg-item__title' }, t('gift.title')),
+          el('span', { className: 'sg-item__sub' }, t('gift.after_ride'))),
+        el('span', { className: 'sg-opt__go', html: icon('go') })));
+    }
+
     foot.appendChild(el('button', {
       type: 'button', className: 'btn btn--ghost btn--lg btn--block',
       onClick: () => { app.forgetOrder(); app.go('/'); },
@@ -2346,38 +2357,26 @@ export function mountTrack(app, pid, token) {
     return { name: 'done:' + (store.get().rated ? '1' : '0'), node, update() {} };
   }
 
-  /* Оплата вперёд: пока деньги не пришли, поиск машины не стартует. Показываем,
-     чего ждём, и даём вернуться на страницу банка. */
-  function stepPay(order) {
-    const pay = el('button', {
-      type: 'button', className: 'sg-cta',
-      onClick: async () => {
-        pay.disabled = true;
-        try {
-          const res = await api.post('/payments/init',
-                                     { public_id: pid, t: token, lang: getLang() });
-          if (res && res.url) { location.href = res.url; return; }
-          if (res && res.message) toast(res.message, { type: 'ok' });
-          load();
-        } catch (e) {
-          toast(errText(e), { type: 'err' });
-        }
-        pay.disabled = false;
-      },
-    },
-      el('span', { className: 'sg-cta__label' }, t('order.pay_online')),
-      el('span', { className: 'sg-cta__price' }, money(order.price_total || 0)));
+  /* Оплата вперёд: пока бронь не пришла, поиск машины не стартует. Показываем
+     код банка и ждём подтверждения — человеку нажимать ничего не нужно.
 
-    const node = el('div', { className: 'sg-step' },
-      el('div', { className: 'sg-head' },
-        el('div', { className: 'sg-head__text' },
-          el('div', { className: 'sg-head__title' }, t('status.pay_pending')))),
-      el('div', { className: 'sg-body' }, routeRow(order), priceRow(order)),
-      el('div', { className: 'sg-foot' }, pay,
-        el('button', {
-          type: 'button', className: 'btn btn--danger btn--block', onClick: askCancel,
-        }, t('track.cancel'))));
-    return { name: 'pay', node, update() {} };
+     Шаг делаем один раз и держим: пересоздавать его на каждую перерисовку
+     нельзя, иначе опрос банка начинается заново, а анимация дёргается. */
+  let payStep = null;
+
+  function stepPay(order) {
+    if (!payStep) {
+      payStep = createPayStep(app, {
+        pid, token, order,
+        subscribe: watchPay,
+        onPaid: load,          // сервер уже перевёл заказ в поиск машины
+        onSkip: load,
+        onCancel: askCancel,
+      });
+    } else if (typeof payStep.update === 'function') {
+      payStep.update(order);
+    }
+    return payStep;
   }
 
   function stepClosed(order) {
@@ -2405,6 +2404,7 @@ export function mountTrack(app, pid, token) {
     if (s === 'done') return stepDone(order);
     if (s === 'cancelled' || s === 'expired') return stepClosed(order);
     if (s === 'draft' && order.payment_status === 'pending') return stepPay(order);
+    if (payStep) { try { payStep.destroy && payStep.destroy(); } catch (e) { /* уже ушёл */ } payStep = null; }
     if (isSearching(order)) return stepSearch(order);
     return stepLive(order);
   }

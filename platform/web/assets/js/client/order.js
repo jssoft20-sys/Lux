@@ -618,6 +618,7 @@ export function mountOrder(app) {
   };
 
   let view = null;              // {name, node, update}
+  let bonusBox = null;          // переключатель списания бонусов на шаге подтверждения
   let markers = [];
   let line = null;
   let quoteTimer = 0;
@@ -1070,6 +1071,9 @@ export function mountOrder(app) {
         extras: quoteExtras(state),
         comment: contacts.comment,
         lang: getLang(),
+        // Сколько списать бонусами. Сервер всё равно пересчитает по своему
+        // потолку — здесь только просьба, а не решение.
+        bonus_spend: bonusBox ? bonusBox.value() : 0,
         // Подъём к двери шлём и строкой в extras, и флажком у точки: по строке
         // сервер считает надбавку, по флажку курьер видит, куда именно подняться.
         points: state.points.filter((p) => p && p.lat != null).map((p) => ({
@@ -1551,13 +1555,20 @@ export function mountOrder(app) {
     const cta = el('button', { type: 'button', className: 'sg-cta', onClick: () => submit(cta) },
       el('span', { className: 'sg-cta__label' }, t('order.confirm')), priceBox);
 
+    // Списание бонусов. Виджет живёт в профиле и сам ходит на сервер за тем,
+    // сколько можно списать по этой сумме: доверять цифре с экрана нельзя.
+    bonusBox = (app.bonus && typeof app.bonus.spend === 'function')
+      ? app.bonus.spend({ onChange: () => { refreshCta(); app.panel.refresh(); } })
+      : null;
+
     const node = el('div', { className: 'sg-step' },
       el('div', { className: 'sg-head' },
         iconBtn('back', 'sg-back', t('common.back'), () => store.set({ step: 'tariff' })),
         el('div', { className: 'sg-head__text' },
           el('div', { className: 'sg-head__title' }, t('order.confirm')))),
       el('div', { className: 'sg-body' },
-        el('div', { className: 'sg-fields' }, phone.node, name.node, comment.node, agree)),
+        el('div', { className: 'sg-fields' }, phone.node, name.node, comment.node, agree),
+        bonusBox ? bonusBox.node : null),
       el('div', { className: 'sg-foot' }, cta),
     );
 
@@ -1575,6 +1586,7 @@ export function mountOrder(app) {
       else priceMoney.set(sum);
       priceBox.classList.toggle('is-wait', sum === null && wait);
       priceBox.classList.toggle('is-stale', sum !== null && wait);
+      if (bonusBox && sum !== null) bonusBox.setTotal(sum);
       refreshCta();
       app.panel.refresh();
     }
@@ -1592,6 +1604,7 @@ export function mountOrder(app) {
   function render(state, back) {
     if (!view || view.name !== state.step) {
       stopBoxes();                       // счётчики прошлого шага уходят вместе с ним
+      if (bonusBox) { bonusBox.destroy(); bonusBox = null; }
       const next = (BUILD[state.step] || stepAddr)();
       next.update(state);
       app.panel.show(next.node, { back: !!back });

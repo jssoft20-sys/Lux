@@ -518,6 +518,7 @@ const ICONS = {
   back: '<path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
   go: '<path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
   plus: '<path d="M12 5.5v13M5.5 12h13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  minus: '<path d="M5.5 12h13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
   close: '<path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>',
   pin: '<path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="10" r="2.6" fill="currentColor"/>',
@@ -1445,7 +1446,13 @@ function openProfileSheet(app, startWith) {
   ui.box.setAttribute('aria-label', t('common.profile'));
 
   // Язык переключают прямо здесь, поэтому вид обязан перерисоваться сам.
-  const offLang = onLangChange(() => { if (alive && redraw) redraw(); });
+  const offLang = onLangChange(() => {
+    if (!alive) return;
+    if (redraw) redraw();
+    // Строки истории бонусов («Кэшбек с заказа», «Пригласили Азамата») собирает
+    // сервер, и на новом языке за ними надо сходить заново.
+    if (state.bonus && clientToken()) loadBonusState(true);
+  });
   const offTheme = onThemeChange(() => { if (alive && redraw) redraw(); });
 
   function drop() {
@@ -1829,7 +1836,7 @@ function openProfileSheet(app, startWith) {
     return el('div', { className: 'sg-item' },
       el('span', {
         className: 'sg-item__icon' + (plus ? ' sg-item__icon--accent' : ''),
-        html: icon(plus ? 'plus' : 'go'),
+        html: icon(plus ? 'plus' : 'minus'),
       }),
       el('span', { className: 'sg-item__text' },
         el('span', { className: 'sg-item__title' }, item.text || ''),

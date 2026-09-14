@@ -29,7 +29,8 @@ import { api, ApiError } from '../core/api.js';
 import { t, tp, getLang, extend } from '../core/i18n.js';
 import { money, moneyShort, distance, duration, time, date, phone as fmtPhone,
   initials, num } from '../core/fmt.js';
-import { el, toast, sheet, confirm as ask, haptic, spinner, mountStars } from '../core/ui.js';
+import { el, toast, sheet, confirm as ask, haptic, spinner, mountStars,
+  copyText } from '../core/ui.js';
 import { createMap, pin, distanceM } from '../core/map.js';
 
 /* ─────────────────────────────────────────────────────── свои строки
@@ -89,6 +90,45 @@ extend({
     'rate.thanks': 'Спасибо, оценка ушла',
     'rate.client_of': 'Клиент',
     'rate.client_new': 'Новый клиент, оценок пока нет',
+
+    'shift.earned': 'Заработано сегодня',
+    'shift.orders': 'Заказов',
+    'shift.hours': 'На линии',
+    'shift.min_zero': '0 мин',
+    'shift.week': 'За неделю',
+    'shift.month': 'За месяц',
+    'shift.goal': 'Цель на день',
+    'shift.goal_set': 'Поставьте цель на день',
+    'shift.goal_left': 'Осталось {sum}',
+    'shift.goal_done': 'Цель на сегодня взята',
+    'shift.goal_hint': 'Цель видите только вы, она хранится в телефоне',
+    'shift.goal_own': 'Своя сумма, сом',
+    'shift.goal_save': 'Поставить цель',
+    'shift.goal_off': 'Убрать цель',
+    'shift.goal_bad': 'Введите сумму больше нуля',
+    'shift.goal_gone': 'Цель убрана',
+    'shift.leave_title': 'У вас заказ в работе',
+    'shift.leave_text': 'Заказ останется на вас, его нужно довезти. Новых предложений после ухода не будет.',
+    'shift.leave_ok': 'Всё равно уйти',
+    'shift.stay': 'Остаться на линии',
+
+    'earn.net': 'На руки после комиссии',
+    'earn.avg': 'Средний чек',
+    'earn.cash': 'Собрано наличными',
+    'earn.by_days': 'По дням',
+    'earn.best': 'Лучший день',
+    'earn.best_none': 'Заказов пока не было',
+    'earn.chart_alt': 'Заработок по дням, всего {sum}',
+    'earn.more': 'Показать ещё',
+    'earn.orders_title': 'Заказы',
+    'earn.empty': 'За этот период заказов не было',
+
+    'job.next_title': 'Следующий адрес',
+    'job.copy_addr': 'Нажмите — адрес скопируется. Удержите — откроется навигатор',
+    'job.copied': 'Адрес скопирован',
+    'job.still': 'Стоите {time}',
+    'job.still_text': 'Уже на месте? Поменяйте статус заказа',
+    'job.still_hide': 'Понятно',
   },
   ky: {
     'job.to_pickup_left': 'Жүк алганга чейин',
@@ -140,6 +180,45 @@ extend({
     'rate.thanks': 'Рахмат, баа жиберилди',
     'rate.client_of': 'Клиент',
     'rate.client_new': 'Жаңы клиент, баасы али жок',
+
+    'shift.earned': 'Бүгүн таптыңыз',
+    'shift.orders': 'Заказ',
+    'shift.hours': 'Линияда',
+    'shift.min_zero': '0 мүн',
+    'shift.week': 'Жума ичинде',
+    'shift.month': 'Ай ичинде',
+    'shift.goal': 'Күндүк максат',
+    'shift.goal_set': 'Күнгө максат коюңуз',
+    'shift.goal_left': '{sum} калды',
+    'shift.goal_done': 'Бүгүнкү максат аткарылды',
+    'shift.goal_hint': 'Максатты өзүңүз гана көрөсүз, ал телефонуңузда сакталат',
+    'shift.goal_own': 'Өз сумманыз, сом',
+    'shift.goal_save': 'Максат коюу',
+    'shift.goal_off': 'Максатты алып салуу',
+    'shift.goal_bad': 'Нөлдөн чоң сумма жазыңыз',
+    'shift.goal_gone': 'Максат алынды',
+    'shift.leave_title': 'Колуңузда заказ бар',
+    'shift.leave_text': 'Заказ сизде калат, аны жеткирүү керек. Чыккандан кийин жаңы заказ келбейт.',
+    'shift.leave_ok': 'Баары бир чыгам',
+    'shift.stay': 'Линияда калам',
+
+    'earn.net': 'Комиссиядан кийин колго',
+    'earn.avg': 'Орточо заказ',
+    'earn.cash': 'Накталай чогулду',
+    'earn.by_days': 'Күндөр боюнча',
+    'earn.best': 'Эң мыкты күн',
+    'earn.best_none': 'Заказ азырынча болгон жок',
+    'earn.chart_alt': 'Күндөр боюнча киреше, бардыгы {sum}',
+    'earn.more': 'Дагы көрсөтүү',
+    'earn.orders_title': 'Заказдар',
+    'earn.empty': 'Бул мезгилде заказ болгон жок',
+
+    'job.next_title': 'Кийинки дарек',
+    'job.copy_addr': 'Бассаңыз дарек көчүрүлөт. Кармап турсаңыз навигатор ачылат',
+    'job.copied': 'Дарек көчүрүлдү',
+    'job.still': '{time} турасыз',
+    'job.still_text': 'Жетип калдыңызбы? Заказдын абалын которуңуз',
+    'job.still_hide': 'Түшүндүм',
   },
 });
 
@@ -168,6 +247,9 @@ export const ICONS = {
   fit: S('<circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v3.2M12 18v3.2M2.8 12H6M18 12h3.2"/>'),
   vol: S('<path d="M5 9.4h3.2L12 6v12l-3.8-3.4H5z"/><path d="M15.8 9.4a3.8 3.8 0 0 1 0 5.2M18.4 6.9a7.4 7.4 0 0 1 0 10.2"/>'),
   mute: S('<path d="M5 9.4h3.2L12 6v12l-3.8-3.4H5z"/><path d="m16 9.6 4.4 4.8M20.4 9.6 16 14.4"/>'),
+  copy: S('<rect x="9" y="9" width="11" height="11" rx="2.4"/><path d="M15 6.4V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h.4"/>'),
+  goal: S('<circle cx="12" cy="12" r="8.2"/><circle cx="12" cy="12" r="3.4"/><path d="M12 2.6v1.4M12 20v1.4M2.6 12H4M20 12h1.4"/>'),
+  alert: S('<path d="M10.3 4.7 3.6 16.9A2 2 0 0 0 5.3 20h13.4a2 2 0 0 0 1.7-3.1L13.7 4.7a2 2 0 0 0-3.4 0z"/><path d="M12 9.6v3.6"/><circle cx="12" cy="16.4" r="1" fill="currentColor" stroke="none"/>'),
 };
 
 /* Иконка отдельным узлом, без обёртки. Общие стили пишут правила на прямого
@@ -277,28 +359,145 @@ const OWN_CSS = `
 .sg-eta b { color: var(--text); font-variant-numeric: tabular-nums; }
 
 .sg-navs { display: flex; gap: var(--sp-2); }
-.sg-navs .btn { flex: 1 1 0; min-width: 0; min-height: 44px; }
+.sg-navs .btn { flex: 1 1 0; min-width: 0; }
 
-/* Круглой кнопке «назад» из courier.css размер значка не задан — задаём здесь,
-   иначе стрелка растягивается на всю кнопку. */
-.job--full .job__close > svg { width: 22px; height: 22px; }
+/* Телефон и чат — в шапке панели, а не в списке: список сворачивается пальцем,
+   а позвонить клиенту нужно из любого положения панели, в одно касание. */
+.sg-quick { display: flex; gap: var(--sp-2); }
+.sg-quick .btn { flex: 1 1 auto; min-width: 0; }
+.sg-quick .sg-chatbtn { flex: none; width: 56px; }
 
-.sg-fit {
+/* За рулём палец не целится, поэтому на экране заказа нет ничего мельче 56 px.
+   Правила общих кнопок приходится перебивать: там размеры рассчитаны на руки,
+   которые держат телефон, а не руль. */
+.job--full .act .btn,
+.job--full .sg-navs .btn,
+.job--full .sg-quick .btn,
+.job--full .point__acts .btn,
+.job--full .wait .btn {
+  min-height: 56px;
+}
+.job--full .point__acts .btn { padding-inline: var(--sp-4); }
+.job--full .job__client .btn--icon,
+.job--full .sg-quick .sg-chatbtn {
+  width: 56px;
+  min-width: 56px;
+  height: 56px;
+}
+
+/* ── верхняя строка: куда едем прямо сейчас ────────────────────────────── */
+
+/* Адрес следующей точки виден всегда, в одну строку и крупно: свёрнута панель
+   или развёрнута, водителю достаточно одного взгляда. */
+.sg-topbar {
   position: absolute;
-  top: calc(var(--safe-t) + var(--sp-3));
+  left: var(--sp-3);
   right: var(--sp-3);
-  z-index: 1;
+  top: calc(var(--safe-t) + var(--sp-3));
+  z-index: 2;
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+  pointer-events: none;
+}
+.sg-topbar > * { pointer-events: auto; }
+
+.sg-rbtn {
+  flex: none;
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 56px;
+  height: 56px;
   border-radius: var(--r-full);
   background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow-2);
 }
-.sg-fit:active { transform: scale(.94); }
-.sg-fit > svg { width: 22px; height: 22px; }
+.sg-rbtn:active { transform: scale(.94); }
+.sg-rbtn > svg { width: 24px; height: 24px; }
+
+.sg-next {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 56px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+  text-align: left;
+  /* Долгое нажатие открывает навигатор, поэтому системное выделение текста
+     и всплывающее меню здесь только мешают. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.sg-next:active { background: var(--surface-2); }
+.sg-next__body { flex: 1 1 auto; min-width: 0; }
+
+.sg-next__k {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.sg-next__addr {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.sg-next__copy { flex: none; width: 20px; height: 20px; color: var(--muted-2); }
+
+/* ── «вы стоите на месте» ──────────────────────────────────────────────── */
+
+/* Напоминание мягкое: появляется без движения и рывков, просто проявляется.
+   Водитель смотрит на экран урывками — дёрганье он воспримет как ошибку. */
+.sg-still {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--warn-soft);
+  color: var(--warn);
+  animation: sg-fade-in var(--dur-3) var(--ease) both;
+}
+.sg-still > svg { flex: none; width: 22px; height: 22px; }
+
+@keyframes sg-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.sg-still__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+.sg-still__t { display: block; font-weight: 700; }
+.sg-still__note { color: var(--text); }
+
+.sg-still__x {
+  flex: none;
+  min-height: 44px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-sm);
+  color: var(--warn);
+  font-weight: 700;
+  font-size: var(--fs-sm);
+}
+.sg-still__x:active { background: rgba(255, 167, 38, .16); }
 
 /* ── рейтинг клиента в карточке ────────────────────────────────────────── */
 
@@ -558,6 +757,242 @@ const OWN_CSS = `
 .sg-snd__k { font-weight: 600; }
 .sg-snd__note { color: var(--muted); font-size: var(--fs-xs); line-height: 1.4; }
 .sg-snd__warn { color: var(--warn); font-size: var(--fs-xs); line-height: 1.4; }
+
+/* ── деньги на экране смены ────────────────────────────────────────────── */
+
+/* Первое, что видит человек, открыв приложение: сколько он сегодня заработал.
+   Всё остальное — мельче и ниже. */
+.sg-earn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5) var(--sp-5);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+}
+
+.sg-earn__k { color: var(--muted); font-size: var(--fs-sm); }
+
+.sg-earn__v {
+  font-family: var(--font-display);
+  font-size: var(--fs-display);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.03em;
+  line-height: 1.05;
+  color: var(--accent);
+}
+
+.sg-earn__facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--sp-2);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line-soft);
+}
+
+.sg-fact { min-width: 0; }
+
+.sg-fact b {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  /* «5 ч 20 мин» и «12 400 сом» не должны переноситься посередине. */
+  white-space: nowrap;
+}
+
+.sg-fact span { color: var(--muted); font-size: var(--fs-xs); }
+
+/* ── цель на день ──────────────────────────────────────────────────────── */
+
+.sg-goal {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+  min-height: 56px;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  text-align: left;
+  transition: border-color var(--dur-2) var(--ease), background-color var(--dur-2) var(--ease);
+}
+.sg-goal:active { transform: scale(.995); }
+.sg-goal.is-done { background: var(--ok-soft); border-color: rgba(36, 192, 122, .4); }
+
+.sg-goal--empty {
+  align-items: center;
+  justify-content: center;
+  border-style: dashed;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.sg-goal--empty > svg { width: 20px; height: 20px; }
+
+.sg-goal__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.sg-goal__row b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sg-goal__bar {
+  height: 10px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.sg-goal__fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  transition: width var(--dur-3) var(--ease), background-color var(--dur-2) var(--ease);
+}
+.sg-goal.is-done .sg-goal__fill { background: var(--ok); }
+
+.sg-goal__note { color: var(--muted); font-size: var(--fs-xs); line-height: 1.35; }
+.sg-goal.is-done .sg-goal__note { color: var(--ok); }
+
+/* Плитки «за неделю» и «за месяц» ведут в раздел денег, поэтому это кнопки. */
+.sg-tile { width: 100%; min-height: 56px; text-align: left; }
+.sg-tile:active { transform: scale(.99); }
+
+/* Пресеты в шторке цели. */
+.sg-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.sg-chips .chip { min-height: 44px; }
+
+/* ── деньги: столбики по дням ──────────────────────────────────────────── */
+
+.sg-sum {
+  padding: var(--sp-5);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  text-align: center;
+}
+
+.sg-sum__k { color: var(--muted); font-size: var(--fs-sm); }
+
+.sg-sum__v {
+  margin-top: 2px;
+  font-family: var(--font-display);
+  font-size: var(--fs-display);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.03em;
+  line-height: 1.05;
+}
+
+.sg-sum__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line-soft);
+}
+
+.sg-cell b {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sg-cell span { color: var(--muted); font-size: var(--fs-xs); }
+
+.sg-bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+}
+
+.sg-bars__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.sg-bars__pick {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text);
+  font-weight: 600;
+  text-align: right;
+}
+
+/* Столбики — не кнопки: за месяц их тридцать, и каждый был бы уже пальца.
+   Нажатие ловит вся полоса разом и показывает тот день, куда попал палец.
+   Подписи вынесены отдельной строкой с теми же долями и зазорами: так высота
+   столбика считается от всей полосы, а буквы под ней ничего не сдвигают. */
+.sg-bars__grid {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 120px;
+  touch-action: pan-y;
+}
+
+.sg-bars__col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+}
+
+.sg-bars__bar {
+  width: 100%;
+  min-height: 3px;
+  border-radius: var(--r-xs) var(--r-xs) 2px 2px;
+  background: var(--accent-soft);
+  transition: height var(--dur-3) var(--ease), background-color var(--dur-2) var(--ease);
+}
+.sg-bars__col.is-on .sg-bars__bar { background: var(--accent); }
+
+.sg-bars__caps { display: flex; gap: 3px; }
+
+.sg-bars__cap {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-2);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+  white-space: nowrap;
+}
+.sg-bars__cap.is-on { color: var(--text); font-weight: 700; }
+
+.sg-more { align-self: center; }
 `;
 
 let cssDone = false;
@@ -598,6 +1033,125 @@ function mapTheme() {
   if (set === 'dark') return 'dark';
   return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
     ? 'light' : 'dark';
+}
+
+/* ─────────────────────────────────────────────────────── часы на линии и цель дня
+
+   Сервер часы не считает: он знает только, включён курьер сейчас или нет.
+   Поэтому считаем на телефоне — запомнили минуту выхода на линию, при уходе
+   прибавили. День берём по часам телефона: курьер и его телефон стоят в одном
+   городе, и полночь у них общая.
+
+   Цель на день тоже лежит только здесь. Это личное дело водителя, серверу она
+   не нужна, а спрашивать её у сервера — лишний запрос на каждом открытии. */
+
+const CLOCK_KEY = 'sg_shift_clock';
+const GOAL_KEY = 'sg_goal';           // цель на день в тыйынах, 0 — цели нет
+const GOAL_HIT_KEY = 'sg_goal_hit';   // день, в который цель уже отпраздновали
+const CLOCK_MAX_S = 12 * 3600;        // дольше подряд за рулём не бывает
+const GOAL_STEPS = [150000, 250000, 350000, 500000];
+
+/* Число вида 20260914: по нему видно, тот же это день или уже следующий. */
+function dayStamp(ms) {
+  const d = new Date(ms === undefined ? Date.now() : ms);
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+}
+
+function readStore(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (e) {
+    return null;                      // хранилище закрыто — работаем без памяти
+  }
+}
+
+function writeStore(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e) { /* переживём: значение продержится до перезагрузки */ }
+}
+
+function readClock() {
+  const now = Math.floor(Date.now() / 1000);
+  const day = dayStamp();
+  let saved = null;
+  try {
+    saved = JSON.parse(readStore(CLOCK_KEY) || 'null');
+  } catch (e) {
+    saved = null;
+  }
+  const same = saved && Number(saved.day) === day;
+  const clock = {
+    day,
+    secs: same ? Math.max(0, Number(saved.secs) || 0) : 0,
+    since: saved && Number(saved.since) > 0 ? Math.floor(Number(saved.since)) : 0,
+  };
+  let healed = !same;
+  // Смену забыли закрыть: телефон сел, приложение снесли, вкладку выгрузили.
+  // Такой хвост тянуть нечестно — засчитываем не больше двенадцати часов.
+  if (clock.since && now - clock.since > CLOCK_MAX_S) {
+    clock.secs += CLOCK_MAX_S;
+    clock.since = 0;
+    healed = true;
+  } else if (!same && clock.since) {
+    clock.since = now;                // перевалили за полночь прямо на линии
+  }
+  if (healed) writeStore(CLOCK_KEY, JSON.stringify(clock));
+  return clock;
+}
+
+/** Сколько секунд курьер сегодня на линии, вместе с идущей прямо сейчас сменой. */
+export function shiftSeconds() {
+  const clock = readClock();
+  const now = Math.floor(Date.now() / 1000);
+  return clock.secs + (clock.since ? Math.max(0, now - clock.since) : 0);
+}
+
+/**
+ * Сообщить часам, на линии курьер или нет. Вызывать можно сколько угодно:
+ * повторный вызов с тем же значением ничего не меняет, поэтому это можно
+ * делать на каждое состояние, приходящее с сервера.
+ */
+export function markShift(online) {
+  const clock = readClock();
+  const now = Math.floor(Date.now() / 1000);
+  if (online && !clock.since) clock.since = now;
+  else if (!online && clock.since) {
+    clock.secs += Math.max(0, now - clock.since);
+    clock.since = 0;
+  } else {
+    return clock;
+  }
+  writeStore(CLOCK_KEY, JSON.stringify(clock));
+  return clock;
+}
+
+/** Цель на день в тыйынах. Ноль — водитель цели не ставил. */
+export function getGoal() {
+  const raw = Math.round(Number(readStore(GOAL_KEY)) || 0);
+  return raw > 0 ? raw : 0;
+}
+
+export function setGoal(tiyin) {
+  const value = Math.max(0, Math.round(Number(tiyin) || 0));
+  writeStore(GOAL_KEY, String(value));
+  return value;
+}
+
+/* Цель взята — сказать об этом стоит один раз за день, а не на каждый заказ. */
+function goalCelebrated() {
+  return Number(readStore(GOAL_HIT_KEY) || 0) === dayStamp();
+}
+
+function markGoalCelebrated() {
+  writeStore(GOAL_HIT_KEY, String(dayStamp()));
+}
+
+/* Часы и минуты на линии. fmt.duration ниже минуты говорит «меньше минуты» —
+   для смены это звучит странно, поэтому нулевой случай пишем сами. */
+function onLineText(seconds) {
+  const v = Math.max(0, Math.round(seconds || 0));
+  return v < 60 ? t('shift.min_zero') : duration(v);
 }
 
 /* ─────────────────────────────────────────────────────── звук предложения */
@@ -956,12 +1510,6 @@ export function createGeoTracker(opts = {}) {
 
 /* ─────────────────────────────────────────────────────── общие куски разметки */
 
-function tile(key, value, mod) {
-  return el('div', { className: 'tile' + (mod ? ' tile--' + mod : '') },
-    el('div', { className: 'tile__k' }, key),
-    el('div', { className: 'tile__v' }, value));
-}
-
 function pill(icon, text) {
   return el('span', { className: 'pill' }, ico(icon), text);
 }
@@ -1218,12 +1766,54 @@ export function renderShift(root, ctx) {
 
   const geoBox = el('div', { className: 'shift__geo', hidden: true });
   const mapNode = el('div', { className: 'shift__map' });
-  const tilesBox = el('div', { className: 'tiles' });
+
+  /* ── деньги за сегодня ───────────────────────────────────────────────────
+     Первое, ради чего открывают приложение. Узлы собираем один раз и дальше
+     меняем только текст: экран обновляется от каждого события сервера, и
+     пересборка карточки давала бы мигание там, где цифры и не поменялись. */
+  const earnValue = el('div', { className: 'sg-earn__v' }, money(0));
+  const factOrders = el('b', null, '0');
+  const factHours = el('b', null, onLineText(0));
+  const factRating = el('b', null, '—');
+
+  const goalNums = el('b');
+  const goalFill = el('i', { className: 'sg-goal__fill' });
+  const goalNote = el('div', { className: 'sg-goal__note' });
+  const goalBody = [
+    el('div', { className: 'sg-goal__row' }, el('span', null, t('shift.goal')), goalNums),
+    el('div', { className: 'sg-goal__bar' }, goalFill),
+    goalNote,
+  ];
+  const goalEmpty = [ico(ICONS.goal), el('span', null, t('shift.goal_set'))];
+  const goalBtn = el('button', {
+    className: 'sg-goal sg-goal--empty', type: 'button',
+    onClick: () => askGoal(),
+  }, goalEmpty);
+  let goalMode = 'empty';
+
+  const earnBox = el('div', { className: 'sg-earn' },
+    el('div', null,
+      el('div', { className: 'sg-earn__k' }, t('shift.earned')),
+      earnValue),
+    el('div', { className: 'sg-earn__facts' },
+      el('div', { className: 'sg-fact' }, factOrders, el('span', null, t('shift.orders'))),
+      el('div', { className: 'sg-fact' }, factHours, el('span', null, t('shift.hours'))),
+      el('div', { className: 'sg-fact' }, factRating, el('span', null, t('courier.rating')))),
+    goalBtn);
+
+  const weekValue = el('div', { className: 'tile__v' }, moneyShort(0));
+  const monthValue = el('div', { className: 'tile__v' }, moneyShort(0));
+  const openMoney = () => { haptic(); ctx.go('/history'); };
+  const tilesBox = el('div', { className: 'tiles' },
+    el('button', { className: 'tile sg-tile', type: 'button', onClick: openMoney },
+      el('div', { className: 'tile__k' }, t('shift.week')), weekValue),
+    el('button', { className: 'tile sg-tile', type: 'button', onClick: openMoney },
+      el('div', { className: 'tile__k' }, t('shift.month')), monthValue));
 
   // Звук живёт здесь же, на экране смены: именно отсюда водитель уходит ждать
   // заказ, и именно здесь важно знать, услышит он его или нет.
   root.replaceChildren(el('div', { className: 'shift' },
-    toggle, geoBox, mapNode, tilesBox, soundSettings()));
+    toggle, geoBox, earnBox, tilesBox, mapNode, soundSettings()));
 
   /* ── карта и своя точка ── */
   const map = makeMap(mapNode, state.config, { locate: false });
@@ -1319,11 +1909,24 @@ export function renderShift(root, ctx) {
   toggle.addEventListener('click', async () => {
     if (toggle.classList.contains('is-loading')) return;
     const next = !ctx.store.get().online;
+    // Уйти с линии с заказом в работе можно — но человек должен понимать, что
+    // заказ остаётся на нём. Молча выключить смену посреди рейса нельзя.
+    if (!next && ctx.store.get().order) {
+      const leave = await ask({
+        title: t('shift.leave_title'),
+        text: t('shift.leave_text'),
+        ok: t('shift.leave_ok'),
+        cancel: t('shift.stay'),
+        danger: true,
+      });
+      if (!leave || !alive) return;
+    }
     haptic(next ? [12, 40, 18] : 12);
     spinner(toggle, true);
     unlockAudio();          // заодно первое касание разрешает звук предложений
     try {
       const res = await api.post('/courier/online', { online: next });
+      markShift(!!res.online);          // часы на линии считаем сами, сервер их не ведёт
       ctx.store.set({
         online: !!res.online,
         busy: !!res.busy,
@@ -1338,40 +1941,176 @@ export function renderShift(root, ctx) {
     } finally {
       spinner(toggle, false);
       paint();
+      paintHours();
       syncZones();
     }
   });
 
+  /* ── цель на день ────────────────────────────────────────────────────────
+     Цель водитель ставит себе сам, и живёт она в его же телефоне. Полоса
+     прогресса — не украшение: видимая цель заметно дольше держит людей
+     на линии, чем просто сумма заработка. */
+
+  function todayEarned() {
+    const s = ctx.store.get().stats;
+    return (s && s.today && s.today.earned) || 0;
+  }
+
+  function paintGoal() {
+    const goal = getGoal();
+    const earned = todayEarned();
+    const mode = goal > 0 ? 'set' : 'empty';
+    if (mode !== goalMode) {
+      goalMode = mode;
+      goalBtn.replaceChildren(...(mode === 'set' ? goalBody : goalEmpty));
+    }
+    goalBtn.className = 'sg-goal' + (mode === 'set' ? '' : ' sg-goal--empty');
+    if (mode !== 'set') {
+      goalBtn.setAttribute('aria-label', t('shift.goal_set'));
+      return;
+    }
+    const part = Math.max(0, Math.min(1, earned / goal));
+    const done = earned >= goal;
+    goalNums.textContent = moneyShort(earned) + ' / ' + moneyShort(goal);
+    goalFill.style.width = (part * 100).toFixed(1) + '%';
+    goalNote.textContent = done
+      ? t('shift.goal_done')
+      : t('shift.goal_left', { sum: money(goal - earned) });
+    goalBtn.classList.toggle('is-done', done);
+    goalBtn.setAttribute('aria-label',
+      t('shift.goal') + ': ' + money(earned) + ' / ' + money(goal));
+    // О взятой цели говорим один раз за день: приятно, но не назойливо.
+    if (done && !goalCelebrated()) {
+      markGoalCelebrated();
+      toast(t('shift.goal_done'), { type: 'ok', ms: 4000 });
+      haptic([16, 60, 16]);
+    }
+  }
+
+  function askGoal() {
+    haptic();
+    const now = getGoal();
+    const input = el('input', {
+      className: 'field__input', type: 'number', inputMode: 'numeric',
+      min: '0', step: '100', placeholder: ' ',
+      value: now ? String(Math.round(now / 100)) : '',
+    });
+    const chips = el('div', { className: 'sg-chips' });
+
+    function markChips() {
+      const som = Math.round(Number(input.value) || 0);
+      for (const chip of Array.from(chips.children)) {
+        chip.classList.toggle('chip--on', Number(chip.dataset.som) === som && som > 0);
+      }
+    }
+
+    for (const value of GOAL_STEPS) {
+      chips.appendChild(el('button', {
+        className: 'chip', type: 'button', dataset: { som: String(value / 100) },
+        onClick: () => {
+          input.value = String(value / 100);
+          haptic();
+          markChips();
+        },
+      }, moneyShort(value)));
+    }
+    input.addEventListener('input', markChips);
+    markChips();
+
+    const actions = [];
+    if (now) {
+      actions.push({
+        label: t('shift.goal_off'),
+        kind: 'ghost',
+        onClick: () => {
+          setGoal(0);
+          paintGoal();
+          toast(t('shift.goal_gone'), { type: 'info' });
+        },
+      });
+    }
+    actions.push({
+      label: t('shift.goal_save'),
+      kind: 'primary',
+      onClick: () => {
+        const som = Math.round(Number(input.value) || 0);
+        if (som <= 0) {
+          toast(t('shift.goal_bad'), { type: 'warn' });
+          return false;
+        }
+        setGoal(som * 100);
+        paintGoal();
+        haptic([12, 40, 18]);
+        return true;
+      },
+    });
+
+    sheet({
+      title: t('shift.goal'),
+      content: el('div', { className: 'col gap-3' },
+        chips,
+        el('label', { className: 'field' },
+          input, el('span', { className: 'field__label' }, t('shift.goal_own'))),
+        el('p', { className: 'sheet__text' }, t('shift.goal_hint'))),
+      actions,
+    });
+  }
+
   /* ── итоги дня ── */
   function paintStats() {
     const s = ctx.store.get().stats;
-    if (!s) {
-      tilesBox.replaceChildren(
-        tile(t('courier.earnings_today'), '—', 'accent'),
-        tile(t('courier.orders_done'), '—'));
-      return;
-    }
-    const today = s.today || {};
-    tilesBox.replaceChildren(
-      tile(t('courier.earnings_today'), money(today.earned || 0), 'accent'),
-      tile(t('courier.orders_done'), num(today.orders || 0)),
-      tile(t('courier.rating'), String(s.rating != null ? s.rating : 5).replace('.', ',')),
-      tile(t('courier.earnings_week'), moneyShort((s.week || {}).earned || 0)));
+    const today = (s && s.today) || {};
+    earnValue.textContent = money(today.earned || 0);
+    factOrders.textContent = num(today.orders || 0);
+    factRating.textContent = s && s.rating != null ? String(s.rating).replace('.', ',') : '—';
+    weekValue.textContent = moneyShort((s && s.week && s.week.earned) || 0);
+    monthValue.textContent = moneyShort((s && s.month && s.month.earned) || 0);
+    paintGoal();
   }
+
+  /* Часы на линии тикают сами по себе, поэтому обновляем их по будильнику,
+     а не по событиям сервера. Раз в полминуты достаточно: минуты меняются
+     медленно, а лишние перерисовки на экране за рулём только мешают. */
+  function paintHours() {
+    factHours.textContent = onLineText(shiftSeconds());
+  }
+
+  const hoursTimer = setInterval(paintHours, 30000);
+  stop.push(() => clearInterval(hoursTimer));
 
   paint();
   paintStats();
+  paintHours();
   syncZones();
 
   stop.push(ctx.store.on(() => { paint(); paintStats(); }));
-  stop.push(ctx.store.select((s) => s.online, () => syncZones()));
+  stop.push(ctx.store.select((s) => s.online, () => { paintHours(); syncZones(); }));
   stop.push(ctx.store.select((s) => s.order, () => syncZones()));
   stop.push(ctx.onFix((point) => putMe([point.lat, point.lng], point.heading)));
 
-  // Свежие цифры по смене: экран смены открывают как раз затем, чтобы их увидеть.
-  api.get('/courier/stats', { period: 'today' })
-    .then((s) => { if (alive) ctx.store.set({ stats: s }); })
-    .catch(() => { /* показываем прочерки, тост здесь только помешает */ });
+  /* Свежие цифры по смене: экран смены открывают как раз затем, чтобы их
+     увидеть. Возвращение к приложению — тоже повод спросить заново, но не
+     чаще раза в минуту: заказы столько не делаются. */
+  let statsAt = 0;
+
+  function pullStats(force) {
+    if (!alive) return;
+    if (!force && Date.now() - statsAt < 60000) return;
+    statsAt = Date.now();
+    api.get('/courier/stats', { period: 'today' })
+      .then((s) => { if (alive) ctx.store.set({ stats: s }); })
+      .catch(() => { /* остаются прошлые цифры, тост здесь только помешает */ });
+  }
+
+  const onWake = () => {
+    if (document.visibilityState !== 'visible') return;
+    paintHours();
+    pullStats(false);
+  };
+  document.addEventListener('visibilitychange', onWake);
+  stop.push(() => document.removeEventListener('visibilitychange', onWake));
+
+  pullStats(true);
 
   return () => { for (const fn of stop) fn(); };
 }
@@ -2144,6 +2883,76 @@ function dgisLinks(lat, lng) {
   };
 }
 
+/* Каким навигатором человек пользуется. Запоминаем его выбор, чтобы долгое
+   нажатие на адрес открывало сразу нужное приложение, без лишнего вопроса.
+   По умолчанию Яндекс: в Бишкеке он чаще стоит у водителей и знает пробки. */
+const NAV_KEY = 'sg_nav';
+
+function preferredNav() {
+  return readStore(NAV_KEY) === '2gis' ? '2gis' : 'ya';
+}
+
+function rememberNav(code) {
+  writeStore(NAV_KEY, code === '2gis' ? '2gis' : 'ya');
+}
+
+function navLinks(code, lat, lng) {
+  return code === '2gis' ? dgisLinks(lat, lng) : yandexLinks(lat, lng);
+}
+
+/**
+ * Долгое нажатие на узел. Возвращает {long, destroy}: long() говорит, было ли
+ * последнее касание долгим, — обычный клик после него надо пропустить, иначе
+ * одно касание сработает дважды.
+ */
+function onLongPress(node, ms, onLong) {
+  let timer = 0;
+  let x0 = 0;
+  let y0 = 0;
+  let fired = false;
+
+  const cancel = () => {
+    if (timer) clearTimeout(timer);
+    timer = 0;
+  };
+  const down = (e) => {
+    if (e.button) return;
+    fired = false;
+    x0 = e.clientX;
+    y0 = e.clientY;
+    cancel();
+    timer = setTimeout(() => {
+      timer = 0;
+      fired = true;
+      onLong();
+    }, ms);
+  };
+  // Палец поехал — значит, человек листает карту, а не держит кнопку.
+  const move = (e) => {
+    if (!timer) return;
+    if (Math.abs(e.clientX - x0) > 10 || Math.abs(e.clientY - y0) > 10) cancel();
+  };
+  const menu = (e) => e.preventDefault();
+
+  node.addEventListener('pointerdown', down);
+  node.addEventListener('pointermove', move);
+  node.addEventListener('pointerup', cancel);
+  node.addEventListener('pointercancel', cancel);
+  node.addEventListener('contextmenu', menu);
+
+  return {
+    long: () => fired,
+    destroy() {
+      cancel();
+      node.removeEventListener('pointerdown', down);
+      node.removeEventListener('pointermove', move);
+      node.removeEventListener('pointerup', cancel);
+      node.removeEventListener('pointercancel', cancel);
+      node.removeEventListener('contextmenu', menu);
+    },
+  };
+}
+
 /**
  * Экран активного заказа: карта во весь экран, панель снизу, маршрут,
  * чат с клиентом и главная кнопка. ctx = {store, go, tracker, onFix, refresh}.
@@ -2176,24 +2985,38 @@ export function renderJob(root, ctx) {
   /* ── разметка экрана ── */
   const mapNode = el('div', { className: 'job__map', 'data-map': '' });
   const backBtn = el('button', {
-    className: 'job__close', type: 'button', html: ICONS.back,
+    className: 'sg-rbtn', type: 'button', html: ICONS.back,
     'aria-label': t('job.back'), title: t('job.back'),
     onClick: () => { haptic(); ctx.go('/shift'); },
   });
   const fitBtn = el('button', {
-    className: 'sg-fit', type: 'button', html: ICONS.fit,
+    className: 'sg-rbtn', type: 'button', html: ICONS.fit,
     'aria-label': t('job.fit'), title: t('job.fit'),
     onClick: () => { haptic(); fitAll(); },
   });
+
+  // Адрес следующей точки — самая верхняя строка экрана. Он виден всегда,
+  // в каком бы положении ни стояла панель, и написан крупно: за рулём на него
+  // смотрят вполглаза. Нажатие копирует адрес, долгое — открывает навигатор.
+  const nextKicker = el('span', { className: 'sg-next__k' }, t('job.next_title'));
+  const nextAddr = el('span', { className: 'sg-next__addr' }, '—');
+  const nextBtn = el('button', {
+    className: 'sg-next', type: 'button', title: t('job.copy_addr'),
+  }, el('span', { className: 'sg-next__body' }, nextKicker, nextAddr),
+    el('span', { className: 'sg-next__copy', html: ICONS.copy }));
+  const topBar = el('div', { className: 'sg-topbar' }, backBtn, nextBtn, fitBtn);
 
   const grip = el('button', {
     className: 'job__grip', type: 'button',
     'aria-expanded': 'true', 'aria-label': t('job.panel_less'),
   });
   const statusRow = el('div', { className: 'job__status' });
+  const stillBox = el('div', { className: 'sg-still', hidden: true });
   const etaRow = el('div', { className: 'sg-eta' });
+  const quickRow = el('div', { className: 'sg-quick' });
   const navsRow = el('div', { className: 'sg-navs' });
-  const headBox = el('div', { className: 'sg-head' }, statusRow, etaRow, navsRow);
+  const headBox = el('div', { className: 'sg-head' },
+    statusRow, stillBox, etaRow, quickRow, navsRow);
 
   const clientBox = el('div', { className: 'job__client' });
   const pointsBox = el('div', { className: 'offer__rows' });
@@ -2206,7 +3029,7 @@ export function renderJob(root, ctx) {
   const actBox = el('div', { className: 'act' });
   const panelBox = el('div', { className: 'job__panel' }, grip, headBox, scrollBox, actBox);
   const jobBox = el('div', { className: 'job job--full' },
-    mapNode, backBtn, fitBtn, panelBox);
+    mapNode, topBar, panelBox);
 
   root.replaceChildren(jobBox);
   document.getElementById('app').classList.add('app--job');
@@ -2357,42 +3180,92 @@ export function renderJob(root, ctx) {
     else leg = map.route(line, { width: 6 });
   }
 
+  /* Строку остатка пути собираем один раз и дальше меняем только цифры:
+     она обновляется каждые несколько секунд, и пересборка узлов давала бы
+     заметное подмигивание. */
+  const etaLabel = el('span');
+  const etaDist = el('b');
+  const etaTime = el('b');
+  const etaRough = el('span', { className: 'muted-2' }, t('job.route_straight'));
+  etaRow.append(ico(ICONS.nav), etaLabel, etaDist, el('span', null, '·'), etaTime, etaRough);
+
   function paintEta() {
     const order = ctx.store.get().order;
     if (!order) return;
     const toPickup = TO_PICKUP.indexOf(order.status) >= 0;
-    const label = toPickup ? t('job.to_pickup_left') : t('job.to_drop_left');
     const info = nav.info;
-    etaRow.replaceChildren(ico(ICONS.nav));
-    if (!info) {
-      etaRow.appendChild(el('span', null, label + ': —'));
-      return;
-    }
-    etaRow.appendChild(el('span', null, label + ':'));
-    etaRow.appendChild(el('b', null, distance(info.distance_m)));
-    etaRow.appendChild(el('span', null, '·'));
-    etaRow.appendChild(el('b', null, duration(info.duration_s)));
-    if (info.rough) etaRow.appendChild(el('span', { className: 'muted-2' }, t('job.route_straight')));
+    etaLabel.textContent = (toPickup ? t('job.to_pickup_left') : t('job.to_drop_left')) + ':';
+    etaDist.textContent = info ? distance(info.distance_m) : '—';
+    etaTime.textContent = info ? duration(info.duration_s) : '—';
+    etaRough.hidden = !(info && info.rough);
   }
+
+  /* Кнопки навигаторов тоже живут постоянно: точку они спрашивают в момент
+     нажатия. Заодно запоминают выбор — его берёт долгое нажатие на адрес. */
+  function openNavTo(code) {
+    const order = ctx.store.get().order;
+    const to = order ? targetPoint(order) : null;
+    if (!to) return;
+    rememberNav(code);
+    haptic(16);
+    const links = navLinks(code, to.lat, to.lng);
+    openNav(links.app, links.web);
+  }
+
+  navsRow.append(
+    el('button', {
+      className: 'btn btn--ghost', type: 'button',
+      title: t('job.open_nav'), 'aria-label': t('job.nav_ya'),
+      onClick: () => openNavTo('ya'),
+    }, ico(ICONS.nav), t('job.nav_short_ya')),
+    el('button', {
+      className: 'btn btn--ghost', type: 'button',
+      title: t('job.open_nav'), 'aria-label': t('job.nav_2gis'),
+      onClick: () => openNavTo('2gis'),
+    }, ico(ICONS.nav), t('job.nav_2gis')));
 
   function paintNavs() {
     const order = ctx.store.get().order;
+    navsRow.hidden = !(order && targetPoint(order));
+  }
+
+  /* ── адрес следующей точки ───────────────────────────────────────────────
+     Одна строка сверху, крупно. Нажатие копирует адрес — его часто диктуют
+     по телефону; долгое нажатие открывает навигатор, которым человек
+     пользуется сам. */
+  const longAddr = onLongPress(nextBtn, 520, () => openNavTo(preferredNav()));
+  stop.push(() => longAddr.destroy());
+
+  nextBtn.addEventListener('click', () => {
+    if (longAddr.long()) return;        // навигатор уже открылся, копировать не надо
+    const order = ctx.store.get().order;
     const to = order ? targetPoint(order) : null;
-    navsRow.replaceChildren();
-    navsRow.hidden = !to;
-    if (!to) return;
-    const ya = yandexLinks(to.lat, to.lng);
-    const dg = dgisLinks(to.lat, to.lng);
-    navsRow.appendChild(el('button', {
-      className: 'btn btn--ghost', type: 'button',
-      title: t('job.open_nav'), 'aria-label': t('job.nav_ya'),
-      onClick: () => { haptic(); openNav(ya.app, ya.web); },
-    }, ico(ICONS.nav), t('job.nav_short_ya')));
-    navsRow.appendChild(el('button', {
-      className: 'btn btn--ghost', type: 'button',
-      title: t('job.open_nav'), 'aria-label': t('job.nav_2gis'),
-      onClick: () => { haptic(); openNav(dg.app, dg.web); },
-    }, ico(ICONS.nav), t('job.nav_2gis')));
+    const addr = to && to.addr;
+    if (!addr) return;
+    copyText(addr, t('job.copied'));
+  });
+
+  /* Город в начале адреса не несёт ничего: курьер и так в нём. Убираем его —
+     и в одну строку влезает то, что важно, улица с домом. */
+  function shortAddr(addr) {
+    const config = ctx.store.get().config;
+    const city = (config && config.service && config.service.city) || '';
+    if (!city) return addr;
+    const head = (city + ', ').toLowerCase();
+    return addr.toLowerCase().startsWith(head) ? addr.slice(head.length) : addr;
+  }
+
+  function paintNext() {
+    const order = ctx.store.get().order;
+    const points = (order && order.points) || [];
+    const toPickup = !order || TO_PICKUP.indexOf(order.status) >= 0;
+    const point = (order && targetPoint(order)) ||
+      (toPickup ? points[0] : points[points.length - 1]);
+    const addr = point && point.addr ? shortAddr(point.addr) : t('order.on_map');
+    const kicker = toPickup ? t('courier.offer_pickup') : t('courier.offer_drop');
+    if (nextKicker.textContent !== kicker) nextKicker.textContent = kicker;
+    if (nextAddr.textContent !== addr) nextAddr.textContent = addr;
+    nextBtn.setAttribute('aria-label', kicker + ': ' + addr + '. ' + t('job.copy_addr'));
   }
 
   /* ── чат с клиентом ───────────────────────────────────────────────────── */
@@ -2403,6 +3276,15 @@ export function renderJob(root, ctx) {
     'aria-label': t('chat.title'), title: t('chat.title'),
     onClick: () => showChat(),
   }, ico(ICONS.chat), unreadBadge);
+
+  /* Телефон клиента и чат стоят в шапке панели, а не в списке: список водитель
+     сворачивает, чтобы видеть дорогу, а позвонить нужно в одно касание из
+     любого положения панели. */
+  const callBtn = el('a', {
+    className: 'btn btn--primary', href: '#', hidden: true,
+    'aria-label': t('courier.call_client'),
+  }, ico(ICONS.phone), t('common.call'));
+  quickRow.append(callBtn, chatBtn);
 
   let chatUi = null;
   let pollTimer = 0;
@@ -2510,13 +3392,26 @@ export function renderJob(root, ctx) {
     if (document.visibilityState !== 'visible') return;
     pollChat();
     refreshLeg(true);
+    checkStill(null);
   };
   document.addEventListener('visibilitychange', onShow);
   stop.push(() => document.removeEventListener('visibilitychange', onShow));
 
-  /* ── счётчик ожидания ── */
+  /* ── счётчик ожидания ──────────────────────────────────────────────────
+     Цифры тикают раз в секунду, поэтому узлы собраны один раз: пересборка
+     карточки каждую секунду — это мигание прямо под рукой водителя. */
   let waitTimer = 0;
   let waitShown = false;
+  const waitTime = el('div', { className: 'wait__t' }, clock(0));
+  const waitNote = el('div', { className: 'wait__note' });
+  const waitBtn = el('button', {
+    className: 'btn btn--ghost', type: 'button',
+    onClick: () => toggleWait((ctx.store.get().waiting || {}).running ? 'stop' : 'start'),
+  }, t('courier.waiting_start'));
+  waitBox.append(
+    ico(ICONS.clock),
+    el('div', { className: 'wait__body' }, waitTime, waitNote),
+    waitBtn);
 
   function paintWait() {
     const order = ctx.store.get().order;
@@ -2539,24 +3434,89 @@ export function renderJob(root, ctx) {
     const shown = since ? base + Math.max(0, Math.floor(Date.now() / 1000) - since) : base;
 
     waitBox.classList.toggle('is-on', !!info.running);
-    waitBox.replaceChildren(
-      ico(ICONS.clock),
-      el('div', { className: 'wait__body' },
-        el('div', { className: 'wait__t' }, clock(shown)),
-        el('div', { className: 'wait__note' },
-          info.price_waiting
-            ? t('track.waiting') + ': ' + money(info.price_waiting)
-            : t('courier.waiting_free', { time: clock(shown) }))),
-      el('button', {
-        className: 'btn btn--sm ' + (info.running ? 'btn--danger' : 'btn--ghost'),
-        type: 'button',
-        onClick: () => toggleWait(info.running ? 'stop' : 'start'),
-      }, info.running ? t('courier.waiting_stop') : t('courier.waiting_start')));
+    waitTime.textContent = clock(shown);
+    waitNote.textContent = info.price_waiting
+      ? t('track.waiting') + ': ' + money(info.price_waiting)
+      : t('courier.waiting_free', { time: clock(shown) });
+    waitBtn.textContent = info.running ? t('courier.waiting_stop') : t('courier.waiting_start');
+    waitBtn.className = 'btn ' + (info.running ? 'btn--danger' : 'btn--ghost');
 
     if (info.running && !waitTimer) waitTimer = setInterval(paintWait, 1000);
     if (!info.running && waitTimer) { clearInterval(waitTimer); waitTimer = 0; }
   }
   stop.push(() => { if (waitTimer) clearInterval(waitTimer); });
+
+  /* ── «вы стоите на месте» ────────────────────────────────────────────────
+     Самая частая ошибка за смену: груз уже выгружен, а статус так и остался
+     «в пути». Молча стоящая пять минут машина — повод мягко об этом спросить.
+     Никаких модальных окон: строка в шапке панели, один короткий толчок
+     вибрацией и кнопка «понятно», после которой мы замолкаем до следующей
+     остановки. */
+  const STILL_MS = 5 * 60 * 1000;
+  const STILL_MOVE_M = 80;            // меньше — это дрожание датчика, а не поездка
+  const STILL_EVERY_MS = 30000;
+
+  const stillTitle = el('span', { className: 'sg-still__t' });
+  const stillHide = el('button', {
+    className: 'sg-still__x', type: 'button',
+    onClick: () => {
+      still.muted = true;
+      haptic();
+      showStill(false);
+    },
+  }, t('job.still_hide'));
+  stillBox.append(
+    ico(ICONS.alert),
+    el('div', { className: 'sg-still__body' },
+      stillTitle,
+      el('span', { className: 'sg-still__note' }, t('job.still_text'))),
+    stillHide);
+
+  const still = { from: null, at: 0, on: false, muted: false };
+
+  function showStill(on) {
+    if (still.on === on) return;
+    still.on = on;
+    stillBox.hidden = !on;
+    if (panel) panel.sync();
+  }
+
+  function stillReset(at) {
+    still.from = at ? at.slice() : null;
+    still.at = Date.now();
+    still.muted = false;
+    showStill(false);
+  }
+
+  function checkStill(point) {
+    const order = ctx.store.get().order;
+    if (!order || order.status !== 'in_transit') {
+      if (still.from || still.on) stillReset(null);
+      return;
+    }
+    const at = point ? [point.lat, point.lng] : (ctx.tracker.at() || ctx.store.get().at);
+    if (!at) return;
+    if (!still.from) {
+      still.from = at.slice();
+      still.at = Date.now();
+      return;
+    }
+    if (distanceM(still.from, at) > STILL_MOVE_M) {
+      stillReset(at);                   // поехали дальше — напоминание больше не нужно
+      return;
+    }
+    const minutes = Math.floor((Date.now() - still.at) / 60000);
+    if (minutes < 5) return;
+    stillTitle.textContent = t('job.still', { time: tp(minutes, 'common.n_min') });
+    if (still.muted || still.on) return;
+    showStill(true);
+    haptic([14, 70, 14]);
+  }
+
+  const stillTimer = setInterval(() => {
+    if (document.visibilityState !== 'hidden') checkStill(null);
+  }, STILL_EVERY_MS);
+  stop.push(() => clearInterval(stillTimer));
 
   async function toggleWait(action) {
     const order = ctx.store.get().order;
@@ -2572,6 +3532,21 @@ export function renderJob(root, ctx) {
 
   /* ── клиент, адреса, деньги ── */
   let lastStatus = '';
+  let lastCard = '';
+
+  /* Карточка заказа приходит с сервера при каждом обновлении состояния, но
+     меняется в ней от силы раз за поездку. Сравниваем содержимое и молча
+     выходим, если оно то же самое: иначе список адресов пересобирался бы
+     каждые несколько секунд прямо под пальцем. */
+  function cardKey(order) {
+    return JSON.stringify([
+      order.status, order.public_id, order.points, order.comment, order.loaders,
+      order.extras, order.distance_m, order.duration_s,
+      order.price_total, order.commission, order.courier_payout,
+      order.payment_status, order.paid_amount,
+      order.client && order.client.rating, order.client && order.client.orders_count,
+    ]);
+  }
 
   function paintOrder() {
     const order = ctx.store.get().order;
@@ -2579,36 +3554,57 @@ export function renderJob(root, ctx) {
       ctx.go('/shift');
       return;
     }
+    const key = cardKey(order);
+    if (key === lastCard) {
+      // Ничего важного не поменялось — трогаем только то, что живёт своей
+      // жизнью: остаток пути, ожидание и счётчик непрочитанных.
+      paintEta();
+      paintWait();
+      paintUnread();
+      return;
+    }
+    lastCard = key;
+
     const points = order.points || [];
     const step = FLOW[order.status];
 
     statusRow.replaceChildren(
       el('span', { className: 'badge badge--accent' }, order.public_id || ''),
       el('span', { className: 'h3 grow truncate' }, step ? t(step.now) : t('track.done')));
-    statusRow.appendChild(chatBtn);
     paintUnread();
+    paintNext();
 
     // Пока едем за грузом — перед глазами отправитель, после погрузки — получатель.
     const toPickup = TO_PICKUP.indexOf(order.status) >= 0;
     const contact = toPickup ? points[0] : points[points.length - 1];
     const who = (contact && contact.name) || t('rate.client_of');
-    const tel = telHref(contact && contact.phone);
+    // У точки может не быть своего телефона — тогда звоним тому, кто заказал.
+    // Курьер не должен остаться без связи только потому, что поле пустое.
+    const tel = telHref((contact && contact.phone) || (order.client && order.client.phone));
+
+    // Кнопка звонка в шапке: клиента набирают одним касанием, не разворачивая
+    // панель и не выискивая номер в списке адресов.
+    callBtn.hidden = !tel;
+    if (tel) {
+      callBtn.href = tel;
+      callBtn.setAttribute('aria-label', t('courier.call_client') + ': ' + who);
+    }
+
     clientBox.hidden = !contact;
     if (contact) {
       // replaceChildren — не el(): пустые места он превращает в слово «null»
       // прямо на экране, поэтому список детей собираем сами.
+      const known = contact.phone || (order.client && order.client.phone) || '';
       const kids = [
         el('span', { className: 'avatar avatar--accent' }, initials(who) || '·'),
         el('div', { className: 'grow' },
           el('div', { className: 'job__client-name' }, who),
           el('div', { className: 'muted t-sm' },
-            contact.phone ? fmtPhone(contact.phone) : (contact.addr || '')),
+            known ? fmtPhone(known) : (contact.addr || '')),
           clientRating(order.client)),
       ];
-      if (tel) {
-        kids.push(el('a', { className: 'btn btn--primary btn--icon', href: tel,
-          'aria-label': t('courier.call_client'), html: ICONS.phone }));
-      }
+      // Второй кнопки звонка здесь нет нарочно: она стоит в шапке панели и
+      // видна всегда. Два одинаковых действия рядом только сбивают с толку.
       clientBox.replaceChildren(...kids);
     }
 
@@ -2654,6 +3650,7 @@ export function renderJob(root, ctx) {
     // Сменился шаг заказа — показываем панель целиком и пересчитываем остаток
     // пути: цель переехала с погрузки на выгрузку.
     const changed = lastStatus && lastStatus !== order.status;
+    const first = !lastStatus;
     lastStatus = order.status;
     if (panel) panel.sync();
     if (changed) {
@@ -2661,6 +3658,9 @@ export function renderJob(root, ctx) {
       fitAll();
       refreshLeg(true);
     }
+    // Часы стоянки отсчитываем от смены статуса, а не от входа на экран:
+    // иначе напоминание прилетало бы через пять минут после каждого открытия.
+    if (changed || first) stillReset(ctx.tracker.at() || ctx.store.get().at);
   }
 
   /* ── главная кнопка внизу ── */
@@ -2724,8 +3724,8 @@ export function renderJob(root, ctx) {
   stop.push(ctx.onFix((point) => {
     putCar([point.lat, point.lng], point.heading);
     refreshLeg(false);
+    checkStill(point);
   }));
-  stop.push(() => { alive = false; });
 
   // Ожидание после перезапуска приложения знает только сервер — спрашиваем его.
   api.get('/courier/orders/' + orderId)
@@ -2832,15 +3832,190 @@ const PERIODS = [
   ['month', 'common.month'],
 ];
 
+const ROWS_STEP = 40;           // столько заказов показываем за раз
+const MAX_PAGES = 3;            // триста заказов за месяц — потолок с запасом
+
+const DAY_SHORT = {
+  ru: ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'],
+  ky: ['Жк', 'Дш', 'Ше', 'Шр', 'Бш', 'Жм', 'Иш'],
+};
+
+/* Дни считаем по часам телефона: курьер и его телефон стоят в одном городе,
+   и полночь у них общая. Полдень внутри дня берём нарочно — так подпись под
+   столбиком не съезжает на сутки из-за часового пояса сервиса. */
+function chartRange(period) {
+  const day = new Date();
+  day.setHours(0, 0, 0, 0);
+  const start = new Date(day.getTime());
+  if (period === 'week') start.setDate(start.getDate() - ((day.getDay() + 6) % 7));
+  else if (period === 'month') start.setDate(1);
+  else start.setDate(start.getDate() - 6);     // «сегодня» — на фоне недели
+  const days = Math.round((day.getTime() - start.getTime()) / 86400000) + 1;
+  return { from: Math.floor(start.getTime() / 1000), days };
+}
+
+function daySeries(items, fromSec, days) {
+  const start = new Date(fromSec * 1000);
+  start.setHours(0, 0, 0, 0);
+  const out = [];
+  const byDay = new Map();
+  for (let i = 0; i < days; i++) {
+    const d = new Date(start.getTime());
+    d.setDate(d.getDate() + i);
+    const row = { at: Math.floor(d.getTime() / 1000) + 43200, sum: 0, orders: 0 };
+    out.push(row);
+    byDay.set(dayStamp(d.getTime()), row);
+  }
+  for (const o of items || []) {
+    if (!o || o.status !== 'done' || !o.done_at) continue;
+    const row = byDay.get(dayStamp(o.done_at * 1000));
+    if (!row) continue;
+    row.sum += Math.max(0, Number(o.courier_payout) || 0);
+    row.orders += 1;
+  }
+  return out;
+}
+
+/**
+ * Столбики заработка по дням. Рисуем руками: ради тридцати прямоугольников
+ * тянуть библиотеку незачем, а так график весит ноль байт и слушается токенов.
+ * Возвращает {el, set(series)}.
+ */
+function createBars() {
+  const grid = el('div', { className: 'sg-bars__grid', role: 'img' });
+  const caps = el('div', { className: 'sg-bars__caps', 'aria-hidden': 'true' });
+  const caption = el('b', { className: 'sg-bars__pick' });
+  const box = el('div', { className: 'sg-bars' },
+    el('div', { className: 'sg-bars__head' },
+      el('span', null, t('earn.by_days')), caption),
+    grid, caps);
+
+  let series = [];
+  let bestAt = -1;
+  let picked = -1;
+
+  function select(index) {
+    if (index < 0 || index >= series.length || index === picked) return;
+    picked = index;
+    for (let i = 0; i < grid.children.length; i++) {
+      grid.children[i].classList.toggle('is-on', i === picked);
+      if (caps.children[i]) caps.children[i].classList.toggle('is-on', i === picked);
+    }
+    const day = series[index];
+    caption.textContent = (index === bestAt ? t('earn.best') + ': ' : '') +
+      date(day.at) + ' · ' + money(day.sum) +
+      (day.orders ? ' · ' + tp(day.orders, 'common.n_order') : '');
+  }
+
+  /* Столбик пальцем не поймать — их бывает тридцать. Поэтому нажатие ловит
+     вся полоса и показывает тот день, над которым оказался палец. */
+  grid.addEventListener('pointerdown', (e) => {
+    if (!series.length) return;
+    const rect = grid.getBoundingClientRect();
+    const part = (e.clientX - rect.left) / Math.max(1, rect.width);
+    const index = Math.floor(part * series.length);
+    if (index === picked) return;
+    select(Math.max(0, Math.min(series.length - 1, index)));
+    haptic();
+  });
+
+  return {
+    el: box,
+    set(next) {
+      series = Array.isArray(next) ? next : [];
+      let max = 0;
+      let total = 0;
+      bestAt = -1;
+      for (let i = 0; i < series.length; i++) {
+        total += series[i].sum;
+        if (series[i].sum > max) {
+          max = series[i].sum;
+          bestAt = i;
+        }
+      }
+      // Тридцать подписей в ряд не читаются: в месяце оставляем каждую пятую,
+      // в неделе пишем дни словами.
+      const dense = series.length > 10;
+      const lang = getLang() === 'ky' ? 'ky' : 'ru';
+      const bars = [];
+      const marks = [];
+      for (const day of series) {
+        const d = new Date(day.at * 1000);
+        const height = max > 0 ? Math.max(3, Math.round((day.sum / max) * 100)) : 3;
+        bars.push(el('div', { className: 'sg-bars__col' },
+          el('div', { className: 'sg-bars__bar', style: { height: height + '%' } })));
+        marks.push(el('div', { className: 'sg-bars__cap' },
+          dense ? (d.getDate() % 5 === 0 ? String(d.getDate()) : '') : DAY_SHORT[lang][d.getDay()]));
+      }
+      grid.replaceChildren(...bars);
+      caps.replaceChildren(...marks);
+      grid.setAttribute('aria-label', t('earn.chart_alt', { sum: money(total) }));
+      picked = -1;
+      if (max > 0) {
+        select(bestAt);
+      } else {
+        caption.textContent = t('earn.best_none');
+      }
+    },
+  };
+}
+
+/* История страницами: за месяц заказов бывает больше сотни, а график обязан
+   считать их все. Больше трёх страниц не берём — это уже триста поездок. */
+async function loadOrders(params) {
+  const first = await api.get('/courier/orders', Object.assign({ per_page: 100, page: 1 }, params));
+  const items = Array.isArray(first.items) ? first.items.slice() : [];
+  const total = Math.max(items.length, Number(first.total) || 0);
+  for (let page = 2; page <= MAX_PAGES && items.length < total; page++) {
+    const more = await api.get('/courier/orders', Object.assign({ per_page: 100, page }, params));
+    const part = Array.isArray(more.items) ? more.items : [];
+    if (!part.length) break;
+    items.push(...part);
+  }
+  return { items, summary: first.summary || {} };
+}
+
+/**
+ * Деньги: сколько вышло на руки за день, неделю и месяц, столбики по дням,
+ * средний чек, лучший день и список заказов с суммами.
+ */
 export function renderHistory(root, ctx) {
+  ensureCss();
   let period = ctx.store.get().period || 'today';
   let alive = true;
+  let seq = 0;              // номер запроса: быстрые переключения не должны спорить
+  let rows = [];
+  let shown = ROWS_STEP;
 
   const seg = el('div', { className: 'segmented seg-wrap' });
-  const sum = el('div', { className: 'hist__sum' });
-  const list = el('div', { className: 'list' });
 
-  root.replaceChildren(el('div', { className: 'hist' }, seg, sum, list));
+  const sumValue = el('div', { className: 'sg-sum__v' }, money(0));
+  const cellOrders = el('b', null, '0');
+  const cellAvg = el('b', null, moneyShort(0));
+  const cellFee = el('b', null, moneyShort(0));
+  const cellCash = el('b', null, moneyShort(0));
+  const sumBox = el('div', { className: 'sg-sum' },
+    el('div', { className: 'sg-sum__k' }, t('earn.net')),
+    sumValue,
+    el('div', { className: 'sg-sum__grid' },
+      el('div', { className: 'sg-cell' }, cellOrders, el('span', null, t('shift.orders'))),
+      el('div', { className: 'sg-cell' }, cellAvg, el('span', null, t('earn.avg'))),
+      el('div', { className: 'sg-cell' }, cellFee, el('span', null, t('courier.commission'))),
+      el('div', { className: 'sg-cell' }, cellCash, el('span', null, t('earn.cash')))));
+
+  const bars = createBars();
+  const list = el('div', { className: 'list' });
+  const moreBtn = el('button', {
+    className: 'btn btn--ghost sg-more', type: 'button', hidden: true,
+    onClick: () => {
+      shown += ROWS_STEP;
+      haptic();
+      paintList();
+    },
+  }, t('earn.more'));
+
+  root.replaceChildren(el('div', { className: 'hist' },
+    seg, sumBox, bars.el, list, moreBtn));
 
   function paintSeg() {
     seg.replaceChildren(...PERIODS.map(([code, key]) => el('button', {
@@ -2858,56 +4033,65 @@ export function renderHistory(root, ctx) {
   }
 
   function paintSummary(s) {
-    sum.replaceChildren(
-      el('div', { className: 'hist__sum-k' }, t('courier.payout')),
-      el('div', { className: 'hist__sum-v' }, money(s.earned || 0)),
-      el('div', { className: 'hist__sum-row' },
-        el('div', { className: 'hist__sum-cell' },
-          el('b', null, num(s.orders || 0)),
-          el('span', null, t('courier.orders_done'))),
-        el('div', { className: 'hist__sum-cell' },
-          el('b', null, moneyShort(s.cash || 0)),
-          el('span', null, t('order.pay_cash'))),
-        el('div', { className: 'hist__sum-cell' },
-          el('b', null, moneyShort(s.commission || 0)),
-          el('span', null, t('courier.commission')))));
+    sumValue.textContent = money(s.earned || 0);
+    cellOrders.textContent = num(s.orders || 0);
+    cellAvg.textContent = moneyShort(s.avg_order || 0);
+    cellFee.textContent = moneyShort(s.commission || 0);
+    cellCash.textContent = moneyShort(s.cash || 0);
   }
 
-  function paintList(items) {
-    if (!items.length) {
+  function row(o) {
+    const when = o.done_at || o.cancelled_at || o.created_at;
+    const cancelled = o.status === 'cancelled';
+    return el('div', { className: 'list__row hist__row' },
+      el('div', { className: 'hist__when' }, time(when)),
+      el('div', { className: 'hist__where' },
+        el('div', { className: 'hist__addr truncate' }, o.from || '—'),
+        el('div', { className: 'hist__addr truncate' }, o.to || '—'),
+        el('div', { className: 'muted t-xs truncate' },
+          [date(when), o.tariff, o.distance_m ? distance(o.distance_m) : null]
+            .filter(Boolean).join(' · '))),
+      el('div', { className: 'hist__pay' },
+        cancelled ? '—' : money(o.courier_payout || 0),
+        el('small', null, cancelled ? t('track.cancelled') : o.public_id)));
+  }
+
+  function paintList() {
+    if (!rows.length) {
+      moreBtn.hidden = true;
       list.replaceChildren(el('div', { className: 'empty' },
         el('div', { className: 'empty__icon', html: ICONS.hist }),
         el('div', { className: 'empty__title' }, t('courier.history_empty')),
-        el('div', { className: 'empty__text' }, t('courier.offline_hint'))));
+        el('div', { className: 'empty__text' }, t('earn.empty'))));
       return;
     }
-    list.replaceChildren(...items.map((o) => {
-      const when = o.done_at || o.cancelled_at || o.created_at;
-      const cancelled = o.status === 'cancelled';
-      return el('div', { className: 'list__row hist__row' },
-        el('div', { className: 'hist__when' }, time(when)),
-        el('div', { className: 'hist__where' },
-          el('div', { className: 'hist__addr truncate' }, o.from || '—'),
-          el('div', { className: 'hist__addr truncate' }, o.to || '—'),
-          el('div', { className: 'muted t-xs truncate' },
-            [date(when), o.tariff, o.distance_m ? distance(o.distance_m) : null]
-              .filter(Boolean).join(' · '))),
-        el('div', { className: 'hist__pay' },
-          cancelled ? '—' : money(o.courier_payout || 0),
-          el('small', null, cancelled ? t('track.cancelled') : o.public_id)));
-    }));
+    list.replaceChildren(...rows.slice(0, shown).map(row));
+    moreBtn.hidden = rows.length <= shown;
   }
 
   async function load() {
+    const my = ++seq;
     list.replaceChildren(el('div', { className: 'list__row' },
       el('div', { className: 'skeleton grow' })));
+    moreBtn.hidden = true;
     try {
-      const res = await api.get('/courier/orders', { period, per_page: 50 });
-      if (!alive) return;
-      paintSummary(res.summary || {});
-      paintList(res.items || []);
+      const main = await loadOrders({ period });
+      if (!alive || my !== seq) return;
+      paintSummary(main.summary);
+      rows = main.items;
+      shown = ROWS_STEP;
+      paintList();
+
+      // За «сегодня» один столбик ни о чём не говорит, поэтому график там
+      // показывает прошедшую неделю — сразу видно, какой сегодня день.
+      const range = chartRange(period);
+      const forChart = period === 'today'
+        ? (await loadOrders({ from: range.from })).items
+        : main.items;
+      if (!alive || my !== seq) return;
+      bars.set(daySeries(forChart, range.from, range.days));
     } catch (e) {
-      if (!alive) return;
+      if (!alive || my !== seq) return;
       list.replaceChildren(el('div', { className: 'empty' },
         el('div', { className: 'empty__title' }, t('err.load_failed')),
         el('button', {
@@ -3025,4 +4209,5 @@ export default {
   showOffer, createGeoTracker, startAlert, stopAlert, unlockAudio,
   chime, getSoundPrefs, setSoundPrefs, soundStatus, soundSettings, mountSoundSettings,
   handleStreamEvent, getTheme, applyTheme, bindPlate, ICONS,
+  markShift, shiftSeconds, getGoal, setGoal,
 };
