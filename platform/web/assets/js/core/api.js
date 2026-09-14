@@ -6,7 +6,11 @@
    на улице со слабым интернетом зависший экран злит сильнее любой ошибки.
 */
 
-const BASE = '/api/v1';
+// Сервис может стоять и в корне домена, и в подпапке (site.kg/go/). Префикс
+// подставляет сервер в window.SG_BASE — отсюда и берём, чтобы запросы не ушли
+// на чужой сайт, занимающий корень.
+const ROOT = (typeof window !== 'undefined' && window.SG_BASE) || '/';
+const BASE = ROOT + 'api/v1';
 const TOKEN_KEY = 'sg_token';
 const TIMEOUT_MS = 20000;
 

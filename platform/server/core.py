@@ -17,6 +17,12 @@ mimetypes.add_type('image/svg+xml', '.svg')
 LOG_LOCK = threading.Lock()
 
 
+def normalize_base(base):
+    """Приводит путь установки к виду «/» или «/go/»: со слешами с обеих сторон."""
+    b = '/' + (base or '').strip().strip('/')
+    return b if b == '/' else b + '/'
+
+
 def log(*parts):
     with LOG_LOCK:
         sys.stdout.write(time.strftime('[%d.%m %H:%M:%S] ') + ' '.join(str(p) for p in parts) + '\n')
@@ -228,18 +234,49 @@ HUB = Hub()
 
 # ─────────────────────────────────────────────────────────────── статика
 
+# Ссылки вида href="/assets/…" и src="/…" — но не "//host" и не "https://…"
+ABS_URL = re.compile(r'\b(href|src|content)="/(?!/)')
+
+
 class Static:
-    """Отдача файлов: gzip, ETag, разумный кэш. Сжатое держим в памяти — файлов мало."""
+    """Отдача файлов: gzip, ETag, разумный кэш. Сжатое держим в памяти — файлов мало.
+
+    Умеет отдавать сервис из подпапки. Если base не «/», все корневые ссылки в HTML
+    и в манифесте на лету получают префикс, а в страницу добавляется window.SG_BASE
+    для скриптов. Так один и тот же архив работает и на своём домене, и по адресу
+    вида site.kg/go/ — без пересборки и без правки исходников.
+    """
 
     GZIP_TYPES = ('text/', 'application/javascript', 'application/json',
                   'image/svg+xml', 'application/manifest+json')
     IMMUTABLE = ('.woff2', '.png', '.jpg', '.webp', '.ico')
 
-    def __init__(self, root, dev=False):
+    def __init__(self, root, dev=False, base='/'):
         self.root = os.path.abspath(root)
         self.dev = dev
+        self.base = normalize_base(base)
         self.cache = {}
         self.lock = threading.Lock()
+
+    def rebase(self, raw, ctype):
+        """Подставляет префикс установки в текстовые файлы, которым это нужно."""
+        if self.base == '/':
+            return raw
+        if ctype.startswith('text/html'):
+            text = raw.decode('utf-8')
+            text = ABS_URL.sub(lambda m: f'{m.group(1)}="{self.base}', text)
+            inject = f'<script>window.SG_BASE={json.dumps(self.base)}</script>'
+            # ставим первой строкой head, чтобы скрипты страницы уже видели префикс
+            if '<head>' in text:
+                text = text.replace('<head>', '<head>\n' + inject, 1)
+            else:
+                text = inject + text
+            return text.encode('utf-8')
+        if 'manifest' in ctype:
+            text = raw.decode('utf-8')
+            text = re.sub(r'"/(?!/)', '"' + self.base, text)
+            return text.encode('utf-8')
+        return raw
 
     def resolve(self, url_path):
         rel = unquote(url_path.lstrip('/')) or 'index.html'
@@ -264,6 +301,7 @@ class Static:
         ctype = mimetypes.guess_type(full)[0] or 'application/octet-stream'
         if ctype.startswith('text/') or ctype in ('application/javascript', 'application/json'):
             ctype += '; charset=utf-8'
+        raw = self.rebase(raw, ctype)
         gz = None
         if any(ctype.startswith(t) for t in self.GZIP_TYPES) and len(raw) > 900:
             gz = gzip.compress(raw, 6)
@@ -316,9 +354,10 @@ LIMIT = RateLimit()
 # ─────────────────────────────────────────────────────────────── приложение
 
 class App:
-    def __init__(self, static_root, dev=False):
+    def __init__(self, static_root, dev=False, base='/'):
         self.router = Router()
-        self.static = Static(static_root, dev)
+        self.base = normalize_base(base)
+        self.static = Static(static_root, dev, self.base)
         self.dev = dev
         self.pages = {}          # url -> файл, для SPA-маршрутов
         self.before = []         # функции (ctx) -> None, выполняются до обработчика

@@ -443,7 +443,8 @@ document.addEventListener('pointerdown', unlockAudio, { once: true, passive: tru
    всё равно открывается за мгновение, а запросы к API идут только в сеть. */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw-courier.js', { scope: '/courier' })
+    const root = window.SG_BASE || '/';
+    navigator.serviceWorker.register(root + 'sw-courier.js', { scope: root + 'courier' })
       .catch(() => { /* http без tls или приватный режим — просто работаем без кэша */ });
   });
 }

@@ -86,6 +86,16 @@ def db_path():
                            or os.path.join(data_dir(), 'sprintergo.sqlite3'))
 
 
+def install_base():
+    """Где сервис висит на домене. По умолчанию корень.
+
+    Если корень занят другим сайтом, ставим сервис в подпапку: SG_BASE=/go/.
+    Тогда nginx отдаёт /go/ сюда, а сервер сам подставляет префикс во все
+    ссылки страниц и манифеста. Пересобирать ничего не нужно.
+    """
+    return os.environ.get('SG_BASE') or '/'
+
+
 def web_dir():
     return os.path.abspath(os.environ.get('SG_WEB') or os.path.join(ROOT, 'web'))
 
@@ -108,7 +118,7 @@ def mount_routes(app):
 
 def build_app(dev=False):
     """Готовое приложение: маршруты API, страницы, статика и заголовки."""
-    app = App(web_dir(), dev=dev)
+    app = App(web_dir(), dev=dev, base=install_base())
     app.csp = CSP
     routes = mount_routes(app)
     for url, file in PAGES.items():
@@ -280,6 +290,8 @@ def main(argv=None):
     web = srv.socket.getsockname()
     log('Sprinter Go поднялся за %.2f с' % (time.monotonic() - started))
     log('слушаем %s:%s · маршрутов %d · база %s' % (web[0], web[1], routes, path))
+    if app.base != '/':
+        log('сервис отдаётся из подпапки %s — ссылки страниц получают этот префикс' % app.base)
     log('клиент http://localhost:%d/ · курьер /courier · панель /admin' % args.port)
     if args.dev:
         log('режим разработки: статика отдаётся без кэша, правки видны сразу')
