@@ -29,7 +29,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from server import auth, bonus, db, dispatch, mailer, settings   # noqa: E402
+from server import auth, bonus, db, dispatch, mailer, settings, share  # noqa: E402
 from server.core import HUB, App, log, serve                     # noqa: E402
 from server.routers import admin as admin_routes                 # noqa: E402
 from server.routers import auth as auth_routes                   # noqa: E402
@@ -118,6 +118,7 @@ def mount_routes(app):
     extra_routes.register(app)      # чат, профиль клиента, верификация, зоны спроса
     bonus.register(app)             # баланс, история, приглашения
     pay_routes.register(app)        # QR Оптимы, уведомление банка, реквизиты
+    share.register(app)             # карточка заказа для мессенджеров
     return len(app.router.routes)
 
 

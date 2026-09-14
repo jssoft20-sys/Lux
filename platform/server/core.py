@@ -137,6 +137,11 @@ class Router:
     def delete(self, p): return lambda fn: self.add('DELETE', p, fn)
 
     def match(self, method, path):
+        # HEAD — это тот же GET, только без тела. Робот мессенджера сначала
+        # спрашивает карточку заголовками, и если на HEAD ответить «нет такого»,
+        # превью он не покажет вовсе. Тело отрезают уже те, кто отвечает.
+        if method == 'HEAD':
+            method = 'GET'
         allowed = False
         for m, rx, names, fn in self.routes:
             hit = rx.match(path)
@@ -513,9 +518,13 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path.rstrip('/') or '/'
         try:
             if not path.startswith('/api/'):
-                if method in ('GET', 'HEAD'):
+                if method not in ('GET', 'HEAD'):
+                    raise ApiError('method_not_allowed', 'Метод не поддерживается', 405)
+                # Короткие адреса вроде /share/AB12CDEF — тоже маршруты, просто
+                # человеческие: такую ссылку не стыдно кинуть в чат. Сначала
+                # спрашиваем роутер, и только если там ничего нет — отдаём файл.
+                if self.app.router.match(method, path)[0] is None:
                     return self.serve_static(parsed.path)
-                raise ApiError('method_not_allowed', 'Метод не поддерживается', 405)
 
             length = int(self.headers.get('Content-Length') or 0)
             if length > self.MAX_BODY:
