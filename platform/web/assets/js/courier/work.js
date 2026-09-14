@@ -1,18 +1,147 @@
-/* Рабочие экраны курьера: смена, предложение заказа, заказ в работе,
-   история с деньгами и профиль. Плюс две служебные вещи, которые нужны
-   всему приложению, — слежение за геопозицией и звук предложения.
+/* Рабочие экраны курьера: смена, предложение заказа, заказ в работе и история
+   с деньгами. Плюс служебные вещи, которые нужны всему приложению, — слежение
+   за геопозицией, звук предложения, настройки этого звука и мост для событий
+   потока. Личный кабинет и проверка документов живут в auth.js, оттуда же
+   приходит переключатель звука; общий с ним ключ хранилища — sg_sound.
 
    Правило экранов простое: каждая функция render* получает пустой контейнер
    и возвращает функцию уборки. Всё, что она завела (карту, таймеры, подписки),
    она сама и гасит — иначе после десятка переходов телефон начнёт греться.
+
+   Четыре вещи здесь сделаны нарочно и требуют пояснения:
+
+   1. Заказ в работе — это карта во весь экран и панель снизу. Панель тянется
+      пальцем и сворачивается до заголовка с главной кнопкой, чтобы водитель
+      видел дорогу целиком. Сворачивается не переездом вниз, а сжатием списка:
+      кнопка «еду дальше» обязана оставаться под пальцем в любом положении.
+   2. Зоны спроса рисуются своим слоем на canvas поверх плиток: сорок мягких
+      розовых пятен перерисовываются на каждый сдвиг карты, и делать это
+      сорока элементами разметки было бы вдвое дороже.
+   3. Звук предложения синтезируется: три мягких тона по возрастанию с короткой
+      реверберацией. Файл сюда не кладём — он весит больше, чем весь модуль,
+      и на плохой сети приезжает уже после того, как заказ ушёл другому.
+   4. Чужой текст (сообщения клиента) попадает на страницу только через
+      textContent. innerHTML в этом файле встречается лишь для наших
+      собственных иконок, ни разу — для данных с сервера.
 */
 
 import { api, ApiError } from '../core/api.js';
-import { t, tp, getLang } from '../core/i18n.js';
+import { t, tp, getLang, extend } from '../core/i18n.js';
 import { money, moneyShort, distance, duration, time, date, phone as fmtPhone,
-  plate as fmtPlate, initials, num } from '../core/fmt.js';
+  initials, num } from '../core/fmt.js';
 import { el, toast, sheet, confirm as ask, haptic, spinner, mountStars } from '../core/ui.js';
 import { createMap, pin, distanceM } from '../core/map.js';
+
+/* ─────────────────────────────────────────────────────── свои строки
+
+   Общий словарь правят соседние модули, поэтому свои тексты экран везёт с
+   собой. Кыргызский — как говорят в Бишкеке: «заказ», «унаа», «жүкчү»,
+   «баасы», а не книжные кальки. */
+
+extend({
+  ru: {
+    'job.to_pickup_left': 'До погрузки',
+    'job.to_drop_left': 'До выгрузки',
+    'job.route_straight': 'по прямой',
+    'job.nav_ya': 'Яндекс Навигатор',
+    'job.nav_2gis': '2ГИС',
+    'job.nav_short_ya': 'Яндекс',
+    'job.open_nav': 'Открыть маршрут в навигаторе',
+    'job.panel_more': 'Развернуть панель',
+    'job.panel_less': 'Свернуть панель, чтобы видеть карту',
+    'job.fit': 'Показать весь маршрут',
+    'job.back': 'К смене',
+
+    'zone.hint': 'здесь сейчас больше заказов',
+    'zone.title': 'Повышенный спрос',
+
+    'snd.title': 'Звук нового заказа',
+    'snd.hint': 'Слышно за рулём, но не пугает',
+    'snd.volume': 'Громкость',
+    'snd.low': 'Тихо',
+    'snd.mid': 'Средне',
+    'snd.high': 'Громко',
+    'snd.test': 'Проверить звук',
+    'snd.ok': 'Звук работает',
+    'snd.off_note': 'Звук выключен — заказ придёт молча, только вибрацией',
+    'snd.blocked': 'Браузер ещё не разрешил звук. Нажмите «Проверить звук» — и он заработает',
+    'snd.blocked_btn': 'Включить звук',
+    'snd.none': 'Этот браузер не умеет играть звук — останется вибрация',
+    'snd.idle': 'Коснитесь экрана — после этого браузер разрешит звук',
+
+    'chat.title': 'Чат с клиентом',
+    'chat.ph': 'Сообщение клиенту',
+    'chat.send': 'Отправить',
+    'chat.empty': 'Здесь пока пусто. Напишите клиенту, если не можете найти адрес или подъезд.',
+    'chat.closed': 'Переписка по этому заказу закрыта',
+    'chat.sent': 'Отправлено',
+    'chat.read': 'Прочитано',
+    'chat.new': 'Новое сообщение от клиента',
+    'chat.unread': 'Непрочитанных: {n}',
+    'chat.load_fail': 'Не получилось загрузить переписку',
+
+    'rate.client': 'Оцените клиента',
+    'rate.hint': 'Оценку видят диспетчер и другие курьеры, клиенту она не уходит',
+    'rate.comment_ph': 'Пара слов о клиенте',
+    'rate.send': 'Отправить оценку',
+    'rate.skip': 'Пропустить',
+    'rate.need': 'Поставьте звёзды',
+    'rate.thanks': 'Спасибо, оценка ушла',
+    'rate.client_of': 'Клиент',
+    'rate.client_new': 'Новый клиент, оценок пока нет',
+  },
+  ky: {
+    'job.to_pickup_left': 'Жүк алганга чейин',
+    'job.to_drop_left': 'Жүк түшүргөнгө чейин',
+    'job.route_straight': 'түз сызык менен',
+    'job.nav_ya': 'Яндекс Навигатор',
+    'job.nav_2gis': '2ГИС',
+    'job.nav_short_ya': 'Яндекс',
+    'job.open_nav': 'Багытты навигатордон ачуу',
+    'job.panel_more': 'Панелди жайуу',
+    'job.panel_less': 'Картаны көрүш үчүн панелди жыйноо',
+    'job.fit': 'Бүт багытты көрсөтүү',
+    'job.back': 'Сменага',
+
+    'zone.hint': 'бул жерде азыр заказ көп',
+    'zone.title': 'Заказ көп жерлер',
+
+    'snd.title': 'Жаңы заказдын үнү',
+    'snd.hint': 'Рулда угулат, бирок чочутпайт',
+    'snd.volume': 'Үн катуулугу',
+    'snd.low': 'Акырын',
+    'snd.mid': 'Орто',
+    'snd.high': 'Катуу',
+    'snd.test': 'Үндү угуп көрүү',
+    'snd.ok': 'Үн иштеп жатат',
+    'snd.off_note': 'Үн өчүк — заказ үнсүз, дирилдөө менен гана келет',
+    'snd.blocked': 'Браузер үнгө уруксат берген жок. «Үндү угуп көрүү» баскычын бассаңыз, иштеп кетет',
+    'snd.blocked_btn': 'Үндү күйгүзүү',
+    'snd.none': 'Бул браузер үн ойнотпойт — дирилдөө гана калат',
+    'snd.idle': 'Экранды бир басыңыз — ошондон кийин браузер үнгө уруксат берет',
+
+    'chat.title': 'Клиент менен чат',
+    'chat.ph': 'Клиентке кабар',
+    'chat.send': 'Жиберүү',
+    'chat.empty': 'Азырынча бош. Дарек же подъезд табылбай жатса, клиентке жазып коюңуз.',
+    'chat.closed': 'Бул заказ боюнча жазышуу жабылды',
+    'chat.sent': 'Жиберилди',
+    'chat.read': 'Окулду',
+    'chat.new': 'Клиенттен жаңы кабар',
+    'chat.unread': 'Окулбагандары: {n}',
+    'chat.load_fail': 'Жазышууну жүктөй албадык',
+
+    'rate.client': 'Клиентти баалаңыз',
+    'rate.hint': 'Бааны диспетчер жана башка жүкчүлөр көрөт, клиентке барбайт',
+    'rate.comment_ph': 'Клиент жөнүндө бир-эки сөз',
+    'rate.send': 'Бааны жиберүү',
+    'rate.skip': 'Өткөрүп жиберүү',
+    'rate.need': 'Жылдызчаларды коюңуз',
+    'rate.thanks': 'Рахмат, баа жиберилди',
+    'rate.client_of': 'Клиент',
+    'rate.client_new': 'Жаңы клиент, баасы али жок',
+  },
+});
 
 /* ─────────────────────────────────────────────────────── иконки */
 
@@ -33,7 +162,411 @@ export const ICONS = {
   wallet: S('<path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H17a2 2 0 0 1 2 2v1.5"/><path d="M4 7.5v9A2.5 2.5 0 0 0 6.5 19H18a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H6.5A2.5 2.5 0 0 1 4 7.5z"/><circle cx="16.5" cy="14" r="1.1" fill="currentColor" stroke="none"/>'),
   out: S('<path d="M15 8.5V6.2a1.7 1.7 0 0 0-1.7-1.7H6.2A1.7 1.7 0 0 0 4.5 6.2v11.6a1.7 1.7 0 0 0 1.7 1.7h7.1a1.7 1.7 0 0 0 1.7-1.7V15"/><path d="M19.5 12H9.8m9.7 0-3-3m3 3-3 3"/>'),
   box: S('<rect x="4" y="4.8" width="16" height="14.4" rx="2.2"/><path d="M8.5 4.8v14.4M4 10h16"/>'),
+  chat: S('<path d="M4.6 12.3c0-4 3.4-7.2 7.6-7.2s7.6 3.2 7.6 7.2-3.4 7.2-7.6 7.2c-1 0-1.9-.1-2.8-.4l-4 1.2 1.1-3.4a6.9 6.9 0 0 1-1.9-4.6z"/>'),
+  send: S('<path d="M20.4 3.6 3.8 10.3l6.6 2.9 2.9 6.6z"/><path d="m10.4 13.2 10-9.6"/>'),
+  back: S('<path d="M14.8 5.5 8.3 12l6.5 6.5"/>'),
+  fit: S('<circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v3.2M12 18v3.2M2.8 12H6M18 12h3.2"/>'),
+  vol: S('<path d="M5 9.4h3.2L12 6v12l-3.8-3.4H5z"/><path d="M15.8 9.4a3.8 3.8 0 0 1 0 5.2M18.4 6.9a7.4 7.4 0 0 1 0 10.2"/>'),
+  mute: S('<path d="M5 9.4h3.2L12 6v12l-3.8-3.4H5z"/><path d="m16 9.6 4.4 4.8M20.4 9.6 16 14.4"/>'),
 };
+
+/* Иконка отдельным узлом, без обёртки. Общие стили пишут правила на прямого
+   потомка («.btn > svg», «.pill > svg»), и лишний <span> вокруг иконки их
+   отключает — значок молча схлопывается в ничто. */
+function ico(markup) {
+  const box = document.createElement('div');
+  box.innerHTML = markup;
+  const node = box.firstElementChild;
+  if (node) node.classList.add('sg-ico');
+  return node;
+}
+
+/* ─────────────────────────────────────────────────────── свои стили
+
+   Карта заказа, зоны спроса, чат и оценка живут только здесь, поэтому и
+   правила везут с собой: в courier.css их пришлось бы искать через файл,
+   который правят соседние модули. Цвета — из токенов, кроме розового:
+   зона спроса одинаково читается и на светлой, и на тёмной карте. */
+
+const OWN_CSS = `
+/* Размер иконки по умолчанию. Правила общих стилей («.btn > svg» и прочие)
+   специфичнее и перебивают его там, где у иконки свой размер. */
+.sg-ico { flex: none; width: 20px; height: 20px; }
+
+/* ── зоны повышенного спроса ───────────────────────────────────────────── */
+
+.sg-zones {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-map);
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-3) var(--ease);
+}
+.sg-zones.is-on { opacity: 1; }
+
+.sg-zhint {
+  position: absolute;
+  left: var(--sp-3);
+  top: var(--sp-3);
+  z-index: var(--z-ui);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: calc(100% - 88px);
+  padding: 6px var(--sp-3) 6px var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity var(--dur-3) var(--ease), transform var(--dur-3) var(--ease);
+}
+.sg-zhint.is-on { opacity: 1; transform: none; }
+
+.sg-zhint__dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255, 72, 138, .9);
+  box-shadow: 0 0 0 4px rgba(255, 72, 138, .22);
+}
+
+/* ── заказ во весь экран ───────────────────────────────────────────────── */
+
+/* Список внутри панели меняет высоту пальцем, поэтому растягиваться сам
+   по содержимому он не должен: высоту ему ставит скрипт. */
+.job--full .job__scroll {
+  flex: 0 1 auto;
+  transition: height var(--dur-2) var(--ease);
+}
+.job--full.is-drag .job__scroll { transition: none; }
+.job--full .job__scroll.is-shut { padding-block: 0; }
+
+/* Грип в courier.css тонкий, 26 px, — пальцем за рулём в него не попасть.
+   На этом экране он единственная ручка панели, поэтому даём полные 44 px. */
+.job--full .job__grip {
+  height: 44px;
+  touch-action: none;
+}
+
+.sg-head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-4) var(--sp-3);
+  touch-action: none;
+}
+
+.sg-eta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.sg-eta > svg { flex: none; width: 16px; height: 16px; }
+.sg-eta b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.sg-navs { display: flex; gap: var(--sp-2); }
+.sg-navs .btn { flex: 1 1 0; min-width: 0; min-height: 44px; }
+
+/* Круглой кнопке «назад» из courier.css размер значка не задан — задаём здесь,
+   иначе стрелка растягивается на всю кнопку. */
+.job--full .job__close > svg { width: 22px; height: 22px; }
+
+.sg-fit {
+  position: absolute;
+  top: calc(var(--safe-t) + var(--sp-3));
+  right: var(--sp-3);
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-2);
+}
+.sg-fit:active { transform: scale(.94); }
+.sg-fit > svg { width: 22px; height: 22px; }
+
+/* ── рейтинг клиента в карточке ────────────────────────────────────────── */
+
+.sg-crate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.sg-crate .stars svg { width: 13px; height: 13px; }
+.sg-crate b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* ── кнопка чата и счётчик непрочитанных ───────────────────────────────── */
+
+.sg-chatbtn { position: relative; overflow: visible; }
+
+.sg-unread {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--r-full);
+  background: var(--err);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ── чат с клиентом ────────────────────────────────────────────────────── */
+
+.sg-chat {
+  position: fixed;
+  inset: 0;
+  /* --sg-kb — высота экранной клавиатуры: без неё поле ввода уезжает под неё */
+  bottom: var(--sg-kb, 0px);
+  z-index: var(--z-modal);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  opacity: 0;
+  transform: translateY(14px);
+  pointer-events: none;
+  transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease);
+}
+.sg-chat--in { opacity: 1; transform: none; pointer-events: auto; }
+
+.sg-chat__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: calc(var(--safe-t) + var(--sp-2)) var(--sp-3) var(--sp-2);
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface);
+}
+
+.sg-chat__who { flex: 1 1 auto; min-width: 0; }
+
+.sg-chat__name {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+}
+
+.sg-chat__sub {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.sg-chat__x,
+.sg-chat__call {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-full);
+  color: var(--text);
+}
+.sg-chat__call { background: var(--ok-soft); color: var(--ok); }
+.sg-chat__x:active,
+.sg-chat__call:active { transform: scale(.92); }
+.sg-chat__x > svg,
+.sg-chat__call > svg { width: 22px; height: 22px; }
+
+.sg-chat__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: var(--sp-3) var(--sp-3) var(--sp-4);
+}
+
+.sg-chat__day {
+  align-self: center;
+  padding: 2px var(--sp-3);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.sg-chat__empty {
+  margin: auto;
+  max-width: 30ch;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  text-align: center;
+}
+
+.sg-msg {
+  max-width: 84%;
+  align-self: flex-start;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md) var(--r-md) var(--r-md) var(--r-xs);
+  background: var(--surface-2);
+  animation: sg-msg-in var(--dur-2) var(--ease) both;
+}
+.sg-msg--mine {
+  align-self: flex-end;
+  border-radius: var(--r-md) var(--r-md) var(--r-xs) var(--r-md);
+  background: var(--accent-soft);
+}
+
+@keyframes sg-msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.sg-msg__text {
+  display: block;
+  font-size: var(--fs-body);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sg-msg__meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sg-msg__tick { letter-spacing: -3px; color: var(--muted-2); }
+.sg-msg__tick.is-read { color: var(--info); }
+
+.sg-chat__note {
+  flex: none;
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  text-align: center;
+}
+
+.sg-chat__form {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3) calc(var(--sp-2) + var(--safe-b));
+  border-top: 1px solid var(--line-soft);
+  background: var(--surface);
+}
+
+.sg-chat__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  max-height: 122px;
+  padding: 11px var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-text);
+  font-size: 16px;
+  line-height: 1.35;
+  resize: none;
+}
+.sg-chat__input:focus { border-color: var(--accent-line); outline: none; }
+.sg-chat__input::placeholder { color: var(--muted-2); }
+
+.sg-chat__send {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--on-accent);
+  transition: transform var(--dur-1) var(--ease), opacity var(--dur-1) var(--ease);
+}
+.sg-chat__send:disabled { opacity: .4; }
+.sg-chat__send:active:not(:disabled) { transform: scale(.92); }
+.sg-chat__send > svg { width: 20px; height: 20px; }
+
+/* ── оценка клиента ────────────────────────────────────────────────────── */
+
+.sg-rate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line-soft);
+}
+
+.sg-rate__title { font-family: var(--font-display); font-weight: 700; }
+
+.sg-rate__hint {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  text-align: center;
+}
+
+/* ── звук в профиле ────────────────────────────────────────────────────── */
+
+.sg-snd {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+}
+
+.sg-snd__body { flex: 1 1 auto; min-width: 0; }
+.sg-snd__k { font-weight: 600; }
+.sg-snd__note { color: var(--muted); font-size: var(--fs-xs); line-height: 1.4; }
+.sg-snd__warn { color: var(--warn); font-size: var(--fs-xs); line-height: 1.4; }
+`;
+
+let cssDone = false;
+
+function ensureCss() {
+  if (cssDone || typeof document === 'undefined' || !document.head) return;
+  cssDone = true;
+  document.head.appendChild(el('style', { id: 'sg-work-css', text: OWN_CSS }));
+}
 
 /* ─────────────────────────────────────────────────────── тема */
 
@@ -69,11 +602,59 @@ function mapTheme() {
 
 /* ─────────────────────────────────────────────────────── звук предложения */
 
-/* Звук синтезируем, а не грузим файлом: один короткий двойной сигнал весит
-   ноль байт, звучит одинаково везде и не ждёт загрузки на плохой сети. */
+/* Звук синтезируем, а не грузим файлом: короткий перезвон весит ноль байт,
+   звучит одинаково везде и не ждёт загрузки на плохой сети.
+
+   Что играет: три тона по возрастанию (ми — соль-диез — си), мягкая атака,
+   короткий «зал» на свёртке. Такой сигнал слышно сквозь музыку в машине,
+   но он не бьёт по нервам, как сирена, — водитель за рулём. */
+
+/* Включение звука лежит в том же ключе, что читает профиль в auth.js:
+   строка 'on' или 'off'. Формат чужой, но общий — иначе переключатель в
+   профиле и сигнал здесь разошлись бы, и водитель остался бы без звука,
+   будучи уверенным в обратном. Громкость нужна только здесь, поэтому у неё
+   свой ключ. */
+const SOUND_KEY = 'sg_sound';
+const VOL_KEY = 'sg_sound_vol';
+const LEVELS = { low: 0.16, mid: 0.32, high: 0.58 };
+const TONES = [659.25, 830.61, 987.77];     // ми, соль-диез, си пятой октавы
+const ALERT_TIMES = 3;                      // столько раз повторяем, пока живо предложение
+const ALERT_GAP_MS = 2000;
+const BUZZ = [0, 90, 70, 90, 70, 170];      // вибрация в такт перезвону
 
 let ctxAudio = null;
+let audioBus = null;
 let alertTimer = 0;
+
+function readSound() {
+  const out = { on: true, level: 'mid' };
+  try {
+    out.on = localStorage.getItem(SOUND_KEY) !== 'off';
+    const level = localStorage.getItem(VOL_KEY);
+    if (level && LEVELS[level]) out.level = level;
+  } catch (e) { /* хранилище закрыто — пусть лучше звенит */ }
+  return out;
+}
+
+/** Настройки звука: {on, level}. Помним между запусками.
+ *  Имена нарочно длиннее привычных: короткие getSound/setSound уже заняты
+ *  профилем в auth.js, и одинаковые имена в двух модулях однажды столкнутся
+ *  в одном импорте. Ключ хранилища при этом общий, значения — тоже. */
+export function getSoundPrefs() {
+  return readSound();
+}
+
+export function setSoundPrefs(patch) {
+  const next = Object.assign(readSound(), patch || {});
+  if (!LEVELS[next.level]) next.level = 'mid';
+  next.on = !!next.on;
+  try {
+    localStorage.setItem(SOUND_KEY, next.on ? 'on' : 'off');
+    localStorage.setItem(VOL_KEY, next.level);
+  } catch (e) { /* переживём: настройка продержится до перезагрузки */ }
+  if (audioBus) audioBus.master.gain.value = LEVELS[next.level];
+  return next;
+}
 
 function audio() {
   if (ctxAudio) return ctxAudio;
@@ -87,45 +668,128 @@ function audio() {
   return ctxAudio;
 }
 
-/** Браузер разрешает звук только после касания — цепляемся за первое же. */
+/* Комнатка для перезвона: шум с затуханием вместо записанного зала. Секунда
+   такого шума звучит как небольшое помещение и считается один раз за запуск. */
+function roomBuffer(ac) {
+  const len = Math.floor(ac.sampleRate * 0.9);
+  const buf = ac.createBuffer(2, len, ac.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) {
+      const x = i / len;
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - x, 3.4) * 0.7;
+    }
+  }
+  return buf;
+}
+
+function bus() {
+  const ac = audio();
+  if (!ac) return null;
+  if (audioBus) return audioBus;
+  const master = ac.createGain();
+  master.gain.value = LEVELS[readSound().level];
+  master.connect(ac.destination);
+
+  const dry = ac.createGain();
+  dry.gain.value = 0.82;
+  dry.connect(master);
+
+  const wet = ac.createGain();
+  wet.gain.value = 0.36;
+  wet.connect(master);
+
+  let room = null;
+  try {
+    room = ac.createConvolver();
+    room.buffer = roomBuffer(ac);
+    room.connect(wet);
+  } catch (e) {
+    room = null;                 // без свёртки просто останется сухой сигнал
+  }
+
+  const input = ac.createGain();
+  input.connect(dry);
+  if (room) input.connect(room);
+
+  audioBus = { master, input };
+  return audioBus;
+}
+
+/** Браузер разрешает звук только после касания — цепляемся за первое же.
+ *  Возвращает промис: true, если контекст ожил. */
 export function unlockAudio() {
   const ac = audio();
-  if (ac && ac.state === 'suspended') ac.resume().catch(() => {});
+  if (!ac) return Promise.resolve(false);
+  bus();
+  if (ac.state === 'running') return Promise.resolve(true);
+  return ac.resume().then(() => ac.state === 'running', () => false);
 }
 
-function beep() {
+/** Что со звуком прямо сейчас: 'none' | 'off' | 'idle' | 'blocked' | 'ok'. */
+export function soundStatus() {
+  if (!(window.AudioContext || window.webkitAudioContext)) return 'none';
+  if (!readSound().on) return 'off';
+  if (!ctxAudio) return 'idle';
+  return ctxAudio.state === 'running' ? 'ok' : 'blocked';
+}
+
+/** Один перезвон. force=true — проиграть, даже если звук выключен (проверка). */
+export function chime(force) {
+  const settings = readSound();
+  if (!settings.on && !force) return false;
   const ac = audio();
-  if (!ac || ac.state !== 'running') return;
-  const now = ac.currentTime;
-  // Две ноты подряд, вторая выше: так сигнал слышно даже сквозь музыку в машине.
-  for (const [at, hz] of [[0, 880], [0.16, 1320]]) {
+  const b = bus();
+  if (!ac || !b) return false;
+  if (ac.state !== 'running') {
+    ac.resume().catch(() => {});
+    if (ac.state !== 'running') return false;
+  }
+  b.master.gain.value = LEVELS[settings.level];
+  const t0 = ac.currentTime + 0.03;
+  for (let i = 0; i < TONES.length; i++) {
+    const at = t0 + i * 0.15;
     const osc = ac.createOscillator();
     const gain = ac.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(hz, now + at);
-    gain.gain.setValueAtTime(0.0001, now + at);
-    gain.gain.exponentialRampToValueAtTime(0.32, now + at + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 0.14);
-    osc.connect(gain).connect(ac.destination);
-    osc.start(now + at);
-    osc.stop(now + at + 0.16);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(TONES[i], at);
+    // Мягкая атака и длинный хвост: щелчка в начале нет, звук «дышит».
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(i === 2 ? 0.9 : 0.62, at + 0.035);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.55);
+    osc.connect(gain).connect(b.input);
+    osc.start(at);
+    osc.stop(at + 0.62);
   }
+  return true;
 }
 
-/** Сигнал о новом заказе: звук и вибрация, пока человек не ответил. */
+function buzz() {
+  if (!navigator.vibrate) return;
+  try { navigator.vibrate(BUZZ); } catch (e) { /* вибрация выключена настройками */ }
+}
+
+/** Сигнал о новом заказе: перезвон и вибрация, трижды, пока живо предложение. */
 export function startAlert() {
   stopAlert();
-  unlockAudio();
-  let left = 10;
+  let left = ALERT_TIMES;
   const tick = () => {
-    beep();
-    if (navigator.vibrate) {
-      try { navigator.vibrate([0, 320, 140, 320]); } catch (e) { /* выключена */ }
-    }
+    chime();
+    buzz();
     if (--left <= 0) stopAlert();
   };
-  tick();
-  alertTimer = setInterval(tick, 1800);
+  // Первый сигнал — сразу, но после попытки разбудить звук: если браузер ещё
+  // не разрешал его, перезвон пропадёт, а вибрация останется. Со звуком,
+  // выключенным в профиле, звуковой движок не заводим вовсе — только трясём.
+  if (readSound().on) {
+    unlockAudio().then(() => {
+      if (!alertTimer) return;      // на предложение уже успели ответить
+      tick();
+    });
+  } else {
+    tick();
+  }
+  alertTimer = setInterval(tick, ALERT_GAP_MS);
 }
 
 export function stopAlert() {
@@ -134,6 +798,39 @@ export function stopAlert() {
   if (navigator.vibrate) {
     try { navigator.vibrate(0); } catch (e) { /* выключена */ }
   }
+}
+
+/* ─────────────────────────────────────────────────────── мост событий потока
+
+   Поток курьера один на всё приложение, и держит его app.js. Сюда события
+   приходят двумя дорогами: прямым вызовом handleStreamEvent из app.js либо
+   событием 'sg:stream' на документе. Обе ведут в один список подписчиков,
+   поэтому экранам всё равно, какую выбрал сосед. */
+
+const streamSubs = new Set();
+
+export function handleStreamEvent(name, data) {
+  if (!name) return;
+  for (const fn of Array.from(streamSubs)) {
+    try {
+      fn(name, data);
+    } catch (e) {
+      console.error('[courier] обработчик события «' + name + '» упал', e);
+    }
+  }
+}
+
+function onStream(fn) {
+  if (typeof fn !== 'function') return () => {};
+  streamSubs.add(fn);
+  return () => streamSubs.delete(fn);
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('sg:stream', (e) => {
+    const d = e && e.detail;
+    if (d) handleStreamEvent(d.name, d.data);
+  });
 }
 
 /* ─────────────────────────────────────────────────────── геопозиция */
@@ -265,14 +962,8 @@ function tile(key, value, mod) {
     el('div', { className: 'tile__v' }, value));
 }
 
-function kv(key, value) {
-  return el('div', { className: 'me__kv' },
-    el('span', { className: 'me__k' }, key),
-    el('span', { className: 'me__v' }, value));
-}
-
 function pill(icon, text) {
-  return el('span', { className: 'pill' }, el('span', { html: icon }), text);
+  return el('span', { className: 'pill' }, ico(icon), text);
 }
 
 /* Ссылка в навигатор: схема geo: открывает то приложение, которым человек
@@ -321,12 +1012,12 @@ function pointRow(p, index, count, full) {
     const tel = telHref(p.phone);
     if (tel) {
       acts.appendChild(el('a', { className: 'btn btn--ghost btn--sm', href: tel },
-        el('span', { html: ICONS.phone }), t('common.call')));
+        ico(ICONS.phone), t('common.call')));
     }
     const nav = navHref(p);
     if (nav) {
       acts.appendChild(el('a', { className: 'btn btn--ghost btn--sm', href: nav },
-        el('span', { html: ICONS.nav }), t('courier.navigate')));
+        ico(ICONS.nav), t('courier.navigate')));
     }
     if (acts.children.length) body.appendChild(acts);
   }
@@ -381,6 +1072,25 @@ function clock(seconds) {
   return h ? h + ':' + two(m) + ':' + two(s) : two(m) + ':' + two(s);
 }
 
+/* Рейтинг клиента строкой: звёзды, цифра и сколько у него заказов.
+   Курьер должен видеть, с кем едет, ещё до того, как нажмёт «Принять». */
+function clientRating(client) {
+  if (!client) return null;
+  const box = el('div', { className: 'sg-crate' });
+  if (client.rating == null) {
+    box.appendChild(el('span', null, t('rate.client_new')));
+    return box;
+  }
+  const stars = el('span');
+  box.appendChild(stars);
+  box.appendChild(el('b', null, String(client.rating).replace('.', ',')));
+  if (client.orders_count) {
+    box.appendChild(el('span', null, '· ' + tp(client.orders_count, 'common.n_order')));
+  }
+  mountStars(stars, { value: client.rating, readonly: true });
+  return box;
+}
+
 /* ─────────────────────────────────────────────────────── карта */
 
 function makeMap(node, config, opts = {}) {
@@ -396,15 +1106,111 @@ function makeMap(node, config, opts = {}) {
   }, opts));
 }
 
+/* ─────────────────────────────────────────────────────── зоны спроса
+
+   Сервер отдаёт сетку ячеек с уровнем спроса от нуля до единицы. Рисуем их
+   мягкими розовыми пятнами: квадраты с чёткими границами читались бы как
+   запретная зона, а это подсказка «здесь чаще заказывают», не более. */
+
+const ZONES_TTL_MS = 60000;
+const ZONE_INK = '255, 72, 138';
+
+let zonesCache = { at: 0, data: null };
+
+function createZones(map, node) {
+  const cv = el('canvas', { className: 'sg-zones', 'aria-hidden': 'true' });
+  const hint = el('div', {
+    className: 'sg-zhint', role: 'status',
+    'aria-label': t('zone.title') + ': ' + t('zone.hint'),
+  }, el('span', { className: 'sg-zhint__dot' }), el('span', null, t('zone.hint')));
+  node.appendChild(cv);
+  node.appendChild(hint);
+
+  let data = null;
+  let off = null;
+
+  function draw() {
+    const gc = cv.getContext ? cv.getContext('2d') : null;
+    if (!gc) return;
+    const rect = node.getBoundingClientRect();
+    const w = Math.max(1, Math.round(rect.width));
+    const h = Math.max(1, Math.round(rect.height));
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+      cv.width = Math.round(w * dpr);
+      cv.height = Math.round(h * dpr);
+    }
+    gc.setTransform(dpr, 0, 0, dpr, 0, 0);
+    gc.clearRect(0, 0, w, h);
+
+    const cells = (data && data.cells) || [];
+    if (!cells.length) return;
+
+    // Размер ячейки в пикселях меряем один раз за отрисовку: по городу
+    // масштаб не меняется, а на каждую ячейку это лишние два пересчёта.
+    const dlat = Number(data.cell_lat) || 0.0063;
+    const dlng = Number(data.cell_lng) || 0.0086;
+    const c = map.getCenter();
+    const a = map.containerPoint([c[0] - dlat / 2, c[1] - dlng / 2]);
+    const b = map.containerPoint([c[0] + dlat / 2, c[1] + dlng / 2]);
+    const r = Math.max(28, Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y)) * 0.8);
+
+    for (const cell of cells) {
+      if (cell.lat == null || cell.lng == null) continue;
+      const p = map.containerPoint([cell.lat, cell.lng]);
+      if (p.x < -r || p.y < -r || p.x > w + r || p.y > h + r) continue;
+      const level = Math.max(0.12, Math.min(1, Number(cell.level) || 0));
+      // Пятно должно читаться как подсказка, а не как заливка: на приближённой
+      // карте одна ячейка занимает пол-экрана, и густой розовый съел бы улицы.
+      const alpha = 0.08 + 0.2 * level;
+      const g = gc.createRadialGradient(p.x, p.y, r * 0.12, p.x, p.y, r);
+      g.addColorStop(0, 'rgba(' + ZONE_INK + ', ' + alpha.toFixed(3) + ')');
+      g.addColorStop(0.55, 'rgba(' + ZONE_INK + ', ' + (alpha * 0.5).toFixed(3) + ')');
+      g.addColorStop(1, 'rgba(' + ZONE_INK + ', 0)');
+      gc.fillStyle = g;
+      gc.beginPath();
+      gc.arc(p.x, p.y, r, 0, Math.PI * 2);
+      gc.fill();
+    }
+  }
+
+  off = map.on('move', draw);
+
+  let sizes = null;
+  if (typeof ResizeObserver === 'function') {
+    sizes = new ResizeObserver(() => draw());
+    sizes.observe(node);
+  }
+
+  return {
+    /** Новые данные с сервера. null — спрятать слой совсем. */
+    set(next) {
+      data = next && Array.isArray(next.cells) && next.cells.length ? next : null;
+      cv.classList.toggle('is-on', !!data);
+      hint.classList.toggle('is-on', !!data);
+      draw();
+    },
+    destroy() {
+      if (off) off();
+      if (sizes) sizes.disconnect();
+      cv.remove();
+      hint.remove();
+    },
+  };
+}
+
 /* ─────────────────────────────────────────────────────── экран смены */
 
 /**
- * Смена: переключатель «на линии», карта со своей позицией и итоги дня.
- * ctx = {store, go, tracker, refresh}.
+ * Смена: переключатель «на линии», карта со своей позицией, зоны спроса
+ * и итоги дня. ctx = {store, go, tracker, refresh}.
  */
 export function renderShift(root, ctx) {
+  ensureCss();
   const state = ctx.store.get();
   const stop = [];
+  let alive = true;
+  stop.push(() => { alive = false; });
 
   const lamp = el('span', { className: 'shift__lamp' });
   const title = el('span', { className: 'shift__state' });
@@ -414,12 +1220,17 @@ export function renderShift(root, ctx) {
   const mapNode = el('div', { className: 'shift__map' });
   const tilesBox = el('div', { className: 'tiles' });
 
+  // Звук живёт здесь же, на экране смены: именно отсюда водитель уходит ждать
+  // заказ, и именно здесь важно знать, услышит он его или нет.
   root.replaceChildren(el('div', { className: 'shift' },
-    toggle, geoBox, mapNode, tilesBox));
+    toggle, geoBox, mapNode, tilesBox, soundSettings()));
 
   /* ── карта и своя точка ── */
   const map = makeMap(mapNode, state.config, { locate: false });
   stop.push(() => map.destroy());
+
+  const zones = createZones(map, mapNode);
+  stop.push(() => zones.destroy());
 
   let me = null;
   const putMe = (at, heading) => {
@@ -432,6 +1243,50 @@ export function renderShift(root, ctx) {
     }
   };
   putMe(ctx.tracker.at() || state.at, ctx.tracker.heading());
+
+  /* ── зоны спроса ──────────────────────────────────────────────────────
+     Спрашиваем сервер раз в минуту и только пока курьер на линии и свободен:
+     в заказе эта карта ему не нужна, а трафик и батарею тратит. */
+  let zoneTimer = 0;
+
+  function zonesWanted() {
+    const s = ctx.store.get();
+    return !!s.online && !s.order;
+  }
+
+  async function pullZones(fresh) {
+    if (!alive || !zonesWanted()) return;
+    if (!fresh && zonesCache.data && Date.now() - zonesCache.at < ZONES_TTL_MS) {
+      zones.set(zonesCache.data);
+      return;
+    }
+    try {
+      const data = await api.get('/courier/zones');
+      zonesCache = { at: Date.now(), data };
+      if (alive && zonesWanted()) zones.set(data);
+    } catch (e) {
+      // Зоны — подсказка, а не работа: молчим и попробуем через минуту.
+    }
+  }
+
+  function syncZones() {
+    if (zoneTimer) clearInterval(zoneTimer);
+    zoneTimer = 0;
+    if (!zonesWanted()) {
+      zones.set(null);
+      return;
+    }
+    pullZones(false);
+    zoneTimer = setInterval(() => {
+      if (document.visibilityState !== 'hidden') pullZones(true);
+    }, ZONES_TTL_MS);
+  }
+
+  stop.push(() => { if (zoneTimer) clearInterval(zoneTimer); });
+
+  const onShow = () => { if (document.visibilityState === 'visible') pullZones(false); };
+  document.addEventListener('visibilitychange', onShow);
+  stop.push(() => document.removeEventListener('visibilitychange', onShow));
 
   /* ── переключатель ── */
   function paint() {
@@ -452,7 +1307,9 @@ export function renderShift(root, ctx) {
           el('b', null, t('courier.geo_off')),
           el('div', null, t('courier.geo_hint'))),
         el('button', {
-          className: 'btn btn--sm btn--ghost',
+          // Не btn--sm: без геопозиции заказы не приходят вовсе, и промахнуться
+          // мимо этой кнопки на ходу нельзя.
+          className: 'btn btn--ghost',
           type: 'button',
           onClick: () => ctx.tracker.request(),
         }, t('courier.geo_retry')));
@@ -464,6 +1321,7 @@ export function renderShift(root, ctx) {
     const next = !ctx.store.get().online;
     haptic(next ? [12, 40, 18] : 12);
     spinner(toggle, true);
+    unlockAudio();          // заодно первое касание разрешает звук предложений
     try {
       const res = await api.post('/courier/online', { online: next });
       ctx.store.set({
@@ -480,6 +1338,7 @@ export function renderShift(root, ctx) {
     } finally {
       spinner(toggle, false);
       paint();
+      syncZones();
     }
   });
 
@@ -502,13 +1361,16 @@ export function renderShift(root, ctx) {
 
   paint();
   paintStats();
+  syncZones();
 
   stop.push(ctx.store.on(() => { paint(); paintStats(); }));
+  stop.push(ctx.store.select((s) => s.online, () => syncZones()));
+  stop.push(ctx.store.select((s) => s.order, () => syncZones()));
   stop.push(ctx.onFix((point) => putMe([point.lat, point.lng], point.heading)));
 
   // Свежие цифры по смене: экран смены открывают как раз затем, чтобы их увидеть.
   api.get('/courier/stats', { period: 'today' })
-    .then((s) => ctx.store.set({ stats: s }))
+    .then((s) => { if (alive) ctx.store.set({ stats: s }); })
     .catch(() => { /* показываем прочерки, тост здесь только помешает */ });
 
   return () => { for (const fn of stop) fn(); };
@@ -524,6 +1386,7 @@ const RING_C = 2 * Math.PI * RING_R;
  * Возвращает {close}. onAnswer('accept'|'skip'|'gone') зовётся один раз.
  */
 export function showOffer(box, offer, ctx, onAnswer) {
+  ensureCss();
   const order = offer.order || {};
   const points = order.points || [];
   const lang = getLang();
@@ -585,10 +1448,38 @@ export function showOffer(box, offer, ctx, onAnswer) {
       t('order.price_total') + ': ' + money(order.price_total || 0)));
 
   const body = el('div', { className: 'offer__body' }, head, pay, facts, rows);
+
+  // С кем ехать — видно до того, как палец нажмёт «Принять».
+  const rate = clientRating(order.client);
+  if (rate) {
+    rate.style.marginTop = 'var(--sp-3)';
+    body.appendChild(rate);
+  }
   if (order.comment) {
     body.appendChild(el('div', { className: 'point__note', style: { marginTop: 'var(--sp-4)' } },
       t('courier.client_comment') + ': ' + order.comment));
   }
+
+  // Если браузер ещё не разрешил звук, честно говорим об этом здесь же:
+  // предложение — единственное место, где тишина стоит денег. Ответ узнаём
+  // после попытки разбудить контекст, а не гадаем заранее.
+  const wake = el('button', {
+    className: 'btn btn--ghost btn--block',
+    type: 'button',
+    hidden: true,
+    style: { marginTop: 'var(--sp-3)' },
+    onClick: async () => {
+      const ok = await unlockAudio();
+      if (ok) {
+        chime(true);
+        wake.hidden = true;
+      } else {
+        toast(t('snd.blocked'), { type: 'warn', ms: 5000 });
+      }
+    },
+  }, ico(ICONS.vol), t('snd.blocked_btn'));
+  body.appendChild(wake);
+  unlockAudio().then((ok) => { wake.hidden = ok || !readSound().on; });
 
   box.replaceChildren(body, el('div', { className: 'offer__foot' }, skip, ring));
   box.setAttribute('role', 'dialog');
@@ -659,6 +1550,333 @@ export function showOffer(box, offer, ctx, onAnswer) {
   return { close: (how) => finish(how || 'gone'), offerId: offer.offer_id };
 }
 
+/* ─────────────────────────────────────────────────────── чат с клиентом
+
+   Переписка живёт в модуле, а не в экране: курьер уходит в историю и
+   возвращается, а сообщения должны остаться на месте, без повторной загрузки.
+   Живые сообщения приходят событием 'message' из потока курьера; опрос раз в
+   несколько секунд оставлен запасным путём — на случай, если поток лёг. */
+
+const CHAT_POLL_OPEN_MS = 12000;
+const CHAT_POLL_IDLE_MS = 45000;
+const CHAT_POLL_LIVE_MS = 70000;
+const CHAT_KEEP = 4;                 // переписок в памяти: старые заказы уже закрыты
+
+const chats = new Map();
+
+function chatOf(orderId) {
+  let c = chats.get(orderId);
+  if (!c) {
+    c = {
+      items: [], ids: new Set(), unread: 0, lastId: 0,
+      canSend: true, note: '', maxText: 1000, loaded: false, live: false,
+    };
+    chats.set(orderId, c);
+    while (chats.size > CHAT_KEEP) {
+      const oldest = chats.keys().next().value;
+      if (oldest === orderId) break;
+      chats.delete(oldest);
+    }
+  }
+  return c;
+}
+
+/* Сообщение в наш вид. Повтор из потока не задваивается: id уже известен. */
+function chatPush(c, raw) {
+  if (!raw || raw.id === undefined || raw.id === null) return null;
+  const id = Number(raw.id);
+  if (c.ids.has(id)) {
+    const was = c.items.find((m) => m.id === id);
+    if (was && raw.read_at && !was.read_at) was.read_at = raw.read_at;
+    return null;
+  }
+  const msg = {
+    id,
+    mine: raw.mine === undefined ? raw.sender === 'courier' : !!raw.mine,
+    text: String(raw.text || ''),
+    at: Number(raw.at) || 0,
+    read_at: raw.read_at || null,
+  };
+  c.ids.add(id);
+  c.items.push(msg);
+  const n = c.items.length;
+  if (n > 1 && c.items[n - 2].id > id) c.items.sort((a, b) => a.id - b.id);
+  if (id > c.lastId) c.lastId = id;
+  return msg;
+}
+
+async function chatLoad(orderId, after) {
+  const c = chatOf(orderId);
+  const res = await api.get('/courier/orders/' + orderId + '/messages',
+    after ? { after } : null);
+  if (!after) {
+    c.items = [];
+    c.ids = new Set();
+  }
+  const fresh = [];
+  for (const m of (Array.isArray(res.items) ? res.items : [])) {
+    const msg = chatPush(c, m);
+    if (msg) fresh.push(msg);
+  }
+  c.unread = Math.max(0, Number(res.unread) || 0);
+  c.canSend = res.can_send !== false;
+  c.note = res.message || '';
+  c.maxText = Number(res.max_text) || 1000;
+  if (Number(res.last_id) > c.lastId) c.lastId = Number(res.last_id);
+  c.loaded = true;
+  return fresh;
+}
+
+async function chatRead(orderId) {
+  const c = chatOf(orderId);
+  if (!c.unread) return;
+  try {
+    await api.post('/courier/orders/' + orderId + '/messages/read');
+    c.unread = 0;
+  } catch (e) { /* не прочиталось — отметим при следующем открытии */ }
+}
+
+/* Отметка «прочитано» на наших сообщениях: галочка появляется без перезагрузки. */
+function chatMarkRead(c, ids, at) {
+  const set = new Set((ids || []).map(Number));
+  let touched = false;
+  for (const m of c.items) {
+    if (m.mine && !m.read_at && (!set.size || set.has(m.id))) {
+      m.read_at = at || Math.floor(Date.now() / 1000);
+      touched = true;
+    }
+  }
+  return touched;
+}
+
+/**
+ * Экран переписки поверх всего. Возвращает {sync, close}.
+ * peer = {name, sub, tel} — кто по ту сторону.
+ */
+function openChat(orderId, peer, opts = {}) {
+  ensureCss();
+  const c = chatOf(orderId);
+  const list = el('div', { className: 'sg-chat__list' });
+  const note = el('div', { className: 'sg-chat__note', hidden: true });
+
+  const input = el('textarea', {
+    className: 'sg-chat__input',
+    rows: 1,
+    placeholder: t('chat.ph'),
+    maxLength: c.maxText,
+    enterkeyhint: 'send',
+  });
+  const sendBtn = el('button', {
+    type: 'submit', className: 'sg-chat__send', html: ICONS.send,
+    'aria-label': t('chat.send'), title: t('chat.send'), disabled: true,
+  });
+  const form = el('form', { className: 'sg-chat__form' }, input, sendBtn);
+
+  const head = el('div', { className: 'sg-chat__head' },
+    el('button', {
+      className: 'sg-chat__x', type: 'button', html: ICONS.back,
+      'aria-label': t('common.back'), onClick: () => close(),
+    }),
+    el('span', { className: 'avatar avatar--accent' }, initials(peer.name) || '·'),
+    el('div', { className: 'sg-chat__who' },
+      el('span', { className: 'sg-chat__name' }, peer.name || t('rate.client_of')),
+      el('span', { className: 'sg-chat__sub' }, peer.sub || '')),
+    peer.tel
+      ? el('a', {
+        className: 'sg-chat__call', href: peer.tel, html: ICONS.phone,
+        'aria-label': t('courier.call_client'), title: t('courier.call_client'),
+      })
+      : null);
+
+  const root = el('div', {
+    className: 'sg-chat', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('chat.title'),
+  }, head, list, note, form);
+
+  document.body.appendChild(root);
+  requestAnimationFrame(() => root.classList.add('sg-chat--in'));
+
+  function nearBottom() {
+    return list.scrollHeight - list.scrollTop - list.clientHeight < 90;
+  }
+
+  function toBottom() {
+    list.scrollTop = list.scrollHeight;
+  }
+
+  /* Чужой текст только через textContent: el() кладёт строки текстовым узлом,
+     а html здесь не используется ни для одного сообщения. */
+  function bubble(m) {
+    const tick = m.mine
+      ? el('span', {
+        className: 'sg-msg__tick' + (m.read_at ? ' is-read' : ''),
+        title: m.read_at ? t('chat.read') : t('chat.sent'),
+      }, m.read_at ? '✓✓' : '✓')
+      : null;
+    return el('div', { className: 'sg-msg' + (m.mine ? ' sg-msg--mine' : '') },
+      el('span', { className: 'sg-msg__text' }, m.text),
+      el('span', { className: 'sg-msg__meta' }, time(m.at), tick));
+  }
+
+  let loading = false;
+  let failed = null;
+
+  function paint() {
+    const stick = nearBottom();
+    const kids = [];
+    let lastDay = '';
+    for (const m of c.items) {
+      const key = date(m.at);
+      if (key !== lastDay) {
+        lastDay = key;
+        kids.push(el('div', { className: 'sg-chat__day' }, key));
+      }
+      kids.push(bubble(m));
+    }
+    if (!kids.length) {
+      kids.push(el('div', { className: 'sg-chat__empty' },
+        loading ? t('common.loading')
+          : (failed ? t('chat.load_fail') : t('chat.empty'))));
+    }
+    list.replaceChildren(...kids);
+    note.textContent = c.canSend ? (c.note || '') : (c.note || t('chat.closed'));
+    note.hidden = !note.textContent;
+    input.disabled = !c.canSend;
+    input.maxLength = c.maxText;
+    sendBtn.disabled = !c.canSend || !input.value.trim();
+    if (stick) toBottom();
+  }
+
+  function add(m) {
+    const stick = nearBottom() || m.mine;
+    const empty = list.querySelector('.sg-chat__empty');
+    if (empty) empty.remove();
+    const key = date(m.at);
+    const days = list.querySelectorAll('.sg-chat__day');
+    const lastDay = days.length ? days[days.length - 1].textContent : '';
+    if (lastDay !== key) list.appendChild(el('div', { className: 'sg-chat__day' }, key));
+    list.appendChild(bubble(m));
+    if (stick) toBottom();
+  }
+
+  function grow() {
+    input.style.height = 'auto';
+    input.style.height = Math.min(122, input.scrollHeight) + 'px';
+    sendBtn.disabled = !c.canSend || !input.value.trim();
+  }
+  input.addEventListener('input', grow);
+
+  let sending = false;
+
+  async function send() {
+    const text = input.value.trim();
+    if (!text || sending || !c.canSend) return;
+    sending = true;
+    sendBtn.disabled = true;
+    input.value = '';
+    grow();
+    try {
+      const res = await api.post('/courier/orders/' + orderId + '/messages', { text });
+      const msg = chatPush(c, res && res.message);
+      if (msg) add(msg);
+      haptic();
+      if (typeof opts.onChange === 'function') opts.onChange();
+    } catch (e) {
+      input.value = text;                 // текст возвращаем: набирать заново обидно
+      grow();
+      toast((e && e.message) || t('err.unknown'), { type: 'err' });
+    }
+    sending = false;
+    sendBtn.disabled = !c.canSend || !input.value.trim();
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    send();
+  });
+
+  // С мышью Enter отправляет, с телефона — переносит строку: там есть кнопка.
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    if (!window.matchMedia || !window.matchMedia('(pointer: fine)').matches) return;
+    e.preventDefault();
+    send();
+  });
+
+  /* На айфоне страница под клавиатуру не сжимается, и поле ввода уезжает вниз.
+     Считаем высоту клавиатуры сами и поднимаем на неё весь экран чата. */
+  const vv = window.visualViewport;
+  function fitKeyboard() {
+    if (!vv) return;
+    const gap = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    root.style.setProperty('--sg-kb', gap + 'px');
+    toBottom();
+  }
+  if (vv) {
+    vv.addEventListener('resize', fitKeyboard);
+    vv.addEventListener('scroll', fitKeyboard);
+  }
+  input.addEventListener('focus', () => setTimeout(toBottom, 120));
+
+  function onKey(e) {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+  }
+  document.addEventListener('keydown', onKey, true);
+
+  let closed = false;
+
+  function close(now) {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener('keydown', onKey, true);
+    if (vv) {
+      vv.removeEventListener('resize', fitKeyboard);
+      vv.removeEventListener('scroll', fitKeyboard);
+    }
+    root.classList.remove('sg-chat--in');
+    if (now) root.remove();
+    else setTimeout(() => root.remove(), 400);
+    if (typeof opts.onClose === 'function') opts.onClose();
+  }
+
+  paint();
+  if (!c.loaded) {
+    loading = true;
+    paint();
+    chatLoad(orderId, 0)
+      .then(() => { loading = false; failed = null; })
+      .catch((e) => { loading = false; failed = e; })
+      .then(() => {
+        if (closed) return;
+        paint();
+        chatRead(orderId).then(() => {
+          if (typeof opts.onChange === 'function') opts.onChange();
+        });
+      });
+  } else {
+    toBottom();
+    chatRead(orderId).then(() => {
+      if (typeof opts.onChange === 'function') opts.onChange();
+    });
+  }
+
+  return {
+    /** Пришли новые сообщения или отметки прочтения — дорисовать. */
+    sync(fresh) {
+      if (closed) return;
+      if (Array.isArray(fresh) && fresh.length && list.querySelector('.sg-msg')) {
+        for (const m of fresh) add(m);
+      } else {
+        paint();
+      }
+    },
+    close,
+    get closed() { return closed; },
+  };
+}
+
 /* ─────────────────────────────────────────────────────── заказ в работе */
 
 /* Куда идём дальше и что написано на большой кнопке. Порядок совпадает
@@ -672,6 +1890,16 @@ const FLOW = {
 };
 
 const WAITING_AT = ['at_pickup', 'at_dropoff'];
+const TO_PICKUP = ['assigned', 'to_pickup', 'at_pickup'];
+
+/* Маршрут до следующей точки пересчитываем не чаще, чем раз в двенадцать
+   секунд, и только если проехали заметный кусок: сервер отдаёт его из кэша,
+   но лишние запросы на плохой сети всё равно тормозят экран. */
+const LEG_MIN_MS = 12000;
+const LEG_MAX_MS = 60000;
+const LEG_MOVE_M = 150;
+const CITY_SPEED = 7.8;         // м/с, средняя скорость по городу для запасного расчёта
+const ROAD_FACTOR = 1.28;       // насколько дорога длиннее прямой линии
 
 /** Полоса протяжки для последнего шага. onDone вызывается один раз. */
 function swipeBar(label, onDone) {
@@ -742,12 +1970,190 @@ function swipeBar(label, onDone) {
 }
 
 /**
- * Экран активного заказа: карта, клиент, адреса, деньги и главная кнопка.
- * ctx = {store, go, tracker, onFix, refresh}.
+ * Панель заказа: тянется пальцем и сворачивается до заголовка с кнопкой.
+ * Сворачиваем не переездом вниз, а сжатием списка — тогда главная кнопка
+ * остаётся на месте, а карта честно занимает освободившееся место.
+ * Возвращает {sync, to, destroy}.
+ */
+function panelDrag(shell, panel, scroll, grip, head) {
+  let maxH = 0;
+  let pos = 'full';
+  let cur = 0;
+
+  function limits() {
+    const cap = Math.round(window.innerHeight * 0.62);      // как в .job__panel
+    const chrome = Math.max(0, panel.offsetHeight - scroll.offsetHeight);
+    const room = Math.max(80, cap - chrome);
+    const need = scroll.scrollHeight;
+    return Math.max(0, Math.min(need, room));
+  }
+
+  function apply(h) {
+    cur = Math.max(0, Math.round(h));
+    scroll.style.height = cur + 'px';
+    // Отступы у списка свои, и при нулевой высоте в них выглядывает край
+    // карточки: прокрутка обрезает содержимое по краю padding, а не border.
+    scroll.classList.toggle('is-shut', cur < 12);
+  }
+
+  function to(name, animate = true) {
+    maxH = limits();
+    pos = name === 'peek' || name === 'half' ? name : 'full';
+    if (!animate) shell.classList.add('is-drag');
+    apply(pos === 'full' ? maxH : (pos === 'half' ? Math.round(maxH / 2) : 0));
+    if (!animate) {
+      void scroll.offsetHeight;         // фиксируем кадр, иначе поедет анимация
+      shell.classList.remove('is-drag');
+    }
+    if (grip) {
+      grip.setAttribute('aria-expanded', pos === 'full' ? 'true' : 'false');
+      grip.setAttribute('aria-label', pos === 'full' ? t('job.panel_less') : t('job.panel_more'));
+    }
+    return pos;
+  }
+
+  let pid = null, y0 = 0, h0 = 0, live = false, t0 = 0, endedAt = 0;
+
+  function onDown(e) {
+    if (e.button || pid !== null || !e.target.closest) return;
+    // Тянут за грип и шапку. Списку внутри панели жест не мешает: он должен
+    // листаться, а кнопки в шапке — нажиматься, а не тащить панель.
+    if (!e.target.closest('.job__grip, .sg-head')) return;
+    if (e.target.closest('a')) return;
+    const btn = e.target.closest('button');
+    if (btn && btn !== grip) return;
+    pid = e.pointerId;
+    y0 = e.clientY;
+    t0 = performance.now();
+    maxH = limits();
+    h0 = cur;
+    live = false;
+  }
+
+  function onMove(e) {
+    if (pid === null || e.pointerId !== pid) return;
+    const dy = e.clientY - y0;
+    if (!live) {
+      if (Math.abs(dy) < 6) return;
+      live = true;
+      shell.classList.add('is-drag');
+      try { panel.setPointerCapture(pid); } catch (err) { /* мышь без захвата */ }
+    }
+    let h = h0 - dy;
+    if (h > maxH) h = maxH + (h - maxH) / 4;      // выше своего края тянется туго
+    apply(Math.max(0, Math.min(maxH, h)));
+    if (e.cancelable) e.preventDefault();
+  }
+
+  function onUp(e) {
+    if (pid === null || (e.pointerId !== undefined && e.pointerId !== pid)) return;
+    pid = null;
+    shell.classList.remove('is-drag');
+    if (!live) return;
+    live = false;
+    endedAt = performance.now();
+    // Инерция: куда палец доехал бы ещё за сто миллисекунд, к тому и садимся.
+    const speed = (h0 - cur) / Math.max(1, performance.now() - t0);
+    const aim = cur - speed * 100;
+    const stops = { full: maxH, half: Math.round(maxH / 2), peek: 0 };
+    let best = 'full';
+    for (const name of ['full', 'half', 'peek']) {
+      if (Math.abs(stops[name] - aim) < Math.abs(stops[best] - aim)) best = name;
+    }
+    to(best, true);
+    haptic();
+  }
+
+  function onGrip() {
+    if (performance.now() - endedAt < 300) return;    // это был жест, а не нажатие
+    haptic();
+    to(pos === 'full' ? 'peek' : 'full', true);
+  }
+
+  /* Пока панель в пальцах, страница под ней ехать не должна. */
+  function onTouchMove(e) {
+    if (live && e.cancelable) e.preventDefault();
+  }
+
+  panel.addEventListener('pointerdown', onDown);
+  panel.addEventListener('touchmove', onTouchMove, { passive: false });
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+  if (grip) grip.addEventListener('click', onGrip);
+
+  const onResize = () => { if (pid === null) to(pos, false); };
+  window.addEventListener('resize', onResize);
+
+  let sizes = null;
+  if (typeof ResizeObserver === 'function') {
+    // Содержимое подросло (пришёл счётчик ожидания) — держим положение, а не пиксели.
+    sizes = new ResizeObserver(() => { if (pid === null && pos === 'full') to(pos, false); });
+    sizes.observe(head);
+  }
+
+  to('full', false);
+
+  return {
+    /** Содержимое панели поменялось — пересчитать высоту под текущее положение. */
+    sync() { if (pid === null) to(pos, false); },
+    to,
+    pos: () => pos,
+    destroy() {
+      if (sizes) sizes.disconnect();
+      panel.removeEventListener('pointerdown', onDown);
+      panel.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('resize', onResize);
+      if (grip) grip.removeEventListener('click', onGrip);
+      scroll.style.height = '';
+    },
+  };
+}
+
+/* Приложение навигатора, а если его нет — сайт. Понять, ушли мы или нет,
+   можно только по одному признаку: свернулась вкладка или осталась на месте. */
+function openNav(appUrl, webUrl) {
+  let left = false;
+  const mark = () => { if (document.visibilityState === 'hidden') left = true; };
+  document.addEventListener('visibilitychange', mark);
+  try {
+    window.location.href = appUrl;
+  } catch (e) { /* схема не поддержана — уйдём на сайт по таймеру */ }
+  setTimeout(() => {
+    document.removeEventListener('visibilitychange', mark);
+    if (left || document.visibilityState === 'hidden') return;
+    const w = window.open(webUrl, '_blank', 'noopener');
+    if (!w) window.location.href = webUrl;      // всплывающие окна запрещены
+  }, 1300);
+}
+
+function yandexLinks(lat, lng) {
+  return {
+    app: 'yandexnavi://build_route_on_map?lat_to=' + lat + '&lon_to=' + lng,
+    web: 'https://yandex.ru/maps/?rtext=~' + lat + ',' + lng + '&rtt=auto',
+  };
+}
+
+function dgisLinks(lat, lng) {
+  return {
+    app: 'dgis://2gis.ru/routeSearch/rsType/car/to/' + lng + ',' + lat,
+    web: 'https://2gis.kg/bishkek/directions/points/%7C' + lng + ',' + lat,
+  };
+}
+
+/**
+ * Экран активного заказа: карта во весь экран, панель снизу, маршрут,
+ * чат с клиентом и главная кнопка. ctx = {store, go, tracker, onFix, refresh}.
  */
 export function renderJob(root, ctx) {
+  ensureCss();
   const stop = [];
   const state = ctx.store.get();
+  let alive = true;
+
   if (!state.order) {
     root.replaceChildren(el('div', { className: 'empty' },
       el('div', { className: 'empty__icon', html: ICONS.box }),
@@ -761,34 +2167,79 @@ export function renderJob(root, ctx) {
     return () => {};
   }
 
-  const mapNode = el('div', { className: 'job__map' });
+  const orderId = state.order.id;
+  // Первым делом в уборке гасим признак жизни: асинхронные ответы, пришедшие
+  // после ухода с экрана, не должны трогать уже снятую разметку.
+  stop.push(() => { alive = false; });
+  let panel = null;
+
+  /* ── разметка экрана ── */
+  const mapNode = el('div', { className: 'job__map', 'data-map': '' });
+  const backBtn = el('button', {
+    className: 'job__close', type: 'button', html: ICONS.back,
+    'aria-label': t('job.back'), title: t('job.back'),
+    onClick: () => { haptic(); ctx.go('/shift'); },
+  });
+  const fitBtn = el('button', {
+    className: 'sg-fit', type: 'button', html: ICONS.fit,
+    'aria-label': t('job.fit'), title: t('job.fit'),
+    onClick: () => { haptic(); fitAll(); },
+  });
+
+  const grip = el('button', {
+    className: 'job__grip', type: 'button',
+    'aria-expanded': 'true', 'aria-label': t('job.panel_less'),
+  });
   const statusRow = el('div', { className: 'job__status' });
+  const etaRow = el('div', { className: 'sg-eta' });
+  const navsRow = el('div', { className: 'sg-navs' });
+  const headBox = el('div', { className: 'sg-head' }, statusRow, etaRow, navsRow);
+
   const clientBox = el('div', { className: 'job__client' });
   const pointsBox = el('div', { className: 'offer__rows' });
   const moneyBox = el('div', { className: 'job__money' });
   const waitBox = el('div', { className: 'wait' });
   const extrasBox = el('div', { className: 'row wrap gap-2' });
+  const scrollBox = el('div', { className: 'job__scroll' },
+    clientBox, waitBox, extrasBox, pointsBox, moneyBox);
 
   const actBox = el('div', { className: 'act' });
+  const panelBox = el('div', { className: 'job__panel' }, grip, headBox, scrollBox, actBox);
+  const jobBox = el('div', { className: 'job job--full' },
+    mapNode, backBtn, fitBtn, panelBox);
 
-  root.replaceChildren(el('div', { className: 'job' },
-    statusRow, mapNode, clientBox, waitBox, extrasBox, pointsBox, moneyBox));
-  root.appendChild(actBox);
+  root.replaceChildren(jobBox);
   document.getElementById('app').classList.add('app--job');
-  stop.push(() => document.getElementById('app').classList.remove('app--job'));
+  document.documentElement.dataset.job = 'full';
+  stop.push(() => {
+    document.getElementById('app').classList.remove('app--job');
+    delete document.documentElement.dataset.job;
+  });
 
   /* ── карта: точки заказа, нитка между ними и своя машина ── */
-  const map = makeMap(mapNode, state.config, { locate: false });
+  const map = makeMap(mapNode, state.config, { locate: true });
   stop.push(() => map.destroy());
+  // Кнопки карты держим над панелью: панель ей не мешает, она снизу отдельно.
+  mapNode.style.setProperty('--map-ui-bottom', 'var(--sp-3)');
 
   let carMarker = null;
-  let line = null;
+  let plan = null;            // весь маршрут заказа, пунктиром
+  let leg = null;             // остаток пути до ближайшей точки, сплошной
   const pointMarkers = [];
+
+  function orderCoords(order) {
+    const out = [];
+    for (const p of order.points || []) {
+      if (p.lat == null || p.lng == null) continue;
+      out.push([p.lat, p.lng]);
+    }
+    return out;
+  }
 
   function drawOrder(order) {
     for (const m of pointMarkers.splice(0)) m.remove();
-    const coords = [];
     const points = order.points || [];
+    const coords = [];
     for (let i = 0; i < points.length; i++) {
       const p = points[i];
       if (p.lat == null || p.lng == null) continue;
@@ -800,14 +2251,23 @@ export function renderJob(root, ctx) {
       }));
     }
     if (coords.length >= 2) {
-      if (line) line.setCoords(coords);
-      else line = map.route(coords, { dashed: true, width: 5 });
+      if (plan) plan.setCoords(coords);
+      else plan = map.route(coords, { dashed: true, width: 5 });
+    } else if (plan) {
+      plan.setCoords([]);
     }
-    const all = coords.slice();
-    const at = ctx.tracker.at();
+  }
+
+  /** Показать всё сразу: свою машину, точки заказа и остаток маршрута. */
+  function fitAll() {
+    const all = orderCoords(ctx.store.get().order || {});
+    const at = ctx.tracker.at() || ctx.store.get().at;
     if (at) all.push(at);
-    if (all.length > 1) map.fitPoints(all, { padding: { top: 40, right: 40, bottom: 40, left: 40 } });
-    else if (all.length === 1) map.setView(all[0], 15, { animate: false });
+    if (all.length > 1) {
+      map.fitPoints(all, { padding: { top: 70, right: 60, bottom: 60, left: 60 } });
+    } else if (all.length === 1) {
+      map.setView(all[0], 15, { animate: true });
+    }
   }
 
   const putCar = (at, heading) => {
@@ -822,14 +2282,253 @@ export function renderJob(root, ctx) {
     }
   };
 
+  /* ── остаток пути: расстояние, время и линия ──────────────────────────── */
+
+  const nav = { key: '', at: null, reqAt: 0, busy: false, info: null };
+
+  function targetPoint(order) {
+    const points = order.points || [];
+    if (!points.length) return null;
+    const p = TO_PICKUP.indexOf(order.status) >= 0 ? points[0] : points[points.length - 1];
+    return p && p.lat != null && p.lng != null ? p : null;
+  }
+
+  /* Запасной расчёт, когда маршрутизатор молчит: прямая с поправкой на то,
+     что дорога длиннее, и средняя городская скорость. Лучше приблизительно,
+     чем прочерк: курьеру надо сказать клиенту хоть что-то. */
+  function straightLeg(me, to) {
+    const d = Math.round(distanceM(me, [to.lat, to.lng]) * ROAD_FACTOR);
+    return {
+      distance_m: d,
+      duration_s: Math.round(d / CITY_SPEED),
+      line: [me.slice(), [to.lat, to.lng]],
+      rough: true,
+    };
+  }
+
+  async function refreshLeg(force) {
+    const order = ctx.store.get().order;
+    if (!alive || !order) return;
+    const to = targetPoint(order);
+    const me = ctx.tracker.at() || ctx.store.get().at;
+    if (!to || !me) {
+      paintEta();
+      return;
+    }
+    const key = to.lat + ',' + to.lng;
+    const now = Date.now();
+    const moved = nav.at ? distanceM(nav.at, me) : Infinity;
+    const since = now - nav.reqAt;
+    if (!force && key === nav.key) {
+      if (since < LEG_MIN_MS) return;
+      if (moved < LEG_MOVE_M && since < LEG_MAX_MS) return;
+    }
+    if (nav.busy) return;
+    nav.busy = true;
+    nav.key = key;
+    nav.at = me.slice();
+    nav.reqAt = now;
+    try {
+      const r = await api.post('/geo/route', { points: [[me[0], me[1]], [to.lat, to.lng]] });
+      if (!alive) return;
+      nav.info = {
+        distance_m: r.distance_m || 0,
+        duration_s: r.duration_traffic_s || r.duration_s || 0,
+        line: Array.isArray(r.route) && r.route.length > 1 ? r.route : [me.slice(), [to.lat, to.lng]],
+        rough: false,
+      };
+    } catch (e) {
+      if (!alive) return;
+      nav.info = straightLeg(me, to);
+    } finally {
+      nav.busy = false;
+    }
+    paintLeg();
+    paintEta();
+  }
+
+  function paintLeg() {
+    const line = nav.info && nav.info.line;
+    if (!line || line.length < 2) {
+      if (leg) { leg.remove(); leg = null; }
+      return;
+    }
+    if (leg) leg.setCoords(line);
+    else leg = map.route(line, { width: 6 });
+  }
+
+  function paintEta() {
+    const order = ctx.store.get().order;
+    if (!order) return;
+    const toPickup = TO_PICKUP.indexOf(order.status) >= 0;
+    const label = toPickup ? t('job.to_pickup_left') : t('job.to_drop_left');
+    const info = nav.info;
+    etaRow.replaceChildren(ico(ICONS.nav));
+    if (!info) {
+      etaRow.appendChild(el('span', null, label + ': —'));
+      return;
+    }
+    etaRow.appendChild(el('span', null, label + ':'));
+    etaRow.appendChild(el('b', null, distance(info.distance_m)));
+    etaRow.appendChild(el('span', null, '·'));
+    etaRow.appendChild(el('b', null, duration(info.duration_s)));
+    if (info.rough) etaRow.appendChild(el('span', { className: 'muted-2' }, t('job.route_straight')));
+  }
+
+  function paintNavs() {
+    const order = ctx.store.get().order;
+    const to = order ? targetPoint(order) : null;
+    navsRow.replaceChildren();
+    navsRow.hidden = !to;
+    if (!to) return;
+    const ya = yandexLinks(to.lat, to.lng);
+    const dg = dgisLinks(to.lat, to.lng);
+    navsRow.appendChild(el('button', {
+      className: 'btn btn--ghost', type: 'button',
+      title: t('job.open_nav'), 'aria-label': t('job.nav_ya'),
+      onClick: () => { haptic(); openNav(ya.app, ya.web); },
+    }, ico(ICONS.nav), t('job.nav_short_ya')));
+    navsRow.appendChild(el('button', {
+      className: 'btn btn--ghost', type: 'button',
+      title: t('job.open_nav'), 'aria-label': t('job.nav_2gis'),
+      onClick: () => { haptic(); openNav(dg.app, dg.web); },
+    }, ico(ICONS.nav), t('job.nav_2gis')));
+  }
+
+  /* ── чат с клиентом ───────────────────────────────────────────────────── */
+
+  const unreadBadge = el('span', { className: 'sg-unread', hidden: true });
+  const chatBtn = el('button', {
+    className: 'btn btn--ghost btn--icon sg-chatbtn', type: 'button',
+    'aria-label': t('chat.title'), title: t('chat.title'),
+    onClick: () => showChat(),
+  }, ico(ICONS.chat), unreadBadge);
+
+  let chatUi = null;
+  let pollTimer = 0;
+
+  function paintUnread() {
+    const c = chatOf(orderId);
+    const n = chatUi && !chatUi.closed ? 0 : c.unread;
+    unreadBadge.textContent = String(n);
+    unreadBadge.hidden = n < 1;
+    chatBtn.setAttribute('aria-label',
+      n ? t('chat.title') + '. ' + t('chat.unread', { n }) : t('chat.title'));
+  }
+
+  function chatPeer() {
+    const order = ctx.store.get().order || {};
+    const points = order.points || [];
+    const contact = points[0] || {};
+    const client = order.client || {};
+    const name = contact.name || client.name || t('rate.client_of');
+    const sub = client.rating != null
+      ? t('courier.rating') + ' ' + String(client.rating).replace('.', ',')
+      : (order.public_id || '');
+    return { name, sub, tel: telHref(contact.phone || client.phone) };
+  }
+
+  function showChat() {
+    if (chatUi && !chatUi.closed) return;
+    haptic();
+    chatUi = openChat(orderId, chatPeer(), {
+      onChange: () => paintUnread(),
+      onClose: () => { chatUi = null; paintUnread(); schedulePoll(); },
+    });
+    paintUnread();
+    schedulePoll();
+  }
+
+  function schedulePoll() {
+    if (pollTimer) clearTimeout(pollTimer);
+    if (!alive) return;
+    const c = chatOf(orderId);
+    const open = !!(chatUi && !chatUi.closed);
+    const ms = c.live ? CHAT_POLL_LIVE_MS : (open ? CHAT_POLL_OPEN_MS : CHAT_POLL_IDLE_MS);
+    pollTimer = setTimeout(pollChat, ms);
+  }
+
+  async function pollChat() {
+    if (!alive) return;
+    if (document.visibilityState !== 'hidden') {
+      const c = chatOf(orderId);
+      const open = !!(chatUi && !chatUi.closed);
+      const wasLast = c.lastId;
+      try {
+        // Открытый чат перечитываем целиком: отметки «прочитано» приходят
+        // правкой старых сообщений, а по хвосту после last_id их не видно.
+        await chatLoad(orderId, open ? 0 : (c.loaded ? c.lastId : 0));
+        if (!alive) return;
+        const fresh = c.items.filter((m) => m.id > wasLast);
+        if (open) {
+          chatUi.sync();
+          if (fresh.some((m) => !m.mine)) chatRead(orderId).then(paintUnread);
+        } else if (fresh.some((m) => !m.mine)) {
+          haptic([12, 60, 12]);
+          toast(t('chat.new'), { type: 'info' });
+        }
+        paintUnread();
+      } catch (e) { /* переписка подождёт до следующего круга */ }
+    }
+    schedulePoll();
+  }
+
+  stop.push(() => { if (pollTimer) clearTimeout(pollTimer); });
+  stop.push(() => { if (chatUi) chatUi.close(true); });
+
+  // Живые сообщения из потока курьера. Пока мост не подключён, работает опрос.
+  stop.push(onStream((name, data) => {
+    if (!alive || !data) return;
+    if (name !== 'message' && name !== 'message_read') return;
+    const order = ctx.store.get().order;
+    if (!order) return;
+    const mine = (data.order_id && Number(data.order_id) === order.id) ||
+      (!data.order_id && data.public_id && data.public_id === order.public_id);
+    if (!mine) return;
+    const c = chatOf(order.id);
+    // Поток работает — значит, опрос можно делать реже: он тут запасной.
+    c.live = true;
+    if (name === 'message') {
+      const msg = chatPush(c, data.message);
+      if (!msg) return;
+      if (chatUi && !chatUi.closed) {
+        chatUi.sync([msg]);
+        if (!msg.mine) chatRead(order.id).then(paintUnread);
+      } else if (!msg.mine) {
+        c.unread += 1;
+        haptic([12, 60, 12]);
+        toast(t('chat.new'), { type: 'info' });
+      }
+      paintUnread();
+      schedulePoll();
+    } else if (name === 'message_read') {
+      if (chatMarkRead(c, data.ids, data.at) && chatUi && !chatUi.closed) chatUi.sync();
+    }
+  }));
+
+  const onShow = () => {
+    if (document.visibilityState !== 'visible') return;
+    pollChat();
+    refreshLeg(true);
+  };
+  document.addEventListener('visibilitychange', onShow);
+  stop.push(() => document.removeEventListener('visibilitychange', onShow));
+
   /* ── счётчик ожидания ── */
   let waitTimer = 0;
+  let waitShown = false;
 
   function paintWait() {
     const order = ctx.store.get().order;
     const info = ctx.store.get().waiting || {};
-    const canWait = order && WAITING_AT.indexOf(order.status) >= 0;
+    const canWait = !!(order && WAITING_AT.indexOf(order.status) >= 0);
     waitBox.hidden = !canWait;
+    // Счётчик появился или пропал — панель стала выше или ниже, пересчитываем.
+    // Каждую секунду этого не делаем: цифры меняются, высота — нет.
+    if (canWait !== waitShown) {
+      waitShown = canWait;
+      if (panel) panel.sync();
+    }
     if (!canWait) {
       if (waitTimer) clearInterval(waitTimer);
       waitTimer = 0;
@@ -841,7 +2540,7 @@ export function renderJob(root, ctx) {
 
     waitBox.classList.toggle('is-on', !!info.running);
     waitBox.replaceChildren(
-      el('span', { html: ICONS.clock, className: 'none' }),
+      ico(ICONS.clock),
       el('div', { className: 'wait__body' },
         el('div', { className: 'wait__t' }, clock(shown)),
         el('div', { className: 'wait__note' },
@@ -872,6 +2571,8 @@ export function renderJob(root, ctx) {
   }
 
   /* ── клиент, адреса, деньги ── */
+  let lastStatus = '';
+
   function paintOrder() {
     const order = ctx.store.get().order;
     if (!order) {
@@ -883,33 +2584,39 @@ export function renderJob(root, ctx) {
 
     statusRow.replaceChildren(
       el('span', { className: 'badge badge--accent' }, order.public_id || ''),
-      el('span', { className: 'h3' }, step ? t(step.now) : t('track.done')),
-      el('span', { className: 'ml-auto muted t-sm' },
-        order.distance_m ? distance(order.distance_m) : ''));
+      el('span', { className: 'h3 grow truncate' }, step ? t(step.now) : t('track.done')));
+    statusRow.appendChild(chatBtn);
+    paintUnread();
 
     // Пока едем за грузом — перед глазами отправитель, после погрузки — получатель.
-    const toPickup = ['assigned', 'to_pickup', 'at_pickup'].indexOf(order.status) >= 0;
+    const toPickup = TO_PICKUP.indexOf(order.status) >= 0;
     const contact = toPickup ? points[0] : points[points.length - 1];
-    const who = (contact && contact.name) || t('track.courier');
+    const who = (contact && contact.name) || t('rate.client_of');
     const tel = telHref(contact && contact.phone);
     clientBox.hidden = !contact;
     if (contact) {
-      clientBox.replaceChildren(
+      // replaceChildren — не el(): пустые места он превращает в слово «null»
+      // прямо на экране, поэтому список детей собираем сами.
+      const kids = [
         el('span', { className: 'avatar avatar--accent' }, initials(who) || '·'),
         el('div', { className: 'grow' },
           el('div', { className: 'job__client-name' }, who),
           el('div', { className: 'muted t-sm' },
-            contact.phone ? fmtPhone(contact.phone) : (contact.addr || ''))),
-        tel
-          ? el('a', { className: 'btn btn--primary btn--icon', href: tel,
-            'aria-label': t('courier.call_client'), html: ICONS.phone })
-          : null);
+            contact.phone ? fmtPhone(contact.phone) : (contact.addr || '')),
+          clientRating(order.client)),
+      ];
+      if (tel) {
+        kids.push(el('a', { className: 'btn btn--primary btn--icon', href: tel,
+          'aria-label': t('courier.call_client'), html: ICONS.phone }));
+      }
+      clientBox.replaceChildren(...kids);
     }
 
     const extras = extrasText(order, ctx.store.get().config);
     extrasBox.replaceChildren();
     if (order.loaders) extrasBox.appendChild(pill(ICONS.me, tp(order.loaders, 'common.n_loader')));
     if (extras) extrasBox.appendChild(pill(ICONS.box, extras));
+    if (order.distance_m) extrasBox.appendChild(pill(ICONS.job, distance(order.distance_m)));
     if (order.duration_s) extrasBox.appendChild(pill(ICONS.clock, duration(order.duration_s)));
     extrasBox.hidden = !extrasBox.children.length;
 
@@ -940,7 +2647,20 @@ export function renderJob(root, ctx) {
 
     paintAct(order);
     paintWait();
+    paintNavs();
+    paintEta();
     drawOrder(order);
+
+    // Сменился шаг заказа — показываем панель целиком и пересчитываем остаток
+    // пути: цель переехала с погрузки на выгрузку.
+    const changed = lastStatus && lastStatus !== order.status;
+    lastStatus = order.status;
+    if (panel) panel.sync();
+    if (changed) {
+      if (panel) panel.to('full', true);
+      fitAll();
+      refreshLeg(true);
+    }
   }
 
   /* ── главная кнопка внизу ── */
@@ -978,7 +2698,7 @@ export function renderJob(root, ctx) {
       if (target === 'done') {
         if (typeof ctx.finished === 'function') ctx.finished(order.id);
         ctx.store.set({ order: null, busy: false });
-        showResult(res.price || {}, order);
+        showFinish(res.price || {}, res.order || order);
         ctx.refresh();
         ctx.go('/shift');
       }
@@ -990,50 +2710,118 @@ export function renderJob(root, ctx) {
     }
   }
 
-  /* Итог заказа: сколько взять с клиента и сколько осталось курьеру. */
-  function showResult(price, order) {
-    const collect = price.to_collect != null
-      ? price.to_collect
-      : Math.max(0, (price.total || 0) - (price.paid || 0));
-    sheet({
-      title: t('track.done'),
-      content: el('div', { className: 'col gap-3' },
-        el('div', { className: 'offer__pay' },
-          el('div', { className: 'offer__pay-k' }, t('courier.payout')),
-          el('div', { className: 'offer__pay-v' }, money(price.payout || 0))),
-        collect > 0
-          ? el('p', { className: 'sheet__text' }, t('courier.cash_note', { price: money(collect) }))
-          : el('p', { className: 'sheet__text' }, t('track.paid')),
-        el('div', { className: 'list' },
-          el('div', { className: 'list__row' },
-            el('span', { className: 'grow muted t-sm' }, t('order.price_total')),
-            el('b', null, money(price.total || 0))),
-          el('div', { className: 'list__row' },
-            el('span', { className: 'grow muted t-sm' }, t('courier.commission')),
-            el('b', null, money(price.commission || 0))),
-          price.waiting_s
-            ? el('div', { className: 'list__row' },
-              el('span', { className: 'grow muted t-sm' }, t('track.waiting')),
-              el('b', null, clock(price.waiting_s)))
-            : null)),
-      actions: [{ label: t('common.ok'), kind: 'primary' }],
-    });
-    haptic([20, 60, 20, 60, 30]);
-  }
-
   paintOrder();
+  panel = panelDrag(jobBox, panelBox, scrollBox, grip, headBox);
+  stop.push(() => panel.destroy());
+  panel.sync();
+
   putCar(ctx.tracker.at(), ctx.tracker.heading());
+  fitAll();
+  refreshLeg(true);
 
   stop.push(ctx.store.select((s) => s.order, () => paintOrder()));
   stop.push(ctx.store.select((s) => s.waiting, () => paintWait()));
-  stop.push(ctx.onFix((point) => putCar([point.lat, point.lng], point.heading)));
+  stop.push(ctx.onFix((point) => {
+    putCar([point.lat, point.lng], point.heading);
+    refreshLeg(false);
+  }));
+  stop.push(() => { alive = false; });
 
   // Ожидание после перезапуска приложения знает только сервер — спрашиваем его.
-  api.get('/courier/orders/' + state.order.id)
-    .then((res) => ctx.store.set({ order: res.order || null, waiting: res.waiting || null }))
+  api.get('/courier/orders/' + orderId)
+    .then((res) => {
+      if (alive) ctx.store.set({ order: res.order || null, waiting: res.waiting || null });
+    })
     .catch(() => { /* экран уже нарисован тем, что было в памяти */ });
 
+  // Переписка нужна сразу: значок непрочитанных должен быть честным с первой секунды.
+  chatLoad(orderId, 0).then(() => { if (alive) paintUnread(); }).catch(() => {});
+  schedulePoll();
+
   return () => { for (const fn of stop) fn(); };
+}
+
+/* ─────────────────────────────────────────────────────── итог заказа и оценка */
+
+/**
+ * Итог заказа: сколько взять с клиента, сколько осталось курьеру, и тут же
+ * оценка клиента. Отдельной шторкой её показывать нельзя — две подряд человек
+ * закрывает не глядя, а нам важно, чтобы оценки были настоящими.
+ */
+function showFinish(price, order) {
+  ensureCss();
+  const collect = price.to_collect != null
+    ? price.to_collect
+    : Math.max(0, (price.total || 0) - (price.paid || 0));
+
+  const body = el('div', { className: 'col gap-3' },
+    el('div', { className: 'offer__pay' },
+      el('div', { className: 'offer__pay-k' }, t('courier.payout')),
+      el('div', { className: 'offer__pay-v' }, money(price.payout || 0))),
+    collect > 0
+      ? el('p', { className: 'sheet__text' }, t('courier.cash_note', { price: money(collect) }))
+      : el('p', { className: 'sheet__text' }, t('track.paid')),
+    el('div', { className: 'list' },
+      el('div', { className: 'list__row' },
+        el('span', { className: 'grow muted t-sm' }, t('order.price_total')),
+        el('b', null, money(price.total || 0))),
+      el('div', { className: 'list__row' },
+        el('span', { className: 'grow muted t-sm' }, t('courier.commission')),
+        el('b', null, money(price.commission || 0))),
+      price.waiting_s
+        ? el('div', { className: 'list__row' },
+          el('span', { className: 'grow muted t-sm' }, t('track.waiting')),
+          el('b', null, clock(price.waiting_s)))
+        : null));
+
+  const canRate = !!(order && order.id && !order.courier_rating);
+  let stars = null;
+  let comment = null;
+
+  if (canRate) {
+    const starsBox = el('div');
+    comment = el('input', {
+      className: 'field__input', type: 'text', placeholder: ' ', maxLength: 300,
+    });
+    const field = el('label', { className: 'field', style: { width: '100%' } },
+      comment, el('span', { className: 'field__label' }, t('rate.comment_ph')));
+    body.appendChild(el('div', { className: 'sg-rate' },
+      el('div', { className: 'sg-rate__title' }, t('rate.client')),
+      starsBox,
+      el('div', { className: 'sg-rate__hint' }, t('rate.hint')),
+      field));
+    stars = mountStars(starsBox, { value: 0, size: 'lg', onChange: () => {} });
+  }
+
+  const actions = canRate
+    ? [
+      { label: t('rate.skip'), kind: 'ghost' },
+      {
+        label: t('rate.send'), kind: 'primary',
+        onClick: async () => {
+          const value = Math.round(stars.value());
+          if (value < 1) {
+            toast(t('rate.need'), { type: 'warn' });
+            return false;
+          }
+          try {
+            await api.post('/courier/orders/' + order.id + '/rate-client', {
+              rating: value,
+              comment: String(comment.value || '').trim(),
+            });
+            toast(t('rate.thanks'), { type: 'ok' });
+            return true;
+          } catch (e) {
+            toast((e && e.message) || t('err.save_failed'), { type: 'err' });
+            return false;
+          }
+        },
+      },
+    ]
+    : [{ label: t('common.ok'), kind: 'primary' }];
+
+  sheet({ title: t('track.done'), content: body, actions });
+  haptic([20, 60, 20, 60, 30]);
 }
 
 /* ─────────────────────────────────────────────────────── история и деньги */
@@ -1135,250 +2923,106 @@ export function renderHistory(root, ctx) {
   return () => { alive = false; };
 }
 
-/* ─────────────────────────────────────────────────────── профиль */
+/* ─────────────────────────────────────────────────────── настройки звука */
 
-export function renderProfile(root, ctx) {
-  const state = ctx.store.get();
-  const user = state.user || {};
-  const profile = user.courier || {};
-  const car = profile.car || {};
-  const body = profile.body || {};
+/**
+ * Готовый блок: переключатель, громкость, проверка и честная подпись о том,
+ * разрешил ли браузер звук. Проверка нужна не для красоты — без касания экрана
+ * звука не будет, и водитель должен убедиться в этом до того, как проспит
+ * первый заказ. Блок отдаётся наружу: его вставляют и в профиль.
+ */
+export function soundSettings() {
+  const box = el('div', { className: 'col gap-3' });
+  const note = el('div');
+  const volSeg = el('div', { className: 'segmented seg-wrap' });
+  const toggleWrap = el('label', { className: 'switch' });
+  const input = el('input', { type: 'checkbox', checked: readSound().on,
+    'aria-label': t('snd.title') });
+  toggleWrap.append(input, el('span', { className: 'switch__track' }));
 
-  const starsBox = el('div');
-  const head = el('div', { className: 'me__head' },
-    el('span', { className: 'avatar avatar--lg avatar--accent' }, initials(user.name) || '·'),
-    el('div', { className: 'grow' },
-      el('div', { className: 'me__name' }, user.name || ''),
-      el('div', { className: 'me__row' },
-        starsBox,
-        el('span', null, String(profile.rating != null ? profile.rating : 5).replace('.', ',')),
-        el('span', { className: 'muted-2' },
-          '· ' + tp(profile.orders_done || 0, 'common.n_order')))));
+  const testBtn = el('button', {
+    className: 'btn btn--ghost btn--block', type: 'button',
+    onClick: async () => {
+      haptic();
+      const ok = await unlockAudio();
+      if (ok) chime(true);
+      buzz();
+      paintNote();
+      if (!ok) toast(t('snd.blocked'), { type: 'warn', ms: 5000 });
+    },
+  }, ico(ICONS.vol), t('snd.test'));
 
-  const carList = el('div', { className: 'list' },
-    kv(t('courier.car_model'), car.model || '—'),
-    kv(t('courier.car_plate'), car.plate ? fmtPlate(car.plate) : '—'),
-    kv(t('courier.car_color'), car.color || '—'),
-    kv(t('courier.vehicle_class'), profile.vehicle_class || '—'),
-    kv(t('courier.capacity'), profile.capacity_kg ? num(profile.capacity_kg) + ' ' + t('common.kg') : '—'),
-    kv(t('courier.body'), (body.d && body.w && body.h)
-      ? body.d + ' × ' + body.w + ' × ' + body.h : '—'));
-
-  const meList = el('div', { className: 'list' },
-    kv(t('common.email'), user.email || '—'),
-    kv(t('common.phone'), user.phone ? fmtPhone(user.phone) : '—'),
-    kv(t('courier.acceptance'), profile.acceptance != null
-      ? Math.round(profile.acceptance * 100) + '%' : '—'),
-    kv(t('courier.balance'), money(profile.balance || 0)));
-
-  const themeSeg = el('div', { className: 'segmented seg-wrap' });
-  function paintTheme() {
-    const now = getTheme();
-    themeSeg.replaceChildren(...[
-      ['dark', 'common.theme_dark'],
-      ['light', 'common.theme_light'],
-      ['auto', 'common.theme_auto'],
-    ].map(([code, key]) => el('button', {
-      className: 'segmented__i' + (code === now ? ' is-on' : ''),
-      type: 'button',
-      onClick: () => { applyTheme(code); paintTheme(); haptic(); ctx.refreshTheme(); },
-    }, t(key))));
+  function paintNote() {
+    const status = soundStatus();
+    const text = {
+      none: t('snd.none'),
+      off: t('snd.off_note'),
+      idle: t('snd.idle'),
+      blocked: t('snd.blocked'),
+      ok: t('snd.ok'),
+    }[status];
+    note.className = status === 'blocked' || status === 'none' ? 'sg-snd__warn' : 'sg-snd__note';
+    note.textContent = text || '';
   }
-  paintTheme();
 
-  const langSeg = el('div', { className: 'segmented seg-wrap' });
-  function paintLang() {
-    const now = getLang();
-    langSeg.replaceChildren(...[
-      ['ru', 'common.lang_ru'],
-      ['ky', 'common.lang_ky'],
+  function paintVol() {
+    const now = readSound();
+    volSeg.hidden = !now.on;
+    volSeg.replaceChildren(...[
+      ['low', 'snd.low'],
+      ['mid', 'snd.mid'],
+      ['high', 'snd.high'],
     ].map(([code, key]) => el('button', {
-      className: 'segmented__i' + (code === now ? ' is-on' : ''),
+      className: 'segmented__i' + (code === now.level ? ' is-on' : ''),
       type: 'button',
-      onClick: () => { ctx.setLang(code); },
-    }, t(key))));
-  }
-  paintLang();
-
-  root.replaceChildren(el('div', { className: 'me' },
-    head,
-    el('div', { className: 'me__sect' }, t('common.profile')),
-    meList,
-    el('button', {
-      className: 'btn btn--ghost btn--block', type: 'button', onClick: () => editMe(ctx),
-    }, t('common.edit')),
-
-    el('div', { className: 'me__sect' }, t('courier.car')),
-    carList,
-    el('button', {
-      className: 'btn btn--ghost btn--block', type: 'button', onClick: () => editCar(ctx),
-    }, t('common.edit')),
-
-    el('div', { className: 'me__sect' }, t('common.settings')),
-    el('div', { className: 'col gap-3' },
-      el('div', { className: 'muted t-sm' }, t('common.theme')), themeSeg,
-      el('div', { className: 'muted t-sm' }, t('common.language')), langSeg),
-
-    el('button', {
-      className: 'btn btn--ghost btn--block', type: 'button', onClick: () => editPassword(ctx),
-    }, t('common.password')),
-
-    el('button', {
-      className: 'btn btn--danger btn--block', type: 'button',
-      style: { marginTop: 'var(--sp-2)' },
       onClick: async () => {
-        if (await ask({ title: t('courier.logout_confirm'), ok: t('common.logout'), danger: true })) {
-          ctx.logout();
-        }
+        setSoundPrefs({ level: code });
+        paintVol();
+        haptic();
+        // Слышно сразу: иначе выбирать громкость приходится наугад.
+        if (await unlockAudio()) chime(true);
+        paintNote();
       },
-    }, el('span', { html: ICONS.out }), t('common.logout'))));
+    }, t(key))));
+  }
 
-  mountStars(starsBox, { value: profile.rating != null ? profile.rating : 5, readonly: true });
-
-  return () => {};
-}
-
-/* ── правка профиля ─────────────────────────────────────────────────────── */
-
-function textField(label, value, opts = {}) {
-  const input = el('input', Object.assign({
-    className: 'field__input', type: 'text', placeholder: ' ', value: value || '',
-  }, opts.input || {}));
-  const wrap = el('label', { className: 'field' },
-    input, el('span', { className: 'field__label' }, label),
-    opts.hint ? el('span', { className: 'field__hint' }, opts.hint) : null);
-  return { input, wrap };
-}
-
-async function save(ctx, patch) {
-  const res = await api.patch('/auth/me', patch);
-  ctx.store.set({ user: res.user || res });
-  toast(t('courier.profile_saved'), { type: 'ok' });
-  return true;
-}
-
-function editMe(ctx) {
-  const user = ctx.store.get().user || {};
-  const name = textField(t('courier.name'), user.name, { input: { autocomplete: 'name', maxLength: 80 } });
-  const tel = textField(t('common.phone'), user.phone,
-    { input: { type: 'tel', inputMode: 'tel', autocomplete: 'tel' }, hint: t('common.phone_ph') });
-
-  sheet({
-    title: t('common.profile'),
-    content: el('div', { className: 'col gap-3' }, name.wrap, tel.wrap),
-    actions: [
-      { label: t('common.cancel'), kind: 'ghost' },
-      {
-        label: t('common.save'), kind: 'primary',
-        onClick: async () => {
-          const patch = {
-            name: String(name.input.value || '').trim(),
-            phone: String(tel.input.value || '').trim(),
-          };
-          if (!patch.name) { toast(t('err.field_required'), { type: 'err' }); return false; }
-          try {
-            return await save(ctx, patch);
-          } catch (e) {
-            toast((e && e.message) || t('err.save_failed'), { type: 'err' });
-            return false;
-          }
-        },
-      },
-    ],
+  input.addEventListener('change', async () => {
+    setSoundPrefs({ on: input.checked });
+    paintVol();
+    haptic();
+    if (input.checked && await unlockAudio()) chime(true);
+    paintNote();
   });
+
+  box.append(
+    el('div', { className: 'sg-snd' },
+      ico(ICONS.vol),
+      el('div', { className: 'sg-snd__body' },
+        el('div', { className: 'sg-snd__k' }, t('snd.title')),
+        el('div', { className: 'sg-snd__note' }, t('snd.hint'))),
+      toggleWrap),
+    el('div', { className: 'muted t-sm' }, t('snd.volume')),
+    volSeg,
+    testBtn,
+    note);
+
+  paintVol();
+  paintNote();
+  return box;
 }
 
-function editCar(ctx) {
-  const profile = (ctx.store.get().user || {}).courier || {};
-  const car = profile.car || {};
-  const body = profile.body || {};
-
-  const model = textField(t('courier.car_model'), car.model, { input: { maxLength: 60 } });
-  const plate = textField(t('courier.car_plate'), car.plate, { input: { maxLength: 12 } });
-  const color = textField(t('courier.car_color'), car.color, { input: { maxLength: 30 } });
-  const cap = textField(t('courier.capacity'), profile.capacity_kg,
-    { input: { type: 'number', inputMode: 'numeric', min: 1, max: 20000 } });
-  const d = textField(t('courier.body_d'), body.d, { input: { type: 'number', inputMode: 'numeric' } });
-  const w = textField(t('courier.body_w'), body.w, { input: { type: 'number', inputMode: 'numeric' } });
-  const h = textField(t('courier.body_h'), body.h, { input: { type: 'number', inputMode: 'numeric' } });
-
-  bindPlate(plate.input);
-
-  sheet({
-    title: t('courier.car'),
-    content: el('div', { className: 'col gap-3' },
-      model.wrap, plate.wrap, color.wrap, cap.wrap,
-      el('div', { className: 'gate__trio' }, d.wrap, w.wrap, h.wrap)),
-    actions: [
-      { label: t('common.cancel'), kind: 'ghost' },
-      {
-        label: t('common.save'), kind: 'primary',
-        onClick: async () => {
-          const patch = {
-            car_model: String(model.input.value || '').trim(),
-            car_plate: String(plate.input.value || '').trim(),
-            car_color: String(color.input.value || '').trim(),
-          };
-          for (const [key, ref] of [['capacity_kg', cap], ['body_d', d], ['body_w', w], ['body_h', h]]) {
-            const n = parseInt(ref.input.value, 10);
-            if (isFinite(n) && n > 0) patch[key] = n;
-          }
-          if (!patch.car_model || !patch.car_plate) {
-            toast(t('err.field_required'), { type: 'err' });
-            return false;
-          }
-          try {
-            return await save(ctx, patch);
-          } catch (e) {
-            toast((e && e.message) || t('err.save_failed'), { type: 'err' });
-            return false;
-          }
-        },
-      },
-    ],
-  });
-}
-
-function editPassword(ctx) {
-  // Этих двух фраз нет в общем словаре — они нужны только здесь.
-  const ky = getLang() === 'ky';
-  const nowLabel = ky ? 'Учурдагы сырсөз' : 'Текущий пароль';
-  const rule = ky ? 'Сегиз белгиден кем эмес' : 'Не короче восьми символов';
-  const now = textField(nowLabel, '', { input: { type: 'password', autocomplete: 'current-password' } });
-  const next = textField(t('courier.password'), '',
-    { input: { type: 'password', autocomplete: 'new-password' }, hint: rule });
-
-  sheet({
-    title: t('common.password'),
-    content: el('div', { className: 'col gap-3' }, now.wrap, next.wrap),
-    actions: [
-      { label: t('common.cancel'), kind: 'ghost' },
-      {
-        label: t('common.save'), kind: 'primary',
-        onClick: async () => {
-          const password = String(next.input.value || '');
-          if (password.length < 8) {
-            toast(t('err.password_short'), { type: 'err' });
-            return false;
-          }
-          try {
-            await api.patch('/auth/me', {
-              password, current_password: String(now.input.value || ''),
-            });
-            toast(t('courier.profile_saved'), { type: 'ok' });
-            return true;
-          } catch (e) {
-            toast((e && e.message) || t('err.save_failed'), { type: 'err' });
-            return false;
-          }
-        },
-      },
-    ],
-  });
+/** Вставить блок настроек звука в чужой экран (профиль): одна строка вызова. */
+export function mountSoundSettings(node) {
+  if (!node) return null;
+  ensureCss();
+  const box = soundSettings();
+  node.appendChild(box);
+  return box;
 }
 
 export default {
-  renderShift, renderJob, renderHistory, renderProfile,
+  renderShift, renderJob, renderHistory,
   showOffer, createGeoTracker, startAlert, stopAlert, unlockAudio,
-  getTheme, applyTheme, bindPlate, ICONS,
+  chime, getSoundPrefs, setSoundPrefs, soundStatus, soundSettings, mountSoundSettings,
+  handleStreamEvent, getTheme, applyTheme, bindPlate, ICONS,
 };

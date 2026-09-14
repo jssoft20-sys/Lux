@@ -1,11 +1,44 @@
-/* Растровая карта своими руками: плитки, жесты, маркеры и маршруты.
+/* Растровая карта своими руками: плитки, жесты, маркеры, маршруты и зоны спроса.
    Ни одной библиотеки — только браузер. Всё, что делает карту «живой»
    (инерция, щипок, дробный зум, переиспользование плиток), собрано здесь.
 
    Система координат простая: весь мир — квадрат из 256·2^z пикселей (Web Mercator).
    Любая точка превращается в мировые пиксели на текущем (дробном) зуме, а на экран
    попадает как «мировые пиксели минус левый верхний угол вида». Дальше — только
-   transform: translate3d/scale, никаких left/top, чтобы всё считала видеокарта. */
+   transform: translate3d/scale, никаких left/top, чтобы всё считала видеокарта.
+
+   Два правила чёткости, из-за которых карта не мылит и не дрожит:
+   1) на плотном экране просим удвоенные плитки — иначе телефон растягивает
+      картинку 256×256 на 768 своих точек, и город превращается в кашу;
+   2) любое смещение слоя округляем до целой точки устройства, а не до целого
+      css-пикселя: на дробных значениях браузер размазывает и плитки, и маркеры. */
+
+import { t, extend, onLangChange } from './i18n.js';
+
+extend({
+  ru: {
+    'map.title': 'Карта',
+    'map.zoom_in': 'Приблизить',
+    'map.zoom_out': 'Отдалить',
+    'map.locate': 'Показать, где я',
+    'map.geo_no': 'Браузер не умеет определять положение',
+    'map.geo_denied': 'Доступ к местоположению закрыт — включите его в настройках браузера',
+    'map.geo_fail': 'Не получилось определить, где вы',
+    'map.geo_slow': 'Спутники ищутся слишком долго',
+    'map.geo_off': 'Местоположение недоступно',
+  },
+  ky: {
+    'map.title': 'Карта',
+    'map.zoom_in': 'Жакындатуу',
+    'map.zoom_out': 'Алыстатуу',
+    'map.locate': 'Мен кайдамын',
+    'map.geo_no': 'Браузер жайгашкан жерди аныктай албайт',
+    'map.geo_denied': 'Жайгашкан жерге уруксат жок — браузердин жөндөөлөрүнөн ачыңыз',
+    'map.geo_fail': 'Кайда экениңизди аныктай албадык',
+    'map.geo_slow': 'Спутниктер өтө көпкө изделүүдө',
+    'map.geo_off': 'Жайгашкан жер жеткиликсиз',
+  },
+});
 
 const TILE = 256;
 const MAX_LAT = 85.0511287798066;     // широта, на которой Меркатор становится квадратом
@@ -25,7 +58,7 @@ const DEFAULTS = {
   tilesDark: 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
   subdomains: 'abc',
   key: '',
-  attribution: '© OpenStreetMap, © CARTO',
+  attribution: '',                    // подпись владельца; источник плиток добавляется сам
   buffer: 1,                          // сколько рядов плиток подгружаем за краем экрана
 };
 
@@ -35,12 +68,122 @@ const ICON_LOCATE = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12"
   '<circle cx="12" cy="12" r="6.8" fill="none" stroke="currentColor" stroke-width="1.7"/>' +
   '<path d="M12 1.8v3.2M12 19v3.2M1.8 12H5M19 12h3.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
 
+/* Машина курьера — вид сверху: жёлтый фургон носом вперёд, тёмное лобовое,
+   зеркала и колёса чуть выступают по бокам, под кузовом мягкая тень.
+   Носом вверх, потому что маркер разворачивается на угол азимута, где ноль — север.
+   Цвета вынесены в map.css: на светлой карте машина другая, чем на тёмной. */
+const CAR_SVG = '<svg class="map-car" viewBox="0 0 44 55" aria-hidden="true">' +
+  '<defs><radialGradient id="sg-car-shade" cx="50%" cy="50%" r="50%">' +
+  '<stop offset="0" stop-color="#000" stop-opacity=".38"/>' +
+  '<stop offset=".55" stop-color="#000" stop-opacity=".18"/>' +
+  '<stop offset="1" stop-color="#000" stop-opacity="0"/>' +
+  '</radialGradient></defs>' +
+  '<ellipse class="map-car__shade" cx="22" cy="29.5" rx="16" ry="21.5" fill="url(#sg-car-shade)"/>' +
+  '<g class="map-car__wheels">' +
+  '<rect x="6.7" y="15.5" width="3.2" height="8" rx="1.6"/>' +
+  '<rect x="6.7" y="32" width="3.2" height="8.5" rx="1.6"/>' +
+  '<rect x="34.1" y="15.5" width="3.2" height="8" rx="1.6"/>' +
+  '<rect x="34.1" y="32" width="3.2" height="8.5" rx="1.6"/>' +
+  '</g>' +
+  '<g class="map-car__mirrors">' +
+  '<rect x="6.5" y="10.4" width="3.1" height="2.5" rx="1.2"/>' +
+  '<rect x="34.4" y="10.4" width="3.1" height="2.5" rx="1.2"/>' +
+  '</g>' +
+  '<rect class="map-car__shell" x="9" y="5" width="26" height="46" rx="7"/>' +
+  '<rect class="map-car__lamp" x="12.6" y="6.8" width="4.2" height="2" rx=".9"/>' +
+  '<rect class="map-car__lamp" x="27.2" y="6.8" width="4.2" height="2" rx=".9"/>' +
+  '<path class="map-car__glass" d="M12.7 16.6 14.1 10.7q.3-1.3 1.7-1.3h12.4q1.4 0 1.7 1.3l1.4 5.9z"/>' +
+  '<rect class="map-car__roof" x="12" y="19.6" width="20" height="24.2" rx="3.4"/>' +
+  '<rect class="map-car__glass" x="13.6" y="44.4" width="16.8" height="2.6" rx="1.2"/>' +
+  '<rect class="map-car__tail" x="12.6" y="47.8" width="4" height="2" rx=".9"/>' +
+  '<rect class="map-car__tail" x="27.4" y="47.8" width="4" height="2" rx=".9"/>' +
+  '</svg>';
+
 /* ─────────────────────────────────────────────────────── мелкая математика */
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 const n2 = (v) => Math.round(v * 100) / 100;
+
+/* ───────────────────────────────────────── плотность экрана и чёткость плиток */
+
+/* Плотность точек меняется на ходу: страницу увеличили колесом, окно перетащили
+   на второй монитор. Держим одно значение на все карты и будим их при смене. */
+let DPR = dprNow();
+const dprWakes = new Set();
+let dprQuery = null;
+
+const RETINA_FROM = 1.4;              // ниже этой плотности удвоенная плитка не нужна
+const RETINA_GIVE_UP = 3;             // столько промахов подряд — и больше не просим @2x
+const RETINA_SLOT = /\{r\}|\{scale\}/;
+const retinaMiss = new Map();         // шаблон → сколько раз удвоенной плитки не нашлось
+
+function dprNow() {
+  const v = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
+  return v > 0 ? v : 1;
+}
+
+function mqOn(q, fn) {
+  if (q.addEventListener) q.addEventListener('change', fn);
+  else if (q.addListener) q.addListener(fn);        // Safari до 14
+}
+
+function mqOff(q, fn) {
+  if (q.removeEventListener) q.removeEventListener('change', fn);
+  else if (q.removeListener) q.removeListener(fn);
+}
+
+/** Пересчитать плотность и разбудить карты, если она и правда изменилась. */
+function syncDpr() {
+  const v = dprNow();
+  if (Math.abs(v - DPR) < 1e-6) return false;
+  DPR = v;
+  for (const wake of Array.from(dprWakes)) wake();
+  return true;
+}
+
+/* Медиазапрос «ровно такая плотность» перестаёт совпадать в ту же секунду,
+   когда плотность поменялась, — это самый дешёвый способ об этом узнать. */
+function watchDpr() {
+  if (dprQuery || typeof window === 'undefined' || !window.matchMedia) return;
+  const q = window.matchMedia('(resolution: ' + DPR + 'dppx)');
+  const changed = () => {
+    mqOff(q, changed);
+    dprQuery = null;
+    syncDpr();
+    watchDpr();
+  };
+  mqOn(q, changed);
+  dprQuery = q;
+}
+
+function retinaWanted(tpl) {
+  return DPR > RETINA_FROM && (retinaMiss.get(tpl) || 0) < RETINA_GIVE_UP;
+}
+
+function retinaMissed(tpl) {
+  retinaMiss.set(tpl, (retinaMiss.get(tpl) || 0) + 1);
+}
+
+/** Подставить параметр в адрес: был — заменим значение, не было — допишем. */
+function withParam(url, name, value) {
+  const re = new RegExp('([?&]' + name + '=)[^&#]*');
+  if (re.test(url)) return url.replace(re, '$1' + value);
+  return url + (url.indexOf('?') >= 0 ? '&' : '?') + name + '=' + value;
+}
+
+/** Удвоенную плитку каждый поставщик просит по-своему, а шаблон об этом молчит. */
+function retinaUrl(url) {
+  if (/yandex/i.test(url)) return withParam(url, 'scale', '2');
+  if (/2gis/i.test(url)) {
+    if (/[?&]ts=online_sd/i.test(url)) return url.replace(/([?&]ts=)online_sd/i, '$1online_hd');
+    return /[?&]ts=/i.test(url) ? url : withParam(url, 'ts', 'online_hd');
+  }
+  // OSM, Carto и почти все растровые серверы — суффикс перед расширением
+  return url.replace(/(\.(?:png|jpe?g|webp))(?=$|[?#])/i, '@2x$1');
+}
 
 function reduced() {
   return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -102,6 +245,35 @@ export function bearing(a, b) {
   return (Math.atan2(y, x) / DEG + 360) % 360;
 }
 
+/* ─────────────────────────────────────────────────── источники плиток
+
+   Указывать, чьи это плитки, обязательно: этого требуют и лицензия
+   OpenStreetMap, и условия Яндекса, и CARTO. Поэтому подпись собирается из
+   самого адреса плиток, а не из настройки: название сервиса владелец может
+   дописать рядом, но затереть источник у него не выйдет.
+   `mark` — по чему узнаём этот же источник в тексте владельца, чтобы не
+   написать «© OpenStreetMap» дважды. */
+
+const SOURCES = [
+  {
+    // плитки CARTO нарисованы по данным OSM, поэтому упомянуть нужно обоих
+    test: /openstreetmap|tile\.osm\b|cartocdn/i, mark: /openstreetmap|\bosm\b/i,
+    text: '© OpenStreetMap', href: 'https://www.openstreetmap.org/copyright',
+  },
+  {
+    test: /cartocdn|carto\.com/i, mark: /carto/i,
+    text: '© CARTO', href: 'https://carto.com/attributions',
+  },
+  {
+    test: /yandex/i, mark: /яндекс|yandex/i,
+    text: '© Яндекс Карты', href: 'https://yandex.ru/maps/',
+  },
+  {
+    test: /2gis|2гис/i, mark: /2gis|2гис/i,
+    text: '© 2ГИС', href: 'https://2gis.kg/',
+  },
+];
+
 /* ─────────────────────────────────────────────────────── узлы */
 
 function div(cls) {
@@ -154,14 +326,13 @@ export function createMap(container, options = {}) {
 
   container.classList.add('map', theme === 'light' ? 'map--light' : 'map--dark');
   if (!opt.interactive) container.classList.add('map--static');
-  container.setAttribute('aria-label', 'Карта');
+  container.setAttribute('aria-label', t('map.title'));
 
   const tilesPane = div('map__tiles');
   const pane = div('map__pane');
   const vector = svgNode('svg', { class: 'map__vector', 'aria-hidden': 'true' });
   const markersPane = div('map__markers');
   const attrBox = div('map__attr');
-  attrBox.innerHTML = opt.attribution || '';
 
   pane.appendChild(vector);
   pane.appendChild(markersPane);
@@ -169,11 +340,11 @@ export function createMap(container, options = {}) {
   container.appendChild(pane);
   container.appendChild(attrBox);
 
-  let ctrlBox = null, locBtn = null;
+  let ctrlBox = null, locBtn = null, bIn = null, bOut = null;
   if (opt.interactive && opt.controls) {
     ctrlBox = div('map__ctrl');
-    const bIn = button('map__btn map__btn--in', 'Приблизить', ICON_PLUS);
-    const bOut = button('map__btn map__btn--out', 'Отдалить', ICON_MINUS);
+    bIn = button('map__btn map__btn--in', t('map.zoom_in'), ICON_PLUS);
+    bOut = button('map__btn map__btn--out', t('map.zoom_out'), ICON_MINUS);
     bIn.addEventListener('click', () => zoomTo(Math.round(zoom) + 1));
     bOut.addEventListener('click', () => zoomTo(Math.round(zoom) - 1));
     ctrlBox.appendChild(bIn);
@@ -181,10 +352,25 @@ export function createMap(container, options = {}) {
     container.appendChild(ctrlBox);
   }
   if (opt.interactive && opt.locate) {
-    locBtn = button('map__btn map__btn--locate', 'Показать, где я', ICON_LOCATE);
+    locBtn = button('map__btn map__btn--locate', t('map.locate'), ICON_LOCATE);
     locBtn.addEventListener('click', () => locate());
     container.appendChild(locBtn);
   }
+
+  /** Подписи кнопок живут в двух языках, а язык переключают прямо на экране. */
+  function relabel() {
+    container.setAttribute('aria-label', t('map.title'));
+    const say = (node, key) => {
+      if (!node) return;
+      node.setAttribute('aria-label', t(key));
+      node.title = t(key);
+    };
+    say(bIn, 'map.zoom_in');
+    say(bOut, 'map.zoom_out');
+    say(locBtn, 'map.locate');
+  }
+
+  const stopLang = onLangChange(relabel);
 
   /* ── состояние отрисовки ──────────────────────────────────────────────── */
 
@@ -192,6 +378,7 @@ export function createMap(container, options = {}) {
   const pool = [];                      // снятые с экрана <img>, ждут повторного применения
   const markers = new Set();
   const routes = new Set();
+  const zoneLayers = new Set();
   const handlers = new Map();
   const unbinds = [];
 
@@ -204,6 +391,23 @@ export function createMap(container, options = {}) {
   let endTimer = 0, tapTimer = 0, pressTimer = 0, wheelTimer = 0;
   let lastLat = NaN, lastLng = NaN, lastZoom = NaN, settleZoom = zoom;
   let pendingFit = null;
+
+  /* Округление до целой точки устройства. На экране с плотностью 3 половина
+     css-пикселя — это полторы точки: браузер честно размажет их по трём,
+     и ровные линии домов поплывут. Округляем — и картинка встаёт намертво. */
+  function snap(v) {
+    return Math.round(v * DPR) / DPR;
+  }
+
+  /* Экран сменил плотность: удвоенные плитки теперь нужны (или наоборот),
+     а сетка округления стала другой — перекладываем слой заново. */
+  function onDpr() {
+    if (destroyed) return;
+    rebuildTiles();
+  }
+
+  dprWakes.add(onDpr);
+  watchDpr();
 
   /* ── события ──────────────────────────────────────────────────────────── */
 
@@ -302,6 +506,7 @@ export function createMap(container, options = {}) {
     view.x = p.x - w / 2;
     view.y = p.y - h / 2;
     drawTiles();
+    drawZones();
     drawOverlay();
     if (lastLat !== center[0] || lastLng !== center[1] || lastZoom !== zoom) {
       lastLat = center[0]; lastLng = center[1]; lastZoom = zoom;
@@ -340,22 +545,29 @@ export function createMap(container, options = {}) {
     return theme === 'light' ? opt.tilesLight : opt.tilesDark;
   }
 
-  function tileUrl(x, y, z) {
+  /**
+   * Адрес плитки. k — во сколько раз плотнее нужна картинка: 1 или 2.
+   * {r} даёт «@2x», {scale} — «1» или «2»; если в шаблоне нет ни того, ни
+   * другого, дописываем удвоение сами по правилам поставщика.
+   */
+  function tileUrl(x, y, z, k) {
     const tpl = template();
     const subs = String(opt.subdomains || 'abc');
-    const retina = window.devicePixelRatio > 1.4 ? '@2x' : '';
-    return tpl.replace(/\{(-y|[a-z]+)\}/g, (all, key) => {
+    const two = k === 2;
+    const url = tpl.replace(/\{(-y|[a-z]+)\}/g, (all, key) => {
       switch (key) {
         case 'z': return String(z);
         case 'x': return String(x);
         case 'y': return String(y);
         case '-y': return String(Math.pow(2, z) - 1 - y);
-        case 'r': return retina;
+        case 'r': return two ? '@2x' : '';
+        case 'scale': return two ? '2' : '1';
         case 's': return subs.charAt(Math.abs(x + y) % subs.length);
         case 'key': return encodeURIComponent(opt.key || '');
         default: return all;
       }
     });
+    return two && !RETINA_SLOT.test(tpl) ? retinaUrl(url) : url;
   }
 
   function addLevel(z) {
@@ -405,28 +617,40 @@ export function createMap(container, options = {}) {
 
   function addTile(lv, i, j, n) {
     const img = pool.pop() || new Image();
-    const t = { i, j, img, done: false };
+    const tpl = template();
+    const wx = ((i % n) + n) % n;
+    const t = { i, j, img, done: false, two: retinaWanted(tpl), fell: false };
     img.className = 'map__tile';
     img.alt = '';
     img.decoding = 'async';
     img.draggable = false;
+    // плитку внутри слоя двигаем плоским сдвигом: слой и так лежит на видеокарте,
+    // а каждая плитка своим слоем — это лишняя память и щели между ними
     img.style.transform =
-      'translate3d(' + (i * TILE - lv.origin.x) + 'px,' + (j * TILE - lv.origin.y) + 'px,0)';
+      'translate(' + (i * TILE - lv.origin.x) + 'px,' + (j * TILE - lv.origin.y) + 'px)';
     lv.pending++;
     img.onload = () => {
       t.done = true;
       lv.pending--;
       img.classList.add('is-on');
+      // обычная плитка пришла вместо удвоенной — значит, @2x у этого сервера нет
+      if (t.fell) retinaMissed(tpl);
       if (lv.pending <= 0) pruneLevels(lv);
     };
     img.onerror = () => {
+      if (t.two && !t.fell) {
+        // удвоенной плитки не нашлось — молча берём обычную, дыру не показываем
+        t.fell = true;
+        t.two = false;
+        img.src = tileUrl(wx, j, lv.z, 1);
+        return;
+      }
       // битую плитку не ждём вечно: считаем её «пришедшей», но не показываем
       t.done = true;
       lv.pending--;
       if (lv.pending <= 0) pruneLevels(lv);
     };
-    const wx = ((i % n) + n) % n;
-    img.src = tileUrl(wx, j, lv.z);
+    img.src = tileUrl(wx, j, lv.z, t.two ? 2 : 1);
     lv.el.appendChild(img);
     lv.tiles.set(i + ':' + j, t);
     return t;
@@ -480,10 +704,10 @@ export function createMap(container, options = {}) {
       const s = Math.pow(2, zoom - lvl.z);
       const tx = lvl.origin.x * s - view.x;
       const ty = lvl.origin.y * s - view.y;
-      // на целом зуме прижимаем слой к пиксельной сетке — плитки остаются острыми
-      const px = s === 1 ? Math.round(tx) : n2(tx);
-      const py = s === 1 ? Math.round(ty) : n2(ty);
-      lvl.el.style.transform = 'translate3d(' + px + 'px,' + py + 'px,0) scale(' + s + ')';
+      // весь слой едет одним трансформом, прижатым к сетке точек устройства:
+      // так плитки остаются острыми и не дрожат на дробных смещениях
+      lvl.el.style.transform =
+        'translate3d(' + snap(tx) + 'px,' + snap(ty) + 'px,0) scale(' + s + ')';
       lvl.el.classList.toggle('is-scaled', s !== 1);
     }
     if (lv.pending <= 0) pruneLevels(lv);
@@ -491,7 +715,142 @@ export function createMap(container, options = {}) {
 
   function rebuildTiles() {
     for (const lvl of Array.from(levels.values())) dropLevel(lvl);
+    renderAttr();                       // сменились плитки — сменился и источник
     invalidate();
+  }
+
+  /* ── зоны спроса ──────────────────────────────────────────────────────── */
+
+  const ZONE_COLOR = '#FF488A';         // розовый: тёплое пятно поверх любой карты
+  const ZONE_R_M = 700;                 // радиус пятна по умолчанию, метры
+  const ZONE_SPRITE = 128;
+
+  /** Метров в одном экранном пикселе на текущей широте и зуме. */
+  function metersPerPx(lat) {
+    return 156543.03392804097 * Math.cos(clamp(lat, -MAX_LAT, MAX_LAT) * DEG) / Math.pow(2, zoom);
+  }
+
+  /* Мягкое пятно рисуем один раз в спрайт и потом просто штампуем: считать
+     градиент на каждую ячейку в каждом кадре — верный способ уронить кадры. */
+  function zoneSprite(color) {
+    const cv = document.createElement('canvas');
+    cv.width = ZONE_SPRITE;
+    cv.height = ZONE_SPRITE;
+    const g = cv.getContext ? cv.getContext('2d') : null;
+    if (!g) return cv;
+    const c = ZONE_SPRITE / 2;
+    const grad = g.createRadialGradient(c, c, c * 0.12, c, c, c);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.5, 'rgba(255,255,255,.55)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, ZONE_SPRITE, ZONE_SPRITE);
+    // маску красим цветом поверх: подойдёт любая запись цвета, а мусорную
+    // строку браузер просто не примет — останется наш розовый
+    g.globalCompositeOperation = 'source-in';
+    g.fillStyle = ZONE_COLOR;
+    g.fillStyle = color || ZONE_COLOR;
+    g.fillRect(0, 0, ZONE_SPRITE, ZONE_SPRITE);
+    return cv;
+  }
+
+  /** Ячейки принимаем и массивом, и целым ответом сервера {cells, cell_m}. */
+  function zoneCells(input) {
+    const src = Array.isArray(input) ? input
+      : (input && Array.isArray(input.cells) ? input.cells : []);
+    const out = [];
+    for (const c of src) {
+      const ll = toLL(c);
+      if (!ll) continue;
+      const raw = Array.isArray(c) ? c[2] : (c && c.level !== undefined ? c.level : 1);
+      const level = +raw;
+      const rm = c && !Array.isArray(c) ? +(c.radius_m !== undefined ? c.radius_m : c.r) : NaN;
+      out.push({
+        ll,
+        level: clamp(isFinite(level) ? level : 1, 0.05, 1),
+        rm: isFinite(rm) && rm > 0 ? rm : 0,
+      });
+    }
+    return out;
+  }
+
+  function drawZones() {
+    if (!zoneLayers.size || !w || !h) return;
+    const pw = Math.max(1, Math.round(w * DPR));
+    const ph = Math.max(1, Math.round(h * DPR));
+    const perPx = metersPerPx(center[0]) || 1;
+    const far = Math.max(w, h) * 1.5;
+
+    for (const L of zoneLayers) {
+      const gc = L.gc;
+      if (!gc) continue;
+      if (L.cv.width !== pw || L.cv.height !== ph) { L.cv.width = pw; L.cv.height = ph; }
+      gc.setTransform(DPR, 0, 0, DPR, 0, 0);
+      gc.clearRect(0, 0, w, h);
+      if (!L.cells.length) continue;
+      for (const cell of L.cells) {
+        const r = clamp((cell.rm || L.radiusM || ZONE_R_M) / perPx, 26, far);
+        const p = project(cell.ll[0], cell.ll[1], zoom);
+        const x = p.x - view.x, y = p.y - view.y;
+        if (x < -r || y < -r || x > w + r || y > h + r) continue;
+        // пятно — подсказка, а не заливка: на приближённой карте густой цвет
+        // съел бы улицы, и курьер перестал бы понимать, куда ехать
+        gc.globalAlpha = clamp(0.10 + 0.26 * cell.level, 0.05, 0.44);
+        gc.drawImage(L.sprite, x - r, y - r, r * 2, r * 2);
+      }
+      gc.globalAlpha = 1;
+    }
+  }
+
+  /**
+   * Слой зон спроса: полупрозрачные пятна с мягкими краями поверх плиток,
+   * но под маркерами. cells — массив {lat, lng, level} либо ответ сервера.
+   */
+  function zones(cells, o = {}) {
+    const cv = document.createElement('canvas');
+    cv.className = 'map__zones';
+    cv.setAttribute('aria-hidden', 'true');
+    container.insertBefore(cv, pane);
+
+    const L = {
+      cv,
+      gc: cv.getContext ? cv.getContext('2d') : null,
+      cells: [],
+      color: o.color || ZONE_COLOR,
+      radiusM: +o.radiusM > 0 ? +o.radiusM : 0,
+      sprite: null,
+    };
+    L.sprite = zoneSprite(L.color);
+    zoneLayers.add(L);
+
+    function put(next) {
+      L.cells = zoneCells(next);
+      if (!L.radiusM && next && !Array.isArray(next) && +next.cell_m > 0) {
+        // сервер прислал шаг сетки — пятно чуть шире ячейки, чтобы соседние слились
+        L.radiusM = +next.cell_m * 0.75;
+      }
+      cv.classList.toggle('is-on', L.cells.length > 0);
+      invalidate();
+    }
+
+    put(cells);
+
+    return {
+      el: cv,
+      setCells: put,
+      setStyle(st = {}) {
+        if (st.color) {
+          L.color = st.color;
+          L.sprite = zoneSprite(L.color);
+        }
+        if (+st.radiusM > 0) L.radiusM = +st.radiusM;
+        invalidate();
+      },
+      remove() {
+        zoneLayers.delete(L);
+        if (cv.parentNode) cv.parentNode.removeChild(cv);
+      },
+    };
   }
 
   /* ── слой маркеров и маршрутов ────────────────────────────────────────── */
@@ -508,7 +867,7 @@ export function createMap(container, options = {}) {
       moved = true;
     }
     pane.style.transform =
-      'translate3d(' + n2(base.x - view.x) + 'px,' + n2(base.y - view.y) + 'px,0)';
+      'translate3d(' + snap(base.x - view.x) + 'px,' + snap(base.y - view.y) + 'px,0)';
 
     for (const m of markers) {
       if (moved || m.dirty) { placeMarker(m); m.dirty = false; }
@@ -518,19 +877,28 @@ export function createMap(container, options = {}) {
     for (const r of routes) {
       const rs = Math.pow(2, zoom - r.vz);
       r.g.setAttribute('transform',
-        'translate(' + n2(r.vbase.x * rs - base.x) + ' ' + n2(r.vbase.y * rs - base.y) + ') scale(' + rs + ')');
+        'translate(' + snap(r.vbase.x * rs - base.x) + ' ' + snap(r.vbase.y * rs - base.y) + ') scale(' + rs + ')');
     }
   }
 
   function placeMarker(m) {
     const p = project(m.ll[0], m.ll[1], zoom);
     m.root.style.transform =
-      'translate3d(' + n2(p.x - base.x) + 'px,' + n2(p.y - base.y) + 'px,0)';
+      'translate3d(' + snap(p.x - base.x) + 'px,' + snap(p.y - base.y) + 'px,0)';
   }
 
+  /* Угол копим без сбросов через ноль: если писать то 350°, то 10°, машина
+     на каждом круге будет прокручиваться в обратную сторону. */
   function applyHeading(m, deg) {
-    m.heading = deg;
-    m.rot.style.transform = 'rotate(' + n2(deg) + 'deg)';
+    const next = m.spin === null ? deg : m.spin + ((((deg - m.spin) % 360) + 540) % 360) - 180;
+    m.spin = next;
+    m.heading = ((deg % 360) + 360) % 360;
+    m.rot.style.transform = 'rotate(' + n2(next) + 'deg)';
+  }
+
+  function endMove(m) {
+    m.anim = null;
+    m.root.classList.remove('is-moving');
   }
 
   function stepMarker(m, dt) {
@@ -539,12 +907,13 @@ export function createMap(container, options = {}) {
     const u = clamp(a.t / a.dur, 0, 1);
     m.ll = [lerp(a.from[0], a.to[0], u), lerp(a.from[1], a.to[1], u)];
     if (a.turn) {
-      const d = ((a.h1 - a.h0 + 540) % 360) - 180;   // поворот по короткой дуге
-      applyHeading(m, a.h0 + d * u);
+      const d = ((a.h1 - a.h0 + 540) % 360) - 180;   // доворот по короткой дуге
+      // руль машина выкручивает в начале манёвра, а не размазывает по всему пути
+      applyHeading(m, a.h0 + d * easeOut(u));
     }
     m.dirty = true;
     dirty = true;
-    if (u >= 1) m.anim = null;
+    if (u >= 1) endMove(m);
   }
 
   function marker(o = {}) {
@@ -553,7 +922,9 @@ export function createMap(container, options = {}) {
       root: div('map__marker'),
       rot: div('map__marker-rot' + (o.className ? ' ' + o.className : '')),
       heading: null,
+      spin: null,                       // накопленный угол поворота, без скачков через 360°
       anim: null,
+      lastAt: 0,                        // когда пришла прошлая точка — по ней считаем длительность проезда
       dirty: true,
       rotate: !!o.rotate || typeof o.heading === 'number',
     };
@@ -573,7 +944,11 @@ export function createMap(container, options = {}) {
       node: m.rot,
       at: () => m.ll.slice(),
 
-      /** Плавно перевести маркер в новую точку; с rotate — ещё и развернуть по ходу. */
+      /**
+       * Перевести маркер в новую точку. Без явной duration машина проезжает
+       * ровно столько, сколько прошло между двумя посылками координат:
+       * получается ровный проезд, а не прыжок раз в несколько секунд.
+       */
       moveTo(next, mo = {}) {
         const to = toLL(next);
         if (!to) return;
@@ -582,9 +957,15 @@ export function createMap(container, options = {}) {
           const far = Math.abs(to[0] - m.ll[0]) + Math.abs(to[1] - m.ll[1]);
           if (far > 2e-6) head = bearing(m.ll, to);
         }
-        const dur = reduced() ? 0 : Math.max(0, +mo.duration || 0);
+        const now = performance.now();
+        const gap = m.lastAt ? now - m.lastAt : 0;
+        m.lastAt = now;
+        const asked = mo.duration === undefined || mo.duration === null
+          ? clamp(gap || 700, 400, 2600)
+          : Math.max(0, +mo.duration || 0);
+        const dur = reduced() ? 0 : asked;
         if (!dur) {
-          m.anim = null;
+          endMove(m);
           m.ll = to;
           m.dirty = true;
           if (head !== null) applyHeading(m, head);
@@ -597,6 +978,7 @@ export function createMap(container, options = {}) {
           from: m.ll.slice(), to, t: 0, dur,
           turn: head !== null, h0, h1: head === null ? h0 : head,
         };
+        m.root.classList.add('is-moving');
         schedule();
       },
 
@@ -604,10 +986,22 @@ export function createMap(container, options = {}) {
         m.rot.innerHTML = html == null ? '' : String(html);
       },
 
-      setHeading(deg) {
+      /** Довернуть маркер на месте — тоже плавно и по короткой дуге. */
+      setHeading(deg, so = {}) {
         m.rotate = true;
-        m.anim = null;
-        applyHeading(m, +deg || 0);
+        const to = +deg || 0;
+        const dur = reduced() || so.animate === false ? 0 : Math.max(0, +so.duration || 420);
+        if (!dur || m.heading === null) {
+          endMove(m);
+          applyHeading(m, to);
+          return;
+        }
+        m.anim = {
+          from: m.ll.slice(), to: m.ll.slice(), t: 0, dur,
+          turn: true, h0: m.heading, h1: to,
+        };
+        m.root.classList.add('is-moving');
+        schedule();
       },
 
       setClass(cls) {
@@ -1050,6 +1444,9 @@ export function createMap(container, options = {}) {
 
   function invalidateSize() {
     if (destroyed) return apiObj;
+    // страницу могли увеличить колесом: это и смена размера, и смена плотности,
+    // а медиазапрос про dppx поддерживают не все браузеры
+    syncDpr();
     if (measure()) {
       // рисуем не сразу, а следующим кадром: ResizeObserver не любит,
       // когда из его обработчика тут же меняют содержимое
@@ -1071,7 +1468,7 @@ export function createMap(container, options = {}) {
 
   function locate(o = {}) {
     if (!navigator.geolocation) {
-      emit('locateerror', { code: 0, message: 'Браузер не умеет определять положение' });
+      emit('locateerror', { code: 0, message: t('map.geo_no') });
       return apiObj;
     }
     if (locBtn) locBtn.classList.add('is-busy');
@@ -1084,13 +1481,70 @@ export function createMap(container, options = {}) {
     }, (err) => {
       if (destroyed) return;
       if (locBtn) locBtn.classList.remove('is-busy');
-      const say = {
-        1: 'Доступ к местоположению закрыт — включите его в настройках браузера',
-        2: 'Не получилось определить, где вы',
-        3: 'Спутники ищутся слишком долго',
-      };
-      emit('locateerror', { code: err.code, message: say[err.code] || 'Местоположение недоступно' });
+      const say = { 1: 'map.geo_denied', 2: 'map.geo_fail', 3: 'map.geo_slow' };
+      emit('locateerror', { code: err.code, message: t(say[err.code] || 'map.geo_off') });
     }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+    return apiObj;
+  }
+
+  /* ── подпись об источнике ─────────────────────────────────────────────── */
+
+  /** Что владелец дописал от себя. Источники, уже показанные ссылкой, убираем,
+   *  чтобы «© OpenStreetMap» не стояло в подписи дважды. */
+  function ownAttr(shown) {
+    const raw = String(opt.attribution == null ? '' : opt.attribution)
+      .replace(/<[^>]*>/g, ' ')          // из настроек может прийти разметка — она нам не нужна
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!raw) return '';
+    const parts = raw.split(/\s*[,;·|]+\s*/).filter((chunk) => {
+      if (!chunk) return false;
+      for (const s of shown) if (s.mark.test(chunk)) return false;
+      return true;
+    });
+    return parts.join(' · ');
+  }
+
+  /* Источник плиток стоит первым: подпись узкая и обрезается многоточием,
+     и обрезаться должно название сервиса, а не обязательная ссылка. */
+  function renderAttr() {
+    const tpl = String(template() || '');
+    const shown = SOURCES.filter((s) => s.test.test(tpl));
+    const nodes = [];
+    for (const s of shown) {
+      const a = document.createElement('a');
+      a.href = s.href;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.textContent = s.text;
+      nodes.push(a);
+    }
+    const own = ownAttr(shown);
+    if (own) {
+      // текст владельца кладём как текст узла, а не как разметку: в настройке
+      // может оказаться что угодно, и это «что угодно» не должно исполняться
+      const node = document.createElement('span');
+      node.textContent = own;
+      nodes.push(node);
+    }
+
+    attrBox.innerHTML = '';
+    for (let i = 0; i < nodes.length; i++) {
+      if (i) {
+        const sep = document.createElement('span');
+        sep.className = 'map__attr-sep';
+        sep.textContent = ' · ';
+        attrBox.appendChild(sep);
+      }
+      attrBox.appendChild(nodes[i]);
+    }
+    attrBox.classList.toggle('is-empty', nodes.length === 0);
+  }
+
+  /** Своя подпись владельца. Источник плиток она не заменяет — он останется. */
+  function setAttribution(text) {
+    opt.attribution = text == null ? '' : String(text);
+    renderAttr();
     return apiObj;
   }
 
@@ -1123,9 +1577,15 @@ export function createMap(container, options = {}) {
     clearTimeout(pressTimer);
     clearTimeout(wheelTimer);
     if (ro) ro.disconnect();
+    dprWakes.delete(onDpr);
+    stopLang();
     for (const un of unbinds) un();
     unbinds.length = 0;
     for (const lvl of Array.from(levels.values())) dropLevel(lvl);
+    for (const L of zoneLayers) {
+      if (L.cv.parentNode) L.cv.parentNode.removeChild(L.cv);
+    }
+    zoneLayers.clear();
     pool.length = 0;
     markers.clear();
     routes.clear();
@@ -1144,12 +1604,14 @@ export function createMap(container, options = {}) {
     fitPoints,
     marker,
     route,
+    zones,
     on,
     off,
     destroy,
     locate,
     setTheme,
     setTiles,
+    setAttribution,
     invalidateSize,
     zoomIn: () => zoomTo(Math.round(zoom) + 1),
     zoomOut: () => zoomTo(Math.round(zoom) - 1),
@@ -1162,6 +1624,7 @@ export function createMap(container, options = {}) {
     get destroyed() { return destroyed; },
   };
 
+  renderAttr();
   measure();
   invalidate();
   return apiObj;
@@ -1173,17 +1636,13 @@ export function createMap(container, options = {}) {
  * Разметка типовых меток. Стили лежат в map.css, здесь только каркас:
  *   pin('a')       — жёлтая точка подачи
  *   pin('b', '2')  — флажок с номером точки назначения
- *   pin('car')     — машина курьера (маркер создавать с rotate: true)
+ *   pin('car')     — фургон курьера (маркер создавать с rotate: true)
  *   pin('me')      — «я здесь»
  */
 export function pin(kind, label) {
   const cls = 'map-pin map-pin--' + kind;
+  if (kind === 'car') return '<span class="' + cls + '">' + CAR_SVG + '</span>';
   const tail = label ? '<span class="map-pin__label">' + label + '</span>' : '';
-  if (kind === 'car') {
-    return '<span class="' + cls + '"><svg viewBox="0 0 24 24" aria-hidden="true">' +
-      '<path d="M5 15.5V11l1.8-4.2A2 2 0 0 1 8.6 5.6h6.8a2 2 0 0 1 1.8 1.2L19 11v4.5a1 1 0 0 1-1 1h-1.4a1 1 0 0 1-1-1v-.8H8.4v.8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z" fill="currentColor"/>' +
-      '</svg></span>';
-  }
   return '<span class="' + cls + '">' + tail + '</span>';
 }
 

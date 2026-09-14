@@ -147,9 +147,11 @@ def _geo_fresh(profile, at=None):
 
 
 def _state(user, profile=None, order=None):
-    """Короткая сводка для экрана: на линии ли, занят ли, что сейчас везёт."""
+    """Короткая сводка для экрана: на линии ли, занят ли, что сейчас везёт
+    и почему заказов может не быть."""
     profile = profile or _profile(user['id'])
     order = order if order is not None else _active_order(user['id'])
+    verify = dispatch.verify_view(profile)
     return {
         'online': bool(profile['online']),
         'busy': bool(profile['busy']),
@@ -158,6 +160,12 @@ def _state(user, profile=None, order=None):
         'geo_at': profile['geo_at'],
         'order': dispatch.order_card(order, full=True) if order else None,
         'offers': _live_offers(user['id']),
+        # Непроверенный курьер видит весь интерфейс, но заказов не получает.
+        # Чтобы он не гадал, отдаём статус проверки и готовое объяснение.
+        'verify_status': verify['status'],
+        'verify': verify,
+        'can_take_orders': verify['ok'],
+        'blocked_reason': None if verify['ok'] else verify['text'],
     }
 
 
@@ -172,6 +180,9 @@ def _courier_state_for_admin(user, profile):
         'heading': profile['heading'], 'speed': profile['speed'], 'geo_at': profile['geo_at'],
         'rating': auth.rating_of(profile['rating_sum'], profile['rating_count']),
         'orders_done': profile['orders_done'],
+        # Оператор на живой карте должен сразу видеть, кто на линии без проверки:
+        # такая машина стоит зря, ей стоит позвонить.
+        'verify_status': profile.get('verify_status') or 'none',
     }
 
 
@@ -199,7 +210,11 @@ def set_online(ctx):
 
     state = _state(user, profile, order)
     state['ok'] = True
-    if online and not state['geo_fresh']:
+    # Одно сообщение за раз и самое важное первым: без проверки документов
+    # геолокация всё равно ничего не изменит.
+    if online and not state['can_take_orders']:
+        state['message'] = state['verify']['text']
+    elif online and not state['geo_fresh']:
         state['message'] = 'Включите геолокацию — без неё заказы не приходят'
     return state
 
@@ -525,6 +540,53 @@ def _waiting_action(ctx):
     bad('Не сказано, включить ожидание или выключить')
 
 
+@router.post(API + '/courier/orders/{id}/rate-client')
+def rate_client(ctx, id):
+    """Оценка клиента после заказа: пять звёзд и пара слов для своих.
+
+    Ставится один раз и только по своему завершённому заказу. Комментарий видят
+    админ и другие курьеры в карточке клиента, самому клиенту он не уходит:
+    иначе честных оценок не будет, водитель побоится испортить отношения.
+    """
+    user = _me(ctx)
+    order = _my_order(user['id'], id)
+
+    if order['status'] != 'done':
+        conflict('Оценить клиента можно после того, как заказ завершён')
+    if order.get('courier_rating'):
+        conflict('Вы уже оценили этого клиента')
+
+    rating = ctx.need('rating', int)
+    if rating < 1 or rating > 5:
+        bad('Оценка ставится от одной звезды до пяти')
+    comment = ctx.field('comment', str, 500, default='') or None
+
+    t = db.now()
+    with db.tx():
+        # Условие courier_rating IS NULL — защита от второго нажатия: на слабой
+        # связи приложение легко отправит один и тот же запрос дважды.
+        changed = db.update('orders', {'courier_rating': rating, 'courier_comment': comment},
+                            'id=? AND courier_rating IS NULL', (order['id'],))
+        if not changed:
+            conflict('Вы уже оценили этого клиента')
+        if order.get('client_id'):
+            db.execute('UPDATE clients SET rating_sum = rating_sum + ?, '
+                       'rating_count = rating_count + 1 WHERE id=?',
+                       (rating, order['client_id']))
+        _event(order['id'], user['id'], 'client_rated',
+               {'rating': rating, 'comment': comment, 'at': t})
+
+    fresh = db.row('SELECT * FROM orders WHERE id=?', (order['id'],))
+    HUB.publish('admin', 'client_rated', {
+        'order_id': fresh['id'], 'public_id': fresh['public_id'],
+        'client_id': fresh.get('client_id'), 'courier_id': user['id'],
+        'rating': rating, 'comment': comment, 'at': t,
+    })
+    return {'ok': True, 'rating': rating, 'comment': comment,
+            'client': dispatch.client_card(fresh.get('client_id'), full=True),
+            'order': dispatch.order_card(fresh, full=True)}
+
+
 # ─────────────────────────────────────────────────────────────── история и деньги
 
 def _range(ctx, default='today'):
@@ -574,6 +636,9 @@ def _history_item(order):
         'payment_method': order['payment_method'], 'payment_status': order['payment_status'],
         'paid_amount': order['paid_amount'],
         'client_rating': order['client_rating'],
+        # Своя оценка клиента: по ней экран решает, предлагать ли поставить звёзды.
+        'courier_rating': order['courier_rating'],
+        'client': dispatch.client_card(order['client_id'], full=True),
         'tariff': db.value('SELECT name_ru FROM tariffs WHERE id=?', (order['tariff_id'],)),
         'cancel_reason': order['cancel_reason'], 'cancelled_by': order['cancelled_by'],
     }

@@ -11,7 +11,7 @@
 """
 import json, os, sqlite3, threading, time
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 _local = threading.local()
 _path = None
 _write_lock = threading.RLock()      # sqlite не любит параллельную запись даже в WAL
@@ -224,17 +224,49 @@ CREATE TABLE IF NOT EXISTS mail_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT, to_addr TEXT, subject TEXT, template TEXT,
   status TEXT, error TEXT, at INTEGER NOT NULL);
 
+CREATE TABLE IF NOT EXISTS messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  sender TEXT NOT NULL,                 -- client | courier | system
+  text TEXT NOT NULL, at INTEGER NOT NULL, read_at INTEGER);
+CREATE INDEX IF NOT EXISTS ix_messages_order ON messages(order_id, id);
+
 CREATE TABLE IF NOT EXISTS reset_tokens (
   token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0);
 """
 
 
+# Колонки, добавленные после первой версии. ALTER TABLE ADD COLUMN в sqlite
+# не умеет IF NOT EXISTS, поэтому смотрим, что уже есть, и досыпаем недостающее.
+ADDED_COLUMNS = {
+    'couriers': [
+        ('verify_status', "TEXT NOT NULL DEFAULT 'none'"),   # none|pending|approved|rejected
+        ('verify_photo', 'TEXT'),                            # файл фото с паспортом
+        ('verify_note', 'TEXT'),                             # причина отказа
+        ('verified_at', 'INTEGER'),
+        ('photo', 'TEXT'),                                   # аватар курьера
+    ],
+    'clients': [
+        ('token', 'TEXT'),          # опознаём вернувшегося клиента без регистрации
+        ('name_asked', 'INTEGER NOT NULL DEFAULT 0'),
+    ],
+}
+
+
 def _migrate(conn):
     with _write_lock:
         conn.executescript(SCHEMA)
+        for table, cols in ADDED_COLUMNS.items():
+            have = {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}
+            for name, decl in cols:
+                if name not in have:
+                    conn.execute(f'ALTER TABLE {table} ADD COLUMN {name} {decl}')
+        conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS ix_clients_token '
+                     'ON clients(token) WHERE token IS NOT NULL')
+        conn.execute('CREATE INDEX IF NOT EXISTS ix_couriers_verify '
+                     'ON couriers(verify_status)')
         cur_version = conn.execute('PRAGMA user_version').fetchone()[0]
-        # Место для будущих миграций: каждая — отдельный if по номеру версии.
         if cur_version != SCHEMA_VERSION:
             conn.execute(f'PRAGMA user_version={SCHEMA_VERSION}')
 

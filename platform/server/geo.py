@@ -9,11 +9,18 @@
 Ключевые приёмы: короткий таймаут, кэш в памяти, ограничение частоты запросов
 к Nominatim (у них 1 запрос в секунду в правилах) и предохранитель — после сбоя
 полминуты даже не стучимся, а сразу отвечаем из своей арифметики.
+
+Время в пути отдаём двумя числами: duration_s — свободная дорога, как её считает
+маршрутизатор, и duration_traffic_s — сколько ехать на самом деле. Второе берётся
+у Яндекс-маршрутизатора, когда владелец вписал ключ, а без ключа считается
+поправкой на бишкекский час пик. Обещать человеку двадцать минут в шесть вечера,
+когда на Чуй стоит пробка, — это враньё, за которое отвечает курьер.
 """
 import json
 import math
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -23,12 +30,14 @@ from . import settings
 TIMEOUT = 3.0                  # секунды на любой внешний вызов
 NOMINATIM = 'https://nominatim.openstreetmap.org'
 YANDEX = 'https://geocode-maps.yandex.ru/1.x/'
+YANDEX_ROUTER = 'https://api.routing.yandex.net/v2/route'
 GIS2 = 'https://catalog.api.2gis.com/3.0/items'
 EARTH_R = 6371008.8            # средний радиус Земли, метры
 
 SUGGEST_TTL = 600              # подсказки живут 10 минут
 REVERSE_TTL = 1800             # адрес по координатам меняется ещё реже
 ROUTE_TTL = 600
+TRAFFIC_TTL = 180              # пробки меняются быстро, такой ответ держим меньше
 
 
 # ─────────────────────────────────────────────────────────── кэш и предохранитель
@@ -115,7 +124,81 @@ _route_cache = _Cache(limit=300)
 _nominatim_breaker = _Breaker()
 _osrm_breaker = _Breaker()
 _paid_breaker = _Breaker()
+_router_breaker = _Breaker()
 _nominatim_throttle = _Throttle()
+
+
+# ─────────────────────────────────────────────────────────── время и пробки
+
+# Бишкек круглый год +6 и без перевода часов. Держим этот запасной пояс на случай,
+# когда в системе нет базы часовых поясов: на голом Alpine её часто не ставят.
+BISHKEK_TZ = timezone(timedelta(hours=6))
+
+# Значения по умолчанию для настроек route.rush_factor и route.night_factor.
+# Час пик в Бишкеке — это примерно в полтора раза дольше обычного, а ночью город
+# пустой и та же дорога занимает меньше времени.
+RUSH_FACTOR = 1.45
+NIGHT_FACTOR = 0.85
+
+# Часы пик по местному времени: утром едут на работу, вечером — с работы.
+RUSH_HOURS = ((8.0, 10.0), (17.0, 20.0))
+NIGHT_FROM, NIGHT_TO = 22.0, 6.0
+
+_tz_cache = (None, None)       # (имя из настроек, разобранный пояс)
+_tz_lock = threading.Lock()
+
+
+def service_tz():
+    """Часовой пояс сервиса из настроек service.tz.
+
+    Разбирать имя на каждый расчёт маршрута незачем — оно меняется раз в жизни,
+    поэтому держим разобранный пояс рядом с именем, из которого он получен.
+    """
+    global _tz_cache
+    name = str(settings.get('service.tz', 'Asia/Bishkek') or '').strip()
+    with _tz_lock:
+        cached_name, cached_tz = _tz_cache
+    if cached_tz is not None and cached_name == name:
+        return cached_tz
+    tz = BISHKEK_TZ
+    if name:
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(name)
+        except Exception:
+            tz = BISHKEK_TZ
+    with _tz_lock:
+        _tz_cache = (name, tz)
+    return tz
+
+
+def local_time(at=None):
+    """Местное время сервиса. Системное время сервера здесь не годится: машина
+    может стоять во Франкфурте, а пробки стоят в Бишкеке."""
+    unix = int(at if at is not None else time.time())
+    return datetime.fromtimestamp(unix, tz=timezone.utc).astimezone(service_tz())
+
+
+def traffic_factor(at=None):
+    """Во сколько раз дорога в этот час дольше свободной.
+
+    Коэффициенты лежат в настройках, чтобы владелец подкрутил их под свой город,
+    не трогая код. Границы жёсткие: множитель меньше единицы в час пик или
+    трёхкратный ночью — это опечатка в админке, а не тонкая настройка.
+    """
+    d = local_time(at)
+    hour = d.hour + d.minute / 60.0
+    if hour >= NIGHT_FROM or hour < NIGHT_TO:
+        return min(1.0, max(0.5, settings.get_float('route.night_factor', NIGHT_FACTOR)))
+    if d.weekday() < 5 and any(a <= hour < b for a, b in RUSH_HOURS):
+        return min(3.0, max(1.0, settings.get_float('route.rush_factor', RUSH_FACTOR)))
+    return 1.0
+
+
+def duration_with_traffic(duration_s, at=None):
+    """Время в пути с поправкой на час пик. Минута — нижняя граница: нулевая
+    длительность ломает и расчёт цены, и полосу прогресса на экране."""
+    return max(60, int(round(float(duration_s or 0) * traffic_factor(at))))
 
 
 # ─────────────────────────────────────────────────────────── сеть
@@ -286,27 +369,40 @@ def decode_polyline(s, precision=5):
 # ─────────────────────────────────────────────────────────── маршрут
 
 def route(points):
-    """Маршрут по точкам: расстояние, время и линия для карты.
-    OSRM не ответил — считаем по прямой, заказ всё равно должен оформиться."""
+    """Маршрут по точкам: расстояние, два времени и линия для карты.
+
+    duration_s — свободная дорога, duration_traffic_s — сколько ехать сейчас.
+    Порядок попыток: Яндекс-маршрутизатор с пробками (если вписан ключ), потом
+    OSRM, потом своя арифметика по прямой. Никто не ответил — заказ всё равно
+    должен оформиться, поэтому последний вариант не отключается никогда.
+    """
     pts = clean_points(points)
     if len(pts) < 2:
         line = [[pts[0][0], pts[0][1]]] if pts else []
-        return {'distance_m': 0, 'duration_s': 0, 'route': line, 'provider': 'straight'}
+        return {'distance_m': 0, 'duration_s': 0, 'duration_traffic_s': 0,
+                'route': line, 'provider': 'straight', 'traffic': False}
 
     key = ('r',) + tuple((round(a, 5), round(b, 5)) for a, b in pts)
-    hit = _route_cache.get(key)
-    if hit:
-        return {'distance_m': hit['distance_m'], 'duration_s': hit['duration_s'],
-                'route': [list(p) for p in hit['route']], 'provider': hit['provider']}
-
-    out = None
-    if str(settings.get('route.provider', 'osrm')).lower() == 'osrm' and _osrm_breaker.ok():
-        out = _route_osrm(pts)
+    out = _route_cache.get(key)
     if not out:
-        out = _route_straight(pts)
-    _route_cache.put(key, out, ROUTE_TTL)
+        provider = str(settings.get('route.provider', 'osrm')).lower()
+        if _use_yandex(provider):
+            out = _route_yandex(pts)
+        if not out and provider in ('osrm', 'yandex') and _osrm_breaker.ok():
+            out = _route_osrm(pts)
+        if not out:
+            out = _route_straight(pts)
+        _route_cache.put(key, out, TRAFFIC_TTL if out['traffic'] else ROUTE_TTL)
+
+    # У маршрутизатора время с пробками своё, честное. У остальных его нет,
+    # поэтому считаем его здесь и на каждый ответ заново: тот же маршрут,
+    # запрошенный в шесть вечера и в полночь, едется по-разному.
+    traffic_s = (out['duration_traffic_s'] if out['traffic']
+                 else duration_with_traffic(out['duration_s']))
     return {'distance_m': out['distance_m'], 'duration_s': out['duration_s'],
-            'route': [list(p) for p in out['route']], 'provider': out['provider']}
+            'duration_traffic_s': traffic_s,
+            'route': [list(p) for p in out['route']], 'provider': out['provider'],
+            'traffic': out['traffic'], 'rush': round(traffic_factor(), 2)}
 
 
 def _route_osrm(pts):
@@ -327,14 +423,139 @@ def _route_osrm(pts):
         return None
     line = decode_polyline(r.get('geometry') or '')
     _osrm_breaker.good()
-    return {'distance_m': dist, 'duration_s': max(60, dur),
-            'route': line or [[a, b] for a, b in pts], 'provider': 'osrm'}
+    return {'distance_m': dist, 'duration_s': max(60, dur), 'duration_traffic_s': 0,
+            'route': line or [[a, b] for a, b in pts], 'provider': 'osrm', 'traffic': False}
 
 
 def _route_straight(pts):
     dist = road_distance(pts)
     return {'distance_m': dist, 'duration_s': estimate_duration(dist),
-            'route': [[a, b] for a, b in pts], 'provider': 'straight'}
+            'duration_traffic_s': 0, 'route': [[a, b] for a, b in pts],
+            'provider': 'straight', 'traffic': False}
+
+
+# ── Яндекс-маршрутизатор ─────────────────────────────────────────────────────
+
+# Имена полей в ответе маршрутизатора со временем менялись, поэтому принимаем все,
+# что встречались: лишний ключ в этом списке ничего не стоит, а пропущенный
+# превращает время с пробками в обычное.
+_YA_LEN_KEYS = ('length', 'distance')
+_YA_TIME_KEYS = ('duration', 'time')
+_YA_JAM_KEYS = ('duration_in_jams', 'durationInJams', 'jams_duration',
+                'jamsTime', 'duration_in_traffic')
+_YA_BRANCH_KEYS = ('route', 'routes', 'legs', 'steps', 'sections')
+
+
+def _use_yandex(provider=None):
+    """Маршрутизатор Яндекса включаем только тогда, когда он выбран и ключ вписан:
+    без ключа сервис отвечает отказом, а человек за это время смотрит на крутилку."""
+    if provider is None:
+        provider = str(settings.get('route.provider', 'osrm')).lower()
+    if provider != 'yandex':
+        return False
+    if not str(settings.get('route.key', '') or '').strip():
+        return False
+    return _router_breaker.ok()
+
+
+def _route_yandex(pts):
+    """Маршрут с пробками. Не ответил или ответил невнятно — возвращаем None,
+    и route() спокойно уходит на OSRM."""
+    params = {
+        'apikey': str(settings.get('route.key', '') or '').strip(),
+        'waypoints': '|'.join('%.6f,%.6f' % (lat, lng) for lat, lng in pts),
+        'mode': 'driving',
+        'lang': 'ru_RU',
+    }
+    data = _fetch_json(YANDEX_ROUTER + '?' + urlencode(params))
+    if not isinstance(data, dict):
+        _router_breaker.fail()
+        return None
+    try:
+        totals = {'len': 0.0, 'time': 0.0, 'jams': 0.0, 'line': []}
+        _yandex_walk(data, totals)
+    except Exception:
+        totals = None                  # чужой формат не должен ронять оформление заказа
+    if not totals or totals['len'] <= 0 or totals['time'] <= 0:
+        _router_breaker.fail()
+        return None
+    _router_breaker.good()
+    free = max(60, int(round(totals['time'])))
+    jams = max(free, int(round(totals['jams']))) if totals['jams'] > 0 else 0
+    return {'distance_m': int(round(totals['len'])), 'duration_s': free,
+            'duration_traffic_s': jams or free,
+            'route': totals['line'] or [[a, b] for a, b in pts],
+            'provider': 'yandex', 'traffic': bool(jams)}
+
+
+def _yandex_num(v):
+    """Число из ответа: приходит то 1234.5, то {'value': 1234.5, 'text': '1,2 км'}."""
+    if isinstance(v, dict):
+        v = v.get('value', v.get('seconds', v.get('meters')))
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return 0.0
+    return n if n >= 0 else 0.0
+
+
+def _yandex_first(node, keys):
+    for k in keys:
+        if k in node:
+            n = _yandex_num(node[k])
+            if n:
+                return n
+    return 0.0
+
+
+def _yandex_walk(node, out, depth=0):
+    """Складываем длину и время по самым мелким кускам маршрута.
+
+    Ответ вложенный: маршрут → участки → шаги, и итог написан на каждом уровне.
+    Если складывать всё подряд, дорога получится в три раза длиннее, поэтому узел
+    с вложенными частями сам в сумму не идёт — считаем только листья.
+    """
+    if depth > 10:
+        return
+    if isinstance(node, list):
+        for item in node:
+            _yandex_walk(item, out, depth + 1)
+        return
+    if not isinstance(node, dict):
+        return
+    branches = [node[k] for k in _YA_BRANCH_KEYS if node.get(k)]
+    if branches:
+        for branch in branches:
+            _yandex_walk(branch, out, depth + 1)
+        return
+    length = _yandex_first(node, _YA_LEN_KEYS)
+    seconds = _yandex_first(node, _YA_TIME_KEYS)
+    if not length and not seconds:
+        return
+    out['len'] += length
+    out['time'] += seconds
+    out['jams'] += _yandex_first(node, _YA_JAM_KEYS) or seconds
+    out['line'].extend(_yandex_line(node))
+
+
+def _yandex_line(node):
+    """Линия шага: либо упакованная строка, как у OSRM, либо список координат."""
+    poly = node.get('polyline') or node.get('geometry')
+    if isinstance(poly, str):
+        return decode_polyline(poly)
+    if isinstance(poly, dict):
+        packed = poly.get('points')
+        if isinstance(packed, str) and packed:
+            return decode_polyline(packed)
+        coords = poly.get('coordinates')
+        if isinstance(coords, list):
+            out = []
+            for c in coords:
+                ll = _ll((c[1], c[0])) if isinstance(c, (list, tuple)) and len(c) >= 2 else None
+                if ll:
+                    out.append([ll[0], ll[1]])
+            return out
+    return []
 
 
 # ─────────────────────────────────────────────────────────── подсказки адресов

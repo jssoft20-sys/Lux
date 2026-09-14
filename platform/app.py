@@ -34,6 +34,7 @@ from server.core import HUB, App, log, serve                     # noqa: E402
 from server.routers import admin as admin_routes                 # noqa: E402
 from server.routers import auth as auth_routes                   # noqa: E402
 from server.routers import courier as courier_routes             # noqa: E402
+from server.routers import extra as extra_routes                 # noqa: E402
 from server.routers import public as public_routes               # noqa: E402
 
 DEFAULT_HOST = '0.0.0.0'
@@ -103,7 +104,7 @@ def web_dir():
 # ─────────────────────────────────────────────────────────────── сборка приложения
 
 def mount_routes(app):
-    """Подключаем четыре набора маршрутов.
+    """Подключаем пять наборов маршрутов.
 
     Точка входа у модулей называется по-разному, и угадывать её через getattr
     нельзя: в routers/auth.py есть обработчик регистрации курьера с именем
@@ -113,6 +114,7 @@ def mount_routes(app):
     auth_routes.mount(app)
     courier_routes.mount(app)
     admin_routes.register(app)
+    extra_routes.register(app)      # чат, профиль клиента, верификация, зоны спроса
     return len(app.router.routes)
 
 

@@ -34,6 +34,21 @@ NEW_RATING = 5.0
 # Статусы, в которых машина занята делом, даже если флаг busy почему-то сброшен.
 ACTIVE_STATUSES = ('assigned', 'to_pickup', 'at_pickup', 'in_transit', 'at_dropoff')
 
+# Заказы получает только курьер с пройденной проверкой документов. Войти в приложение,
+# выйти на линию и посмотреть, как всё устроено, он может и без неё — но везти чужие
+# вещи и брать деньги человек, чьи документы никто не видел, не должен.
+VERIFY_OK = 'approved'
+
+# Почему предложений нет. Этот текст курьер читает у себя на экране, поэтому он
+# объясняет и что случилось, и что делать дальше.
+VERIFY_TEXT = {
+    'none': 'Отправьте фото с паспортом на проверку — без неё заказы не приходят.',
+    'pending': 'Документы на проверке. Обычно это занимает до суток — как только '
+               'проверим, заказы начнут приходить.',
+    'approved': 'Проверка пройдена, заказы приходят.',
+    'rejected': 'Проверка не пройдена. Посмотрите замечание и отправьте фото заново.',
+}
+
 # Почему поиск закончился ничем — этот текст видит клиент.
 FAIL_TEXT = {
     'no_couriers': 'Рядом не нашлось свободной машины. Попробуйте ещё раз '
@@ -96,6 +111,27 @@ def rating_of(rating_sum, rating_count):
     return rating_sum / float(rating_count)
 
 
+def verify_view(profile):
+    """Состояние проверки документов для экрана курьера.
+
+    Возвращает и статус, и готовое объяснение: человек должен понимать, почему
+    он на линии, а заказов нет, — иначе он решит, что сервис сломан, и уйдёт.
+    """
+    profile = profile or {}
+    status = str(profile.get('verify_status') or 'none').strip().lower()
+    if status not in VERIFY_TEXT:
+        status = 'none'
+    note = str(profile.get('verify_note') or '').strip()
+    return {
+        'status': status,
+        'ok': status == VERIFY_OK,
+        'text': VERIFY_TEXT[status],
+        'note': note or None,               # замечание админа при отказе
+        'photo': bool(profile.get('verify_photo')),
+        'at': profile.get('verified_at'),
+    }
+
+
 # ─────────────────────────────────────────────────────────────── карточки для событий
 
 def _points_view(order, full):
@@ -114,6 +150,31 @@ def _points_view(order, full):
             item['phone'] = p.get('phone')
             item['name'] = p.get('name')
         out.append(item)
+    return out
+
+
+def client_card(client_id, full=False):
+    """С кем курьер поедет. Рейтинг показываем всегда, даже в предложении: это
+    честная подсказка перед тем, как нажать «Беру». Имя и телефон — только по
+    своему заказу, иначе базу контактов можно собрать одними отказами.
+    """
+    if not client_id:
+        return None
+    c = db.row('SELECT id, name, phone, rating_sum, rating_count, orders_count '
+               'FROM clients WHERE id=?', (int(client_id),))
+    if not c:
+        return None
+    count = c['rating_count'] or 0
+    out = {
+        'id': c['id'],
+        # Клиенту без единой оценки пятёрку не рисуем: пусто честнее выдумки.
+        'rating': round(c['rating_sum'] / float(count), 2) if count else None,
+        'rating_count': count,
+        'orders_count': c['orders_count'] or 0,
+    }
+    if full:
+        out['name'] = c['name']
+        out['phone'] = c['phone']
     return out
 
 
@@ -136,7 +197,13 @@ def order_card(order, full=False):
         'commission': order.get('commission', 0),
         'payment_method': order.get('payment_method', 'cash'),
         'payment_status': order.get('payment_status', 'none'),
-        'created_at': order.get('created_at'),
+        'created_at': order.get('created_at'), 'done_at': order.get('done_at'),
+        'client': client_card(order.get('client_id'), full),
+        # Оценки: клиента курьером и курьера клиентом — чтобы экран знал,
+        # показывать ли форму «оцените клиента» или уже поставленные звёзды.
+        'courier_rating': order.get('courier_rating'),
+        'courier_comment': order.get('courier_comment') if full else None,
+        'client_rating': order.get('client_rating'),
     }
 
 
@@ -218,13 +285,17 @@ def candidates(order):
         '       c.priority, c.orders_done, u.name, u.lang '
         'FROM couriers c JOIN users u ON u.id = c.user_id '
         "WHERE c.online = 1 AND c.busy = 0 AND u.role = 'courier' AND u.status = 'active' "
+        # Без пройденной проверки документов заказ не уходит. Условие стоит
+        # в самом подборе, а не в проверке при принятии: непроверенный курьер
+        # не должен даже видеть чужие адреса.
+        '  AND c.verify_status = ? '
         '  AND c.lat IS NOT NULL AND c.lng IS NOT NULL AND c.geo_at >= ? '
         '  AND NOT EXISTS (SELECT 1 FROM offers o '
         '                  WHERE o.order_id = ? AND o.courier_id = c.user_id AND o.sent_at >= ?) '
         '  AND NOT EXISTS (SELECT 1 FROM orders x '
         '                  WHERE x.courier_id = c.user_id AND x.status IN (%s))'
         % ','.join('?' * len(ACTIVE_STATUSES)),
-        (fresh_after, order['id'], since) + ACTIVE_STATUSES)
+        (VERIFY_OK, fresh_after, order['id'], since) + ACTIVE_STATUSES)
 
     w_dist = settings.get_float('dispatch.w_distance', 50)
     w_rate = settings.get_float('dispatch.w_rating', 25)
@@ -471,10 +542,13 @@ def accept(order_id, courier_id):
         if offer['status'] != 'sent':
             conflict('Время на ответ вышло')
 
-        me = db.row('SELECT c.busy, u.status FROM couriers c JOIN users u ON u.id=c.user_id '
-                    'WHERE c.user_id=?', (courier_id,))
+        me = db.row('SELECT c.busy, c.verify_status, u.status FROM couriers c '
+                    'JOIN users u ON u.id=c.user_id WHERE c.user_id=?', (courier_id,))
         if not me or me['status'] != 'active':
             forbidden('Аккаунт не активен')
+        # Проверку могли отозвать, пока предложение висело на экране.
+        if (me['verify_status'] or 'none') != VERIFY_OK:
+            forbidden(VERIFY_TEXT.get(me['verify_status'] or 'none', VERIFY_TEXT['none']))
         if me['busy']:
             conflict('Сначала завершите текущий заказ')
 

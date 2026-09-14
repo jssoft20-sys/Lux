@@ -2,7 +2,10 @@
 <html lang="ru" data-app="client">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!-- maximum-scale и user-scalable убирают зум страницы везде, кроме Safari:
+     он этот запрет игнорирует. Поэтому зум там гасят touch-action в CSS
+     и перехватчик второго тапа в core/ui.js. Щипок по карте остаётся живым. -->
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Sprinter Go — грузоперевозки по Бишкеку</title>
 <meta name="description" content="Спринтер, газель или грузовик с грузчиками. Цена известна до заказа, машину видно на карте.">
 <meta name="color-scheme" content="dark light">
@@ -55,9 +58,14 @@
     </button>
   </header>
 
-  <!-- Нижняя шторка: содержимое меняется по шагам заказа. -->
-  <div class="sg-panel" id="panel" data-sheet>
+  <!-- Нижняя шторка: содержимое меняется по шагам заказа.
+       Три положения (развёрнута, наполовину, до заголовка) и перетаскивание
+       пальцем поднимает core/ui.js — он сам находит эту панель по data-sheet. -->
+  <div class="sg-panel" id="panel" data-sheet data-sheet-map="#map">
     <div class="sg-panel__box">
+      <!-- Грип: за него тянут панель, тап по нему сворачивает и разворачивает. -->
+      <button type="button" class="sg-panel__grip" id="panel-grip"
+              data-t-aria="ui.grip" aria-label="Потянуть панель" aria-expanded="true"></button>
       <div class="sg-panel__slot" id="panel-slot">
         <div class="sg-boot">
           <div class="sg-boot__bar"><i></i></div>

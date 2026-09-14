@@ -5,26 +5,273 @@
    только те узлы, где действительно новые данные. Иначе на каждом пересчёте цены
    у человека дёргалась бы карусель и слетал фокус из поля.
 
+   Машины на карточках нарисованы здесь же, в SVG: пикап, спринтер и два грузовика
+   с тентом. Человек выбирает не строчку в списке, а машину, которую увидит во дворе,
+   поэтому под названием стоят вместимость и размеры кузова.
+
    Цену считает сервер. Здесь она только показывается: перед созданием заказа
    бэкенд пересчитает всё заново по своим тарифам.
 */
 
 import { api } from '../core/api.js';
-import { t, tp, getLang } from '../core/i18n.js';
+import { t, tp, getLang, extend } from '../core/i18n.js';
 import { createStore } from '../core/store.js';
 import { el, toast, sheet, haptic } from '../core/ui.js';
 import { pin } from '../core/map.js';
-import { money, num, distance, duration } from '../core/fmt.js';
-import { icon, iconBtn, errText, nameOf } from './app.js';
+import { money, num, duration, NBSP } from '../core/fmt.js';
+import { icon, iconBtn, errText, nameOf, dur } from './app.js';
 import { pickAddress, rememberPoint } from './address.js';
 
-const QUOTE_PAUSE = 350;       // пауза перед пересчётом цены, чтобы не дёргать сервер
+/* Свои строки держим при себе: общий словарь правят соседние модули. */
+extend({
+  ru: {
+    'car.cap_kg': 'до {v} кг',
+    'car.cap_t': 'до {v} т',
+    'car.body': 'кузов {v} м',
+    'trip.jam': 'с пробками',
+    'trip.free': 'дорога свободна',
+    'trip.free_time': 'без пробок {v}',
+  },
+  ky: {
+    'car.cap_kg': '{v} кг чейин',
+    'car.cap_t': '{v} тоннага чейин',
+    'car.body': 'кузов {v} м',
+    'trip.jam': 'тыгын менен',
+    'trip.free': 'жол бош',
+    'trip.free_time': 'тыгынсыз {v}',
+  },
+});
+
+const QUOTE_PAUSE = 320;       // пауза перед пересчётом цены, чтобы не дёргать сервер
 const MAX_LOADERS = 8;
+const JAM_STEP = 60;           // разницу меньше минуты человек не заметит, и врать про неё незачем
+
+/* ─────────────────────────────────────────────────────── свои стили */
+
+/* Карточки машин и строка маршрута живут только в этом экране, поэтому их стили
+   приезжают вместе с ним. В client.css их класть нельзя: файл общий, его правят
+   параллельно. Всё построено на токенах, так что тема переключается сама. */
+const CSS = `
+.sg-tariffs--live { padding: 10px var(--sp-4) 18px; }
+
+.sg-tariff--live {
+  width: 150px;
+  gap: 0;
+  padding: var(--sp-3);
+  transition: transform var(--dur-2) var(--ease), border-color var(--dur-1) var(--ease),
+              background-color var(--dur-1) var(--ease), box-shadow var(--dur-2) var(--ease);
+}
+
+/* Выбранная машина приподнимается над соседями и подсвечивается: видно даже
+   краем глаза, на чём человек остановился. */
+.sg-tariff--live.is-on {
+  transform: translateY(-4px);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  box-shadow: var(--shadow-2);
+}
+.sg-tariff--live:active { transform: scale(.97); }
+.sg-tariff--live.is-on:active { transform: translateY(-4px) scale(.97); }
+
+.sgv-art { display: block; width: 84px; height: 44px; margin-bottom: 4px; }
+.sgv-art > svg {
+  display: block;
+  width: 84px;
+  height: 44px;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .26));
+}
+
+/* Три цвета на всю машину: кузов, тёмное стекло с резиной и светлый груз.
+   Кузов и ступицы загораются вместе с выбором. */
+.sgv__body { fill: var(--muted); transition: fill var(--dur-2) var(--ease); }
+.sgv__deck { fill: var(--muted); opacity: .5; transition: fill var(--dur-2) var(--ease); }
+.sgv__hub  { fill: var(--muted); transition: fill var(--dur-2) var(--ease); }
+.sgv__glass { fill: rgba(12, 12, 16, .55); }
+.sgv__tyre { fill: rgba(12, 12, 16, .92); }
+.sgv__cargo { fill: var(--text); opacity: .16; }
+.sgv__line { fill: none; stroke: rgba(12, 12, 16, .3); stroke-width: 1.2; stroke-linecap: round; }
+.sgv__shade { fill: rgba(0, 0, 0, .18); }
+
+.sg-tariff--live.is-on .sgv__body,
+.sg-tariff--live.is-on .sgv__deck,
+.sg-tariff--live.is-on .sgv__hub { fill: var(--accent); }
+
+.sgv-cap {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.sgv-dim {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+}
+
+/* Пока считается новая цена, старая остаётся на месте и просто гаснет:
+   пустое место на кнопке читается как поломка. */
+.sg-tariff__price, .sg-cta__price, .sg-total__val {
+  transition: opacity var(--dur-2) var(--ease);
+}
+.sg-tariff__price.is-stale, .sg-cta__price.is-stale, .sg-total__val.is-stale { opacity: .45; }
+
+/* Расстояние, время с пробками и слово, объясняющее, почему дольше. */
+.sgv-trip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  line-height: 1.2;
+}
+.sgv-trip__km {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.sgv-trip__time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.sgv-trip__jam {
+  padding: 1px 7px;
+  border-radius: var(--r-full);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.sgv-trip__jam.is-free { background: var(--ok-soft); color: var(--ok); }
+`;
+
+const STYLE_ID = 'sg-order-style';
+
+function installStyles() {
+  if (document.getElementById(STYLE_ID)) return;
+  document.head.appendChild(el('style', { id: STYLE_ID, text: CSS }));
+}
+
+/* ─────────────────────────────────────────────────────── машины в SVG */
+
+/* Колесо: тёмная покрышка и ступица в цвет кузова. Все машины стоят на одной
+   линии — 32 по вертикали, поэтому в ряду они выглядят одной семьёй. */
+function wheel(cx, r) {
+  const rr = r || 6;
+  return '<circle class="sgv__tyre" cx="' + cx + '" cy="32" r="' + rr + '"/>' +
+    '<circle class="sgv__hub" cx="' + cx + '" cy="32" r="' + (rr * 0.38).toFixed(1) + '"/>';
+}
+
+/* Каждая машина — несколько чистых фигур: кузов, стекло, колёса. Мелочи вроде
+   рёбер тента добавлены только там, где они помогают узнать машину. */
+const ART = {
+  // Пикап: открытый борт с грузом сзади, кабина и капот впереди. Коробки рисуем
+  // до борта — тогда борт закрывает их снизу, как в жизни.
+  express: () =>
+    '<rect class="sgv__cargo" x="12" y="10" width="11" height="8" rx="1.5"/>' +
+    '<rect class="sgv__cargo" x="25" y="12" width="9" height="6" rx="1.5"/>' +
+    '<rect class="sgv__deck" x="8" y="17" width="30" height="13" rx="2.5"/>' +
+    '<path class="sgv__body" d="M38 30V13c0-2.2 1.8-4 4-4h12c1.4 0 2.7.7 3.4 1.9L61 17h9' +
+      'c2.8 0 5 2.2 5 5v5.5c0 1.4-1.1 2.5-2.5 2.5H38z"/>' +
+    '<path class="sgv__glass" d="M43 12h10.5l4.6 6.4H43z"/>' +
+    '<rect class="sgv__glass" x="70.5" y="20.5" width="4" height="3.4" rx="1.4"/>' +
+    wheel(18) + wheel(64),
+
+  // Спринтер: высокая крыша, короткий нос и заваленное лобовое стекло во всю
+  // кабину. Стекло идёт вдоль наклона кузова и держится внутри его обвода.
+  van: () =>
+    '<path class="sgv__body" d="M11 6h35l12 9 8 1.6c3.3.7 5.6 3.6 5.6 7V27c0 1.7-1.3 3-3 3H11' +
+      'c-2.2 0-4-1.8-4-4V10c0-2.2 1.8-4 4-4z"/>' +
+    '<path class="sgv__glass" d="M44 8.4h4.6l7.9 6.9H44z"/>' +
+    '<path class="sgv__line" d="M41 10v19"/>' +
+    '<rect class="sgv__cargo" x="13" y="20" width="20" height="1.6" rx=".8"/>' +
+    wheel(22) + wheel(62),
+
+  // Трёхтонник: тент с рёбрами и отдельная кабина, между ними рама.
+  truck: () =>
+    '<path class="sgv__deck" d="M6 30V13c0-2.8 2.2-5 5-5h38c2.8 0 5 2.2 5 5v17H6z"/>' +
+    '<path class="sgv__line" d="M6 15h48M18 15.5v14M30 15.5v14M42 15.5v14"/>' +
+    '<rect class="sgv__body" x="16" y="27.5" width="46" height="3" rx="1.5"/>' +
+    '<path class="sgv__body" d="M56 30V14c0-2.2 1.8-4 4-4h9.4c1.6 0 3 .9 3.7 2.3l3.4 6.9' +
+      'c.3.6.5 1.3.5 2v6.3c0 1.4-1.1 2.5-2.5 2.5H56z"/>' +
+    '<path class="sgv__glass" d="M60 13h9l3.6 7.2H60z"/>' +
+    wheel(26) + wheel(66),
+
+  // Пятитонник: тент выше и длиннее, кабина со спальником, задняя ось спаренная.
+  truck_big: () =>
+    '<path class="sgv__deck" d="M4 30V11c0-2.8 2.2-5 5-5h44c2.8 0 5 2.2 5 5v19H4z"/>' +
+    '<path class="sgv__line" d="M4 13h54M15 13.5v16M27 13.5v16M39 13.5v16M51 13.5v16"/>' +
+    '<rect class="sgv__body" x="12" y="27.5" width="54" height="3" rx="1.5"/>' +
+    '<path class="sgv__body" d="M60 30V11c0-2.2 1.8-4 4-4h9c1.5 0 2.9.8 3.6 2.1l2.9 5.4' +
+      'c.3.6.5 1.2.5 1.9v11.1c0 1.4-1.1 2.5-2.5 2.5H60z"/>' +
+    '<path class="sgv__glass" d="M64 10h8.6l3.4 6.4H64z"/>' +
+    wheel(16) + wheel(30) + wheel(70),
+};
+
+const ART_BY_ICON = {
+  car: 'express', pickup: 'express', van: 'van', bus: 'van',
+  truck: 'truck', 'truck-big': 'truck_big', truck_big: 'truck_big',
+};
+
+/* Какую машину рисовать. Класс из тарифа главный, иконка — запасной вариант,
+   а если админ придумал свой класс, судим по грузоподъёмности: показать пикап
+   там, где приедет пятитонник, хуже, чем угадать по весу. */
+function vehicleKind(tf) {
+  const cls = String((tf && tf.vehicle_class) || '').toLowerCase();
+  if (ART[cls]) return cls;
+  const byIcon = ART_BY_ICON[String((tf && tf.icon) || '').toLowerCase()];
+  if (byIcon) return byIcon;
+  const kg = Number(tf && tf.capacity_kg) || 0;
+  if (kg >= 4000) return 'truck_big';
+  if (kg >= 2000) return 'truck';
+  if (kg >= 700) return 'van';
+  return 'express';
+}
+
+function vehicleArt(tf) {
+  return '<svg class="sgv" viewBox="0 0 84 44" width="84" height="44" ' +
+    'aria-hidden="true" focusable="false">' +
+    '<ellipse class="sgv__shade" cx="42" cy="39.2" rx="31" ry="2.2"/>' +
+    ART[vehicleKind(tf)]() + '</svg>';
+}
 
 /* ─────────────────────────────────────────────────────── мелочи */
 
 function digits(s) {
   return String(s || '').replace(/\D/g, '');
+}
+
+/* Расстояние с одним знаком после запятой: «12,4 км». Меньше километра
+   показываем метрами — десятые доли там всё равно врут. */
+function distText(m) {
+  const v = Math.max(0, Number(m) || 0);
+  if (v < 950) return Math.round(v / 10) * 10 + NBSP + 'м';
+  return (v / 1000).toFixed(1).replace('.', ',') + NBSP + 'км';
+}
+
+/* Сколько увезёт: «до 3 т», «до 300 кг». */
+function capText(tf) {
+  const kg = Math.round(Number(tf && tf.capacity_kg) || 0);
+  if (kg <= 0) return nameOf(tf, 'desc');
+  if (kg >= 1000) {
+    const tons = Math.round(kg / 100) / 10;
+    return t('car.cap_t', { v: String(tons).replace('.', ',') });
+  }
+  return t('car.cap_kg', { v: num(kg) });
+}
+
+/* Размеры кузова в метрах: длина × ширина × высота. В базе они в сантиметрах,
+   но человек прикидывает диван в метрах, а не в сантиметрах. */
+function dimText(tf) {
+  const raw = [tf && tf.body_d, tf && tf.body_w, tf && tf.body_h].map((v) => Number(v) || 0);
+  if (raw.some((v) => v <= 0)) return '';
+  return t('car.body', { v: raw.map((v) => (v / 100).toFixed(1).replace('.', ',')).join('×') });
 }
 
 /** Подпись точки: первая — откуда, последняя — куда, между ними промежуточные. */
@@ -47,6 +294,69 @@ function pointNote(p) {
   if (p.floor) parts.push(t('order.floor') + ' ' + p.floor);
   if (!parts.length && p.subtitle) return p.subtitle;
   return parts.join(', ');
+}
+
+/* Цифра доезжает до нового значения за --dur-3, а не прыгает: скачок цены
+   человек читает как ошибку расчёта. Промежуточные кадры округляем до сома —
+   мелькающие тыйыны выглядят как рябь. */
+function moneyBox(node) {
+  let shown = null;             // что сейчас на экране, в тыйынах
+  let target = null;
+  let raf = 0;
+
+  function stop() {
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+  }
+
+  function jump(v) {
+    shown = v;
+    node.textContent = money(v);
+  }
+
+  return {
+    set(value) {
+      const next = Math.round(Number(value) || 0);
+      if (target === next) {
+        // Уже едем ровно туда же. Если счёт закончился, а текст в узле сменили
+        // со стороны, ставим число обратно.
+        if (!raf && shown !== next) jump(next);
+        return;
+      }
+      target = next;
+      const from = shown;
+      stop();
+      const time = dur('--dur-3', 380);
+      if (from === null || from === next || time <= 20) {
+        jump(next);
+        return;
+      }
+      // Время берём сами, а не из аргумента кадра: его передаёт не всякая среда,
+      // а без него счётчик посчитал бы NaN и показал бы его человеку.
+      const started = performance.now();
+      const step = () => {
+        const k = Math.min(1, (performance.now() - started) / time);
+        const eased = 1 - Math.pow(1 - k, 3);
+        // Узел уже сняли с экрана — досчитывать некому и незачем.
+        if (k >= 1 || !node.isConnected) {
+          raf = 0;
+          jump(next);
+          return;
+        }
+        jump(Math.round((from + (next - from) * eased) / 100) * 100);
+        raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    },
+    /** Цены нет вовсе: показываем прочерк или ошибку и забываем прошлое число. */
+    clear(text) {
+      stop();
+      shown = null;
+      target = null;
+      node.textContent = text;
+    },
+    stop,
+  };
 }
 
 /* Поле с плавающей меткой. Метка идёт после поля — так её поднимает соседний
@@ -75,6 +385,8 @@ function field(label, value, opts = {}) {
 /* ─────────────────────────────────────────────────────── экран */
 
 export function mountOrder(app) {
+  installStyles();
+
   const tariffs = app.tariffs.filter((x) => x && x.id);
   const store = createStore({
     step: 'addr',
@@ -84,6 +396,7 @@ export function mountOrder(app) {
     extras: {},                 // код услуги → количество
     route: null,
     prices: {},                 // id тарифа → итог в тыйынах
+    quotes: {},                 // id тарифа → полный расчёт сервера
     quote: null,
     priceState: 'idle',         // idle | wait | ok | err
     priceError: null,
@@ -100,6 +413,21 @@ export function mountOrder(app) {
   let quoteCtrl = null;
   let mapKey = '';
   let dead = false;
+  const runningBoxes = new Set();   // счётчики цены, которые надо остановить на выходе
+
+  /* Счётчик цены с учётом на выходе: досчитывать цифру в узле, которого уже нет
+     на экране, незачем. Остановленный счётчик не ломается — он просто начнёт
+     следующий отсчёт заново. */
+  function newMoneyBox(node) {
+    const box = moneyBox(node);
+    runningBoxes.add(box);
+    return box;
+  }
+
+  function stopBoxes() {
+    for (const box of runningBoxes) box.stop();
+    runningBoxes.clear();
+  }
 
   /* ── данные ──────────────────────────────────────────────────────────── */
 
@@ -166,11 +494,18 @@ export function mountOrder(app) {
 
   /* ── цена ────────────────────────────────────────────────────────────── */
 
+  /* Пересчёт с задержкой: пока палец жмёт плюсик на грузчиках, сервер не трогаем.
+     Начатый запрос сразу отменяем — его ответ уже про старые условия и, придя
+     последним, показал бы неверную цену. */
   function schedulePrice() {
     clearTimeout(quoteTimer);
+    if (quoteCtrl) {
+      quoteCtrl.abort();
+      quoteCtrl = null;
+    }
     const state = store.get();
     if (!ready(state) || !tariffs.length) {
-      store.set({ prices: {}, quote: null, priceState: 'idle', priceError: null });
+      store.set({ prices: {}, quotes: {}, quote: null, priceState: 'idle', priceError: null });
       return;
     }
     store.set({ priceState: 'wait' });
@@ -207,12 +542,12 @@ export function mountOrder(app) {
     if (dead || mine !== quoteCtrl) return;
 
     const prices = {};
-    let quote = null;
+    const quotes = {};
     let fail = null;
     for (const a of answers) {
       if (a.r) {
         prices[a.id] = a.r.total;
-        if (a.id === state.tariffId) quote = a.r;
+        quotes[a.id] = a.r;
       } else if (a.e && a.e.code !== 'aborted') {
         fail = a.e;
       }
@@ -221,7 +556,21 @@ export function mountOrder(app) {
       store.set({ priceState: 'err', priceError: fail, quote: null });
       return;
     }
-    store.set({ prices, quote, priceState: 'ok', priceError: null });
+    store.set({
+      prices, quotes, quote: quotes[state.tariffId] || null,
+      priceState: 'ok', priceError: null,
+    });
+  }
+
+  /* Смена тарифа ничего не пересчитывает: цены всех машин приходят одним заходом,
+     поэтому новая цифра стоит на экране в тот же кадр. Сервер зовём, только если
+     этой машины в ответе не было. */
+  function pickTariff(id) {
+    const state = store.get();
+    if (state.tariffId === id) return;
+    const known = state.quotes[id];
+    store.set({ tariffId: id, quote: known || null });
+    if (!known) schedulePrice();
   }
 
   /* ── действия ────────────────────────────────────────────────────────── */
@@ -376,25 +725,31 @@ export function mountOrder(app) {
     }
 
     // Итог держим в подвале шторки: цена меняется на лету, и её должно быть видно,
-    // не доскроллив список до конца.
-    const value = el('span', { className: 'sg-total__val' }, priceText(store.get()));
+    // не доскроллив список до конца. Пока считается — прежнее число гаснет, но стоит.
+    const value = el('span', { className: 'sg-total__val' });
+    const box = newMoneyBox(value);
     const sum = el('div', { className: 'sg-total' },
       el('span', { className: 'sg-total__name' }, t('order.price_total')), value);
-    const off = store.on((s) => { value.textContent = priceText(s); });
+    const paint = (s) => {
+      const v = total(s);
+      if (v === null) box.clear(s.priceState === 'err' ? t('common.error') : '—');
+      else box.set(v);
+      value.classList.toggle('is-stale', v !== null && s.priceState === 'wait');
+    };
+    paint(store.get());
+    const off = store.on(paint);
 
     sheet({
       title: t('order.extras'),
       content: el('div', null,
         el('p', { className: 'sheet__text' }, t('order.extras_hint')), list),
       actions: [sum, { label: t('common.done'), kind: 'primary' }],
-      onClose: off,
+      onClose: () => {
+        off();
+        box.stop();
+        runningBoxes.delete(box);
+      },
     });
-  }
-
-  function priceText(state) {
-    const v = total(state);
-    if (state.priceState === 'err') return t('common.error');
-    return v === null ? '—' : money(v);
   }
 
   /* ── создание заказа ─────────────────────────────────────────────────── */
@@ -560,7 +915,7 @@ export function mountOrder(app) {
   function stepTariff() {
     const routeRow = el('button', { type: 'button', className: 'sg-route',
                                     onClick: () => store.set({ step: 'addr' }) });
-    const cards = el('div', { className: 'sg-tariffs' });
+    const cards = el('div', { className: 'sg-tariffs sg-tariffs--live' });
     const loadersSub = el('div', { className: 'sg-opt__sub' });
     const extrasSub = el('div', { className: 'sg-opt__sub' });
     const note = el('div', { className: 'sg-note' }, t('order.price_note'));
@@ -569,6 +924,7 @@ export function mountOrder(app) {
       onClick: () => schedulePrice(),
     }, t('common.retry'));
     const priceBox = el('span', { className: 'sg-cta__price' }, '—');
+    const priceMoney = newMoneyBox(priceBox);
     const cta = el('button', { type: 'button', className: 'sg-cta', onClick: () => go() },
       el('span', { className: 'sg-cta__label' }, t('order.submit')), priceBox);
 
@@ -607,61 +963,101 @@ export function mountOrder(app) {
     }
 
     let builtFor = '';
+    let cardList = [];
+    let routeKey = '';
+
+    function buildCard(tf) {
+      const priceNode = el('span', { className: 'sg-tariff__price' }, '—');
+      const cap = capText(tf);
+      const dims = dimText(tf);
+      const card = el('button', {
+        type: 'button', className: 'sg-tariff sg-tariff--live',
+        dataset: { id: String(tf.id) },
+        title: nameOf(tf, 'desc') || [cap, dims].filter(Boolean).join(', '),
+        onClick: () => {
+          if (store.get().tariffId === tf.id) return;
+          haptic();
+          pickTariff(tf.id);
+          card.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        },
+      },
+        el('span', { className: 'sgv-art', html: vehicleArt(tf) }),
+        el('span', { className: 'sg-tariff__name' }, nameOf(tf)),
+        cap ? el('span', { className: 'sgv-cap' }, cap) : null,
+        dims ? el('span', { className: 'sgv-dim' }, dims) : null,
+        priceNode);
+      return { id: tf.id, node: card, priceNode, box: newMoneyBox(priceNode) };
+    }
 
     function paintCards(state) {
       const key = tariffs.map((x) => x.id).join(',') + '|' + getLang();
       if (key !== builtFor) {
         builtFor = key;
-        cards.replaceChildren(...tariffs.map((tf) => {
-          const price = el('span', { className: 'sg-tariff__price' }, '—');
-          // На карточке помещается только самое важное — сколько машина увезёт.
-          const cap = tf.capacity_kg
-            ? num(tf.capacity_kg) + ' ' + t('common.kg')
-            : nameOf(tf, 'desc');
-          const card = el('button', {
-            type: 'button', className: 'sg-tariff', dataset: { id: String(tf.id) },
-            onClick: () => {
-              if (store.get().tariffId === tf.id) return;
-              haptic();
-              store.set({ tariffId: tf.id });
-              schedulePrice();
-              card.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-            },
-          },
-            el('span', { className: 'sg-tariff__icon', html: icon(tf.icon || 'van') }),
-            el('span', { className: 'sg-tariff__name' }, nameOf(tf)),
-            el('span', { className: 'sg-tariff__sub' }, cap),
-            price);
-          return card;
-        }));
+        for (const c of cardList) {
+          c.box.stop();
+          runningBoxes.delete(c.box);
+        }
+        cardList = tariffs.map(buildCard);
+        cards.replaceChildren(...cardList.map((c) => c.node));
       }
-      for (const card of cards.children) {
-        const id = Number(card.dataset.id);
-        card.classList.toggle('is-on', id === state.tariffId);
-        const price = card.lastElementChild;
-        const v = state.prices[id];
-        const wait = state.priceState === 'wait' || state.priceState === 'idle';
-        price.classList.toggle('is-wait', typeof v !== 'number' && wait);
-        price.textContent = typeof v === 'number' ? money(v) : (wait ? '—' : t('common.error'));
+      const waiting = state.priceState === 'wait' || state.priceState === 'idle';
+      for (const c of cardList) {
+        const on = c.id === state.tariffId;
+        c.node.classList.toggle('is-on', on);
+        c.node.setAttribute('aria-pressed', on ? 'true' : 'false');
+        const v = state.prices[c.id];
+        const known = typeof v === 'number';
+        if (known) c.box.set(v);
+        else c.box.clear(waiting ? '—' : t('common.error'));
+        c.priceNode.classList.toggle('is-wait', !known && waiting);
+        c.priceNode.classList.toggle('is-stale', known && state.priceState === 'wait');
       }
     }
 
-    function update(state) {
+    /* Строка маршрута: адреса, расстояние и честное время. Пересобираем её,
+       только когда в ней правда что-то поменялось — иначе она мигала бы на
+       каждый кадр пересчёта цены. */
+    function paintRoute(state) {
       const pts = state.points.filter(Boolean);
       const first = pts[0];
       const last = pts[pts.length - 1];
+      const r = state.route;
+      const key = [
+        (first && first.addr) || '', (last && last.addr) || '',
+        r ? r.distance_m : '', r ? r.duration_s : '', r ? r.duration_traffic_s : '',
+      ].join('|');
+      if (key === routeKey) return;
+      routeKey = key;
+
       routeRow.replaceChildren(
         el('span', { className: 'sg-route__line' },
           el('i', null), el('b', null), el('i', null)),
         el('span', { className: 'sg-route__text' },
           el('span', { className: 'sg-route__row' }, (first && first.addr) || t('order.from')),
           el('span', { className: 'sg-route__row' }, (last && last.addr) || t('order.to'))),
-        state.route
-          ? el('span', { className: 'sg-route__meta' },
-              distance(state.route.distance_m), el('br', null), duration(state.route.duration_s))
-          : el('span', { className: 'sg-opt__go', html: icon('go') }),
+        r ? tripMeta(r) : el('span', { className: 'sg-opt__go', html: icon('go') }),
       );
+    }
 
+    /* Время показываем то, за которое реально доедут сейчас, и подписываем словом,
+       почему оно больше свободного. Обещать двадцать минут в шесть вечера — враньё,
+       за которое перед человеком отвечает курьер. */
+    function tripMeta(r) {
+      const free = Math.max(0, Number(r.duration_s) || 0);
+      const jam = Math.max(free, Number(r.duration_traffic_s) || 0);
+      const slower = jam - free >= JAM_STEP;
+      return el('span', {
+        className: 'sg-route__meta sgv-trip',
+        title: slower ? t('trip.free_time', { v: duration(free) }) : null,
+      },
+        el('span', { className: 'sgv-trip__km' }, distText(r.distance_m)),
+        el('span', { className: 'sgv-trip__time' }, duration(jam)),
+        el('span', { className: 'sgv-trip__jam' + (slower ? '' : ' is-free') },
+          slower ? t('trip.jam') : t('trip.free')));
+    }
+
+    function update(state) {
+      paintRoute(state);
       paintCards(state);
 
       // Часть грузчиков у тарифа уже в цене — про них честно говорим отдельно.
@@ -682,8 +1078,10 @@ export function mountOrder(app) {
       const sum = total(state);
       const wait = state.priceState === 'wait';
       const bad = state.priceState === 'err';
+      if (sum === null) priceMoney.clear(wait ? '' : '—');
+      else priceMoney.set(sum);
       priceBox.classList.toggle('is-wait', sum === null && wait);
-      priceBox.textContent = sum === null ? (wait ? '' : '—') : money(sum);
+      priceBox.classList.toggle('is-stale', sum !== null && wait);
       note.textContent = bad ? errText(state.priceError) : t('order.price_note');
       note.classList.toggle('t-err', bad);
       retry.hidden = !bad;
@@ -727,6 +1125,7 @@ export function mountOrder(app) {
       el('span', { className: 'grow' }, t('order.confirm_hint')));
 
     const priceBox = el('span', { className: 'sg-cta__price' }, '—');
+    const priceMoney = newMoneyBox(priceBox);
     const cta = el('button', { type: 'button', className: 'sg-cta', onClick: () => submit(cta) },
       el('span', { className: 'sg-cta__label' }, t('order.confirm')), priceBox);
 
@@ -750,8 +1149,10 @@ export function mountOrder(app) {
     function update(state) {
       const sum = total(state);
       const wait = state.priceState === 'wait';
+      if (sum === null) priceMoney.clear(wait ? '' : '—');
+      else priceMoney.set(sum);
       priceBox.classList.toggle('is-wait', sum === null && wait);
-      priceBox.textContent = sum === null ? (wait ? '' : '—') : money(sum);
+      priceBox.classList.toggle('is-stale', sum !== null && wait);
       refreshCta();
       app.panel.refresh();
     }
@@ -765,6 +1166,7 @@ export function mountOrder(app) {
 
   function render(state, back) {
     if (!view || view.name !== state.step) {
+      stopBoxes();                       // счётчики прошлого шага уходят вместе с ним
       const next = (BUILD[state.step] || stepAddr)();
       next.update(state);
       app.panel.show(next.node, { back: !!back });
@@ -814,6 +1216,7 @@ export function mountOrder(app) {
       dead = true;
       clearTimeout(quoteTimer);
       if (quoteCtrl) quoteCtrl.abort();
+      stopBoxes();
       if (app.cancelPick) app.cancelPick();
     },
   };

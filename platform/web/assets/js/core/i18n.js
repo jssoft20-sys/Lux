@@ -218,5 +218,21 @@ if (typeof document !== 'undefined' && document.documentElement) {
   document.documentElement.setAttribute('lang', lang);
 }
 
-export const i18n = { t, tp, setLang, getLang, onLangChange, applyTo, has, LANGS };
+/** Модуль приносит свои строки сам: extend({ru:{...}, ky:{...}}).
+ *  Так каждый экран владеет своими текстами и не нужно держать один
+ *  общий словарь, за который дерутся все правки. Уже заданный ключ
+ *  не перетирается — общий словарь всегда главнее. */
+export function extend(packs) {
+  for (const code of Object.keys(packs || {})) {
+    const target = DICTS[code];
+    if (!target) continue;
+    const add = packs[code] || {};
+    for (const key of Object.keys(add)) {
+      if (!(key in target)) target[key] = add[key];
+    }
+  }
+  dict = DICTS[lang];
+}
+
+export const i18n = { t, tp, setLang, getLang, onLangChange, applyTo, has, extend, LANGS };
 export default i18n;

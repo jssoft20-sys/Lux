@@ -4,6 +4,10 @@
    предложений и слежение за позицией. Экраны рисуют work.js и auth.js, этот
    файл только решает, что показать и когда обновить.
 
+   Нижняя панель разделов свёрстана в courier.html и живёт там же: мы её не
+   пересобираем, а только подсвечиваем нужную кнопку и вешаем переходы.
+   Так панель видна с первого кадра, ещё до того как браузер разберёт модули.
+
    Приложение задумано как самостоятельное — его оборачивают в APK. Поэтому
    оно переживает сворачивание: при возвращении на экран состояние берётся
    с сервера заново, а не достраивается из того, что накопилось в памяти.
@@ -16,11 +20,14 @@ import { createRouter } from '../core/router.js';
 import { el, toast, haptic } from '../core/ui.js';
 import { setTimeZone } from '../core/fmt.js';
 
-import { initGate, showGate, hideGate, showStatusNotice } from './auth.js';
 import {
-  renderShift, renderJob, renderHistory, renderProfile,
+  initGate, showGate, hideGate, showStatusNotice,
+  renderVerify, renderProfile, lockShift, getSound,
+} from './auth.js';
+import {
+  renderShift, renderJob, renderHistory,
   showOffer, createGeoTracker, stopAlert, unlockAudio,
-  getTheme, applyTheme, ICONS,
+  getTheme, applyTheme,
 } from './work.js';
 
 /* ─────────────────────────────────────────────────────── состояние */
@@ -37,6 +44,7 @@ const store = createStore({
   stats: null,
   period: 'today',
   connected: false,
+  verify: null,      // состояние проверки документов; null = ещё не знаем
 });
 
 const root = document.getElementById('app');
@@ -45,13 +53,18 @@ const main = document.getElementById('app-main');
 const dock = document.getElementById('dock');
 const offerBox = document.getElementById('offer');
 
+/* Разделы. tab — какая кнопка панели горит, back — куда ведёт стрелка сверху
+   у экранов, которых в панели нет. */
 const SCREENS = {
-  '/shift': { title: 'courier.shift', icon: 'shift', render: renderShift },
-  '/order': { title: 'courier.order', icon: 'job', render: renderJob },
-  '/history': { title: 'courier.history', icon: 'hist', render: renderHistory },
-  '/profile': { title: 'courier.profile', icon: 'me', render: renderProfile },
+  '/shift': { title: 'courier.shift', render: renderShift, tab: '/shift' },
+  '/order': { title: 'courier.order', render: renderJob, tab: '/order' },
+  '/history': { title: 'courier.history', render: renderHistory, tab: '/history' },
+  '/profile': { title: 'courier.profile', render: renderProfile, tab: '/profile' },
+  '/verify': { title: 'vfy.title', render: renderVerify, tab: '/profile', back: '/profile' },
 };
-const TABS = ['/shift', '/order', '/history', '/profile'];
+const ROUTES = Object.keys(SCREENS);
+
+const navButtons = Array.from(dock.querySelectorAll('[data-nav]'));
 
 let router = null;
 let path = '/shift';
@@ -59,6 +72,11 @@ let closedOrder = 0;        // заказ, который мы только чт
 let cleanup = null;
 let source = null;          // поток событий
 let booted = false;
+
+/* Иконка из общего набора символов в courier.html. */
+function ico(name) {
+  return '<svg class="ico" aria-hidden="true"><use href="#i-' + name + '"></use></svg>';
+}
 
 /* ─────────────────────────────────────────────────────── геопозиция */
 
@@ -84,6 +102,49 @@ function onFix(fn) {
   return () => fixHandlers.delete(fn);
 }
 
+/* ─────────────────────────────────────────────────────── проверка документов */
+
+/* Короткий ответ /courier/state знает статус, но не знает ссылку на снимок,
+   а полный ответ /courier/verify знает всё. Склеиваем, чтобы экран проверки
+   не терял картинку при каждом обновлении состояния. */
+function mergeVerify(was, next) {
+  if (!next || !next.status) return was;
+  const out = Object.assign({}, next);
+  // Ссылку на снимок теряем только тогда, когда нам прямо сказали, что фото нет.
+  if (out.photo_url === undefined && was && was.photo_url && next.photo !== false) {
+    out.photo_url = was.photo_url;
+  }
+  if (out.max_mb === undefined && was && was.max_mb) out.max_mb = was.max_mb;
+  return out;
+}
+
+/* Ключ состояния проверки: пусто, пока сервер молчит, иначе сам статус.
+   По нему видно и «узнали впервые», и «решение поменялось». */
+function verifyKey(v) {
+  return v && v.status ? String(v.status) : '';
+}
+
+function setVerify(next) {
+  const was = store.get().verify;
+  const now = mergeVerify(was, next);
+  if (!now) return;
+  store.set({ verify: now });
+  // Первый ответ сервера — не новость: о нём не объявляем, иначе проверенный
+  // курьер будет получать поздравление при каждом запуске приложения.
+  if (!was || was.status === now.status) return;
+
+  // Решение админа приходит в поток событий: человек должен узнать о нём
+  // сразу, даже если сидит на другом экране.
+  if (now.status === 'approved') {
+    toast(t('vfy.approved_title'), { type: 'ok', ms: 6000 });
+    haptic([16, 70, 16]);
+    if (booted) pullState();
+  } else if (now.status === 'rejected') {
+    toast(now.note || t('vfy.rejected_title'), { type: 'err', ms: 7000 });
+    haptic([18, 80, 18]);
+  }
+}
+
 /* ─────────────────────────────────────────────────────── контекст экранов */
 
 const ctx = {
@@ -96,6 +157,7 @@ const ctx = {
   // и воскресить заказ на экране. Помним номер и такие сообщения пропускаем.
   finished: (orderId) => { closedOrder = orderId || 0; },
   refreshTheme: () => render(path),
+  setVerify,
   setLang: (code) => {
     setLang(code);
     haptic();
@@ -117,26 +179,48 @@ function paintTop() {
   }, el('span', { className: 'badge__dot' }),
     s.online ? t('courier.online') : t('courier.offline'));
 
-  top.replaceChildren(
+  const back = screen.back ? el('button', {
+    className: 'btn btn--ghost btn--icon',
+    type: 'button',
+    html: ico('back'),
+    'aria-label': t('common.back'),
+    onClick: () => { haptic(); ctx.go(screen.back); },
+  }) : null;
+
+  top.replaceChildren(...[
+    back,
     el('div', { className: 'grow truncate' },
       el('div', { className: 'app__title truncate' }, t(screen.title)),
       el('div', { className: 'app__sub truncate' }, sub)),
-    badge);
+    badge,
+  ].filter(Boolean));
 }
 
+/* Панель разделов уже свёрстана: подсвечиваем нужную кнопку и ставим точку
+   на «Заказы», когда заказ в работе. Разметку не трогаем. */
 function paintDock() {
   const s = store.get();
-  dock.replaceChildren(...TABS.map((to) => {
-    const screen = SCREENS[to];
-    const item = el('button', {
-      className: 'dock__i' + (to === path ? ' is-on' : ''),
-      type: 'button',
-      'aria-current': to === path ? 'page' : null,
-      onClick: () => { haptic(); ctx.go(to); },
-    }, el('span', { html: ICONS[screen.icon] }), t(screen.title));
-    if (to === '/order' && s.order) item.appendChild(el('span', { className: 'dock__mark' }));
-    return item;
-  }));
+  const screen = SCREENS[path] || SCREENS['/shift'];
+  for (const btn of navButtons) {
+    const on = btn.dataset.nav === screen.tab;
+    btn.classList.toggle('is-on', on);
+    if (on) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
+
+    const mark = btn.querySelector('.dock__mark');
+    const need = btn.dataset.nav === '/order' && !!s.order;
+    if (need && !mark) btn.appendChild(el('span', { className: 'dock__mark' }));
+    if (!need && mark) mark.remove();
+  }
+}
+
+function bindDock() {
+  for (const btn of navButtons) {
+    btn.addEventListener('click', () => {
+      haptic();
+      ctx.go(btn.dataset.nav);
+    });
+  }
 }
 
 /* Плашка «нет связи»: пока поток оборван, курьер должен знать, что заказы
@@ -165,6 +249,9 @@ function render(next) {
   const screen = SCREENS[path];
   try {
     cleanup = screen.render(main, ctx) || null;
+    // Без проверки документов на линию не выйти. Экран смены при этом остаётся
+    // на месте целиком: человек должен видеть, что его ждёт после проверки.
+    if (path === '/shift') lockShift(main, ctx);
   } catch (e) {
     console.error('[courier] экран не отрисовался', e);
     main.replaceChildren(el('div', { className: 'empty' },
@@ -227,6 +314,9 @@ function pump() {
       setTimeout(pump, 200);
     }
   });
+  // Звук выключили в профиле — гасим сигнал сразу, как только карточка встала.
+  // Сама карточка при этом никуда не девается: молча, но видно.
+  if (!getSound()) stopAlert();
 }
 
 /* ─────────────────────────────────────────────────────── поток событий */
@@ -241,6 +331,7 @@ function applyState(data) {
     order,
     at: data.at && data.at[0] != null ? data.at : store.get().at,
   });
+  if (data.verify) setVerify(data.verify);
   if (data.online) tracker.start();
   else tracker.stop();
   // Курьер открыл приложение посреди заказа — ему нужен заказ, а не экран смены.
@@ -268,7 +359,7 @@ function applyOrder(card) {
 function connect() {
   if (source) source.close();
   source = api.stream('/courier/stream', {
-    events: ['state'],
+    events: ['state', 'verify'],
     onOpen: () => store.set({ connected: true }),
     onError: () => store.set({ connected: false }),
     onEvent(name, data) {
@@ -277,6 +368,7 @@ function connect() {
         case 'order': applyOrder(data); break;
         case 'offer': enqueue(data); break;
         case 'offer_cancelled': drop(data && data.offer_id); break;
+        case 'verify': setVerify(data && { ...data, ok: data.status === 'approved' }); break;
         case 'ping': store.set({ connected: true }); break;
         default: break;
       }
@@ -325,7 +417,10 @@ function teardown() {
   }
   cleanup = null;
   booted = false;
-  store.set({ user: null, order: null, waiting: null, online: false, busy: false, connected: false });
+  store.set({
+    user: null, order: null, waiting: null, verify: null,
+    online: false, busy: false, connected: false,
+  });
   paintLink();
   main.replaceChildren();
 }
@@ -348,7 +443,7 @@ async function start(user) {
 
   if (!router) {
     const routes = {};
-    for (const to of TABS) routes[to] = () => render(to);
+    for (const to of ROUTES) routes[to] = () => render(to);
     routes['*'] = () => render('/shift');
     router = createRouter(routes, {
       home: '/shift',
@@ -368,6 +463,7 @@ async function start(user) {
 
 async function boot() {
   applyTheme(getTheme());
+  bindDock();
   initGate({ onAuthed: (user) => start(user) });
 
   // Конфиг нужен и до входа (классы машин в анкете), и после (карта, допуслуги).
@@ -408,6 +504,10 @@ store.on((now, was) => {
   paintLink();
   // Экран заказа рисовался пустым, а заказ появился — пересобираем его целиком.
   if (path === '/order' && !was.order && now.order) render(path);
+  // Состояние проверки узнали или оно поменялось — на экране смены от этого
+  // зависит главная кнопка. Сравниваем именно статус, а не «пройдено да/нет»:
+  // первый ответ сервера тоже меняет экран, хотя «нет» так и остаётся «нет».
+  if (path === '/shift' && verifyKey(was.verify) !== verifyKey(now.verify)) render(path);
 });
 
 api.onUnauthorized(() => {
@@ -436,15 +536,18 @@ window.addEventListener('offline', () => {
   if (booted) store.set({ connected: false });
 });
 
-/* Звук предложения браузер разрешает только после касания — ловим первое же. */
-document.addEventListener('pointerdown', unlockAudio, { once: true, passive: true });
+/* Звук предложения браузер разрешает только после касания — ловим первое же.
+   Если звук выключен в профиле, звуковой движок вообще не заводим. */
+document.addEventListener('pointerdown', () => {
+  if (getSound()) unlockAudio();
+}, { once: true, passive: true });
 
 /* Служебный воркер держит оболочку в кэше: на плохой сети приложение
    всё равно открывается за мгновение, а запросы к API идут только в сеть. */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    const root = window.SG_BASE || '/';
-    navigator.serviceWorker.register(root + 'sw-courier.js', { scope: root + 'courier' })
+    const base = window.SG_BASE || '/';
+    navigator.serviceWorker.register(base + 'sw-courier.js', { scope: base + 'courier' })
       .catch(() => { /* http без tls или приватный режим — просто работаем без кэша */ });
   });
 }

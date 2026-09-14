@@ -206,7 +206,30 @@ def main():
         code, bad_login = req('POST', '/auth/login', {'email': cour['email'], 'password': 'неверный'})
         check('неверный пароль отклонён', code in (400, 401), f'код {code}')
 
+        # Проверка документов: без неё диспетчер заказы не даёт — это by design.
         if ctoken:
+            # крошечный настоящий jpeg, чтобы проверить и разбор, и сохранение файла
+            tiny = ('data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsL'
+                    'DBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAAB'
+                    'AAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==')
+            code, vr = req('POST', '/courier/verify', {'photo': tiny}, token=ctoken)
+            check('фото на проверку принято', code in (200, 201), f'код {code}: ' + str(vr)[:160])
+            code, vs = req('GET', '/courier/verify', token=ctoken)
+            check('статус проверки — на рассмотрении',
+                  (vs or {}).get('status') == 'pending', str(vs)[:160])
+
+        if atoken:
+            code, queue = req('GET', '/admin/verify', token=atoken)
+            check('очередь проверки видна админу', code == 200, str(queue)[:160])
+            items = queue.get('items') if isinstance(queue, dict) else queue
+            uid = (items or [{}])[0].get('user_id') or (items or [{}])[0].get('id')
+            if check('в очереди есть курьер', bool(uid), str(queue)[:200]):
+                code, r = req('PATCH', f'/admin/verify/{uid}', {'status': 'approved'}, token=atoken)
+                check('админ одобрил документы', code == 200, str(r)[:200])
+
+        if ctoken:
+            code, vs = req('GET', '/courier/verify', token=ctoken)
+            check('курьер видит, что проверен', (vs or {}).get('status') == 'approved', str(vs)[:160])
             code, _ = req('POST', '/courier/online', {'online': True}, token=ctoken)
             check('курьер вышел на линию', code == 200)
             code, _ = req('POST', '/courier/geo',

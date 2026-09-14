@@ -15,6 +15,87 @@
 html[data-screen='app'] #gate { display: none; }
 html[data-screen='app'] #app { display: flex; }
 
+/* ══════════════════════════════════════════════════════ без зума страницы
+
+   Айфон приближает страницу, как только фокус попадает в поле мельче 16 px,
+   и мета-тегом это не выключается. Средство одно — не давать полям быть
+   мельче. Классы полей перечислены нарочно: у .field__input свой размер,
+   и без явного перебивания он победил бы. */
+
+input,
+select,
+textarea,
+.field__input,
+textarea.field__input,
+select.field__input {
+  font-size: 16px;
+}
+
+/* Двойной тап и щипок по интерфейсу не должны ничего масштабировать.
+   pan-x pan-y оставляет прокрутку, но убирает и щипок, и двойной тап.
+   Карту не трогаем вовсе: свой touch-action ей ставит map.css, а жесты
+   разбирает core/map.js — перебьём, и щипок по карте уедет в прокрутку. */
+body,
+.app,
+.gate,
+.offer,
+.dock,
+.job__panel,
+.toasts,
+.sheet {
+  touch-action: pan-x pan-y;
+}
+
+/* Кнопки, ссылки и поля — отдельно: у них не должно быть даже задержки 300 мс. */
+.app button,
+.app a,
+.app label,
+.app input,
+.app select,
+.app textarea,
+.gate button,
+.gate input,
+.gate select,
+.gate label,
+.offer button,
+.offer a,
+.sheet button,
+.sheet a,
+.sheet input,
+.sheet select,
+.sheet textarea {
+  touch-action: manipulation;
+}
+
+/* ══════════════════════════════════════════════════════ иконки
+
+   Лист символов лежит в разметке страницы и сам ничего не занимает.
+   Толщина линии, скругления и цвет заданы здесь, а не в каждой иконке:
+   так весь набор гарантированно выглядит как один набор. Заливка внутри
+   символа задаётся атрибутом на самой фигуре — селектор туда не достаёт. */
+
+.sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.ico {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ico--xs { width: 13px; height: 13px; stroke-width: 2.4; }
+.ico--sm { width: 18px; height: 18px; stroke-width: 2; }
+.ico--lg { width: 28px; height: 28px; stroke-width: 1.7; }
+
 /* ══════════════════════════════════════════════════════ вход и регистрация */
 
 .gate {
@@ -252,7 +333,13 @@ html[data-screen='app'] #app { display: flex; }
   animation: sg-spin 680ms linear infinite;
 }
 
-/* ── нижняя панель разделов ─────────────────────────────────────────────── */
+/* ── нижняя панель разделов ───────────────────────────────────────────────
+
+   Четыре раздела: смена, заказы, заработок, профиль. Панель прижата к низу
+   и добирает высоту на «подбородок» айфона через --safe-b, а .app__main
+   отступает ровно на её высоту — содержимое под неё не заезжает.
+   Высота считается так: 6 + 64 + 6 = 76 = --dock-h. Меняете одно — правьте
+   и токен, иначе последняя строка списка спрячется за панелью. */
 
 .dock {
   position: fixed;
@@ -260,10 +347,12 @@ html[data-screen='app'] #app { display: flex; }
   bottom: 0;
   z-index: var(--z-ui);
   display: flex;
+  gap: 2px;
   width: 100%;
   max-width: var(--page-max);
+  min-height: calc(var(--dock-h) + var(--safe-b));
   transform: translateX(-50%);
-  padding: var(--sp-2) var(--sp-2) calc(var(--sp-2) + var(--safe-b));
+  padding: 6px var(--sp-2) calc(6px + var(--safe-b));
   background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -272,13 +361,15 @@ html[data-screen='app'] #app { display: flex; }
 
 .dock__i {
   position: relative;
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  min-height: 56px;
+  gap: 2px;
+  min-height: 64px;
+  padding: 0 2px;
   border-radius: var(--r-md);
   color: var(--muted-2);
   font-size: var(--fs-xs);
@@ -286,20 +377,57 @@ html[data-screen='app'] #app { display: flex; }
   transition: color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
 }
 
-.dock__i > svg { width: 24px; height: 24px; }
-.dock__i:active { background: var(--surface-2); }
-.dock__i.is-on { color: var(--accent); }
+/* Иконку кладут и голым svg, и в обёртке .dock__ico — ловим оба случая. */
+.dock__i svg { width: 24px; height: 24px; }
 
-/* Точка на разделе «Заказ», когда заказ в работе. */
+.dock__ico {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 30px;
+  border-radius: var(--r-full);
+  transition: background-color var(--dur-2) var(--ease);
+}
+
+/* Подпись раздела: на 360 px «Заработок» ровно влезает, но запас нужен. */
+.dock__t {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.dock__i:active { background: var(--surface-2); }
+
+/* Активный раздел жёлтый: и подпись, и иконка, и мягкая подложка под ней. */
+.dock__i.is-on { color: var(--accent); }
+.dock__i.is-on .dock__ico { background: var(--accent-soft); }
+
+/* Полоска сверху — чтобы раздел читался и без цвета, боковым зрением. */
+.dock__i.is-on::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 22px;
+  height: 3px;
+  margin-left: -11px;
+  border-radius: 0 0 3px 3px;
+  background: var(--accent);
+}
+
+/* Точка на разделе «Заказы», когда заказ в работе. */
 .dock__mark {
   position: absolute;
   top: 8px;
   left: 50%;
-  margin-left: 8px;
+  margin-left: 10px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg);
 }
 
 /* ══════════════════════════════════════════════════════ смена */
@@ -802,6 +930,114 @@ html[data-screen='app'] #app { display: flex; }
 .app--job .dock { display: none; }
 .app--job .app__main { padding-bottom: calc(120px + var(--safe-b)); }
 
+/* ── заказ во весь экран ──────────────────────────────────────────────────
+
+   Второй вид того же экрана: карта сверху во всю ширину, панель с адресами
+   и кнопкой снизу. Нужен, когда человек уже поехал и смотрит только в карту.
+
+   Разметка:
+     <div class="job job--full">
+       <div class="job__map"></div>
+       <button class="job__close"></button>      — необязательная, поверх карты
+       <div class="job__panel">
+         <button class="job__grip"></button>     — за неё тянут панель
+         <div class="job__scroll"> … </div>
+         <div class="act"> … </div>
+       </div>
+     </div>
+   Включает и выключает этот вид другой модуль: он вешает класс job--full
+   и ставит на <html> атрибут data-job="full", чтобы спряталась навигация. */
+
+.job--full {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-sheet);
+  gap: 0;
+  background: var(--bg);
+}
+
+.job--full .job__map {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 30dvh;
+  border-radius: 0;
+}
+
+/* Нижняя панель заказа. Ограничена по высоте, чтобы карта не схлопнулась
+   в полоску: длинные адреса и допуслуги прокручиваются внутри. */
+.job__panel {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  max-height: 62dvh;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-sheet);
+}
+
+.job__grip {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 26px;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+}
+.job__grip::before {
+  content: '';
+  width: 40px;
+  height: 4px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+}
+
+.job__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: var(--sp-1) var(--sp-4) var(--sp-3);
+}
+
+/* Внутри панели кнопка действия уже никуда не всплывает: она и так внизу. */
+.job--full .act {
+  position: static;
+  max-width: none;
+  transform: none;
+  background: var(--surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Круглая кнопка поверх карты: «назад», «моё место», «позвонить». */
+.job__close {
+  position: absolute;
+  top: calc(var(--safe-t) + var(--sp-3));
+  left: var(--sp-3);
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-2);
+}
+.job__close:active { transform: scale(.94); }
+
+/* Заказ занял весь экран — навигация под ним не нужна и мешала бы.
+   Правило с :has() срабатывает само; атрибут на <html> оставлен для
+   браузеров постарше и для случая, когда экран рисуют вне .app. */
+html[data-job='full'] .dock { display: none; }
+body:has(.job--full) .dock { display: none; }
+
 /* ── свайп «завершить» ──────────────────────────────────────────────────── */
 
 /* Последний шаг подтверждается протяжкой: случайное касание не должно
@@ -986,6 +1222,149 @@ html[data-screen='app'] #app { display: flex; }
   color: var(--muted);
   font-size: var(--fs-sm);
 }
+
+/* ── карточка водителя ────────────────────────────────────────────────────
+
+   Первое, что видно в профиле: фото, имя, звёзды, «на линии с такого-то»
+   и зелёный значок «Проверен». Значка нет вовсе, пока проверка не пройдена:
+   серая надпись «не проверен» рядом с именем читалась бы как обвинение. */
+
+.me__card {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-5) var(--sp-4);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+}
+
+.me__ava {
+  width: 72px;
+  height: 72px;
+  font-size: 26px;
+}
+
+.me__info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.me__rate {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: 6px;
+}
+
+.me__stars { display: inline-flex; }
+
+.me__score {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.me__orders {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.me__since {
+  margin-top: 4px;
+  color: var(--muted-2);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+.me__since:empty { display: none; }
+
+/* Значок проверки. Галочку рисует иконка #i-check, цвет даёт .badge--ok.
+   Стоит отдельной строкой, а не в углу карточки: в углу он на 360 px
+   наезжал бы на длинное имя, а имя важнее. */
+.me__ok {
+  margin-top: var(--sp-2);
+  min-height: 26px;
+  padding: 0 var(--sp-2) 0 6px;
+}
+
+/* ── строки профиля ───────────────────────────────────────────────────────
+
+   Каждая строка — кнопка целиком: попасть в неё пальцем можно откуда угодно,
+   а не только по названию. Слева иконка в мягком квадрате, справа стрелка. */
+
+.me__item {
+  width: 100%;
+  min-height: 60px;
+  text-align: left;
+  color: inherit;
+}
+
+.me__ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.me__ico .ico { width: 21px; height: 21px; }
+
+.me__ico--accent { background: var(--accent-soft); color: var(--accent); }
+.me__ico--ok { background: var(--ok-soft); color: var(--ok); }
+.me__ico--warn { background: var(--warn-soft); color: var(--warn); }
+.me__ico--info { background: var(--info-soft); color: var(--info); }
+.me__ico--danger { background: var(--err-soft); color: var(--err); }
+
+.me__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.me__label {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+/* Подпись под названием: телефон, номер машины, «проверка идёт». */
+.me__note {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.me__note:empty { display: none; }
+
+/* Значение справа: язык, тема, рейтинг. Длинное — уступает названию. */
+.me__val {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.me__val:empty { display: none; }
+
+.me__go {
+  flex: none;
+  color: var(--muted-2);
+}
+
+.me__item--danger .me__label { color: var(--err); }
+.me__item--danger:active { background: var(--err-soft); }
 
 .me__kv {
   display: flex;

@@ -17,8 +17,62 @@
 .sg-map {
   position: absolute;
   inset: 0;
-  /* кнопки карты поднимаем над шторкой — высоту шторки проставляет app.js */
-  --map-ui-bottom: calc(var(--sg-panel-h, 240px) + var(--sp-3));
+  /* Кнопки карты держим над шторкой. Высоту шторки проставляет app.js,
+     а --sg-panel-off — на сколько шторка сейчас уехала вниз (core/ui.js):
+     свернули шторку — кнопки опустились следом. */
+  --map-ui-bottom: calc(max(0px, var(--sg-panel-h, 240px) - var(--sg-panel-off, 0px)) + var(--sp-3));
+}
+
+/* ══════════════════════════════════════════════════════════ без зума страницы
+
+   Айфон приближает страницу, как только фокус попадает в поле мельче 16 px,
+   и никаким мета-тегом это не выключается. Единственное надёжное средство —
+   не давать полям быть мельче. Правило нарочно перечисляет и классы полей:
+   у .field__input свой размер, и без явного перебивания он победил бы. */
+
+input,
+select,
+textarea,
+.field__input,
+textarea.field__input,
+select.field__input,
+.sg-find__input {
+  font-size: 16px;
+}
+
+/* Двойной тап и щипок по интерфейсу масштабировать ничего не должны.
+   pan-x pan-y оставляет прокрутку и списки, но убирает и щипок, и двойной тап.
+   Карта из правила исключена: там жесты обрабатывает core/map.js. */
+body,
+.sg-app,
+.sg-top,
+.sg-panel,
+.toasts,
+.sheet {
+  touch-action: pan-x pan-y;
+}
+
+/* Карта сама ловит и щипок, и двойной тап (core/map.js), поэтому браузеру
+   на ней не оставляем ничего — иначе жесты уедут в прокрутку страницы. */
+.sg-map { touch-action: none; }
+
+/* Кнопки, ссылки и поля — отдельно: у них не должно быть даже задержки в 300 мс. */
+.sg-app button,
+.sg-app a,
+.sg-app label,
+.sg-app input,
+.sg-app select,
+.sg-app textarea,
+.sheet button,
+.sheet a,
+.sheet input,
+.sheet select,
+.sheet textarea {
+  touch-action: manipulation;
+}
+
+.sg-map button {
+  touch-action: manipulation;
 }
 
 /* ══════════════════════════════════════════════════════════ шапка */
@@ -122,7 +176,54 @@
   background: var(--surface);
   box-shadow: var(--shadow-sheet);
   pointer-events: auto;
+  /* Три положения панели двигает core/ui.js — он пишет сюда transform.
+     Пружинная кривая даёт лёгкий доводочный отскок, как в приложениях такси. */
+  transition: transform var(--dur-2) var(--ease-spring);
+  will-change: transform;
 }
+
+/* Пока панель в пальцах, анимация только мешает: она догоняет, а не ведёт. */
+.sg-panel--drag .sg-panel__box { transition: none; }
+
+/* Грип: за него тянут панель, тап по нему сворачивает и разворачивает.
+   Полоска маленькая, а нажимать надо во всю ширину и на полные 44 px —
+   поэтому кнопка высокая, а видна в ней только серая чёрточка. */
+.sg-panel__grip {
+  position: relative;
+  flex: none;
+  display: block;
+  width: 100%;
+  height: 44px;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  touch-action: none;
+  cursor: grab;
+}
+.sg-panel__grip:active { cursor: grabbing; }
+
+.sg-panel__grip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 16px;
+  width: 40px;
+  height: 4px;
+  margin-left: -20px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  transition: width var(--dur-2) var(--ease-spring), background-color var(--dur-1) var(--ease);
+}
+.sg-panel__grip:active::after { width: 54px; margin-left: -27px; background: var(--muted-2); }
+
+/* Панель опущена: список внутри больше не прокручивается, любой жест по нему
+   поднимает саму панель — иначе до неё было бы не дотянуться. */
+.sg-panel__box.is-down .sg-body {
+  overflow: hidden;
+  touch-action: none;
+}
+
+/* У свёрнутой панели виден только заголовок, поэтому и тень ей нужна плотнее:
+   она отделяет полоску панели от карты, которая под ней теперь почти вся. */
+.sg-panel[data-pos='peek'] .sg-panel__box { box-shadow: var(--shadow-3), var(--shadow-sheet); }
 
 /* Экран поиска адреса занимает почти весь экран — карта остаётся полоской сверху.
    Высоту задаём самому шагу: тогда шторка доедет до неё плавно, как и все остальные. */
@@ -145,11 +246,14 @@
   width: 100%;
   opacity: 1;
   transform: none;
-  transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease);
+  /* Приход и уход шага: сдвиг с растворением, без мигания. Кривая пружинная —
+     содержимое доезжает мягко, как будто его подтолкнули, а не переключили. */
+  transition: opacity var(--dur-2) var(--ease),
+              transform var(--dur-2) var(--ease-spring);
 }
 
 /* Новый шаг приходит снизу, старый уходит вверх — движение читается как «дальше». */
-.sg-step--enter { opacity: 0; transform: translateY(12px); }
+.sg-step--enter { opacity: 0; transform: translateY(16px) scale(.985); }
 
 .sg-step--out {
   position: absolute;
@@ -157,20 +261,26 @@
   right: 0;
   top: 0;
   opacity: 0;
-  transform: translateY(-10px);
+  transform: translateY(-12px) scale(.985);
   pointer-events: none;
+  transition: opacity var(--dur-1) var(--ease-in),
+              transform var(--dur-2) var(--ease);
 }
 
 /* Шаг, который идёт назад, движется в обратную сторону. */
-.sg-step--back.sg-step--enter { transform: translateY(-12px); }
-.sg-step--out.sg-step--back-out { transform: translateY(10px); }
+.sg-step--back.sg-step--enter { transform: translateY(-16px) scale(.985); }
+.sg-step--out.sg-step--back-out { transform: translateY(12px) scale(.985); }
 
+/* Шапка шага — вторая ручка панели: за неё тянут так же, как за грип,
+   поэтому браузеру жесты здесь не отдаём. Сверху отступ меньше: над шапкой
+   теперь стоит грип и своё пустое место он уже дал. */
 .sg-head {
   flex: none;
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  padding: var(--sp-4) var(--sp-4) var(--sp-2);
+  padding: 0 var(--sp-4) var(--sp-2);
+  touch-action: none;
 }
 
 .sg-head__text { flex: 1 1 auto; min-width: 0; }
@@ -205,21 +315,26 @@
 .sg-back:active { transform: scale(.92); background: var(--surface-3); }
 .sg-back > svg { width: 22px; height: 22px; }
 
+/* pan-y, а не auto: списку оставляем только вертикальную прокрутку. Дотянув её
+   до края, палец начинает тащить саму панель — этим занимается core/ui.js. */
 .sg-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   padding: 0 var(--sp-4);
 }
 
+/* Подвал с главной кнопкой — тоже ручка панели: тянуть за него удобнее всего. */
 .sg-foot {
   flex: none;
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
   padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  touch-action: none;
 }
 
 /* ══════════════════════════════════════════════════════════ адреса */
@@ -331,8 +446,9 @@
   border-radius: var(--r-md);
   background: var(--surface-2);
   text-align: left;
+  transition: background-color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
 }
-.sg-route:active { background: var(--surface-3); }
+.sg-route:active { background: var(--surface-3); transform: scale(.985); }
 
 .sg-route__line {
   flex: none;
@@ -400,6 +516,14 @@
               background-color var(--dur-1) var(--ease);
 }
 .sg-tariff:active { transform: scale(.97); }
+
+/* Машины выезжают в ряд по очереди — тем же каскадом, что и подсказки адресов. */
+.sg-tariff { animation: sg-rise var(--dur-2) var(--ease) backwards; }
+.sg-tariff:nth-child(1) { animation-delay: 0ms; }
+.sg-tariff:nth-child(2) { animation-delay: 34ms; }
+.sg-tariff:nth-child(3) { animation-delay: 68ms; }
+.sg-tariff:nth-child(4) { animation-delay: 102ms; }
+.sg-tariff:nth-child(n + 5) { animation-delay: 136ms; }
 
 .sg-tariff.is-on {
   border-color: var(--accent-line);
@@ -586,7 +710,7 @@
   height: 52px;
   background: none;
   color: var(--text);
-  font-size: var(--fs-body);
+  font-size: 16px;                 /* меньше нельзя: айфон приблизит страницу */
 }
 
 /* Рамку фокуса рисует сама коробка поиска, вторая внутри неё только мешает. */
@@ -606,6 +730,25 @@
 
 .sg-list { display: flex; flex-direction: column; }
 
+/* Подсказки адресов появляются каскадом: строки набегают по очереди, и глаз
+   успевает понять, что список обновился, а не подменился целиком.
+   Задержки заданы вручную по номеру строки — считать их в коде незачем.
+   Заливка backwards, а не both: доиграв, строка отдаёт transform обратно
+   обычным правилам, иначе нажатие перестало бы её продавливать. */
+.sg-list > * { animation: sg-rise var(--dur-2) var(--ease) backwards; }
+.sg-list > *:nth-child(1) { animation-delay: 0ms; }
+.sg-list > *:nth-child(2) { animation-delay: 26ms; }
+.sg-list > *:nth-child(3) { animation-delay: 52ms; }
+.sg-list > *:nth-child(4) { animation-delay: 78ms; }
+.sg-list > *:nth-child(5) { animation-delay: 104ms; }
+.sg-list > *:nth-child(6) { animation-delay: 130ms; }
+.sg-list > *:nth-child(n + 7) { animation-delay: 156ms; }
+
+@keyframes sg-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
 .sg-item {
   display: flex;
   align-items: center;
@@ -614,10 +757,10 @@
   min-height: 58px;
   padding: var(--sp-2) 0;
   text-align: left;
-  transition: background-color var(--dur-1) var(--ease);
+  transition: background-color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
 }
 .sg-item + .sg-item { border-top: 1px solid var(--line-soft); }
-.sg-item:active { background: var(--surface-2); }
+.sg-item:active { background: var(--surface-2); transform: scale(.985); }
 
 .sg-item__icon {
   flex: none;
@@ -669,6 +812,16 @@
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--dur-2) var(--ease);
+}
+
+/* Но если ту же шторку опустили пальцем — карта снова открыта, и кнопки нужны.
+   Браузеры без :has() просто оставят их спрятанными: карта работает и жестами. */
+.sg-app.is-deep:has(.sg-panel[data-pos='half']) .map__ctrl,
+.sg-app.is-deep:has(.sg-panel[data-pos='half']) .map__btn--locate,
+.sg-app.is-deep:has(.sg-panel[data-pos='peek']) .map__ctrl,
+.sg-app.is-deep:has(.sg-panel[data-pos='peek']) .map__btn--locate {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* ══════════════════════════════════════════════════════════ точка на карте */
@@ -1045,4 +1198,22 @@
   .sg-tariffs { margin: 0 calc(var(--sp-3) * -1); padding-left: var(--sp-3); padding-right: var(--sp-3); }
   .sg-tariff { width: 124px; }
   .sg-brand__name { display: none; }
+}
+
+/* ══════════════════════════════════════════════════════════ меньше движения */
+
+/* Длительности глушит tokens.css, но задержки каскада он не трогает: без этого
+   строки появлялись бы мгновенно, зато по очереди — рывками. */
+@media (prefers-reduced-motion: reduce) {
+  .sg-list > *,
+  .sg-tariff {
+    animation: none;
+  }
+  .sg-step,
+  .sg-step--enter,
+  .sg-step--out,
+  .sg-step--back.sg-step--enter,
+  .sg-step--out.sg-step--back-out {
+    transform: none;
+  }
 }

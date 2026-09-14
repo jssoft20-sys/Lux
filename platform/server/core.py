@@ -383,7 +383,7 @@ class Handler(BaseHTTPRequestHandler):
     sys_version = ''
     app = None                    # проставляется в serve()
 
-    MAX_BODY = 2 * 1024 * 1024
+    MAX_BODY = 8 * 1024 * 1024      # фото верификации приходит внутри JSON
 
     def log_message(self, *a):    # свой формат, тише стандартного
         pass

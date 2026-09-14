@@ -12,6 +12,10 @@
   --map-route-case: rgba(0, 0, 0, .55);
   --map-route: var(--accent);
   --map-me: #4DA3FF;
+  --map-car: var(--accent);                /* корпус фургона */
+  --map-car-line: rgba(0, 0, 0, .34);      /* контур корпуса, чтобы не слипался с картой */
+  --map-car-glass: #1A1A22;                /* лобовое и заднее стекло */
+  --map-car-dark: #101014;                 /* колёса и зеркала */
   --map-ui-bottom: calc(var(--sp-4) + var(--safe-b));   /* приложение поднимает кнопки над шторкой */
   --map-tile-fade: 220ms;
 
@@ -34,6 +38,7 @@
   --map-ink: #131317;
   --map-ring: #FFFFFF;
   --map-route-case: rgba(255, 255, 255, .85);
+  --map-car-line: rgba(0, 0, 0, .5);       /* на светлых плитках жёлтому нужен контур потемнее */
 }
 
 /* Карта-картинка: не перехватывает ни жесты, ни прокрутку страницы. */
@@ -53,14 +58,20 @@
   overflow: hidden;
 }
 
+/* Двигается весь слой целиком, одним трансформом — поэтому подъём на видеокарту
+   и отключение обратной стороны стоят именно здесь, а не на каждой плитке. */
 .map__level {
   position: absolute;
   left: 0;
   top: 0;
   transform-origin: 0 0;
   will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
+/* Сама плитка стоит на целом пикселе внутри слоя и никуда не едет:
+   will-change ей ни к чему — это сотни узлов и заметная память впустую. */
 .map__tile {
   position: absolute;
   left: 0;
@@ -72,7 +83,6 @@
   max-height: none;
   opacity: 0;
   transition: opacity var(--map-tile-fade) ease-out;
-  will-change: transform, opacity;
   -webkit-user-drag: none;
 }
 
@@ -85,14 +95,33 @@
   height: 257px;
 }
 
+/* ══════════════════════════════════════════════════════════ зоны спроса */
+
+/* Пятна повышенного спроса: поверх плиток, но под маркерами и маршрутом.
+   Холст растянут по контейнеру, точки внутри считает map.js по плотности экрана. */
+.map__zones {
+  position: absolute;
+  inset: 0;
+  z-index: calc(var(--z-map) + 1);
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-3) var(--ease);
+}
+
+.map__zones.is-on { opacity: 1; }
+
 /* ══════════════════════════════════════════════════════════ маршруты и маркеры */
 
 .map__pane {
   position: absolute;
   inset: 0;
-  z-index: calc(var(--z-map) + 1);
+  z-index: calc(var(--z-map) + 2);
   pointer-events: none;
   will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .map__vector {
@@ -128,7 +157,14 @@
   position: absolute;
   left: 0;
   top: 0;
+}
+
+/* Отдельный слой маркеру нужен, только пока он едет: на живой карте админа
+   их полсотни, и держать полсотни слоёв постоянно — впустую занятая память. */
+.map__marker.is-moving {
   will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .map__marker--tap {
@@ -235,35 +271,56 @@
   line-height: 1;
 }
 
-/* Машина курьера: кружок с иконкой и «носом» по направлению движения. */
+/* Машина курьера: фургон сверху, носом по ходу движения.
+   Сама коробка прозрачная и круглая — приложение может подкрасить её фоном
+   под состояние курьера, и тогда под машиной появится цветной ободок. */
 .map-pin--car {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   border-radius: var(--r-full);
-  background: var(--accent);
-  color: var(--on-accent);
-  border: 2px solid var(--map-ring);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, .45);
+  background: transparent;
 }
 
-.map-pin--car > svg {
-  width: 22px;
-  height: 22px;
+.map-car {
+  width: 36px;
+  height: 45px;
+  overflow: visible;
 }
 
-.map-pin--car::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: -9px;
-  margin-left: -5px;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-bottom: 7px solid var(--accent);
-  filter: drop-shadow(0 -1px 1px rgba(0, 0, 0, .35));
+/* Тень лежит под кузовом отдельной фигурой: так она дышит сама по себе,
+   не таща за собой машину. Пока машина стоит — тень тихо дышит: это
+   единственный признак того, что связь с курьером живая, а карта не замерла. */
+.map-car__shade {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: map-car-breath 2.8s var(--ease) infinite;
 }
+
+/* В движении дыхание не снимаем, а ставим на паузу: снятое дало бы рывок
+   тени в тот самый момент, когда машина трогается. */
+.map__marker.is-moving .map-car__shade {
+  animation-play-state: paused;
+}
+
+@keyframes map-car-breath {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.09); opacity: .74; }
+}
+
+.map-car__shell {
+  fill: var(--map-car);
+  stroke: var(--map-car-line);
+  stroke-width: 1;
+}
+
+.map-car__glass { fill: var(--map-car-glass); }
+.map-car__roof { fill: rgba(0, 0, 0, .09); }
+.map-car__wheels rect,
+.map-car__mirrors rect { fill: var(--map-car-dark); opacity: .82; }
+.map-car__lamp { fill: #FFF7D0; }
+.map-car__tail { fill: #E0452E; }
 
 /* Моё местоположение: синяя точка с расходящимся кругом. */
 .map-pin--me {
@@ -367,19 +424,22 @@
   to { transform: rotate(360deg); }
 }
 
-/* Подпись обязательна по лицензии OSM и CARTO — прячем мелко, но не убираем. */
+/* Подпись об источнике плиток обязательна: этого требуют лицензия OpenStreetMap,
+   условия CARTO и Яндекса. Показываем мелко и ненавязчиво, но всегда — убрать её
+   настройкой нельзя, название сервиса дописывается рядом. Источник стоит первым,
+   поэтому многоточие съедает имя владельца, а не обязательную ссылку. */
 .map__attr {
   position: absolute;
   left: 0;
   bottom: var(--map-ui-bottom);
   z-index: var(--z-ui);
-  max-width: 60%;
-  padding: 2px var(--sp-2);
+  max-width: 66%;
+  padding: 3px var(--sp-2);
   border-radius: 0 var(--r-xs) var(--r-xs) 0;
   background: rgba(0, 0, 0, .38);
   background: color-mix(in srgb, var(--map-bg) 74%, transparent);
   color: var(--map-ink);
-  opacity: .66;
+  opacity: .7;
   font-size: 10px;
   line-height: 1.5;
   letter-spacing: .01em;
@@ -389,20 +449,26 @@
   pointer-events: auto;
 }
 
+/* Плитки неизвестного происхождения и без подписи владельца: показывать нечего. */
+.map__attr.is-empty { display: none; }
+
+/* Точка между источниками — тише самих подписей. */
+.map__attr-sep { opacity: .55; }
+
+/* Палец толще десятипиксельной буквы, поэтому у ссылки есть запас по высоте —
+   отрицательные поля не дают ему раздвинуть саму подпись. */
 .map__attr a {
+  display: inline-block;
+  padding: 5px 0;
+  margin: -5px 0;
   color: inherit;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
-/* На узких экранах кнопки жмутся к краю плотнее — место дороже. */
+/* На узких экранах кнопки жмутся к краю плотнее — место дороже.
+   Размер не трогаем: 44 px — это минимум, в который попадает палец. */
 @media (max-width: 380px) {
   .map__ctrl,
   .map__btn--locate { right: var(--sp-3); }
-}
-
-/* На тесном экране кнопки чуть мельче: карта важнее органов управления. */
-@media (max-width: 380px) {
-  .map__btn { width: 40px; height: 40px; }
-  .map__ctrl { bottom: calc(var(--map-ui-bottom) + 48px); }
 }

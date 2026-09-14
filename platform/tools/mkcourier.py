@@ -72,7 +72,10 @@ def main():
         uid = db.insert('users', user)
         action = 'создан'
 
-    prof = {'vehicle_class': vclass, 'car_model': car, 'car_plate': plate}
+    # Курьера завели руками — значит документы владелец уже посмотрел вживую.
+    # Иначе он войдёт, но заказов не получит: диспетчер отсеивает непроверенных.
+    prof = {'vehicle_class': vclass, 'car_model': car, 'car_plate': plate,
+            'verify_status': 'approved', 'verified_at': db.now()}
     if db.row('SELECT 1 FROM couriers WHERE user_id=?', (uid,)):
         db.update('couriers', prof, 'user_id=?', (uid,))
     else:
@@ -82,6 +85,7 @@ def main():
     print(f'Курьер {name} {action}.')
     print(f'  почта:  {email}')
     print(f'  класс:  {vclass}')
+    print('  проверка: пройдена (заведён вручную)')
     print('  входить здесь: /courier')
     return 0
 

@@ -17,7 +17,7 @@ import calendar
 import re
 from datetime import datetime, timezone
 
-from .. import (auth, db, dispatch, i18n_server as i18n, mailer, payments,
+from .. import (auth, db, dispatch, geo, i18n_server as i18n, mailer, payments,
                 pricing, settings)
 from ..core import HUB, ApiError, Router, bad, conflict, log, not_found
 
@@ -25,7 +25,15 @@ API = '/api/v1'
 router = Router()
 
 # Значения этих настроек наружу не отдаём — только признак «заполнено».
-SECRET_KEYS = ('payment.secret', 'smtp.pass', 'geo.key', 'map.key')
+SECRET_KEYS = ('payment.secret', 'smtp.pass', 'geo.key', 'map.key', 'route.key')
+
+# Ключи, которых ещё нет в settings.DEFAULTS. Тип значения берётся отсюда, иначе
+# число приехало бы из формы строкой и границы из LIMITS не сработали бы.
+EXTRA_DEFAULTS = {
+    'route.key': '',
+    'route.rush_factor': geo.RUSH_FACTOR,
+    'route.night_factor': geo.NIGHT_FACTOR,
+}
 
 # Настройки живут только в этих группах: случайный ключ в базу не попадёт.
 SETTING_PREFIXES = ('service.', 'commission.', 'payment.', 'dispatch.', 'map.',
@@ -47,6 +55,8 @@ LIMITS = {
     'map.zoom': (1, 21), 'map.max_zoom': (1, 22),
     'map.center_lat': (-90, 90), 'map.center_lng': (-180, 180),
     'route.road_factor': (1, 3), 'route.avg_speed_kmh': (5, 120),
+    # Час пик дольше свободной дороги, ночь быстрее — иначе это опечатка.
+    'route.rush_factor': (1, 3), 'route.night_factor': (0.5, 1),
     'smtp.port': (1, 65535), 'security.session_days': (1, 365),
     'payment.lifetime_s': (300, 86400),
 }
@@ -59,7 +69,7 @@ CHOICES = {
     'map.provider': ('osm', 'carto', 'yandex', '2gis'),
     'geo.provider': ('nominatim', 'yandex', '2gis'),
     'geo.suggest_provider': ('nominatim', 'yandex', '2gis'),
-    'route.provider': ('straight', 'osrm'),
+    'route.provider': ('straight', 'osrm', 'yandex'),
     'smtp.secure': ('none', 'ssl', 'tls'),
     'service.currency': ('KGS', 'USD', 'RUB', 'KZT'),
 }
@@ -70,6 +80,12 @@ LIVE_STATUSES = ('draft', 'searching', 'assigned', 'to_pickup', 'at_pickup',
                  'in_transit', 'at_dropoff')
 USER_STATUSES = ('pending', 'active', 'blocked')
 EXTRA_KINDS = ('fixed', 'hourly', 'per_unit', 'per_floor')
+
+# Проверка документов курьера: 'none' — фото ещё не присылал.
+VERIFY_STATUSES = ('none', 'pending', 'approved', 'rejected')
+VERIFY_DECISIONS = ('approved', 'rejected')
+VERIFY_NAME = {'none': 'Без документов', 'pending': 'Ждёт проверки',
+               'approved': 'Проверен', 'rejected': 'Отказано'}
 
 # Отметка времени, которую ставит каждый статус заказа.
 STATUS_STAMP = {'searching': 'searching_at', 'assigned': 'assigned_at',
@@ -209,7 +225,11 @@ def _range(ctx):
 # ─────────────────────────────────────────────────────────────── настройки
 
 def _settings_payload():
-    values = dict(settings.load())
+    # Ключей route.rush_factor и route.night_factor может ещё не быть в базе —
+    # подкладываем значения по умолчанию, чтобы форма показала настоящие цифры,
+    # а не пустые поля.
+    values = dict(EXTRA_DEFAULTS)
+    values.update(settings.load())
     secrets_state = {}
     for key in SECRET_KEYS:
         secrets_state[key] = bool(str(values.get(key) or '').strip())
@@ -274,7 +294,7 @@ def settings_put(ctx):
 
 
 def _setting_value(key, value):
-    ref = settings.DEFAULTS.get(key)
+    ref = settings.DEFAULTS.get(key, EXTRA_DEFAULTS.get(key))
     if key in CHOICES:
         got = str(value).strip().lower()
         if got not in CHOICES[key]:
@@ -804,8 +824,16 @@ COURIER_SQL = (
     '       c.body_w, c.body_d, c.body_h, c.capacity_kg, '
     '       c.rating_sum, c.rating_count, c.orders_done, c.orders_cancelled, '
     '       c.offers_sent, c.offers_taken, c.priority, c.online, c.busy, '
-    '       c.lat, c.lng, c.heading, c.geo_at, c.balance, c.note '
+    '       c.lat, c.lng, c.heading, c.geo_at, c.balance, c.note, '
+    '       c.verify_status, c.verify_photo, c.verify_note, c.verified_at, c.photo '
     "FROM users u JOIN couriers c ON c.user_id = u.id WHERE u.role='courier' ")
+
+
+def _photo_url(name):
+    """Ссылка на файл фото. Отдаёт его отдельный маршрут, который проверяет права:
+    паспорт видят только сам курьер и админ."""
+    name = str(name or '').strip()
+    return (API + '/uploads/' + name) if name else None
 
 
 def _courier_row(r):
@@ -814,6 +842,13 @@ def _courier_row(r):
     r['acceptance'] = round((r.get('offers_taken') or 0) / sent, 3) if sent else None
     r['status_name'] = i18n.user_status_name(r['status'], 'ru')
     r['at'] = [r['lat'], r['lng']] if r.get('lat') is not None else None
+    # Проверка документов: видно прямо в списке, чтобы не открывать карточку.
+    verify = str(r.get('verify_status') or 'none')
+    r['verify_status'] = verify
+    r['verify_name'] = VERIFY_NAME.get(verify, VERIFY_NAME['none'])
+    r['verified'] = verify == 'approved'
+    r['verify_photo_url'] = _photo_url(r.get('verify_photo'))
+    r['photo_url'] = _photo_url(r.get('photo'))
     return r
 
 
@@ -825,6 +860,10 @@ def couriers_list(ctx):
     if status in USER_STATUSES:
         where.append('u.status = ?')
         args.append(status)
+    verify = (ctx.q('verify') or ctx.q('verify_status') or '').strip()
+    if verify in VERIFY_STATUSES:
+        where.append('c.verify_status = ?')
+        args.append(verify)
     if ctx.q('online') in ('1', 'true', 'yes'):
         where.append('c.online = 1')
     q = (ctx.q('q') or '').strip()
@@ -841,12 +880,16 @@ def couriers_list(ctx):
                    args + [per, (page - 1) * per])
     counts = {r['status']: r['n'] for r in db.rows(
         "SELECT status, COUNT(*) n FROM users WHERE role='courier' GROUP BY status")}
+    by_verify = _verify_counts()
     return {
         'items': [_courier_row(r) for r in rows],
         'page': page, 'per_page': per, 'total': total, 'pages': max(1, -(-total // per)),
         'counts': {'pending': counts.get('pending', 0), 'active': counts.get('active', 0),
                    'blocked': counts.get('blocked', 0),
-                   'online': db.value('SELECT COUNT(*) FROM couriers WHERE online=1', (), 0)},
+                   'online': db.value('SELECT COUNT(*) FROM couriers WHERE online=1', (), 0),
+                   # Сколько анкет ждёт проверки — цифра для значка в меню.
+                   'verify_pending': by_verify['pending']},
+        'verify_counts': by_verify,
     }
 
 
@@ -876,8 +919,12 @@ COURIER_INT = ('body_w', 'body_d', 'body_h', 'capacity_kg')
 
 @router.patch(API + '/admin/couriers/{cid}')
 def courier_patch(ctx, cid):
-    """Одобрение, блокировка, приоритет и заметка. Смена статуса уходит письмом:
-    человек ждёт ответа и должен узнать о нём не из приложения, а сразу."""
+    """Одобрение, блокировка, приоритет, заметка и отзыв проверки документов.
+
+    Смена статуса аккаунта уходит письмом: человек ждёт ответа и должен узнать
+    о нём не из приложения, а сразу. Решение по документам с письмом — это
+    отдельный маршрут /admin/verify/{id}, здесь только ручная правка.
+    """
     user = _admin(ctx)
     row = _courier(cid)
     body = _body(ctx)
@@ -901,6 +948,26 @@ def courier_patch(ctx, cid):
         courier_patch['priority'] = min(50, max(-50, _as_int(body['priority'], 'priority')))
     if 'balance' in body:
         courier_patch['balance'] = _as_int(body['balance'], 'balance')
+
+    # Проверку документов отсюда можно отозвать или вернуть — например, когда
+    # у человека сменилась машина. Решение по очереди с письмом живёт отдельно,
+    # в PATCH /admin/verify/{id}, здесь письма нет.
+    new_verify = None
+    if 'verify_status' in body:
+        new_verify = str(body['verify_status'] or '').strip().lower()
+        if new_verify not in VERIFY_STATUSES:
+            bad('Проверка бывает: %s' % ', '.join(VERIFY_STATUSES), 'bad_status')
+        if new_verify != row['verify_status']:
+            courier_patch['verify_status'] = new_verify
+            courier_patch['verified_at'] = db.now()
+            # Замечание берём только из verify_note: поле note — это внутренняя
+            # заметка о курьере, и путать их нельзя, её человек не видит.
+            if 'verify_note' in body:
+                courier_patch['verify_note'] = str(body['verify_note'] or '').strip()[:300] or None
+            if new_verify != 'approved':
+                courier_patch['online'] = 0    # без проверки на линии делать нечего
+        else:
+            new_verify = None
 
     new_status = None
     if 'status' in body:
@@ -937,9 +1004,144 @@ def courier_patch(ctx, cid):
                                     row.get('lang') or 'ru')
         HUB.publish('courier:%s' % row['id'], 'status',
                     {'status': new_status, 'reason': reason})
+    if new_verify:
+        HUB.publish('courier:%s' % row['id'], 'verify',
+                    {'status': new_verify, 'at': db.now(),
+                     'note': courier_patch.get('verify_note', row['verify_note']),
+                     'text': dispatch.VERIFY_TEXT[new_verify]})
     log('админ', user.get('email'), 'правил курьера', row['id'], '·', ', '.join(changed))
     fresh = _courier(row['id'])
     return {'ok': True, 'changed': changed, 'mail_sent': bool(mail_sent), 'courier': fresh}
+
+
+# ─────────────────────────────────────────────────────────────── проверка документов
+
+def _verify_counts():
+    """Сколько курьеров в каждом состоянии проверки. Ноли тоже возвращаем:
+    экрану удобнее показать «0», чем разбираться с отсутствующим ключом."""
+    rows = db.rows("SELECT c.verify_status s, COUNT(*) n "
+                   'FROM couriers c JOIN users u ON u.id = c.user_id '
+                   "WHERE u.role='courier' GROUP BY c.verify_status")
+    got = {str(r['s'] or 'none'): r['n'] for r in rows}
+    return {s: got.get(s, 0) for s in VERIFY_STATUSES}
+
+
+def _verify_row(r):
+    """Строка очереди: кто, на чём ездит, когда подал и что за фото прислал."""
+    row = _courier_row(r)
+    return {
+        'user_id': row['id'], 'name': row['name'], 'phone': row['phone'],
+        'email': row['email'], 'lang': row['lang'], 'status': row['status'],
+        'status_name': row['status_name'],
+        'car': {'model': row['car_model'], 'plate': row['car_plate'],
+                'color': row['car_color'], 'class': row['vehicle_class'],
+                'capacity_kg': row['capacity_kg'],
+                'body': {'w': row['body_w'], 'd': row['body_d'], 'h': row['body_h']}},
+        'verify_status': row['verify_status'], 'verify_name': row['verify_name'],
+        'verify_note': row['verify_note'],
+        'photo': row['verify_photo'], 'photo_url': row['verify_photo_url'],
+        'avatar_url': row['photo_url'],
+        'registered_at': row['created_at'],       # когда завёл аккаунт
+        'verified_at': row['verified_at'],        # когда прислал фото или получил решение
+        'orders_done': row['orders_done'], 'rating': row['rating'],
+    }
+
+
+@router.get(API + '/admin/verify')
+def verify_queue(ctx):
+    """Очередь на проверку. По умолчанию — те, кто ждёт решения; ?status=all
+    показывает всех, чтобы можно было пересмотреть старый отказ."""
+    _admin(ctx)
+    want = (ctx.q('status') or 'pending').strip().lower()
+    where, args = '', []
+    if want in VERIFY_STATUSES:
+        where = ' AND c.verify_status = ?'
+        args = [want]
+    elif want not in ('all', ''):
+        bad('Проверка бывает: %s' % ', '.join(VERIFY_STATUSES + ('all',)), 'bad_status')
+
+    page, per = _page(ctx)
+    total = db.value('SELECT COUNT(*) FROM users u JOIN couriers c ON c.user_id=u.id '
+                     "WHERE u.role='courier'" + where, args, 0)
+    # Первыми те, кто ждёт дольше всех: очередь должна быть справедливой.
+    rows = db.rows(COURIER_SQL + where +
+                   ' ORDER BY COALESCE(c.verified_at, u.created_at), u.id LIMIT ? OFFSET ?',
+                   args + [per, (page - 1) * per])
+    return {
+        'items': [_verify_row(r) for r in rows],
+        'page': page, 'per_page': per, 'total': total, 'pages': max(1, -(-total // per)),
+        'counts': _verify_counts(),
+        'statuses': list(VERIFY_STATUSES),
+        'filter': want if want in VERIFY_STATUSES else 'all',
+    }
+
+
+@router.patch(API + '/admin/verify/{uid}')
+def verify_decide(ctx, uid):
+    """Решение по документам: одобрить или отказать с причиной.
+
+    Одобрение заодно открывает аккаунт: если анкета висела на модерации, человек
+    после проверки документов должен просто войти и работать, а не ждать второго
+    решения о том же самом. Отказ аккаунт не закрывает — курьеру нужно попасть
+    внутрь, прочитать замечание и прислать фото заново.
+    """
+    user = _admin(ctx)
+    row = _courier(uid)
+    body = _body(ctx)
+
+    decision = str(body.get('status') or body.get('verify_status') or '').strip().lower()
+    if decision in ('approve', 'ok', 'yes'):
+        decision = 'approved'
+    elif decision in ('reject', 'no'):
+        decision = 'rejected'
+    if decision not in VERIFY_DECISIONS:
+        bad('Решение бывает approved или rejected', 'bad_status')
+
+    note = str(body.get('note') or body.get('reason') or '').strip()[:300]
+    if decision == 'rejected' and not note:
+        bad('Напишите, что не так с документами: человек должен понимать, '
+            'что переснять', 'field_required')
+
+    t = db.now()
+    patch = {'verify_status': decision, 'verify_note': note or None, 'verified_at': t}
+    if decision == 'rejected':
+        patch['online'] = 0        # на линии стоять без проверки незачем
+    user_patch = {}
+    if decision == 'approved' and row['status'] == 'pending':
+        user_patch['status'] = 'active'
+
+    with db.tx():
+        db.update('couriers', patch, 'user_id=?', (row['id'],))
+        if user_patch:
+            db.update('users', user_patch, 'id=?', (row['id'],))
+
+    mail_sent = False
+    if row.get('email'):
+        base = str(settings.get('service.base_url', '') or '').rstrip('/')
+        if decision == 'approved':
+            mail_sent = mailer.send(row['email'], 'courier_approved',
+                                    {'name': row['name'],
+                                     'url': (base + '/courier') if base else ''},
+                                    row.get('lang') or 'ru')
+        else:
+            mail_sent = mailer.send(row['email'], 'courier_rejected',
+                                    {'name': row['name'], 'reason': note},
+                                    row.get('lang') or 'ru')
+
+    fresh = _courier(row['id'])
+    # Приложение курьера слушает свою тему: экран проверки обновится сам,
+    # человеку не придётся дёргать «обновить».
+    HUB.publish('courier:%s' % row['id'], 'verify',
+                {'status': decision, 'note': note or None, 'at': t,
+                 'text': dispatch.VERIFY_TEXT[decision],
+                 'user_status': fresh['status']})
+    HUB.publish('admin', 'verify', {'user_id': row['id'], 'name': row['name'],
+                                    'status': decision, 'at': t})
+    log('админ', user.get('email'), 'проверка курьера', row['id'],
+        '— одобрен' if decision == 'approved' else '— отказ: ' + (note or 'без причины'))
+    return {'ok': True, 'status': decision, 'note': note or None,
+            'mail_sent': bool(mail_sent), 'account_opened': bool(user_patch),
+            'courier': fresh, 'counts': _verify_counts()}
 
 
 # ─────────────────────────────────────────────────────────────── клиенты
