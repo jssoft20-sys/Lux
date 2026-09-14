@@ -38,7 +38,12 @@ async function main() {
 
   // Оплату надо включить так же, как её включает владелец — через админку:
   // записать настройку мимо сервера нельзя, у него свой кэш.
-  const login = await api('POST', '/auth/login', { email: 'a@t.kg', password: 'admin12345' });
+  // Почту админа берём из окружения: прогоны поднимают сервис по-разному,
+  // а зашитый адрес тихо ломает проверку на пустом месте.
+  const login = await api('POST', '/auth/login', {
+    email: process.env.SG_ADMIN_EMAIL || 'admin@test.kg',
+    password: process.env.SG_ADMIN_PASSWORD || 'admin12345',
+  });
   const atoken = login.body?.token;
   if (!ok('админ вошёл', !!atoken, JSON.stringify(login.body).slice(0, 140))) return 1;
   const saved = await api('PUT', '/admin/pay/settings', {
