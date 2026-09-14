@@ -22,7 +22,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 from urllib.request import Request, urlopen
 
 from . import settings
@@ -229,6 +229,23 @@ def _fetch_json(url, timeout=TIMEOUT, headers=None):
         return None
 
 
+def _post_json(url, payload, timeout=TIMEOUT, headers=None):
+    """То же, что _fetch_json, но методом POST: маршрутизатор 2ГИС принимает
+    точки только телом запроса. Молчит при любой беде — маршрут не та вещь,
+    из-за которой человеку стоит видеть ошибку."""
+    head = {'User-Agent': _ua(), 'Accept': 'application/json',
+            'Content-Type': 'application/json'}
+    if headers:
+        head.update(headers)
+    body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+    try:
+        with urlopen(Request(url, data=body, headers=head, method='POST'), timeout=timeout) as resp:
+            raw = resp.read(1 << 21)
+        return json.loads(raw.decode('utf-8', 'replace'))
+    except (HTTPError, URLError, OSError, ValueError, TypeError):
+        return None
+
+
 # ─────────────────────────────────────────────────────────── координаты
 
 def _ll(p):
@@ -386,9 +403,11 @@ def route(points):
     out = _route_cache.get(key)
     if not out:
         provider = str(settings.get('route.provider', 'osrm')).lower()
-        if _use_yandex(provider):
+        if _use_2gis_route(provider):
+            out = _route_2gis(pts)
+        if not out and _use_yandex(provider):
             out = _route_yandex(pts)
-        if not out and provider in ('osrm', 'yandex') and _osrm_breaker.ok():
+        if not out and provider in ('osrm', 'yandex', '2gis') and _osrm_breaker.ok():
             out = _route_osrm(pts)
         if not out:
             out = _route_straight(pts)
@@ -456,6 +475,106 @@ def _use_yandex(provider=None):
     if not str(settings.get('route.key', '') or '').strip():
         return False
     return _router_breaker.ok()
+
+
+GIS2_ROUTER = 'https://routing.api.2gis.com/routing/7.0.0/global'
+
+
+def _use_2gis_route(provider=None):
+    """Маршруты 2ГИС включаем, только если выбран провайдер и есть ключ.
+    Для Бишкека это лучший источник: дороги свежее, пробки настоящие."""
+    if provider is None:
+        provider = str(settings.get('route.provider', 'osrm')).lower()
+    if provider != '2gis':
+        return False
+    if not _gis_route_key():
+        return False
+    return _router_breaker.ok()
+
+
+def _gis_route_key():
+    """Отдельный ключ для маршрутов, а если его не завели — общий ключ 2ГИС."""
+    return (str(settings.get('route.key', '') or '').strip()
+            or str(settings.get('geo.key', '') or '').strip())
+
+
+def _wkt_line(text):
+    """LINESTRING(lon lat, lon lat, …) → [[lat, lng], …].
+
+    2ГИС отдаёт геометрию текстом, разбираем сами: тащить в проект разбор
+    геоформатов ради одной строки незачем."""
+    out = []
+    body = str(text or '')
+    a, b = body.find('('), body.rfind(')')
+    if a < 0 or b <= a:
+        return out
+    for pair in body[a + 1:b].split(','):
+        parts = pair.replace('(', ' ').replace(')', ' ').split()
+        if len(parts) < 2:
+            continue
+        try:
+            lng, lat = float(parts[0]), float(parts[1])
+        except ValueError:
+            continue
+        if -90 <= lat <= 90 and -180 <= lng <= 180:
+            out.append([lat, lng])
+    return out
+
+
+def _route_2gis(pts):
+    """Маршрут по дорогам Бишкека с настоящими пробками.
+
+    Время приходит одно — то, за которое доедешь сейчас. Свободную дорогу
+    оцениваем по расстоянию и средней скорости: нужно только для того, чтобы
+    человек видел, насколько пробки добавляют, поэтому точности хватает.
+    """
+    payload = {
+        'points': [{'type': 'stop', 'lon': round(lng, 6), 'lat': round(lat, 6)}
+                   for lat, lng in pts],
+        'locale': 'ru', 'transport': 'driving',
+        'route_mode': 'fastest', 'traffic_mode': 'jam',
+        'output': 'detailed',
+    }
+    data = _post_json(GIS2_ROUTER + '?key=' + quote(_gis_route_key()), payload)
+    if not isinstance(data, dict):
+        _router_breaker.fail()
+        return None
+    items = data.get('result') or []
+    if not items or not isinstance(items[0], dict):
+        _router_breaker.fail()
+        return None
+    r = items[0]
+    try:
+        dist = int(round(float(r.get('total_distance') or 0)))
+        jam_s = int(round(float(r.get('total_duration') or 0)))
+    except (TypeError, ValueError):
+        _router_breaker.fail()
+        return None
+    if dist <= 0 or jam_s <= 0:
+        _router_breaker.fail()
+        return None
+
+    line = []
+    for man in (r.get('maneuvers') or []):
+        path = (man or {}).get('outcoming_path') or {}
+        for piece in (path.get('geometry') or []):
+            part = _wkt_line((piece or {}).get('selection'))
+            # стыки манёвров повторяют точку — убираем, иначе линия дрожит
+            if line and part and line[-1] == part[0]:
+                part = part[1:]
+            line.extend(part)
+    if len(line) < 2:
+        line = [[a, b] for a, b in pts]
+
+    # Отдельная скорость для «свободной дороги»: средняя по городу занижена
+    # (в ней уже сидят пробки), и сравнение получалось бы бессмысленным —
+    # даже в затор метка показывала бы свободный проезд.
+    speed = settings.get_float('route.free_speed_kmh', 42) or 42
+    free_s = max(60, int(round(dist / 1000.0 / speed * 3600)))
+    _router_breaker.good()
+    return {'distance_m': dist, 'duration_s': min(free_s, jam_s),
+            'duration_traffic_s': jam_s, 'route': line,
+            'provider': '2gis', 'traffic': True}
 
 
 def _route_yandex(pts):

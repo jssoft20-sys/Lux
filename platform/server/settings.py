@@ -61,7 +61,9 @@ DEFAULTS = {
     'route.provider': 'osrm',           # straight | osrm
     'route.url': 'https://router.project-osrm.org',
     'route.road_factor': 1.32,          # во сколько раз дорога длиннее прямой
-    'route.avg_speed_kmh': 28,
+    'route.avg_speed_kmh': 28,      # средняя по городу, для запасного расчёта
+    'route.free_speed_kmh': 42,     # свободная дорога, для сравнения с пробками
+    'route.key': '',                # ключ маршрутизатора; пусто — берём geo.key
 
     'smtp.host': '', 'smtp.port': 587, 'smtp.secure': 'tls',
     'smtp.user': '', 'smtp.pass': '',
