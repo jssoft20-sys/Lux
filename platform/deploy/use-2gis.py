@@ -17,6 +17,10 @@ PORT = os.environ.get('SG_PORT', '7030')
 
 CATALOG = 'https://catalog.api.2gis.com/3.0/items/geocode'
 ROUTER = 'https://routing.api.2gis.com/routing/7.0.0/global'
+# Плитки 2ГИС. Движок сам поднимает ts до online_hd на экранах с высокой
+# плотностью и сам подписывает источник — подпись обязательна по условиям.
+TILES = 'https://tile2.maps.2gis.com/tiles?x={x}&y={y}&z={z}&v=1&ts=online_sd'
+TILE_HOSTS = ['https://*.maps.2gis.com', 'https://tile2.maps.2gis.com']
 
 
 def run(*cmd):
@@ -35,7 +39,7 @@ if not KEY:
 
 # ── 1. проверяем ключ живыми запросами ──────────────────────────────────────
 print('1. Проверяем ключ')
-geo_ok = route_ok = False
+geo_ok = route_ok = tiles_ok = False
 try:
     from urllib.parse import urlencode
     url = CATALOG + '?' + urlencode({'q': 'Бишкек, Чуй 100', 'fields': 'items.point,items.address',
@@ -67,12 +71,71 @@ try:
 except Exception as e:
     print('   маршруты    нет —', str(e)[:120])
 
+try:
+    with urllib.request.urlopen(urllib.request.Request(
+            TILES.replace('{x}', '5792').replace('{y}', '3014').replace('{z}', '13'),
+            headers={'User-Agent': 'SprinterGo/1.0'}), timeout=20) as r:
+        tiles_ok = r.headers.get('Content-Type', '').startswith('image/')
+    print(f'   карта       {"ок" if tiles_ok else "нет"} — плитки Бишкека приходят')
+except Exception as e:
+    print('   карта       нет —', str(e)[:120])
+
 if not (geo_ok or route_ok):
     sys.exit('\nКлюч не принят ни одним сервисом. Проверьте, что в кабинете 2ГИС '
              'подключены Каталог и Маршруты.')
 
-# ── 2. пишем настройки ──────────────────────────────────────────────────────
-print('\n2. Записываем настройки')
+# ── 2. разрешаем плитки в политике безопасности ─────────────────────────────
+print('\n2. Разрешаем плитки 2ГИС в политике безопасности')
+conf = None
+for pat in ('/etc/nginx/sites-available/*', '/etc/nginx/sites-enabled/*', '/etc/nginx/conf.d/*.conf'):
+    for f in sorted(glob.glob(pat)):
+        f = os.path.realpath(f)
+        if not os.path.isfile(f) or re.search(r'(\.bak\d*|~)$', f):
+            continue
+        t = io.open(f, encoding='utf-8', errors='replace').read()
+        if 'Content-Security-Policy' in t and re.search(
+                r'server_name[^;]*\b' + re.escape(DOMAIN) + r'\b', t):
+            conf = f
+            break
+    if conf:
+        break
+
+if not conf:
+    print('   ! конфиг с политикой не найден — карта может остаться пустой')
+else:
+    text = io.open(conf, encoding='utf-8').read()
+
+    def fix_directive(csp, name):
+        m = re.search(name + r'\s+([^;]*);', csp)
+        if not m:
+            return csp
+        have = m.group(1)
+        add = [h for h in TILE_HOSTS if h not in have]
+        if not add:
+            return csp
+        return csp[:m.start(1)] + have.rstrip() + ' ' + ' '.join(add) + csp[m.end(1):]
+
+    new_text = re.sub(r'(add_header\s+Content-Security-Policy\s+")([^"]*)(")',
+                      lambda m: m.group(1) + fix_directive(m.group(2), 'img-src') + m.group(3),
+                      text)
+    if new_text == text:
+        print('   уже разрешены')
+    else:
+        i, bak = 0, conf + '.bak'
+        while os.path.exists(bak):
+            i += 1
+            bak = f'{conf}.bak{i}'
+        shutil.copy2(conf, bak)
+        io.open(conf, 'w', encoding='utf-8').write(new_text)
+        check = run('nginx', '-t')
+        if check.returncode != 0:
+            shutil.copy2(bak, conf)
+            sys.exit('   nginx отверг конфиг, вернул как было:\n' + (check.stderr or check.stdout))
+        run('systemctl', 'reload', 'nginx')
+        print('   разрешён *.maps.2gis.com · копия конфига:', bak)
+
+# ── 3. пишем настройки ──────────────────────────────────────────────────────
+print('\n3. Записываем настройки')
 if not os.path.isfile(DB):
     sys.exit(f'не нашёл базу {DB} — сервис хоть раз запускался?')
 
@@ -81,6 +144,9 @@ if geo_ok:
     values.update({'geo.provider': '2gis', 'geo.key': KEY})
 if route_ok:
     values.update({'route.provider': '2gis', 'route.key': KEY})
+if tiles_ok:
+    values.update({'map.provider': '2gis', 'map.tiles_light': TILES,
+                   'map.tiles_dark': TILES, 'map.attribution': '© 2ГИС'})
 
 con = sqlite3.connect(DB, timeout=15)
 con.execute('PRAGMA journal_mode=WAL')
@@ -97,7 +163,7 @@ run('systemctl', 'restart', SERVICE)
 print(f'   служба {SERVICE} перезапущена')
 
 # ── 3. проверяем сервис ─────────────────────────────────────────────────────
-print('\n3. Проверяем сервис')
+print('\n4. Проверяем сервис')
 for _ in range(40):
     time.sleep(0.5)
     if run('curl', '-s', '-o', '/dev/null', '-w', '%{http_code}',
@@ -120,7 +186,7 @@ print(f'''
 
   Адреса    2ГИС — лучшая база по Бишкеку, с номерами домов
   Маршруты  2ГИС — расстояние по дорогам и время с настоящими пробками
-  Карта     осталась на OpenStreetMap (см. пояснение в начале файла)
+  Карта     2ГИС — подложка Бишкека с домами и организациями
 
 Проверьте на сайте: введите адрес — подсказки должны стать точнее,
 а рядом со временем появится метка про пробки.

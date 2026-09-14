@@ -980,11 +980,34 @@ def _reverse_yandex(lat, lng):
     return _from_yandex(members[0])
 
 
+# Чем меньше число, тем полезнее ответ человеку, который ткнул в карту.
+# 2ГИС отдаёт дома, перекрёстки, улицы и районы вперемешку и в своём порядке,
+# поэтому брать первый попавшийся нельзя: вместо «улица Токтогула, 12»
+# запросто прилетит «Свердловский» — район, по которому машину не подать.
+_GIS_REVERSE_RANK = {
+    'building': 0, 'house': 0, 'branch': 1, 'poi': 1, 'station': 2,
+    'crossroad': 3, 'street': 4, 'road': 4,
+    'district': 6, 'adm_div': 6, 'settlement': 7, 'city': 8, 'region': 9,
+}
+_GIS_TOO_BROAD = 6          # с этого уровня адрес уже бесполезен для подачи
+
+
 def _reverse_2gis(lat, lng):
     params = {'lat': '%.6f' % lat, 'lon': '%.6f' % lng,
               'key': str(settings.get('geo.key', '') or ''), 'locale': 'ru_KG',
-              'fields': 'items.point,items.address,items.full_name'}
+              'fields': 'items.point,items.address,items.full_name,items.address_name'}
     items = _gis_call(GIS2 + '/geocode?' + urlencode(params))
     if not items:
         return _reverse_nominatim(lat, lng)
-    return _from_gis(items[0])
+
+    def rank(it):
+        return _GIS_REVERSE_RANK.get(str((it or {}).get('type') or ''), 5)
+
+    best = min(items, key=rank)
+    # Остался только район или город — у соседа спросим точнее: OpenStreetMap
+    # такие места часто знает по улице.
+    if rank(best) >= _GIS_TOO_BROAD:
+        fallback = _reverse_nominatim(lat, lng)
+        if fallback and fallback.get('title'):
+            return fallback
+    return _from_gis(best)
