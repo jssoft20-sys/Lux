@@ -47,7 +47,7 @@ const DEG = Math.PI / 180;
 const DEFAULTS = {
   center: [42.8746, 74.5698],         // Бишкек, площадь Ала-Тоо
   zoom: 13,
-  minZoom: 2,
+  minZoom: 10,                        // город целиком и немного вокруг — дальше смотреть незачем
   maxZoom: 19,
   theme: 'dark',
   interactive: true,
@@ -61,6 +61,25 @@ const DEFAULTS = {
   attribution: '',                    // подпись владельца; источник плиток добавляется сам
   buffer: 1,                          // сколько рядов плиток подгружаем за краем экрана
 };
+
+/* Правила, по которым карта никогда не показывает серую дыру.
+
+   Грубый подслой. Под рабочим уровнем всегда лежит уровень как минимум на
+   COARSE_GAP ступеней ниже. Ту же площадь он закрывает в 64 раза меньшим числом
+   плиток, то есть стоит копейки, — зато при отдалении, рывке пальцем или инерции
+   мгновенно закрывает всё, что рабочий уровень подгрузить ещё не успел. Ступень
+   залипающая, кратная COARSE_STEP: подробности в underZoom.
+
+   Предел отдаления. Ниже MIN_ZOOM_FLOOR не пускаем даже из настроек админки:
+   на таком масштабе Бишкек — точка, плитки считаются сотнями, а пользы ноль. */
+const COARSE_GAP = 3;
+const COARSE_STEP = 3;                // подслой стоит на ступенях, кратных трём
+const COARSE_FLOOR = 3;               // ниже третьего уровня плиток нет почти ни у кого
+const MIN_ZOOM_FLOOR = 9;
+const MAX_LEVELS = 5;                 // больше слоёв одновременно держать нечем
+const TILE_RETRY = 2;                 // сколько раз перезапрашиваем упавшую плитку
+const TILE_RETRY_MS = 700;            // пауза перед первым повтором, перед вторым — вдвое
+const FRAME_TILES = 10;               // столько новых плиток за кадр, пока карта движется
 
 const ICON_PLUS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 const ICON_MINUS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12h13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
@@ -311,8 +330,9 @@ export function createMap(container, options = {}) {
   if (options.tiles_dark) opt.tilesDark = options.tiles_dark;
   if (options.max_zoom) opt.maxZoom = +options.max_zoom;
   if (options.min_zoom) opt.minZoom = +options.min_zoom;
-  opt.minZoom = clamp(opt.minZoom, 0, 22);
+  opt.minZoom = clamp(+opt.minZoom || DEFAULTS.minZoom, MIN_ZOOM_FLOOR, 22);
   opt.maxZoom = clamp(opt.maxZoom, opt.minZoom, 22);
+  opt.buffer = clamp(Math.round(+opt.buffer || 0), 1, 3);   // запас за краем экрана обязателен
 
   let theme = opt.theme === 'light' ? 'light' : 'dark';
   let center = toLL(opt.center) || DEFAULTS.center.slice();
@@ -345,8 +365,8 @@ export function createMap(container, options = {}) {
     ctrlBox = div('map__ctrl');
     bIn = button('map__btn map__btn--in', t('map.zoom_in'), ICON_PLUS);
     bOut = button('map__btn map__btn--out', t('map.zoom_out'), ICON_MINUS);
-    bIn.addEventListener('click', () => zoomTo(Math.round(zoom) + 1));
-    bOut.addEventListener('click', () => zoomTo(Math.round(zoom) - 1));
+    bIn.addEventListener('click', () => zoomStep(1));
+    bOut.addEventListener('click', () => zoomStep(-1));
     ctrlBox.appendChild(bIn);
     ctrlBox.appendChild(bOut);
     container.appendChild(ctrlBox);
@@ -382,7 +402,10 @@ export function createMap(container, options = {}) {
   const handlers = new Map();
   const unbinds = [];
 
-  let activeZ = Math.round(zoom);
+  let activeZ = clamp(Math.round(zoom), opt.minZoom, opt.maxZoom);
+  let coarseZ = underZoom(activeZ);     // грубый подслой под рабочим уровнем
+  let goalZ = activeZ;                  // уровень, к которому едет анимация зума
+  const under = new Set();              // подслои, которые держим заполненными
   const base = { x: 0, y: 0 };          // точка отсчёта слоя маркеров
   let baseZoom = null;
 
@@ -480,14 +503,18 @@ export function createMap(container, options = {}) {
       const k = Math.exp(-dt / 190);    // затухание, не зависящее от частоты кадров
       inertia.vx *= k;
       inertia.vy *= k;
-      if (Math.hypot(inertia.vx, inertia.vy) < 0.014) { inertia = null; snapZoom(); }
+      if (Math.hypot(inertia.vx, inertia.vy) < 0.014) {
+        inertia = null;
+        snapZoom();
+        invalidate();       // последний кадр без спешки: добираем плитки без ограничения
+      }
     }
 
     if (zoomAnim) {
       const a = zoomAnim;
       const left = a.target - zoom;
       let z = zoom + left * (1 - Math.exp(-dt / 58));
-      if (Math.abs(left) < 0.0025) { z = a.target; zoomAnim = null; }
+      if (Math.abs(left) < 0.0025) { z = a.target; zoomAnim = null; invalidate(); }
       zoomAround(a.ll, a.pt, clamp(z, opt.minZoom, opt.maxZoom));
     }
 
@@ -509,6 +536,7 @@ export function createMap(container, options = {}) {
     drawZones();
     drawOverlay();
     if (lastLat !== center[0] || lastLng !== center[1] || lastZoom !== zoom) {
+      if (lastZoom !== zoom) syncCtrl();
       lastLat = center[0]; lastLng = center[1]; lastZoom = zoom;
       emit('move', state());
       scheduleSettle();
@@ -570,6 +598,18 @@ export function createMap(container, options = {}) {
     return two && !RETINA_SLOT.test(tpl) ? retinaUrl(url) : url;
   }
 
+  /* Уровень грубого подслоя. Ступень нарочно «залипающая», кратная трём:
+     при быстром отдалении на восемь шагов подслой сменится не восемь раз, а два,
+     и карта не станет качать три сотни плиток, которые никто не увидит. */
+  function underZoom(z) {
+    const step = Math.floor((z - COARSE_GAP) / COARSE_STEP) * COARSE_STEP;
+    return clamp(step, COARSE_FLOOR, z);
+  }
+
+  function level(z) {
+    return levels.get(z) || addLevel(z);
+  }
+
   function addLevel(z) {
     const p = project(center[0], center[1], z);
     const lv = {
@@ -577,36 +617,26 @@ export function createMap(container, options = {}) {
       el: div('map__level'),
       tiles: new Map(),
       origin: { x: Math.round(p.x), y: Math.round(p.y) },
-      pending: 0,
     };
     lv.el.style.zIndex = String(z);
     tilesPane.appendChild(lv.el);
     levels.set(z, lv);
-    // больше трёх уровней держать незачем: это только память и лишние запросы
-    if (levels.size > 3) {
-      let far = null;
-      for (const other of levels.values()) {
-        if (other.z === z) continue;
-        if (!far || Math.abs(other.z - z) > Math.abs(far.z - z)) far = other;
-      }
-      if (far) dropLevel(far);
-    }
     return lv;
   }
 
   function dropLevel(lv) {
-    for (const t of lv.tiles.values()) recycle(t, lv);
+    for (const t of lv.tiles.values()) recycle(t);
     lv.tiles.clear();
     if (lv.el.parentNode) lv.el.parentNode.removeChild(lv.el);
     levels.delete(lv.z);
   }
 
   /** Снятую плитку не выбрасываем, а кладём в пул: DOM-узлы дороже, чем кажется. */
-  function recycle(t, lv) {
+  function recycle(t) {
     const img = t.img;
     img.onload = null;
     img.onerror = null;
-    if (!t.done) lv.pending--;
+    if (t.timer) { clearTimeout(t.timer); t.timer = 0; }
     img.classList.remove('is-on');
     if (img.parentNode) img.parentNode.removeChild(img);
     // адрес снимаем обязательно: иначе повторная подстановка того же адреса
@@ -619,7 +649,8 @@ export function createMap(container, options = {}) {
     const img = pool.pop() || new Image();
     const tpl = template();
     const wx = ((i % n) + n) % n;
-    const t = { i, j, img, done: false, two: retinaWanted(tpl), fell: false };
+    const key = i + ':' + j;
+    const t = { i, j, key, img, ok: false, dead: false, tries: 0, timer: 0, two: retinaWanted(tpl), fell: false };
     img.className = 'map__tile';
     img.alt = '';
     img.decoding = 'async';
@@ -628,79 +659,195 @@ export function createMap(container, options = {}) {
     // а каждая плитка своим слоем — это лишняя память и щели между ними
     img.style.transform =
       'translate(' + (i * TILE - lv.origin.x) + 'px,' + (j * TILE - lv.origin.y) + 'px)';
-    lv.pending++;
+
+    /* Номер попытки дописываем решёткой. На сервер она не уходит (адрес тот же),
+       зато строка src отличается от прошлой — иначе браузер сочтёт повтор
+       присвоением того же значения и ни onload, ни onerror уже не позовёт. */
+    const ask = () => {
+      img.src = tileUrl(wx, j, lv.z, t.two ? 2 : 1) + (t.tries ? '#' + t.tries : '');
+    };
+
     img.onload = () => {
-      t.done = true;
-      lv.pending--;
+      t.ok = true;
       img.classList.add('is-on');
       // обычная плитка пришла вместо удвоенной — значит, @2x у этого сервера нет
       if (t.fell) retinaMissed(tpl);
-      if (lv.pending <= 0) pruneLevels(lv);
+      settle(lv);
     };
     img.onerror = () => {
       if (t.two && !t.fell) {
         // удвоенной плитки не нашлось — молча берём обычную, дыру не показываем
         t.fell = true;
         t.two = false;
-        img.src = tileUrl(wx, j, lv.z, 1);
+        ask();
         return;
       }
-      // битую плитку не ждём вечно: считаем её «пришедшей», но не показываем
-      t.done = true;
-      lv.pending--;
-      if (lv.pending <= 0) pruneLevels(lv);
+      if (t.tries < TILE_RETRY) {
+        // сеть моргнула или сервер поперхнулся: подождём и попробуем ещё раз,
+        // но не бесконечно — две попытки, дальше плитку закрывает подслой
+        t.tries++;
+        t.timer = setTimeout(() => {
+          t.timer = 0;
+          if (destroyed || lv.tiles.get(key) !== t) return;
+          ask();
+        }, TILE_RETRY_MS * t.tries);
+        return;
+      }
+      t.dead = true;
+      settle(lv);
     };
-    img.src = tileUrl(wx, j, lv.z, t.two ? 2 : 1);
+    ask();
     lv.el.appendChild(img);
-    lv.tiles.set(i + ':' + j, t);
+    lv.tiles.set(key, t);
     return t;
   }
 
-  /** Старые уровни убираем только когда новый полностью загрузился — иначе будут дыры. */
-  function pruneLevels(lv) {
-    if (destroyed || lv.z !== activeZ || lv.pending > 0) return;
-    for (const other of Array.from(levels.values())) {
-      if (other.z !== activeZ) dropLevel(other);
+  /** Диапазон плиток уровня z под текущий вид, с запасом buf плиток за краем. */
+  function tileRange(z, buf) {
+    const scale = Math.pow(2, zoom - z);
+    const x0 = view.x / scale, y0 = view.y / scale;
+    const x1 = (view.x + w) / scale, y1 = (view.y + h) / scale;
+    return {
+      i0: Math.floor(x0 / TILE) - buf,
+      i1: Math.floor((x1 - 0.001) / TILE) + buf,
+      j0: Math.floor(y0 / TILE) - buf,
+      j1: Math.floor((y1 - 0.001) / TILE) + buf,
+      n: Math.pow(2, z),
+    };
+  }
+
+  /**
+   * Догрузить уровень под текущий вид. cap — сколько плиток разрешено заказать
+   * в этом кадре (Infinity — сколько нужно). Возвращает, сколько осталось на потом.
+   */
+  function fillLevel(lv, buf, cap) {
+    const r = tileRange(lv.z, buf);
+    const cx = (r.i0 + r.i1) / 2, cy = (r.j0 + r.j1) / 2;
+    const wanted = [];
+    for (let j = r.j0; j <= r.j1; j++) {
+      if (j < 0 || j >= r.n) continue;          // выше полюса и ниже него плиток нет
+      for (let i = r.i0; i <= r.i1; i++) {
+        if (!lv.tiles.has(i + ':' + j)) wanted.push([i, j, Math.abs(i - cx) + Math.abs(j - cy)]);
+      }
     }
+    if (!wanted.length) return 0;
+    // недостающие ставим от центра к краям — там, куда смотрит человек, появится первым
+    wanted.sort((a, c) => a[2] - c[2]);
+    const take = Math.max(0, Math.min(cap, wanted.length));
+    for (let k = 0; k < take; k++) addTile(lv, wanted[k][0], wanted[k][1], r.n);
+    return wanted.length - take;
+  }
+
+  /** Закрыт ли экран этим уровнем целиком. Считаем строго по виду, без запаса. */
+  function levelCovers(lv) {
+    const r = tileRange(lv.z, 0);
+    for (let j = r.j0; j <= r.j1; j++) {
+      if (j < 0 || j >= r.n) continue;
+      for (let i = r.i0; i <= r.i1; i++) {
+        const t = lv.tiles.get(i + ':' + j);
+        // мёртвую плитку ждать бессмысленно — её дыру держит подслой
+        if (!t || (!t.ok && !t.dead)) return false;
+      }
+    }
+    return true;
+  }
+
+  /** Всё, что уехало за край, возвращаем в пул. */
+  function cullLevel(lv, buf) {
+    const r = tileRange(lv.z, buf);
+    for (const [key, t] of Array.from(lv.tiles)) {
+      if (t.i < r.i0 || t.i > r.i1 || t.j < r.j0 || t.j > r.j1) {
+        recycle(t);
+        lv.tiles.delete(key);
+      }
+    }
+  }
+
+  /**
+   * Старые уровни — единственное, что держит картинку, пока новый догружается.
+   * Поэтому выбрасываем их только когда рабочий уровень закрыл экран целиком
+   * (done), а до тех пор лишь подрезаем самые бесполезные, если их развелось.
+   * Рабочий уровень, его подслой и уровень, к которому едет зум, не трогаем.
+   */
+  function trimLevels(done) {
+    const keep = new Set([activeZ, goalZ]);
+    for (const uz of under) keep.add(uz);
+    const extra = [];
+    for (const lv of levels.values()) if (!keep.has(lv.z)) extra.push(lv);
+    if (!extra.length) return;
+    if (done) {
+      for (const lv of extra) dropLevel(lv);
+      return;
+    }
+    if (levels.size <= MAX_LEVELS) return;
+    // первыми уходят уровни мельче рабочего: при отдалении они закрывают
+    // лишь середину экрана, а места занимают столько же. Среди равных — дальние
+    const cost = (lv) => Math.abs(lv.z - activeZ) + (lv.z > activeZ ? 100 : 0);
+    extra.sort((a, c) => cost(c) - cost(a));
+    for (const lv of extra) {
+      if (levels.size <= MAX_LEVELS) break;
+      dropLevel(lv);
+    }
+  }
+
+  /**
+   * Прошлый подслой отпускаем не раньше, чем новый сам закроет экран целиком.
+   * Пока новый догружается, старый — единственное, что держит фон при отдалении.
+   */
+  function pruneUnder() {
+    if (under.size < 2) return;
+    const want = [coarseZ, underZoom(goalZ)];
+    for (const uz of want) {
+      const u = levels.get(uz);
+      if (uz < activeZ && (!u || !levelCovers(u))) return;
+    }
+    for (const uz of Array.from(under)) if (want.indexOf(uz) < 0) under.delete(uz);
+  }
+
+  /** Плитка доехала: если рабочий уровень закрыл экран, лишние слои больше не нужны. */
+  function settle(lv) {
+    if (destroyed) return;
+    pruneUnder();
+    if (lv.z === activeZ && levelCovers(lv)) trimLevels(true);
   }
 
   function drawTiles() {
     const z = clamp(Math.round(zoom), opt.minZoom, opt.maxZoom);
     activeZ = z;
-    const lv = levels.get(z) || addLevel(z);
+    // при отдалении заранее греем целевой уровень: к границе он подойдёт готовым.
+    // При приближении так не делаем — плиток там вчетверо больше, а дыр всё равно
+    // не будет: текущий уровень просто растянется
+    const goal = clamp(Math.round(zoomGoal()), opt.minZoom, opt.maxZoom);
+    goalZ = goal < z ? goal : z;
+    coarseZ = underZoom(z);
 
-    const scale = Math.pow(2, zoom - z);
-    const n = Math.pow(2, z);
-    const b = opt.buffer;
-    const x0 = view.x / scale, y0 = view.y / scale;
-    const x1 = (view.x + w) / scale, y1 = (view.y + h) / scale;
-    const i0 = Math.floor(x0 / TILE) - b, i1 = Math.floor((x1 - 0.001) / TILE) + b;
-    const j0 = Math.floor(y0 / TILE) - b, j1 = Math.floor((y1 - 0.001) / TILE) + b;
+    const lv = level(z);
+    const busy = !!(viewAnim || inertia || zoomAnim || pointers.size);
 
-    // недостающие плитки ставим от центра к краям — там, куда смотрит человек, появится первым
-    const cx = (i0 + i1) / 2, cy = (j0 + j1) / 2;
-    const wanted = [];
-    for (let j = j0; j <= j1; j++) {
-      if (j < 0 || j >= n) continue;
-      for (let i = i0; i <= i1; i++) {
-        if (!lv.tiles.has(i + ':' + j)) wanted.push([i, j, Math.abs(i - cx) + Math.abs(j - cy)]);
-      }
+    // 1. Подслои — вне очереди и целиком: они весят копейки, а закрывают всё.
+    //    Держим подслой рабочего уровня и подслой того, куда едем; прошлый
+    //    отпускаем не раньше, чем новый сам закроет экран
+    under.add(coarseZ);
+    under.add(underZoom(goalZ));
+    for (const uz of Array.from(under)) {
+      if (uz >= z) { under.delete(uz); continue; }
+      fillLevel(level(uz), 1, Infinity);
     }
-    wanted.sort((a, c) => a[2] - c[2]);
-    for (const [i, j] of wanted) addTile(lv, i, j, n);
+    pruneUnder();
+    // 2. Куда едем — туда и греем, по чуть-чуть за кадр
+    if (goalZ !== z) fillLevel(level(goalZ), 1, FRAME_TILES);
+    // 3. Рабочий уровень. Уровень, который мы просто пролетаем по дороге к цели,
+    //    не грузим вовсе — под ним уже лежит подслой, а плитки эти никто не увидит.
+    //    Пока карта движется, ставим не больше горстки за кадр: сотня новых <img>
+    //    разом — это провал кадра и тот самый рывок на границе уровней
+    const flying = goalZ < z - 1;
+    const left = fillLevel(lv, opt.buffer, flying ? 0 : (busy ? FRAME_TILES : Infinity));
+    if (left > 0 && busy) dirty = true; // остальное доберём следующим кадром
 
-    // всё, что уехало далеко за край, возвращаем в пул
+    trimLevels(!left && levelCovers(lv));
+
     for (const lvl of levels.values()) {
-      const k = lvl.z === z ? 1 : 0;    // чужие уровни чистим жёстче
-      const f = Math.pow(2, lvl.z - z);
-      const li0 = Math.floor(i0 * f) - k - 1, li1 = Math.ceil(i1 * f) + k + 1;
-      const lj0 = Math.floor(j0 * f) - k - 1, lj1 = Math.ceil(j1 * f) + k + 1;
-      for (const [key, t] of Array.from(lvl.tiles)) {
-        if (t.i < li0 || t.i > li1 || t.j < lj0 || t.j > lj1) {
-          recycle(t, lvl);
-          lvl.tiles.delete(key);
-        }
-      }
+      cullLevel(lvl, lvl.z === z ? opt.buffer + 1 : 2);
       const s = Math.pow(2, zoom - lvl.z);
       const tx = lvl.origin.x * s - view.x;
       const ty = lvl.origin.y * s - view.y;
@@ -709,12 +856,60 @@ export function createMap(container, options = {}) {
       lvl.el.style.transform =
         'translate3d(' + snap(tx) + 'px,' + snap(ty) + 'px,0) scale(' + s + ')';
       lvl.el.classList.toggle('is-scaled', s !== 1);
+      // нижние слои — подложка: им проявляться незачем, они должны быть уже там
+      lvl.el.classList.toggle('is-under', lvl.z < z);
     }
-    if (lv.pending <= 0) pruneLevels(lv);
+  }
+
+  /**
+   * Счётчик для проверки руками: сколько плиток заказано, сколько доехало,
+   * сколько сейчас на экране и сколько клеток экрана не закрыто ничем.
+   * holes обязан быть нулём на любом масштабе — ради этого всё и затевалось.
+   */
+  function tileStats() {
+    let total = 0, loaded = 0, visible = 0;
+    const zs = [];
+    for (const lvl of levels.values()) {
+      zs.push(lvl.z);
+      const r = tileRange(lvl.z, 0);
+      for (const t of lvl.tiles.values()) {
+        total++;
+        if (t.ok) loaded++;
+        if (t.i >= r.i0 && t.i <= r.i1 && t.j >= r.j0 && t.j <= r.j1) visible++;
+      }
+    }
+    zs.sort((a, b) => b - a);
+    return { total, loaded, visible, holes: holeCount(), zoom: n2(zoom), levels: zs };
+  }
+
+  /** Клетки экрана, которые не закрыл ни рабочий уровень, ни один из нижних. */
+  function holeCount() {
+    const lv = levels.get(activeZ);
+    if (!lv || !w || !h) return 0;
+    const below = Array.from(levels.values())
+      .filter((l) => l.z < activeZ)
+      .sort((a, b) => b.z - a.z);
+    const r = tileRange(activeZ, 0);
+    let holes = 0;
+    for (let j = Math.max(0, r.j0); j <= Math.min(r.n - 1, r.j1); j++) {
+      for (let i = r.i0; i <= r.i1; i++) {
+        const own = lv.tiles.get(i + ':' + j);
+        if (own && own.ok) continue;
+        let filled = false;
+        for (const l of below) {
+          const f = Math.pow(2, l.z - activeZ);
+          const t = l.tiles.get(Math.floor(i * f) + ':' + Math.floor(j * f));
+          if (t && t.ok) { filled = true; break; }
+        }
+        if (!filled) holes++;
+      }
+    }
+    return holes;
   }
 
   function rebuildTiles() {
     for (const lvl of Array.from(levels.values())) dropLevel(lvl);
+    under.clear();                      // подслои тоже были из старого источника
     renderAttr();                       // сменились плитки — сменился и источник
     invalidate();
   }
@@ -1157,9 +1352,28 @@ export function createMap(container, options = {}) {
     return apiObj;
   }
 
+  /** Куда карта едет прямо сейчас: цель анимации, а если её нет — текущий зум. */
+  function zoomGoal() {
+    if (zoomAnim) return zoomAnim.target;
+    if (viewAnim) return viewAnim.z1;
+    return zoom;
+  }
+
+  /**
+   * Шаг зума кнопкой или двойным тапом. Считаем от цели уже идущей анимации,
+   * а не от того, где карта оказалась в этот кадр: иначе восемь быстрых нажатий
+   * съедают друг друга — карта дёргается и не доезжает куда просили.
+   */
+  function zoomStep(dir, pt) {
+    const from = zoomGoal();
+    const next = dir > 0 ? Math.floor(from + 1e-6) + 1 : Math.ceil(from - 1e-6) - 1;
+    return zoomTo(next, pt);
+  }
+
   function zoomTo(z, pt, animate = true) {
     if (!w || !h) { applyView(center, clamp(z, opt.minZoom, opt.maxZoom)); return apiObj; }
     const target = clamp(z, opt.minZoom, opt.maxZoom);
+    if (target === zoom && !zoomAnim) return apiObj;   // уже приехали, дёргать нечего
     const point = pt || { x: w / 2, y: h / 2 };
     const ll = latLngAt(point);
     viewAnim = null;
@@ -1167,11 +1381,30 @@ export function createMap(container, options = {}) {
     if (!animate || reduced()) {
       zoomAnim = null;
       zoomAround(ll, point, target);
+      syncCtrl();
       return apiObj;
     }
+    // цель у пружины одна: новое нажатие не начинает движение заново, а только
+    // переставляет точку прибытия — поэтому зум идёт одним непрерывным ходом
     zoomAnim = { target, ll, pt: point };
+    syncCtrl();
     schedule();
     return apiObj;
+  }
+
+  /* У предела дальше жать некуда — кнопку гасим. Именно гасим, а не выключаем
+     атрибутом: выключенная кнопка не ловит нажатия, и второй тык по ней карта
+     приняла бы за двойной тап и прыгнула бы в другую сторону. */
+  function syncCtrl() {
+    const g = zoomGoal();
+    dim(bIn, g >= opt.maxZoom - 1e-6);
+    dim(bOut, g <= opt.minZoom + 1e-6);
+  }
+
+  function dim(btn, off) {
+    if (!btn) return;
+    btn.classList.toggle('is-off', off);
+    btn.setAttribute('aria-disabled', off ? 'true' : 'false');
   }
 
   /** После жеста доводим дробный зум до целого: только так плитки остаются чёткими. */
@@ -1241,6 +1474,14 @@ export function createMap(container, options = {}) {
     };
   }
 
+  /* Ближе этого пальцы уже сливаются в одно пятно, а отношение расстояний
+     начинает скакать: сдвиг на пару точек давал бы целый уровень зума. */
+  const PINCH_MIN = 24;
+
+  function pinchDist(a, b) {
+    return Math.max(PINCH_MIN, Math.hypot(a.x - b.x, a.y - b.y));
+  }
+
   function startPinch() {
     const [a, b] = two();
     if (!a || !b) return;
@@ -1252,7 +1493,7 @@ export function createMap(container, options = {}) {
     lastMid = mid;
     gesture = {
       mode: 'pinch',
-      d0: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+      d0: pinchDist(a, b),
       z0: zoom,
       ll: latLngAt(mid),
     };
@@ -1317,13 +1558,18 @@ export function createMap(container, options = {}) {
     } else if (gesture.mode === 'pinch') {
       const [a, b] = two();
       if (!a || !b) return;
-      const d = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+      const d = pinchDist(a, b);
       const mid = {
         x: (a.x + b.x) / 2 - gRect.left,
         y: (a.y + b.y) / 2 - gRect.top,
       };
       lastMid = mid;
-      const z = clamp(gesture.z0 + Math.log(d / gesture.d0) / Math.LN2, opt.minZoom, opt.maxZoom);
+      const raw = gesture.z0 + Math.log(d / gesture.d0) / Math.LN2;
+      const z = clamp(raw, opt.minZoom, opt.maxZoom);
+      // упёрлись в предел — переставляем точку отсчёта пальцев. Иначе обратное
+      // движение долго не даёт отклика: карта сначала «выбирает» ушедший в никуда
+      // запас, и палец разводит впустую
+      if (z !== raw) { gesture.z0 = z; gesture.d0 = d; }
       zoomAround(gesture.ll, mid, z);
     }
   }
@@ -1381,7 +1627,7 @@ export function createMap(container, options = {}) {
       lastTap = null;
       clearTimeout(tapTimer);
       tapTimer = 0;
-      zoomTo(Math.round(zoom) + 1, pt);
+      zoomStep(1, pt);
       return;
     }
     lastTap = { t: now, x: pt.x, y: pt.y };
@@ -1582,6 +1828,7 @@ export function createMap(container, options = {}) {
     for (const un of unbinds) un();
     unbinds.length = 0;
     for (const lvl of Array.from(levels.values())) dropLevel(lvl);
+    under.clear();
     for (const L of zoneLayers) {
       if (L.cv.parentNode) L.cv.parentNode.removeChild(L.cv);
     }
@@ -1613,11 +1860,13 @@ export function createMap(container, options = {}) {
     setTiles,
     setAttribution,
     invalidateSize,
-    zoomIn: () => zoomTo(Math.round(zoom) + 1),
-    zoomOut: () => zoomTo(Math.round(zoom) - 1),
+    zoomIn: () => zoomStep(1),
+    zoomOut: () => zoomStep(-1),
     zoomTo: (z, pt, an) => zoomTo(z, pt, an),
+    tiles: tileStats,
     getCenter: () => center.slice(),
     getZoom: () => zoom,
+    getZoomRange: () => [opt.minZoom, opt.maxZoom],
     getBounds: bounds,
     latLngAt,
     containerPoint,
@@ -1626,6 +1875,7 @@ export function createMap(container, options = {}) {
 
   renderAttr();
   measure();
+  syncCtrl();
   invalidate();
   return apiObj;
 }

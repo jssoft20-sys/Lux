@@ -8,9 +8,13 @@
    Запуск:  TEST_PORT=7099 node tools/map_test.mjs   (сервер уже поднят)
 */
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
+import zlib from 'node:zlib';
 
 const PORT = process.env.TEST_PORT || '7099';
-const BASE = `http://127.0.0.1:${PORT}`;
+// Обычно проверяем свой сервис, но можно направить прогон и на живой сайт:
+// MAP_URL=https://sprintergo.kg/go/ node tools/map_test.mjs
+const BASE = (process.env.MAP_URL || `http://127.0.0.1:${PORT}`).replace(/\/$/, '');
+const REAL_TILES = !!process.env.MAP_REAL;   // не подменять плитки своими
 const SHOT = '/tmp/sg-map';
 
 let pass = 0;
@@ -20,6 +24,54 @@ const ok = (n, c, d = '') => {
   else { fails.push([n, d]); console.log(`  \x1b[31m✗\x1b[0m ${n}${d ? '  — ' + d : ''}`); }
   return !!c;
 };
+
+/** Плитка-заглушка 256×256, собранная прямо здесь.
+
+   Настоящие плитки в прогоне не нужны и вредны: мы проверяем движок, а не
+   поставщика. Своя плитка приходит мгновенно, одинаково на каждом запуске и
+   не зависит от того, есть ли вообще интернет на машине, где идёт проверка.
+*/
+function fakeTile() {
+  const N = 256;
+  const raw = Buffer.alloc((N * 3 + 1) * N);
+  for (let y = 0; y < N; y++) {
+    const row = y * (N * 3 + 1);
+    raw[row] = 0;                                  // фильтр строки: без фильтра
+    for (let x = 0; x < N; x++) {
+      const i = row + 1 + x * 3;
+      const edge = x < 2 || y < 2 || x > N - 3 || y > N - 3;
+      raw[i] = edge ? 90 : 46;                     // рамка, чтобы плитки было видно
+      raw[i + 1] = edge ? 96 : 52;
+      raw[i + 2] = edge ? 104 : 58;
+    }
+  }
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(zlib.crc32 ? zlib.crc32(body) >>> 0 : crc32(body));
+    return Buffer.concat([len, body, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(N, 0); ihdr.writeUInt32BE(N, 4);
+  ihdr[8] = 8; ihdr[9] = 2;                        // 8 бит на канал, RGB
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+/** CRC32 на случай старого node, где zlib.crc32 ещё не завезли. */
+function crc32(buf) {
+  let c, crc = 0xffffffff;
+  for (let n = 0; n < buf.length; n++) {
+    c = (crc ^ buf[n]) & 0xff;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    crc = c ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
 
 /** Доля площади карты, закрытая загруженными плитками. Сетка 24×24 точки. */
 const COVER = `(() => {
@@ -63,8 +115,26 @@ async function main() {
   const errors = [];
   page.on('pageerror', e => errors.push(String(e).slice(0, 200)));
 
+  // Плитки отдаём сами, не выходя в сеть, но НЕ мгновенно. Задержка здесь —
+  // главное в прогоне: серые дыры появляются не потому, что плитки не пришли,
+  // а потому, что движок выбрасывает старый слой, пока новый ещё едет. С
+  // мгновенными плитками этого окна нет, и прогон прошёл бы на сломанном коде.
+  const tile = fakeTile();
+  const LAG_MS = Number(process.env.MAP_LAG || 450);   // мобильный интернет Бишкека
+  let served = 0;
+  if (!REAL_TILES) await page.route(/tile|maps|basemaps/i, async route => {
+    if (/\.(png|jpg|jpeg|webp)(\?|#|$)/i.test(route.request().url())
+        || route.request().resourceType() === 'image') {
+      served++;
+      await new Promise(r => setTimeout(r, LAG_MS));
+      return route.fulfill({ status: 200, contentType: 'image/png', body: tile });
+    }
+    return route.continue();
+  });
+
   console.log('\n\x1b[1mКарта: серые дыры при отдалении\x1b[0m');
   await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
+  console.log('  проверяем', BASE, REAL_TILES ? '· плитки настоящие' : '· плитки свои');
   await page.waitForSelector('.map, .sg-map, [data-map]', { timeout: 20000 }).catch(() => {});
   await page.waitForTimeout(3500);          // даём плиткам догрузиться
 
@@ -78,17 +148,32 @@ async function main() {
   const hasMinus = await minus.count().then(c => c > 0).catch(() => false);
   ok('кнопка отдаления есть', hasMinus);
 
-  const worst = { cover: 1, step: 0 };
+  const worst = { cover: 1, step: 0, when: '' };
   for (let step = 1; step <= 8 && hasMinus; step++) {
     await minus.tap({ timeout: 5000 }).catch(async () => { await minus.click({ force: true }); });
-    await page.waitForTimeout(1400);
+
+    // Смотрим не только на успокоившуюся карту, но и на неё же в движении:
+    // человек видит именно эти кадры, и серую полосу он поймает здесь.
+    let low = { cover: 1, holes: [] };
+    for (const wait of [120, 200, 300, 400, 500]) {
+      await page.waitForTimeout(wait);
+      const shot = await page.evaluate(COVER);
+      if (!shot.err && shot.cover < low.cover) low = shot;
+    }
+    await page.waitForTimeout(900);
     const m = await page.evaluate(COVER);
     if (m.err) { ok(`отдаление ${step}`, false, m.err); break; }
-    const line = `отдаление ${step}: закрыто ${(m.cover * 100).toFixed(0)}%, `
-               + `плиток ${m.loaded} из ${m.tiles}`;
-    if (m.cover < worst.cover) { worst.cover = m.cover; worst.step = step; }
-    ok(line, m.cover >= 0.98, `дыры в ${JSON.stringify(m.holes)}`);
-    if (m.cover < 0.98) await page.screenshot({ path: `${SHOT}-hole-${step}.png` });
+
+    const worstNow = Math.min(m.cover, low.cover);
+    if (worstNow < worst.cover) {
+      worst.cover = worstNow; worst.step = step;
+      worst.when = low.cover < m.cover ? 'в движении' : 'после остановки';
+    }
+    const line = `отдаление ${step}: в движении ${(low.cover * 100).toFixed(0)}%, `
+               + `после ${(m.cover * 100).toFixed(0)}%, плиток ${m.loaded} из ${m.tiles}`;
+    ok(line, worstNow >= 0.98,
+       `дыры ${JSON.stringify((low.cover < m.cover ? low : m).holes)}`);
+    if (worstNow < 0.98) await page.screenshot({ path: `${SHOT}-hole-${step}.png` });
   }
 
   // Возврат обратно: приближение не должно оставлять пустоты тем более.
@@ -119,13 +204,24 @@ async function main() {
        drag.err || `закрыто ${(drag.cover * 100).toFixed(0)}%`);
   }
 
+  // Спросим и сам движок: он считает дыры честнее, чем взгляд снаружи.
+  const own = await page.evaluate(() => (window.SG_MAP && window.SG_MAP.tiles)
+    ? window.SG_MAP.tiles() : null);
+  if (own) {
+    ok('движок сам не видит дыр', own.holes === 0,
+       `движок насчитал дыр: ${own.holes}, всего ${own.total}, загружено ${own.loaded}`);
+  }
+  if (!REAL_TILES) ok('плитки действительно запрашивались', served > 20, `отдано ${served}`);
   ok('в консоли нет исключений', errors.length === 0, errors.slice(0, 3).join(' | '));
 
   await page.screenshot({ path: `${SHOT}-final.png` });
   await browser.close();
 
   console.log(`\n\x1b[1mИтог:\x1b[0m пройдено ${pass}, провалено ${fails.length}`);
-  if (worst.step) console.log(`Худший шаг: ${worst.step}, закрыто ${(worst.cover * 100).toFixed(0)}%`);
+  if (worst.step) {
+    console.log(`Худший момент: отдаление ${worst.step} ${worst.when}, `
+              + `закрыто ${(worst.cover * 100).toFixed(0)}%`);
+  }
   if (fails.length) {
     console.log('\n\x1b[31mПровалы:\x1b[0m');
     for (const [n, d] of fails) console.log(`  · ${n}${d ? '\n      ' + d : ''}`);

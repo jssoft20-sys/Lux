@@ -3,16 +3,81 @@
    Экран занимает почти всю шторку и возвращает одну точку. Ждать ответа сервера
    на каждую букву нельзя: набирают быстро, а геокодер отвечает медленно, поэтому
    запрос уходит через четверть секунды тишины, а предыдущий отменяется.
+
+   Здесь же живёт всё, что человек уточняет про точку: подъезд, квартира, этаж,
+   лифт, домофон. Один раз вписанные, они остаются с адресом и подставляются
+   сами, когда человек снова везёт что-то из дома или к себе домой.
 */
 
 import { api } from '../core/api.js';
-import { t } from '../core/i18n.js';
+import { t, extend } from '../core/i18n.js';
 import { el, toast, haptic } from '../core/ui.js';
 import { icon, iconBtn, errText, readJson, writeJson, KEY_RECENT, dur } from './app.js';
+
+/* Свои строки держим при себе: общий словарь правят соседние модули.
+   Это короткие приписки к адресу, они идут через запятую в одну строку. */
+extend({
+  ru: {
+    'pt.entrance': 'подъезд {v}',
+    'pt.flat': 'кв. {v}',
+    'pt.floor': '{v} этаж',
+    'pt.intercom': 'домофон {v}',
+    'pt.lift_yes': 'с лифтом',
+    'pt.lift_no': 'без лифта',
+    'pt.door': 'до двери',
+  },
+  ky: {
+    'pt.entrance': '{v}-подъезд',
+    'pt.flat': '{v}-батир',
+    'pt.floor': '{v}-кабат',
+    'pt.intercom': 'домофон {v}',
+    'pt.lift_yes': 'лифти бар',
+    'pt.lift_no': 'лифт жок',
+    'pt.door': 'эшикке чейин',
+  },
+});
 
 const TYPE_PAUSE = 250;      // столько тишины ждём перед запросом подсказок
 const MOVE_PAUSE = 320;      // столько ждём после остановки карты перед геокодером
 const RECENT_MAX = 8;
+
+/* Что помним про дом вместе с адресом. Комментарий курьеру сюда не попадает —
+   он про сегодняшний груз, а не про дом. «От двери до двери» тоже: это деньги,
+   и человек включает их сам каждый раз, а не по памяти браузера. */
+const DETAIL_KEYS = ['entrance', 'flat', 'floor', 'intercom'];
+
+/* ─────────────────────────────────────────────────────── детали точки */
+
+/** Подъезд, квартира, этаж и лифт из точки — только то, что реально заполнено. */
+function details(point) {
+  const out = {};
+  if (!point) return out;
+  for (const k of DETAIL_KEYS) {
+    const v = point[k];
+    if (v) out[k] = String(v).slice(0, 40);
+  }
+  if (point.lift === true || point.lift === false) out.lift = point.lift;
+  return out;
+}
+
+/**
+ * Всё уточнённое по адресу одной строкой: «подъезд 2, кв. 14, 5 этаж, без лифта».
+ * Ею подписан адрес и в списке точек, и в недавних адресах.
+ * opts.door = false — не поминать подъём к двери: там, где рядом стоит его
+ * переключатель, повторять это в строке незачем.
+ */
+export function detailsLine(point, opts = {}) {
+  if (!point) return '';
+  const parts = [];
+  if (point.entrance) parts.push(t('pt.entrance', { v: point.entrance }));
+  if (point.flat) parts.push(t('pt.flat', { v: point.flat }));
+  if (point.floor) parts.push(t('pt.floor', { v: point.floor }));
+  if (point.lift === true) parts.push(t('pt.lift_yes'));
+  if (point.lift === false) parts.push(t('pt.lift_no'));
+  if (point.intercom) parts.push(t('pt.intercom', { v: point.intercom }));
+  if (point.door && opts.door !== false) parts.push(t('pt.door'));
+  return parts.join(', ');
+}
 
 /* ─────────────────────────────────────────────────────── недавние адреса */
 
@@ -21,7 +86,10 @@ export function recentPoints() {
   return Array.isArray(list) ? list.filter((p) => p && p.lat != null && p.lng != null) : [];
 }
 
-/** Запомнить выбранный адрес. Один и тот же дом наверх, а не вторым экземпляром. */
+/** Запомнить выбранный адрес. Один и тот же дом наверх, а не вторым экземпляром.
+    Детали берём у новой точки, а если она пришла из подсказки голой — оставляем
+    прошлые: выбрать тот же дом заново не значит забыть свою квартиру. Но когда
+    человек сам стёр квартиру и заказал, обратно она не всплывает. */
 export function rememberPoint(point) {
   if (!point || point.lat == null || point.lng == null) return;
   const key = (p) => (p.addr || '') + '|' + Number(p.lat).toFixed(4) + Number(p.lng).toFixed(4);
@@ -29,9 +97,15 @@ export function rememberPoint(point) {
     addr: point.addr || '', subtitle: point.subtitle || '',
     lat: point.lat, lng: point.lng,
   };
-  const list = recentPoints().filter((p) => key(p) !== key(item));
-  list.unshift(item);
-  writeJson(KEY_RECENT, list.slice(0, RECENT_MAX));
+  const list = recentPoints();
+  const fresh = details(point);
+  const keep = Object.keys(fresh).length
+    ? fresh
+    : details(list.find((p) => key(p) === key(item)));
+  Object.assign(item, keep);
+  const rest = list.filter((p) => key(p) !== key(item));
+  rest.unshift(item);
+  writeJson(KEY_RECENT, rest.slice(0, RECENT_MAX));
 }
 
 /* ─────────────────────────────────────────────────────── строки списка */
@@ -221,7 +295,10 @@ export function pickAddress(app, opts = {}) {
       if (recent.length) {
         box.appendChild(el('div', { className: 'sg-group' }, t('order.recent')));
         for (const p of recent) {
-          box.appendChild(row('clock', p.addr || t('order.on_map'), p.subtitle,
+          // Под адресом показываем то, что человек про него уже уточнял: видно,
+          // что подъезд и квартира подставятся сами.
+          box.appendChild(row('clock', p.addr || t('order.on_map'),
+                              detailsLine(p) || p.subtitle,
                               () => done(Object.assign({}, p))));
         }
       }

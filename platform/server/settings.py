@@ -176,6 +176,19 @@ def invalidate():
         _cache = None
 
 
+# До какого масштаба у поставщика вообще есть картинки. Попросим глубже — вместо
+# карты человек увидит серое, и решит, что сломалось всё. 2ГИС на девятнадцатом
+# отдаёт пустой ответ, это проверено запросом.
+PROVIDER_MAX_ZOOM = {'2gis': 18, 'osm': 19, 'carto': 20, 'yandex': 19}
+
+
+def map_max_zoom():
+    """Предел приближения с оглядкой на поставщика плиток."""
+    want = get_int('map.max_zoom', 19)
+    limit = PROVIDER_MAX_ZOOM.get(str(get('map.provider', 'osm') or '').lower())
+    return min(want, limit) if limit else want
+
+
 def public():
     """Подмножество, которое безопасно отдать в браузер. Секреты сюда не попадают."""
     s = load()
@@ -184,7 +197,7 @@ def public():
         'map': {
             'tiles_light': s['map.tiles_light'], 'tiles_dark': s['map.tiles_dark'],
             'attribution': s['map.attribution'], 'center': [s['map.center_lat'], s['map.center_lng']],
-            'zoom': s['map.zoom'], 'max_zoom': s['map.max_zoom'],
+            'zoom': s['map.zoom'], 'max_zoom': map_max_zoom(),
             'min_zoom': s['map.min_zoom'], 'provider': s['map.provider'],
         },
         'order': {

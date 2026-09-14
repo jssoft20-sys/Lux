@@ -23,8 +23,13 @@ cat > "$TMP/$NAME/data/.gitkeep" <<'EOF'
 Это единственный файл, который нужно включать в резервную копию.
 EOF
 
-rm -f "$TMP/$NAME"/tools/{api_test.py,ui_test.mjs,flow_test.mjs,core_test.py,icons.mjs} 2>/dev/null || true
+# Прогоны оставляем: они поднимают свои сервисы на свободных портах с пустой
+# базой и рабочую не трогают, зато на сервере можно одной командой убедиться,
+# что после обновления всё цело. А вот сценарии сборки внутри не нужны —
+# они ссылаются на пути машины, где всё это писалось.
 rm -f "$TMP/$NAME"/tools/*workflow*.js 2>/dev/null || true
+rm -f "$TMP/$NAME"/tools/icons.mjs 2>/dev/null || true
+chmod +x "$TMP/$NAME"/tools/*.sh 2>/dev/null || true
 
 # в архив не тащим мусор разработки
 find "$TMP/$NAME" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true

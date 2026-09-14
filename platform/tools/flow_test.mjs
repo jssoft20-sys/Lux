@@ -124,7 +124,21 @@ async function run() {
   ok('подсказки адресов пришли', found > 1, `вариантов ${found}`);
   await shot(page, '02-suggestions');
   await tap(page, items.first());
-  await page.waitForTimeout(3500);
+  await page.waitForTimeout(2500);
+
+  // ── 1б. детали адресов ─────────────────────────────────────────────────────
+  // После адресов появился шаг с подъездом, этажом и подъёмом к двери. Заполнять
+  // ничего не обязательно, но пройти его надо — как и живому человеку.
+  const details = page.locator('.sg-foot .sg-cta, .sg-cta').first();
+  const onDetails = /Детали|Подъезд|двери/i.test(await page.locator('body').innerText());
+  ok('шаг с деталями адресов появился', onDetails,
+     (await page.locator('body').innerText()).replace(/\n+/g, ' | ').slice(0, 200));
+  await shot(page, '02b-details');
+  if (onDetails && await details.count()) {
+    await tap(page, details);
+    await page.waitForTimeout(2500);
+  }
+  await page.waitForTimeout(1200);
   await shot(page, '03-tariffs');
 
   // ── 2. тарифы и цена ───────────────────────────────────────────────────────

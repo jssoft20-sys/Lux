@@ -1,9 +1,15 @@
-/* Оформление заказа: адреса, машина, грузчики, допуслуги и контакты.
+/* Оформление заказа: адреса, детали подъездов, машина, грузчики и контакты.
 
-   Экран собран из трёх шагов внутри одной шторки: адреса → машина → контакты.
+   Экран собран из четырёх шагов внутри одной шторки:
+   адреса → детали адресов → машина → контакты.
    Шаги не перерисовываются целиком на каждое событие: пока шаг тот же, меняются
    только те узлы, где действительно новые данные. Иначе на каждом пересчёте цены
    у человека дёргалась бы карусель и слетал фокус из поля.
+
+   Детали адресов вынесены в отдельный шаг не для красоты: спрятанные под
+   карандашик подъезд и этаж не заполняет никто, а потом курьер кружит по двору
+   и звонит. Там же у каждой точки стоит «от двери до двери» — с надбавкой,
+   которую считает сервер, чтобы цифра в конце никого не удивила.
 
    Машины на карточках нарисованы здесь же, в SVG: пикап, спринтер и два грузовика
    с тентом. Человек выбирает не строчку в списке, а машину, которую увидит во дворе,
@@ -20,7 +26,7 @@ import { el, toast, sheet, haptic } from '../core/ui.js';
 import { pin } from '../core/map.js';
 import { money, num, duration, NBSP } from '../core/fmt.js';
 import { icon, iconBtn, errText, nameOf, dur } from './app.js';
-import { pickAddress, rememberPoint } from './address.js';
+import { pickAddress, rememberPoint, detailsLine } from './address.js';
 
 /* Свои строки держим при себе: общий словарь правят соседние модули. */
 extend({
@@ -31,6 +37,19 @@ extend({
     'trip.jam': 'с пробками',
     'trip.free': 'дорога свободна',
     'trip.free_time': 'без пробок {v}',
+
+    'pts.title': 'Детали адресов',
+    'pts.sub': 'Пара строчек — и курьер найдёт вас быстрее',
+    'pts.skip': 'Заполнять не обязательно, но так курьер найдёт вас быстрее',
+    'pts.fill': 'Подъезд, квартира, этаж, домофон',
+    'pts.no_addr': 'Выберите адрес',
+
+    'd2d.title': 'От двери до двери',
+    'd2d.on': 'Курьер поднимется к двери',
+    'd2d.off': 'Курьер ждёт у подъезда, так дешевле',
+    'd2d.plus': '+{price}',
+    'd2d.sum': 'Подъём к двери',
+    'd2d.lift_hint': 'На {v} этаже без лифта проще с подъёмом к двери',
   },
   ky: {
     'car.cap_kg': '{v} кг чейин',
@@ -39,12 +58,26 @@ extend({
     'trip.jam': 'тыгын менен',
     'trip.free': 'жол бош',
     'trip.free_time': 'тыгынсыз {v}',
+
+    'pts.title': 'Даректерди тактайлы',
+    'pts.sub': 'Бир-эки сөз — курьер сизди тезирээк табат',
+    'pts.skip': 'Милдеттүү эмес, бирок курьер сизди тезирээк табат',
+    'pts.fill': 'Подъезд, батир, кабат, домофон',
+    'pts.no_addr': 'Дарек тандаңыз',
+
+    'd2d.title': 'Эшиктен эшикке',
+    'd2d.on': 'Курьер эшигиңизге чейин көтөрөт',
+    'd2d.off': 'Курьер подъезддин алдында күтөт, арзаныраак',
+    'd2d.plus': '+{price}',
+    'd2d.sum': 'Эшикке чейин көтөрүү',
+    'd2d.lift_hint': '{v}-кабат, лифт жок — эшикке чейин көтөргөн жеңилирээк',
   },
 });
 
 const QUOTE_PAUSE = 320;       // пауза перед пересчётом цены, чтобы не дёргать сервер
 const MAX_LOADERS = 8;
 const JAM_STEP = 60;           // разницу меньше минуты человек не заметит, и врать про неё незачем
+const DOOR_CODE = 'door_to_door';   // так подъём к двери называется в расчёте на сервере
 
 /* ─────────────────────────────────────────────────────── свои стили */
 
@@ -120,10 +153,169 @@ const CSS = `
 
 /* Пока считается новая цена, старая остаётся на месте и просто гаснет:
    пустое место на кнопке читается как поломка. */
-.sg-tariff__price, .sg-cta__price, .sg-total__val {
+.sg-tariff__price, .sg-cta__price, .sg-total__val, .sgd-sum__val {
   transition: opacity var(--dur-2) var(--ease);
 }
-.sg-tariff__price.is-stale, .sg-cta__price.is-stale, .sg-total__val.is-stale { opacity: .45; }
+.sg-tariff__price.is-stale, .sg-cta__price.is-stale,
+.sg-total__val.is-stale, .sgd-sum__val.is-stale { opacity: .45; }
+
+/* ── шаг «детали адресов» ────────────────────────────────────────────────── */
+
+.sgd-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-2);
+}
+
+.sgd-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid transparent;
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  overflow: hidden;
+  transition: border-color var(--dur-2) var(--ease);
+}
+.sgd-card.is-door { border-color: var(--accent-line); }
+
+/* Адрес с деталями — одна большая цель для пальца: тап открывает форму. */
+.sgd-main {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 60px;
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4);
+  text-align: left;
+  transition: background-color var(--dur-1) var(--ease);
+}
+.sgd-main:active { background: var(--surface-3); }
+
+.sgd-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-full);
+  background: var(--muted-2);
+}
+.sgd-dot--a { background: var(--accent); }
+.sgd-dot--b { border-radius: 3px; background: var(--text); }
+
+.sgd-text { flex: 1 1 auto; min-width: 0; }
+
+.sgd-kind {
+  display: block;
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.sgd-addr {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* Детали одной строкой: «подъезд 2, кв. 14, 5 этаж, без лифта, до двери». */
+.sgd-note {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+}
+.sgd-note.is-empty { color: var(--muted-2); }
+
+.sgd-go {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: var(--muted-2);
+}
+.sgd-go > svg { width: 20px; height: 20px; }
+
+/* Переключатель занимает всю строку: попасть по нему пальцем можно где угодно,
+   а не только по самому тумблеру в 28 px. Высоту держим с запасом на две строки
+   пояснения — иначе строка прыгала бы туда-сюда на каждое нажатие. */
+.sgd-door {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 68px;
+  padding: var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--line-soft);
+  cursor: pointer;
+}
+.sgd-door__text { flex: 1 1 auto; min-width: 0; }
+.sgd-door__title {
+  display: block;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.3;
+}
+.sgd-door__sub {
+  display: block;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+}
+
+/* Надбавка стоит рядом с тумблером и загорается вместе с ним: человек видит
+   цену до того, как включит, а не в чеке. */
+.sgd-door__price {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: color var(--dur-2) var(--ease);
+}
+.sgd-card.is-door .sgd-door__price { color: var(--accent); }
+
+.sgd-tip {
+  margin: 0 var(--sp-3) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+}
+
+/* Чипы «есть лифт» / «без лифта» в форме деталей: базовые 36 px под палец малы. */
+.sgd-lift { padding: 2px 2px var(--sp-1); }
+.sgd-lift .chip { min-height: 44px; }
+
+/* Надбавка за все точки сразу — под кнопкой шага. */
+.sgd-sum {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-1);
+  font-size: var(--fs-sm);
+}
+.sgd-sum__name { color: var(--muted); }
+.sgd-sum__val {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
 /* Расстояние, время с пробками и слово, объясняющее, почему дольше. */
 .sgv-trip {
@@ -285,15 +477,18 @@ function pointHint(i, total) {
   return i === 0 ? t('order.from_ph') : t('order.to_ph');
 }
 
-/** Приписка к адресу: подъезд, квартира, этаж — то, что человек уточнил сам. */
+/** Приписка под адресом в списке точек. Пока деталей нет, показываем район
+    из подсказки геокодера — пустая строка выглядит как потерянный адрес. */
 function pointNote(p) {
   if (!p) return '';
-  const parts = [];
-  if (p.entrance) parts.push(t('order.entrance') + ' ' + p.entrance);
-  if (p.flat) parts.push(t('order.flat') + ' ' + p.flat);
-  if (p.floor) parts.push(t('order.floor') + ' ' + p.floor);
-  if (!parts.length && p.subtitle) return p.subtitle;
-  return parts.join(', ');
+  return detailsLine(p) || p.subtitle || '';
+}
+
+/* Этаж числом. «5а» и «5 этаж» считаем пятым этажом, пустое и «цоколь» — нулём:
+   по этому числу решаем, советовать ли подъём к двери, и врать тут нельзя. */
+function floorNum(value) {
+  const m = String(value || '').trim().match(/^\d{1,3}/);
+  return m ? Number(m[0]) : 0;
 }
 
 /* Цифра доезжает до нового значения за --dur-3, а не прыгает: скачок цены
@@ -388,23 +583,39 @@ export function mountOrder(app) {
   installStyles();
 
   const tariffs = app.tariffs.filter((x) => x && x.id);
+
+  /* «Повторить заказ» из истории приносит готовую заготовку: те же адреса с
+     подъездами, та же машина. Забираем её один раз — второй вызов вернёт null. */
+  const draft = typeof app.takeDraft === 'function' ? app.takeDraft() : null;
+  const draftList = (draft && Array.isArray(draft.points) ? draft.points : [])
+    .filter((p) => p && p.lat != null && p.lng != null)
+    .map((p) => Object.assign({}, p));
+  const draftPoints = draftList.length >= 2 ? draftList : null;
+  const draftTariff = draft && tariffs.some((x) => x.id === draft.tariffId) ? draft.tariffId : 0;
+
   const store = createStore({
-    step: 'addr',
-    points: [null, null],
-    tariffId: tariffs.length ? tariffs[0].id : 0,
-    loaders: 0,
-    extras: {},                 // код услуги → количество
+    step: draftPoints ? 'details' : 'addr',
+    points: draftPoints || [null, null],
+    tariffId: draftTariff || (tariffs.length ? tariffs[0].id : 0),
+    loaders: draft ? Math.max(0, Math.min(MAX_LOADERS, Number(draft.loaders) || 0)) : 0,
+    extras: draft && draft.extras ? Object.assign({}, draft.extras) : {},   // код услуги → количество
     route: null,
     prices: {},                 // id тарифа → итог в тыйынах
     quotes: {},                 // id тарифа → полный расчёт сервера
     quote: null,
+    // Надбавку за подъём к двери знаем ещё до первого расчёта — из /config.
+    // Как придёт ответ сервера, цифру заменим на ту, по которой он считает.
+    doorPrice: Math.max(0, Number(app.cfg && app.cfg.price && app.cfg.price.door_to_door) || 0),
     priceState: 'idle',         // idle | wait | ok | err
     priceError: null,
     busy: false,
   });
 
   const me = app.me();
-  const contacts = { phone: me.phone || '', name: me.name || '', comment: '', agree: true };
+  const contacts = {
+    phone: me.phone || '', name: me.name || '',
+    comment: (draft && draft.comment) || '', agree: true,
+  };
 
   let view = null;              // {name, node, update}
   let markers = [];
@@ -447,6 +658,21 @@ export function mountOrder(app) {
     return Object.keys(state.extras)
       .map((code) => ({ code, qty: state.extras[code] }))
       .filter((x) => x.qty > 0);
+  }
+
+  /** Сколько точек с подъёмом к двери: сервер берёт надбавку за каждую. */
+  function doorCount(state) {
+    return state.points.filter((p) => p && p.lat != null && p.door).length;
+  }
+
+  /* Что уходит в поле extras запроса: выбранное из каталога плюс подъём к двери
+     отдельной строкой. pricing.py ждёт его именно так — и в расчёте цены, и в
+     самом заказе, где та же строка переживёт до закрытия. */
+  function quoteExtras(state) {
+    const list = extrasList(state);
+    const doors = doorCount(state);
+    if (doors > 0) list.push({ code: DOOR_CODE, qty: doors });
+    return list;
   }
 
   function total(state) {
@@ -522,7 +748,7 @@ export function mountOrder(app) {
     const body = {
       points: pts,
       loaders: state.loaders,
-      extras: extrasList(state),
+      extras: quoteExtras(state),
       lang: getLang(),
     };
 
@@ -556,8 +782,20 @@ export function mountOrder(app) {
       store.set({ priceState: 'err', priceError: fail, quote: null });
       return;
     }
+
+    // Надбавка за подъём к двери одна на все тарифы, но берём её из ответа:
+    // на экране должна стоять та цифра, по которой сервер и посчитает заказ.
+    let doorPrice = state.doorPrice;
+    for (const id of Object.keys(quotes)) {
+      const v = Number(quotes[id].door_price);
+      if (isFinite(v) && v >= 0) {
+        doorPrice = v;
+        break;
+      }
+    }
+
     store.set({
-      prices, quotes, quote: quotes[state.tariffId] || null,
+      prices, quotes, quote: quotes[state.tariffId] || null, doorPrice,
       priceState: 'ok', priceError: null,
     });
   }
@@ -591,9 +829,23 @@ export function mountOrder(app) {
       return;
     }
     const pts = store.get().points.slice();
-    pts[i] = Object.assign({}, pts[i] || {}, point);
-    const full = pts.length >= 2 && pts[0] && pts[pts.length - 1];
-    store.set({ points: pts, step: full && store.get().step === 'addr' ? 'tariff' : store.get().step });
+    // Точка уехала в другое место — подъезд и квартира от прошлого дома там уже
+    // ничего не значат, и курьер по ним только заплутает. Кого встречать и
+    // подъём к двери оставляем: это про человека и про груз, а не про дом.
+    const was = pts[i];
+    const here = was && was.lat != null &&
+      Math.abs(was.lat - point.lat) < 3e-4 && Math.abs(was.lng - point.lng) < 3e-4;
+    pts[i] = here
+      ? Object.assign({}, was, point)
+      : Object.assign({}, point, {
+        door: !!(was && was.door),
+        name: (was && was.name) || '', phone: (was && was.phone) || '',
+      });
+    // Оба конца маршрута известны — сразу ведём уточнять подъезды: там же стоит
+    // «от двери до двери», а после машины возвращаться за этим уже никто не станет.
+    const full = ready({ points: pts });
+    const step = store.get().step;
+    store.set({ points: pts, step: full && step === 'addr' ? 'details' : step });
     schedulePrice();
   }
 
@@ -617,8 +869,8 @@ export function mountOrder(app) {
     schedulePrice();
   }
 
-  /* Детали адреса: подъезд, этаж, домофон и кто встретит. Сервер принимает их
-     в самой точке, поэтому храним прямо в ней. */
+  /* Детали адреса: подъезд, этаж, лифт, домофон и кто встретит. Сервер принимает
+     их в самой точке, поэтому храним прямо в ней. */
   function openDetails(i) {
     const state = store.get();
     const p = state.points[i] || {};
@@ -632,6 +884,36 @@ export function mountOrder(app) {
     const cphone = field(t('order.contact_phone'), p.phone,
                          { type: 'tel', inputmode: 'tel', maxLength: 32, autocomplete: 'tel' });
 
+    /* Лифт — два чипа, а не переключатель: выключенный переключатель нельзя
+       отличить от «не спрашивали», а по «без лифта» мы советуем подъём к двери. */
+    let lift = p.lift === true ? true : (p.lift === false ? false : null);
+    const tip = el('div', { className: 'sgd-tip', hidden: true });
+    const liftYes = el('button', { type: 'button', className: 'chip' }, t('order.has_lift'));
+    const liftNo = el('button', { type: 'button', className: 'chip' }, t('order.no_lift'));
+
+    function paintLift() {
+      liftYes.classList.toggle('chip--on', lift === true);
+      liftYes.setAttribute('aria-pressed', lift === true ? 'true' : 'false');
+      liftNo.classList.toggle('chip--on', lift === false);
+      liftNo.setAttribute('aria-pressed', lift === false ? 'true' : 'false');
+      // Пятый этаж пешком — это другая работа. Говорим об этом здесь же,
+      // пока человек думает про этаж, а не когда курьер уже во дворе.
+      const n = floorNum(floor.input.value);
+      const show = lift === false && n > 1 && !(store.get().points[i] || {}).door;
+      tip.hidden = !show;
+      if (show) tip.textContent = t('d2d.lift_hint', { v: n });
+    }
+
+    const setLift = (v) => {
+      lift = lift === v ? null : v;      // повторный тап снимает выбор
+      haptic();
+      paintLift();
+    };
+    liftYes.addEventListener('click', () => setLift(true));
+    liftNo.addEventListener('click', () => setLift(false));
+    floor.input.addEventListener('input', paintLift);
+    paintLift();
+
     const rows = el('div', { className: 'sg-fields' },
       el('div', { className: 'row gap-3' },
         el('div', { className: 'grow' }, entrance.node),
@@ -639,6 +921,8 @@ export function mountOrder(app) {
       el('div', { className: 'row gap-3' },
         el('div', { className: 'grow' }, floor.node),
         el('div', { className: 'grow' }, intercom.node)),
+      el('div', { className: 'chips sgd-lift' }, liftYes, liftNo),
+      tip,
       comment.node,
       el('div', { className: 'sg-group' }, t('order.contact')),
       cname.node,
@@ -652,7 +936,7 @@ export function mountOrder(app) {
         const pts = store.get().points.slice();
         pts[i] = Object.assign({}, pts[i] || {}, {
           entrance: entrance.value, flat: flat.value, floor: floor.value,
-          intercom: intercom.value, comment: comment.value,
+          intercom: intercom.value, comment: comment.value, lift,
           name: cname.value, phone: cphone.value,
         });
         store.set({ points: pts });
@@ -783,15 +1067,18 @@ export function mountOrder(app) {
         name: contacts.name,
         tariff_id: state.tariffId,
         loaders: state.loaders,
-        extras: extrasList(state),
+        extras: quoteExtras(state),
         comment: contacts.comment,
         lang: getLang(),
-        points: state.points.filter(Boolean).map((p) => ({
+        // Подъём к двери шлём и строкой в extras, и флажком у точки: по строке
+        // сервер считает надбавку, по флажку курьер видит, куда именно подняться.
+        points: state.points.filter((p) => p && p.lat != null).map((p) => ({
           addr: p.addr || p.subtitle || '',
           lat: p.lat, lng: p.lng,
           entrance: p.entrance || '', flat: p.flat || '', floor: p.floor || '',
           intercom: p.intercom || '', comment: p.comment || '',
           name: p.name || '', phone: p.phone || '',
+          door_to_door: !!p.door,
         })),
       };
       const res = await api.post('/orders', body);
@@ -865,7 +1152,7 @@ export function mountOrder(app) {
     // Адреса уже вписаны, человек просто вернулся посмотреть — дайте ему уйти вперёд.
     const next = el('button', {
       type: 'button', className: 'sg-cta', hidden: true,
-      onClick: () => store.set({ step: 'tariff' }),
+      onClick: () => store.set({ step: 'details' }),
     }, el('span', { className: 'sg-cta__label' }, t('common.continue')));
 
     const node = el('div', { className: 'sg-step' },
@@ -910,6 +1197,140 @@ export function mountOrder(app) {
     return { name: 'addr', node, update };
   }
 
+  /* ── шаг «детали адресов» ────────────────────────────────────────────── */
+
+  /* Список точек: адрес, под ним одной строкой всё уточнённое, тап открывает
+     форму. Ничего заполнять не обязательно — кнопка «дальше» активна всегда.
+     Карточки собираем заново только когда меняется сам набор адресов: иначе
+     переключатель пересоздавался бы на каждый тап и тумблер прыгал бы без
+     анимации. */
+  function stepDetails() {
+    const list = el('div', { className: 'sgd-list' });
+    const note = el('div', { className: 'sg-note' }, t('pts.skip'));
+    const sumVal = el('span', { className: 'sgd-sum__val' });
+    const sumBox = newMoneyBox(sumVal);
+    const sumRow = el('div', { className: 'sgd-sum', hidden: true },
+      el('span', { className: 'sgd-sum__name' }, t('d2d.sum')), sumVal);
+    const cta = el('button', {
+      type: 'button', className: 'sg-cta',
+      onClick: () => { haptic(); store.set({ step: 'tariff' }); },
+    }, el('span', { className: 'sg-cta__label' }, t('common.continue')));
+
+    const node = el('div', { className: 'sg-step' },
+      el('div', { className: 'sg-head' },
+        iconBtn('back', 'sg-back', t('common.back'), () => store.set({ step: 'addr' })),
+        el('div', { className: 'sg-head__text' },
+          el('div', { className: 'sg-head__title' }, t('pts.title')),
+          el('div', { className: 'sg-head__sub' }, t('pts.sub')))),
+      el('div', { className: 'sg-body' }, list),
+      el('div', { className: 'sg-foot' }, sumRow, note, cta),
+    );
+
+    /* Включили подъём к двери — цена меняется, значит идём считать. Точку
+       переписываем копией: store сравнивает значения по ссылке. */
+    function toggleDoor(i, on) {
+      const pts = store.get().points.slice();
+      if (!pts[i] || pts[i].lat == null) return;
+      pts[i] = Object.assign({}, pts[i], { door: !!on });
+      haptic();
+      store.set({ points: pts });
+      schedulePrice();
+    }
+
+    function buildRow(i, count) {
+      const addr = el('span', { className: 'sgd-addr' });
+      const line = el('span', { className: 'sgd-note' });
+      const main = el('button', {
+        type: 'button', className: 'sgd-main',
+        onClick: () => {
+          const p = store.get().points[i];
+          // Адрес мог остаться пустым (человек передумал на середине) — тогда
+          // сначала спрашиваем его, а не детали несуществующего подъезда.
+          if (p && p.lat != null) openDetails(i);
+          else choose(i);
+        },
+      },
+        el('span', { className: 'sgd-dot ' + (i === 0 ? 'sgd-dot--a' : 'sgd-dot--b') }),
+        // «Откуда» и «Куда» подписаны словом, а не только цветом точки: список
+        // читают сверху вниз и в спешке, и путать концы маршрута тут нельзя.
+        el('span', { className: 'sgd-text' },
+          el('span', { className: 'sgd-kind' }, pointLabel(i, count)), addr, line),
+        el('span', { className: 'sgd-go', html: icon('note') }));
+
+      const sub = el('span', { className: 'sgd-door__sub' });
+      const price = el('span', { className: 'sgd-door__price' });
+      const box = el('input', { type: 'checkbox', 'aria-label': t('d2d.title') });
+      box.addEventListener('change', () => toggleDoor(i, box.checked));
+      // Тумблер внутри метки: нажать можно всю строку целиком, а не 28 px тумблера.
+      const door = el('label', { className: 'sgd-door' },
+        el('span', { className: 'sgd-door__text' },
+          el('span', { className: 'sgd-door__title' }, t('d2d.title')), sub),
+        price,
+        el('span', { className: 'switch' }, box, el('span', { className: 'switch__track' })));
+
+      const tip = el('div', { className: 'sgd-tip', hidden: true });
+      const card = el('div', { className: 'sgd-card' }, main, door, tip);
+      return { i, card, addr, line, sub, price, box, tip };
+    }
+
+    let rows = [];
+    let builtFor = '';
+
+    function update(state) {
+      const pts = state.points;
+      const key = getLang() + '|' + pts.length + '|' +
+        pts.map((p) => (p && p.lat != null ? p.lat.toFixed(5) + ',' + p.lng.toFixed(5) : '-')).join(';');
+      if (key !== builtFor) {
+        builtFor = key;
+        rows = pts.map((p, i) => buildRow(i, pts.length));
+        list.replaceChildren(...rows.map((r) => r.card));
+      }
+
+      const unit = Math.max(0, Number(state.doorPrice) || 0);
+      for (const r of rows) {
+        const p = pts[r.i];
+        const has = !!(p && p.lat != null);
+        const on = !!(has && p.door);
+        addrText(r, p, has);
+        r.box.checked = on;
+        r.box.disabled = !has;
+        r.card.classList.toggle('is-door', on);
+        r.sub.textContent = on ? t('d2d.on') : t('d2d.off');
+        r.price.textContent = unit > 0 ? t('d2d.plus', { price: money(unit) }) : '';
+        const lvl = has ? floorNum(p.floor) : 0;
+        const advise = !on && lvl > 1 && p.lift === false;
+        r.tip.hidden = !advise;
+        if (advise) r.tip.textContent = t('d2d.lift_hint', { v: lvl });
+      }
+
+      // Надбавка за все точки сразу. Цифру берём из ответа сервера, но только
+      // пока он считал ровно те же точки: его прошлый ответ был про другой выбор,
+      // и показывать его вместо нового — врать. Пока считается новый, число
+      // гаснет, но остаётся на месте: исчезнувшая цифра читается как поломка.
+      const doors = doorCount(state);
+      const q = state.quote;
+      const shown = q && typeof q.door_to_door === 'number' && q.door_points === doors
+        ? q.door_to_door : unit * doors;
+      sumRow.hidden = doors === 0;
+      if (doors === 0) sumBox.clear('');
+      else sumBox.set(shown);
+      sumVal.classList.toggle('is-stale', doors > 0 && state.priceState === 'wait');
+      note.hidden = doors > 0;
+      app.panel.refresh();
+    }
+
+    function addrText(r, p, has) {
+      r.addr.textContent = has ? (p.addr || t('order.on_map')) : t('pts.no_addr');
+      // Про подъём к двери строке говорить нечего: его переключатель стоит
+      // прямо под ней, а место лучше отдать подсказке, чего ещё не хватает.
+      const line = has ? detailsLine(p, { door: false }) : '';
+      r.line.textContent = line || t('pts.fill');
+      r.line.classList.toggle('is-empty', !line);
+    }
+
+    return { name: 'details', node, update };
+  }
+
   /* ── шаг «машина» ────────────────────────────────────────────────────── */
 
   function stepTariff() {
@@ -950,6 +1371,7 @@ export function mountOrder(app) {
 
     const node = el('div', { className: 'sg-step' },
       el('div', { className: 'sg-head' },
+        iconBtn('back', 'sg-back', t('common.back'), () => store.set({ step: 'details' })),
         el('div', { className: 'sg-head__text' },
           el('div', { className: 'sg-head__title' }, t('order.tariff_choose')))),
       body,
@@ -1162,7 +1584,10 @@ export function mountOrder(app) {
 
   /* ── сборка ──────────────────────────────────────────────────────────── */
 
-  const BUILD = { addr: stepAddr, tariff: stepTariff, confirm: stepConfirm };
+  const BUILD = {
+    addr: stepAddr, details: stepDetails, tariff: stepTariff, confirm: stepConfirm,
+  };
+  const ORDER = ['addr', 'details', 'tariff', 'confirm'];
 
   function render(state, back) {
     if (!view || view.name !== state.step) {
@@ -1177,9 +1602,11 @@ export function mountOrder(app) {
     syncMap(state);
   }
 
+  /* Шаг назад анимируем в обратную сторону: движение подсказывает, куда человек
+     идёт, не хуже стрелки в шапке. */
   store.on((state, prev) => {
     if (dead) return;
-    render(state, state.step === 'addr' && prev.step !== 'addr');
+    render(state, ORDER.indexOf(state.step) < ORDER.indexOf(prev.step));
   });
 
   /* Подставляем адрес подачи по геолокации: без разрешения ничего не спрашиваем
@@ -1205,7 +1632,9 @@ export function mountOrder(app) {
   }
 
   render(store.get(), false);
-  guessOrigin();
+  // Заготовка из истории уже с адресами: считаем цену сразу, геолокацию не трогаем.
+  if (draftPoints) schedulePrice();
+  else guessOrigin();
 
   return {
     relang() {

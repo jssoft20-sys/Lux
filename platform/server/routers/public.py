@@ -348,6 +348,11 @@ def _order_points(ctx, lang):
             'comment': _str(item.get('comment'), 300),
             'phone': phone,
             'name': _str(item.get('name'), 80),
+            # Надбавку считаем по строке допуслуги, но флажок у точки хранить надо
+            # отдельно: без него курьер видит сумму и не понимает, к какой двери
+            # подниматься, а к какой машину можно не покидать.
+            'door_to_door': bool(item.get('door_to_door')),
+            'lift': _str(item.get('lift'), 8),
         })
 
     if len(out) < 2:
