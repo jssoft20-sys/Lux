@@ -99,6 +99,15 @@ async function run() {
     await page.waitForTimeout(1800);
     const title = await page.title();
     ok('клиент: страница загрузилась', !!title, `заголовок «${title}»`);
+
+    // Первый заход встречает подсказкой. Пока она на экране, до языка и адресов
+    // не дотянуться — ни прогону, ни человеку, — поэтому закрываем как человек.
+    const hello = page.locator('button:has-text("Понятно"), button:has-text("Пропустить"), '
+                             + 'button:has-text("Түшүнүктүү"), button:has-text("Өткөрүү")').first();
+    if (await hello.count()) {
+      await hello.click({ force: true }).catch(() => {});
+      await page.waitForTimeout(600);
+    }
     const hasMap = await page.locator('.sg-map, #map, [data-map]').count();
     ok('клиент: карта на экране', hasMap > 0);
     const hasSheet = await page.locator('.sheet, .sg-sheet, [data-sheet]').count();

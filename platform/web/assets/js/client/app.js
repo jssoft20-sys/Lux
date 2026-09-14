@@ -18,7 +18,9 @@ import {
   t, tp, has, setLang, getLang, onLangChange, applyTo, extend, LANGS,
 } from '../core/i18n.js';
 import { createMap, pin } from '../core/map.js';
-import { el, toast, sheet, confirm, haptic, skeleton, mountStars } from '../core/ui.js';
+import {
+  el, toast, sheet, confirm, haptic, skeleton, mountStars, copyText,
+} from '../core/ui.js';
 import { createRouter } from '../core/router.js';
 import {
   setTimeZone, money, distance, duration, dateTime, date as fmtDate,
@@ -62,6 +64,68 @@ extend({
     'me.forgot': 'Готово. Больше мы вас не помним',
     'me.support_call': 'Позвонить в поддержку',
     'me.wa_hello': 'Здравствуйте! У меня вопрос по заказу машины.',
+
+    'bn.title': 'Бонусы',
+    'bn.sub': 'Кэшбек и приглашения',
+    'bn.balance': 'На бонусном счету',
+    'bn.empty': 'Бонусов пока нет',
+    'bn.how': 'Возвращаем {percent}% с каждой поездки. Бонусами можно закрыть до {share}% заказа.',
+    'bn.off': 'Бонусы сейчас выключены. Кэшбек не начисляется и не списывается.',
+    'bn.unknown': 'Бонусы откроются, когда вы оформите заказ с этого телефона.',
+    'bn.burn': 'Сгорят {date}, если не заказывать',
+    'bn.burn_soon': 'Сгорят {date}. Закажите машину — и срок сдвинется',
+    'bn.invite': 'Ваш код приглашения',
+    'bn.invite_gain': 'Другу {friend} сразу, вам {owner} — после его первой поездки',
+    'bn.invite_gain_short': 'Другу {friend}, вам {owner}',
+    'bn.share_text': 'Заказываю машину в «{service}». Мой код {code} — вам сразу {sum} '
+      + 'на первую поездку.',
+    'bn.copied': 'Код с ссылкой скопированы — отправьте другу',
+    'bn.waiting': 'Ждём первую поездку друзей: {n}',
+    'bn.done_n': 'Друзей уже съездило: {n}',
+    'bn.have_code': 'Пришёл по коду друга?',
+    'bn.code_ph': 'Код из шести знаков',
+    'bn.apply': 'Применить код',
+    'bn.applied': 'Готово, {sum} уже на счету',
+    'bn.history': 'Движение бонусов',
+    'bn.history_empty': 'Здесь появятся начисления и списания.',
+    'bn.spend': 'Списать бонусы',
+    'bn.spend_on': 'Спишем {sum} с бонусного счёта',
+    'bn.spend_rest': 'Останется {sum}',
+    'bn.spend_none': 'Бонусов пока нет. С этой поездки вернётся {sum}',
+    'bn.spend_zero': 'По этому заказу списать нечего',
+    'bn.spend_cap': 'По этому заказу можно списать до {sum}',
+    'bn.spend_short': 'До полного списания не хватает {sum}',
+    'bn.spend_total': 'К оплате',
+    'bn.spend_keep': 'Бонусы останутся на счету',
+
+    'tip.title': 'Как это работает',
+    'tip.one': 'Два адреса — и цена сразу на экране, без звонков и торга.',
+    'tip.two': 'Машину видно на карте, время подачи считается вживую.',
+    'tip.three': 'С каждой поездки возвращаем {percent}% бонусами.',
+    'tip.three_plain': 'Заказы, чеки и любимые адреса остаются в вашем профиле.',
+    'tip.ok': 'Понятно, поехали',
+    'tip.skip': 'Пропустить',
+
+    'fav.group': 'Дом и работа',
+    'fav.home': 'Дом',
+    'fav.work': 'Работа',
+    'fav.set_home': 'Сделать домом',
+    'fav.set_work': 'Сделать работой',
+    'fav.saved_home': 'Адрес сохранён как дом',
+    'fav.saved_work': 'Адрес сохранён как работа',
+    'fav.drop': 'Убрать',
+    'fav.dropped': 'Убрали из любимых',
+    'fav.hint': 'Отметьте второй адрес — и поездка между ними будет в одно касание.',
+    'fav.empty': 'Откройте любой заказ в истории и отметьте дом и работу — '
+      + 'они встанут в начало подсказок адреса.',
+    'fav.ride_home': 'Домой',
+    'fav.ride_work': 'На работу',
+    'fav.ride_sub': '{from} → {to}',
+
+    'again.repeat': 'Повторить заказ',
+    'again.live': 'Заказ в работе',
+    'again.live_sub': 'Смотреть на карте',
+    'again.hide': 'Скрыть подсказку',
   },
   ky: {
     'me.noname': 'Аты жок',
@@ -95,6 +159,69 @@ extend({
     'me.forgot': 'Болду. Эми сизди эстебейбиз',
     'me.support_call': 'Колдоо кызматына чалуу',
     'me.wa_hello': 'Саламатсызбы! Унаа заказы боюнча суроом бар.',
+
+    'bn.title': 'Бонустар',
+    'bn.sub': 'Кэшбек жана чакыруу',
+    'bn.balance': 'Бонус эсебиңизде',
+    'bn.empty': 'Азырынча бонус жок',
+    'bn.how': 'Ар бир сапардан {percent}% кайтарабыз. Заказдын {share}% чейинкисин '
+      + 'бонус менен жабууга болот.',
+    'bn.off': 'Бонустар азыр өчүк. Кэшбек кошулбайт, эсептен да алынбайт.',
+    'bn.unknown': 'Ушул телефондон заказ бергениңизде бонустар ачылат.',
+    'bn.burn': 'Заказ болбосо, {date} күйүп кетет',
+    'bn.burn_soon': '{date} күйүп кетет. Унаа заказ кылсаңыз, мөөнөтү жылат',
+    'bn.invite': 'Чакыруу кодуңуз',
+    'bn.invite_gain': 'Досуңузга {friend} дароо, сизге {owner} — ал биринчи жолу жүргөндөн кийин',
+    'bn.invite_gain_short': 'Досуңузга {friend}, сизге {owner}',
+    'bn.share_text': '«{service}» менен унаа заказ кылам. Менин кодум {code} — '
+      + 'биринчи сапарыңызга дароо {sum}.',
+    'bn.copied': 'Код менен шилтеме көчүрүлдү — досуңузга жөнөтүңүз',
+    'bn.waiting': 'Биринчи сапарын күтүп жаткан дос: {n}',
+    'bn.done_n': 'Жүрүп чыккан дос: {n}',
+    'bn.have_code': 'Достун коду менен келдиңизби?',
+    'bn.code_ph': 'Алты белгилүү код',
+    'bn.apply': 'Кодду колдонуу',
+    'bn.applied': 'Болду, {sum} эсепке түштү',
+    'bn.history': 'Бонустун кыймылы',
+    'bn.history_empty': 'Кошулган жана алынган сумма ушул жерден көрүнөт.',
+    'bn.spend': 'Бонус менен төлөө',
+    'bn.spend_on': 'Бонус эсебинен {sum} кетет',
+    'bn.spend_rest': '{sum} калат',
+    'bn.spend_none': 'Азырынча бонус жок. Бул сапардан {sum} кайтат',
+    'bn.spend_zero': 'Бул заказга бонус кетпейт',
+    'bn.spend_cap': 'Бул заказга {sum} чейин бонус кетет',
+    'bn.spend_short': 'Толук жабууга {sum} жетишпей турат',
+    'bn.spend_total': 'Төлөөгө',
+    'bn.spend_keep': 'Бонустар эсепте калат',
+
+    'tip.title': 'Кантип иштейт',
+    'tip.one': 'Эки дарек — баасы дароо экранда, чалуунун да, сүйлөшүүнүн да кереги жок.',
+    'tip.two': 'Унаа картадан көрүнөт, келүү убактысы тирүүлөй эсептелет.',
+    'tip.three': 'Ар бир сапардан {percent}% бонус кайтарабыз.',
+    'tip.three_plain': 'Заказдар, чектер жана сүйүктүү даректер профилиңизде калат.',
+    'tip.ok': 'Түшүндүм, кеттик',
+    'tip.skip': 'Өткөрүп жиберүү',
+
+    'fav.group': 'Үй жана жумуш',
+    'fav.home': 'Үй',
+    'fav.work': 'Жумуш',
+    'fav.set_home': 'Үй кылып коюу',
+    'fav.set_work': 'Жумуш кылып коюу',
+    'fav.saved_home': 'Дарек үй катары сакталды',
+    'fav.saved_work': 'Дарек жумуш катары сакталды',
+    'fav.drop': 'Алып салуу',
+    'fav.dropped': 'Сүйүктүүлөрдөн алынды',
+    'fav.hint': 'Экинчи даректи да белгилеңиз — ортосундагы сапар бир басууда болот.',
+    'fav.empty': 'Тарыхтан каалаган заказды ачып, үйүңүз менен жумушуңузду белгилеңиз — '
+      + 'алар дарек тизмесинин башына турат.',
+    'fav.ride_home': 'Үйгө',
+    'fav.ride_work': 'Жумушка',
+    'fav.ride_sub': '{from} → {to}',
+
+    'again.repeat': 'Заказды кайталоо',
+    'again.live': 'Заказ иштеп жатат',
+    'again.live_sub': 'Картадан көрүү',
+    'again.hide': 'Жашыруу',
   },
 });
 
@@ -105,11 +232,16 @@ export const KEY_ME = 'sg_me';
 export const KEY_CLIENT = 'sg_client';
 export const KEY_RECENT = 'sg_recent';
 export const KEY_THEME = 'sg_theme';
+export const KEY_SEEN = 'sg_seen';       // подсказку при первом заходе уже показали
+export const KEY_PLACES = 'sg_places';   // любимые адреса: дом и работа
 
 const HISTORY_PAGE = 20;
 const NEAR_BOTTOM = 260;      // за сколько пикселей до конца списка просим следующую страницу
 const RECENT_MAX = 8;         // столько адресов помнит поиск (столько же, сколько address.js)
 const CLAIM_RETRY_S = 120;    // ключ клиента не дался — не долбим сервер чаще, чем раз в две минуты
+const WARM_ORDERS = 5;        // столько последних заказов смотрим на старте
+const BONUS_TTL_S = 45;       // столько секунд считаем баланс бонусов свежим
+const TIP_DELAY_MS = 900;     // даём первому экрану встать, и только потом подсказываем
 
 /* Коды ошибок, у которых имя в словаре не совпадает с кодом сервера. */
 const ERR_ALIAS = {
@@ -332,6 +464,18 @@ export function dur(name, fallback) {
   return raw.endsWith('ms') ? n : n * 1000;
 }
 
+/** Префикс установки: сервис может стоять и в корне, и в подпапке (site.kg/go/).
+    Тот же источник, что у core/api.js, — иначе ссылки уйдут на чужой сайт. */
+export function basePath() {
+  const raw = String(window.SG_BASE || '/');
+  return raw.endsWith('/') ? raw : raw + '/';
+}
+
+/** Адрес сайта целиком: с него начинаются все ссылки, которыми делятся. */
+export function siteUrl(tail = '') {
+  return location.origin + basePath() + String(tail || '').replace(/^\/+/, '');
+}
+
 /** Человеческий текст ошибки: с сервера берём его пояснение, из сети — своё. */
 export function errText(e) {
   if (!e) return t('err.unknown');
@@ -393,6 +537,11 @@ const ICONS = {
   star: '<path d="M12 17.1l-5.3 3.1 1.4-6L3.4 10l6.1-.5L12 3.9l2.5 5.6 6.1.5-4.7 4.2 1.4 6z" fill="currentColor"/>',
   wa: '<path d="M12 3.4a8.5 8.5 0 0 0-7.3 12.8L3.4 20.6l4.5-1.2A8.5 8.5 0 1 0 12 3.4zm4.7 11.9c-.2.6-1.2 1.1-1.7 1.2-.4.1-1 .1-1.6-.1a12 12 0 0 1-5.2-4.5c-.4-.6-.7-1.3-.7-2 0-.7.4-1.2.6-1.4.2-.2.4-.3.6-.3h.4c.2 0 .3 0 .5.4l.7 1.6c.1.2 0 .4-.1.5l-.3.4c-.1.1-.2.3-.1.5.3.5.7 1.1 1.2 1.6.6.5 1.1.8 1.6 1 .2.1.4 0 .5-.1l.5-.6c.1-.2.3-.2.5-.1l1.5.8c.2.1.3.2.3.3 0 .1 0 .5-.2.8z" fill="currentColor"/>',
   trash: '<path d="M5.6 7.2h12.8M9.4 7.2V5.6c0-.6.5-1.1 1.1-1.1h3c.6 0 1.1.5 1.1 1.1v1.6M7.2 7.2l.8 11.2c0 .6.5 1.1 1.1 1.1h5.8c.6 0 1.1-.5 1.1-1.1l.8-11.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+  gift: '<path d="M4.4 10.6h15.2v8.3a1.1 1.1 0 0 1-1.1 1.1H5.5a1.1 1.1 0 0 1-1.1-1.1z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M3.4 7.3h17.2v3.3H3.4z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 7.3V20" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 7.3S10.8 3.6 8.6 3.6a2 2 0 0 0 0 3.7zM12 7.3s1.2-3.7 3.4-3.7a2 2 0 0 1 0 3.7z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>',
+  home: '<path d="M4.2 10.8 12 4.4l7.8 6.4V19a1.1 1.1 0 0 1-1.1 1.1h-3.6v-5.3H8.9v5.3H5.3A1.1 1.1 0 0 1 4.2 19z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>',
+  work: '<path d="M3.6 8.4h16.8v10a1.1 1.1 0 0 1-1.1 1.1H4.7a1.1 1.1 0 0 1-1.1-1.1z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 8.4V6.2c0-.6.5-1.1 1.1-1.1h3.8c.6 0 1.1.5 1.1 1.1v2.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M3.6 13.2h16.8" fill="none" stroke="currentColor" stroke-width="1.7"/>',
+  repeat: '<path d="M5 9.4a7 7 0 0 1 11.6-2.6l2 1.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M19 14.6a7 7 0 0 1-11.6 2.6l-2-1.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M18.9 4.6v4.3h-4.3M5.1 19.4v-4.3h4.3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+  share: '<circle cx="17.6" cy="6.2" r="2.6" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="6.4" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="17.6" cy="17.8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8.8 10.8 15.2 7.4M8.8 13.2l6.4 3.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
 };
 
 /** Разметка иконки для вставки через html. Незнакомое имя рисуем кружком:
@@ -424,6 +573,578 @@ function iconNode(name, size) {
     svg.setAttribute('height', String(size));
   }
   return box;
+}
+
+/* Голый svg-узел без обёртки: нужен там, где правило CSS достаёт иконку
+   прямым потомком кнопки. */
+function svgIcon(name) {
+  return el('span', { html: icon(name) }).firstElementChild;
+}
+
+/* ─────────────────────────────────────────────────────── свои стили
+
+   Бонусы, подсказка над шторкой и любимые адреса — это только клиентская
+   оболочка, поэтому и правила они везут с собой: client.css правят соседние
+   модули, и лезть туда за четырьмя блоками незачем. Цвета — только токены,
+   тогда обе темы работают сами. */
+const OWN_CSS = `
+/* ── подсказка, которая висит над шторкой ──────────────────────────────── */
+
+.sg-flash {
+  position: absolute;
+  left: var(--sp-3);
+  /* справа оставляем колонку кнопок карты — перекрывать их нельзя */
+  right: calc(var(--sp-3) + 56px);
+  bottom: calc(max(0px, var(--sg-panel-h, 240px) - var(--sg-panel-off, 0px)) + var(--sp-3));
+  z-index: 14;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-3);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease);
+}
+.sg-flash--in { opacity: 1; transform: none; }
+
+.sg-flash__go {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 44px;
+  text-align: left;
+}
+.sg-flash__go:active { transform: scale(.985); }
+
+.sg-flash__ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-full);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sg-flash__ico > svg { width: 19px; height: 19px; }
+
+.sg-flash__text { flex: 1 1 auto; min-width: 0; }
+
+.sg-flash__title {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.25;
+}
+.sg-flash__sub {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+}
+
+.sg-flash__x {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: var(--muted-2);
+}
+.sg-flash__x:active { color: var(--text); transform: scale(.92); }
+.sg-flash__x > svg { width: 17px; height: 17px; }
+
+/* Поиск адреса разворачивает шторку на весь экран — подсказке там не место. */
+.sg-app.is-deep .sg-flash { display: none; }
+
+/* ── бонусный счёт ─────────────────────────────────────────────────────── */
+
+.sg-bal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-3) 0 var(--sp-2);
+}
+.sg-bal__val {
+  font-family: var(--font-display);
+  font-size: var(--fs-display);
+  font-weight: 800;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.sg-bal__name { color: var(--muted); font-size: var(--fs-sm); }
+.sg-bal__burn {
+  max-width: 34ch;
+  color: var(--warn);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  text-align: center;
+}
+
+.sg-code {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-3);
+  border: 1px dashed var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+}
+.sg-code__val {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  letter-spacing: .14em;
+}
+.sg-code__btn { flex: none; min-height: 44px; }
+
+/* ── переключатель «списать бонусы» в заказе ───────────────────────────── */
+
+.sg-bonus { display: flex; flex-direction: column; }
+
+.sg-bonus__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 56px;
+  padding: var(--sp-2) 0;
+  cursor: pointer;
+}
+
+.sg-bonus__ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-full);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sg-bonus__ico > svg { width: 20px; height: 20px; }
+
+.sg-bonus__text { flex: 1 1 auto; min-width: 0; }
+
+.sg-bonus__title {
+  display: block;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1.3;
+}
+/* Это не заголовок строки, а объяснение — пусть переносится целиком:
+   обрезанное многоточием «не хватает…» ничего не объясняет. */
+.sg-bonus__sub {
+  display: block;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+}
+.sg-bonus__sub--warn { color: var(--warn); }
+
+.sg-bonus__total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line-soft);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.sg-bonus__total b {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* ── подсказка при первом заходе ───────────────────────────────────────── */
+
+.sg-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+}
+.sg-tip__ico { flex: none; width: 30px; font-size: 22px; line-height: 1.3; text-align: center; }
+.sg-tip__text { flex: 1 1 auto; min-width: 0; font-size: var(--fs-sm); line-height: 1.45; }
+
+/* ── отметки «дом» и «работа» в карточке заказа ────────────────────────── */
+
+.sg-mark { display: flex; gap: var(--sp-2); padding: var(--sp-1) 0 var(--sp-2) 50px; }
+
+.sg-mark__b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.sg-mark__b > svg { width: 17px; height: 17px; }
+.sg-mark__b:active { transform: scale(.96); }
+.sg-mark__b.is-on { background: var(--accent-soft); color: var(--accent); }
+
+@media (max-width: 380px) {
+  .sg-flash { right: calc(var(--sp-3) + 52px); }
+}
+
+/* На широком экране шторка стоит слева, подсказке хватает места рядом с ней. */
+@media (min-width: 620px) {
+  .sg-flash { left: var(--sp-4); right: auto; width: 420px; }
+}
+`;
+
+let cssDone = false;
+
+function ensureCss() {
+  if (cssDone || !document.head) return;
+  cssDone = true;
+  document.head.appendChild(el('style', { id: 'sg-client-css', text: OWN_CSS }));
+}
+
+/* ─────────────────────────────────────────────────────── бонусы: данные
+
+   Бонусы спрашивают из двух мест: экран профиля показывает весь счёт целиком,
+   а экран заказа — только «сколько можно списать по этой сумме». Второй запрос
+   короткий и уходит на каждое изменение цены, поэтому он и живёт отдельно.
+   Баланс держим в памяти ненадолго: между открытием профиля и оформлением
+   заказа он не меняется, а лишний запрос на медленной связи заметен. */
+
+const bonusMem = { data: null, at: 0, wait: null };
+
+/** Включены ли бонусы вообще — это решает админ, а не устройство. */
+export function bonusOn(cfg) {
+  const b = (cfg && cfg.bonus) || {};
+  return b.enabled !== false;
+}
+
+function bonusForget() {
+  bonusMem.data = null;
+  bonusMem.at = 0;
+}
+
+/**
+ * Весь бонусный счёт: баланс, код приглашения, сгорание и история.
+ * Без ключа клиента вернёт null — человека мы ещё не знаем.
+ */
+export function loadBonus(force) {
+  const token = clientToken();
+  if (!token) return Promise.resolve(null);
+  const now = Math.floor(Date.now() / 1000);
+  if (!force && bonusMem.data && now - bonusMem.at < BONUS_TTL_S) {
+    return Promise.resolve(bonusMem.data);
+  }
+  if (bonusMem.wait) return bonusMem.wait;
+  bonusMem.wait = api.get('/client/bonus', { token, lang: getLang() }, { auth: false })
+    .then((res) => {
+      bonusMem.data = res || null;
+      bonusMem.at = Math.floor(Date.now() / 1000);
+      bonusMem.wait = null;
+      return bonusMem.data;
+    })
+    .catch((e) => {
+      bonusMem.wait = null;
+      throw e;
+    });
+  return bonusMem.wait;
+}
+
+/** Что уже знаем о бонусах, без запроса. Нужен экрану заказа до первой цены. */
+export function bonusKnown() {
+  return bonusMem.data;
+}
+
+/**
+ * Сколько бонусов реально уйдёт в заказ такой суммы. Считает сервер: он один
+ * знает и остаток на счету, и долю заказа, которую разрешено закрыть.
+ */
+export function bonusMaxFor(total, opts = {}) {
+  const token = clientToken();
+  const sum = Math.max(0, Math.round(Number(total) || 0));
+  if (!token || sum <= 0) {
+    return Promise.resolve({ enabled: false, balance: 0, max: 0, cap: 0 });
+  }
+  return api.get('/client/bonus/max', { token, total: sum }, {
+    auth: false, signal: opts.signal || null,
+  });
+}
+
+/** Применить код друга. Возвращает то, что ответил сервер, — вместе с суммой. */
+export function applyInviteCode(code) {
+  const token = clientToken();
+  const clean = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16);
+  if (!token || clean.length < 4) {
+    return Promise.reject(new Error(t('bn.code_ph')));
+  }
+  return api.post('/client/bonus/invite', { token, code: clean, lang: getLang() }, { auth: false })
+    .then((res) => {
+      bonusForget();
+      return res;
+    });
+}
+
+/* ─────────────────────────────────────────────────────── любимые адреса */
+
+/* Дом и работа: {home: точка, work: точка}. Точка — тот же объект, что в заказе,
+   поэтому её можно положить и в «недавние», и в заготовку нового заказа. */
+export function readPlaces() {
+  const v = readJson(KEY_PLACES, {});
+  return v && typeof v === 'object' ? v : {};
+}
+
+function cleanPlace(p) {
+  if (!p || p.lat == null || p.lng == null || !p.addr) return null;
+  return {
+    addr: String(p.addr), subtitle: p.subtitle || '',
+    lat: p.lat, lng: p.lng,
+    entrance: p.entrance || '', flat: p.flat || '', floor: p.floor || '',
+    intercom: p.intercom || '', comment: p.comment || '',
+  };
+}
+
+/**
+ * Отметить адрес домом или работой. Кроме своего списка кладём точку в
+ * «недавние»: их читает поиск адреса, и дом оказывается первой строкой
+ * подсказок — это и есть «в один тап».
+ */
+export function setPlace(kind, point) {
+  const key = kind === 'work' ? 'work' : 'home';
+  const places = readPlaces();
+  const clean = cleanPlace(point);
+  if (clean) places[key] = clean;
+  else delete places[key];
+  writeJson(KEY_PLACES, places);
+  if (clean) rememberRecent([clean]);
+  return places;
+}
+
+/** Совпадают ли адрес из истории и отмеченное место: сверяем по координатам. */
+function samePlace(a, b) {
+  if (!a || !b || a.lat == null || b.lat == null) return false;
+  return Math.abs(a.lat - b.lat) < 0.0002 && Math.abs(a.lng - b.lng) < 0.0002;
+}
+
+/* ─────────────────────────────────────────────────────── списание в заказе */
+
+/* Человек один раз выключил списание — значит, копит. Помним это до конца
+   сеанса, иначе каждый пересчёт цены снова включал бы переключатель. */
+let wantSpend = true;
+
+/**
+ * Переключатель «Списать бонусы» для экрана заказа.
+ *
+ * Сколько можно списать, знает только сервер: у него и остаток на счету, и
+ * доля заказа, которую разрешено закрыть бонусами. Поэтому на каждое изменение
+ * цены уходит один короткий запрос, а предыдущий отменяется — иначе ответы
+ * обгоняли бы друг друга и на экране оставалась цифра от старой суммы.
+ *
+ * Возвращает {node, setTotal(тыйыны), value(), refresh(), destroy()}.
+ * value() — сколько списать, ровно это число уходит в поле bonus_spend заказа.
+ */
+export function mountBonusSpend(app, opts = {}) {
+  ensureCss();
+
+  const cfg = (app && app.cfg) || {};
+  const percent = Math.max(0, Number((cfg.bonus || {}).percent) || 0);
+  const onChange = typeof opts.onChange === 'function' ? opts.onChange : () => {};
+
+  const state = {
+    total: 0, balance: 0, max: 0, cap: 0,
+    ready: false,     // сервер уже сказал, сколько можно списать
+    pending: false,   // цена поменялась, ответ по новой сумме ещё не пришёл
+    live: false,      // есть что показывать: бонусы включены и человек нам знаком
+  };
+
+  const title = el('span', { className: 'sg-bonus__title' }, t('bn.spend'));
+  const sub = el('span', { className: 'sg-bonus__sub' });
+  const warn = el('span', { className: 'sg-bonus__sub sg-bonus__sub--warn', hidden: true });
+  const input = el('input', { type: 'checkbox' });
+  const sum = el('b');
+  const totalRow = el('div', { className: 'sg-bonus__total', hidden: true },
+    el('span', null, t('bn.spend_total')), sum);
+
+  const row = el('label', { className: 'sg-bonus__row' },
+    el('span', { className: 'sg-bonus__ico', html: icon('gift') }),
+    el('span', { className: 'sg-bonus__text' }, title, sub, warn),
+    el('span', { className: 'switch' }, input, el('span', { className: 'switch__track' })));
+
+  const node = el('div', { className: 'sg-bonus' }, row, totalRow);
+  node.hidden = true;
+
+  let timer = 0;
+  let ctrl = null;
+  let dead = false;
+  let last = -1;             // сумма, по которой уже спросили сервер
+
+  /** Сколько уйдёт в заказ прямо сейчас. Пока ответа по текущей сумме нет —
+      ноль: своей арифметике в чужих деньгах тут верить нельзя. */
+  function spend() {
+    return state.ready && !state.pending && input.checked ? state.max : 0;
+  }
+
+  /* Что написано под заголовком. Молча выключенный переключатель — худшее, что
+     можно сделать: человек видит бонусы в профиле и не понимает, куда они
+     делись. Поэтому у каждого «нельзя» здесь есть своя строка. */
+  function paint() {
+    node.hidden = !state.live;
+    if (!state.live) {
+      totalRow.hidden = true;
+      return;
+    }
+
+    const waiting = state.pending || !state.ready;
+    input.disabled = waiting || state.max <= 0;
+    // Пока ждём ответ, положение переключателя не трогаем: моргание
+    // «выключили — включили» на каждое изменение цены читается как сбой.
+    input.checked = waiting ? wantSpend : (wantSpend && state.max > 0);
+
+    const used = spend();
+    if (waiting) {
+      sub.textContent = t('common.loading');
+    } else if (state.balance <= 0) {
+      // Бонусов нет — вместо глухого «нельзя» показываем, сколько вернётся.
+      const back = percent > 0 ? Math.floor(state.total * percent / 100 / 100) * 100 : 0;
+      sub.textContent = back > 0
+        ? t('bn.spend_none', { sum: money(back) })
+        : t('bn.empty');
+    } else if (state.max <= 0) {
+      sub.textContent = t('bn.spend_zero');
+    } else if (used > 0) {
+      sub.textContent = t('bn.spend_on', { sum: money(used) })
+        + (state.balance > used ? ' · ' + t('bn.spend_rest', { sum: money(state.balance - used) }) : '');
+    } else {
+      sub.textContent = t('bn.spend_cap', { sum: money(state.max) }) + ' · ' + t('bn.spend_keep');
+    }
+
+    // Бонусов меньше, чем разрешает заказ: списываем что есть и честно говорим,
+    // сколько не хватило до потолка. Переключатель при этом остаётся живым.
+    const short = !waiting && state.balance > 0 && state.balance < state.cap
+      ? state.cap - state.balance : 0;
+    warn.hidden = !short;
+    if (short) warn.textContent = t('bn.spend_short', { sum: money(short) });
+
+    if (used > 0) {
+      sum.textContent = money(Math.max(0, state.total - used));
+      totalRow.hidden = false;
+    } else {
+      totalRow.hidden = true;
+    }
+
+    input.setAttribute('aria-label', t('bn.spend') + '. ' + sub.textContent);
+  }
+
+  function push() {
+    paint();
+    if (!dead) onChange(spend());
+  }
+
+  async function ask(total) {
+    if (ctrl) ctrl.abort();
+    ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    try {
+      const res = await bonusMaxFor(total, { signal: ctrl ? ctrl.signal : null });
+      if (dead || total !== state.total) return;
+      state.balance = Math.max(0, Number(res.balance) || 0);
+      state.max = Math.max(0, Number(res.max) || 0);
+      state.cap = Math.max(0, Number(res.cap) || 0);
+      state.live = res.enabled !== false && bonusOn(cfg);
+      state.ready = true;
+      state.pending = false;
+      push();
+    } catch (e) {
+      if (dead || (e && e.code === 'aborted')) return;
+      // Не спросили — значит, ничего не списываем. Переключатель гаснет, но с
+      // объяснением: связь вернётся — цифра приедет со следующим пересчётом.
+      state.ready = false;
+      state.pending = false;
+      state.max = 0;
+      last = -1;
+      push();
+    }
+  }
+
+  input.addEventListener('change', () => {
+    wantSpend = input.checked;
+    haptic();
+    push();
+  });
+
+  /** Новая сумма заказа. Ноль прячет переключатель: списывать не из чего. */
+  function setTotal(total) {
+    const value = Math.max(0, Math.round(Number(total) || 0));
+    if (value === state.total) return;
+    state.total = value;
+    clearTimeout(timer);
+
+    if (!clientToken() || !bonusOn(cfg) || value <= 0) {
+      state.live = false;
+      state.ready = false;
+      state.pending = false;
+      push();
+      return;
+    }
+    state.live = true;
+
+    // Эту сумму сервер уже посчитал — ответ у нас на руках, спрашивать нечего.
+    if (value === last && state.ready) {
+      state.pending = false;
+      push();
+      return;
+    }
+
+    // Цена пересчитывается на каждое касание счётчика — ждём, пока человек
+    // закончит, и только потом идём на сервер.
+    state.pending = true;
+    timer = setTimeout(() => {
+      if (dead || value !== state.total) return;
+      last = value;
+      ask(value);
+    }, 260);
+    push();
+  }
+
+  paint();
+
+  return {
+    node,
+    setTotal,
+    value: spend,
+    /** Пересчитать заново: баланс мог измениться, пока человек собирал заказ. */
+    refresh() {
+      last = -1;
+      if (state.total <= 0) return;
+      state.pending = true;
+      paint();
+      ask(state.total);
+    },
+    destroy() {
+      dead = true;
+      clearTimeout(timer);
+      if (ctrl) ctrl.abort();
+      node.remove();
+    },
+  };
 }
 
 /* ─────────────────────────────────────────────────────── кнопка профиля */
@@ -685,11 +1406,12 @@ function miniMap(app, coords, line) {
  * ровно туда, откуда ушёл.
  */
 function openProfileSheet(app, startWith) {
+  ensureCss();
   // Состояние живёт рядом со шторкой, а не внутри вида: виды перерисовываются
   // на смене языка и после сохранения имени, а загруженные страницы истории
   // при этом должны остаться на месте.
   const state = {
-    view: 'profile',      // profile | history | card
+    view: 'profile',      // profile | history | card | bonus
     profile: null,
     loading: true,
     error: null,
@@ -700,6 +1422,9 @@ function openProfileSheet(app, startWith) {
     listing: false,
     listError: null,
     card: null,           // открытый заказ: {item, order}
+    bonus: bonusKnown(),  // весь бонусный счёт
+    bonusLoading: false,
+    bonusError: null,
   };
 
   let alive = true;
@@ -752,6 +1477,7 @@ function openProfileSheet(app, startWith) {
       show(buildCard);
       loadCard(item);
     },
+    bonus: () => { state.view = 'bonus'; show(buildBonus); loadBonusState(); },
     close: () => ui.close(),
   };
 
@@ -827,6 +1553,22 @@ function openProfileSheet(app, startWith) {
     } catch (e) {
       /* не пришло — карточка и без разбивки полная, шуметь не о чем */
     }
+  }
+
+  /* Бонусный счёт. Тянем при каждом открытии экрана: сервер по дороге доначисляет
+     кэшбек по закрытым заказам, и показать вчерашний баланс было бы обидно. */
+  async function loadBonusState(force) {
+    if (state.bonusLoading || !clientToken()) return;
+    state.bonusLoading = true;
+    state.bonusError = null;
+    if (redraw) redraw();
+    try {
+      state.bonus = await loadBonus(force !== false);
+    } catch (e) {
+      state.bonusError = e;
+    }
+    state.bonusLoading = false;
+    if (alive && redraw) redraw();
   }
 
   /* ── профиль ─────────────────────────────────────────────────────────── */
@@ -909,7 +1651,23 @@ function openProfileSheet(app, startWith) {
       node.appendChild(linkRow('list', t('order.my_orders'),
         p.orders_count ? tp(p.orders_count, 'common.n_order') : t('common.empty'),
         { onClick: nav.history }));
+
+      // ── бонусы. Баланс показываем прямо в строке: ради одной цифры человек
+      // не должен открывать отдельный экран.
+      if (bonusOn(app.cfg)) {
+        const b = state.bonus;
+        const balance = b ? Math.max(0, Number(b.balance) || 0) : 0;
+        const sub = b
+          ? (balance > 0 ? money(balance) : t('bn.empty'))
+          : t('bn.sub');
+        node.appendChild(linkRow('gift', t('bn.title'), sub, {
+          accent: true, onClick: nav.bonus,
+        }));
+      }
     }
+
+    // ── дом и работа
+    node.appendChild(favouritesBlock());
 
     // ── язык и тема
     node.appendChild(group(t('common.settings')));
@@ -997,6 +1755,226 @@ function openProfileSheet(app, startWith) {
     toast(t('me.forgot'), { type: 'ok' });
   }
 
+  /* ── дом и работа ────────────────────────────────────────────────────── */
+
+  /* Отмечаются они в карточке заказа одним тапом, а пользуются ими здесь:
+     когда отмечены оба адреса, поездка между ними собирается одной кнопкой. */
+  function favouritesBlock() {
+    const box = el('div');
+    const places = readPlaces();
+    const home = places.home || null;
+    const work = places.work || null;
+    // Тому, кто у нас впервые, этот блок нечего показать: ни адресов, ни истории,
+    // из которой их отмечают. Пустой раздел только мешает.
+    if (!home && !work && !clientToken()) return box;
+
+    box.appendChild(group(t('fav.group')));
+    if (!home && !work) {
+      box.appendChild(el('p', { className: 'sheet__text' }, t('fav.empty')));
+      return box;
+    }
+
+    const saved = el('div', { className: 'sg-list' });
+    for (const [kind, place] of [['home', home], ['work', work]]) {
+      if (!place) continue;
+      const drop = iconBtn('trash', 'sg-back', t('fav.drop'), () => {
+        setPlace(kind, null);
+        haptic();
+        toast(t('fav.dropped'), { type: 'ok' });
+        if (redraw) redraw();
+      });
+      drop.style.marginLeft = '0';
+      saved.appendChild(el('div', { className: 'sg-item' },
+        el('span', { className: 'sg-item__icon', html: icon(kind) }),
+        el('span', { className: 'sg-item__text' },
+          el('span', { className: 'sg-item__title' }, t('fav.' + kind)),
+          el('span', { className: 'sg-item__sub' }, place.addr)),
+        drop));
+    }
+    box.appendChild(saved);
+
+    if (!home || !work) {
+      box.appendChild(el('p', { className: 'sheet__text' }, t('fav.hint')));
+      return box;
+    }
+
+    const ride = (from, to, label) => el('button', {
+      type: 'button', className: 'sg-item',
+      onClick: () => {
+        haptic(18);
+        ui.close();
+        app.startOrder({
+          points: [from, to], tariffId: 0, loaders: 0, extras: {}, comment: '',
+        });
+      },
+    },
+      el('span', { className: 'sg-item__icon sg-item__icon--accent', html: icon('car') }),
+      el('span', { className: 'sg-item__text' },
+        el('span', { className: 'sg-item__title' }, label),
+        el('span', { className: 'sg-item__sub' },
+           t('fav.ride_sub', { from: from.addr, to: to.addr }))),
+      el('span', { className: 'sg-opt__go', html: icon('go') }));
+
+    box.appendChild(el('div', { className: 'sg-list' },
+      ride(home, work, t('fav.ride_work')),
+      ride(work, home, t('fav.ride_home'))));
+    return box;
+  }
+
+  /* ── бонусы ──────────────────────────────────────────────────────────── */
+
+  function bonusMove(item) {
+    const amount = Number(item.amount) || 0;
+    const plus = amount > 0;
+    return el('div', { className: 'sg-item' },
+      el('span', {
+        className: 'sg-item__icon' + (plus ? ' sg-item__icon--accent' : ''),
+        html: icon(plus ? 'plus' : 'go'),
+      }),
+      el('span', { className: 'sg-item__text' },
+        el('span', { className: 'sg-item__title' }, item.text || ''),
+        el('span', { className: 'sg-item__sub' }, dateTime(item.at))),
+      el('span', {
+        className: 'sg-opt__total' + (plus ? ' t-accent' : ''),
+      }, (plus ? '+' : '−') + money(Math.abs(amount))));
+  }
+
+  /* Ссылкой делятся в мессенджере, поэтому отдаём человеческий текст целиком:
+     код отдельной строкой никто пересказывать не будет. */
+  function shareInvite(b) {
+    const service = (app.cfg.service && app.cfg.service.name) || 'Sprinter Go';
+    const text = t('bn.share_text', {
+      service, code: b.code || '', sum: money(b.invite_friend || 0),
+    });
+    const url = siteUrl();
+    haptic();
+    if (navigator.share) {
+      navigator.share({ title: service, text, url }).catch(() => {});
+      return;
+    }
+    copyText(text + ' ' + url, t('bn.copied'));
+  }
+
+  function inviteField(b) {
+    const field = textField(t('bn.have_code'), '', {
+      maxLength: 16, hint: t('bn.code_ph'), autocomplete: 'off',
+    });
+    field.input.setAttribute('autocapitalize', 'characters');
+    field.input.setAttribute('spellcheck', 'false');
+    const go = el('button', {
+      type: 'button', className: 'btn btn--ghost btn--lg btn--block',
+      onClick: async () => {
+        const code = field.input.value.trim();
+        if (code.length < 4) {
+          toast(t('bn.code_ph'), { type: 'err' });
+          field.input.focus();
+          return;
+        }
+        go.disabled = true;
+        try {
+          const res = await applyInviteCode(code);
+          haptic(20);
+          toast(t('bn.applied', { sum: money((res && res.amount) || 0) }), { type: 'ok' });
+          await loadBonusState(true);
+        } catch (e) {
+          toast(errText(e), { type: 'err' });
+          go.disabled = false;
+        }
+      },
+    }, t('bn.apply'));
+    return el('div', { className: 'col gap-3' }, field.node, go);
+  }
+
+  function buildBonus() {
+    const node = el('div');
+    node.appendChild(viewHead(t('bn.title'), t('bn.sub'), nav.profile, nav.close));
+
+    if (!clientToken()) {
+      node.appendChild(el('p', { className: 'sheet__text' }, t('bn.unknown')));
+      return { node };
+    }
+
+    const b = state.bonus;
+    if (!b) {
+      if (state.bonusLoading) {
+        const box = el('div', { style: { padding: 'var(--sp-5) 0' } });
+        skeleton(box, 4);
+        node.appendChild(box);
+      } else {
+        node.appendChild(el('div', { className: 'sg-fail' },
+          el('div', { className: 'sg-fail__text' }, errText(state.bonusError)),
+          el('button', {
+            type: 'button', className: 'btn btn--ghost',
+            onClick: () => loadBonusState(true),
+          }, t('common.retry'))));
+      }
+      return { node };
+    }
+
+    const balance = Math.max(0, Number(b.balance) || 0);
+
+    // ── баланс крупно и срок, до которого он живёт
+    let burn = null;
+    if (balance > 0 && b.expires_at) {
+      const when = fmtDate(b.expires_at);
+      burn = b.expire_soon
+        ? el('div', { className: 'sg-bal__burn' }, t('bn.burn_soon', { date: when }))
+        : el('div', { className: 'muted-2 t-xs ta-c' }, t('bn.burn', { date: when }));
+    }
+    node.appendChild(el('div', { className: 'sg-bal' },
+      el('div', { className: 'sg-bal__val' }, money(balance)),
+      el('div', { className: 'sg-bal__name' }, balance > 0 ? t('bn.balance') : t('bn.empty')),
+      burn));
+
+    node.appendChild(el('p', { className: 'sheet__text ta-c' },
+      b.enabled === false
+        ? t('bn.off')
+        : t('bn.how', { percent: rate(b.percent), share: rate(b.max_share) })));
+
+    // ── код приглашения: выгода объяснена одной строкой, кнопка одна
+    if (b.code) {
+      node.appendChild(group(t('bn.invite')));
+      node.appendChild(el('div', { className: 'sg-code' },
+        el('span', { className: 'sg-code__val' }, b.code),
+        // Иконку кладём прямым потомком кнопки: правило .btn > svg в
+        // components.css достаёт только их, а в обёртке svg растянется до 300×150.
+        el('button', {
+          type: 'button', className: 'btn btn--primary sg-code__btn',
+          onClick: () => shareInvite(b),
+        }, svgIcon('share'), t('common.share'))));
+      node.appendChild(el('p', { className: 'sheet__text' },
+        t('bn.invite_gain', {
+          friend: money(b.invite_friend || 0), owner: money(b.invite_owner || 0),
+        })));
+
+      const counters = [];
+      if (b.invites_done) counters.push(t('bn.done_n', { n: b.invites_done }));
+      if (b.invites_waiting) counters.push(t('bn.waiting', { n: b.invites_waiting }));
+      if (counters.length) {
+        node.appendChild(el('div', { className: 'muted t-xs' }, counters.join(' · ')));
+      }
+    }
+
+    // ── чужой код принимаем только у тех, кто ещё ни разу не ездил
+    if (!b.invited && b.enabled !== false && !(state.profile && state.profile.orders_done)) {
+      node.appendChild(group(t('bn.have_code')));
+      node.appendChild(inviteField(b));
+    }
+
+    // ── история движений понятными строками
+    node.appendChild(group(t('bn.history')));
+    const moves = Array.isArray(b.history) ? b.history : [];
+    if (!moves.length) {
+      node.appendChild(el('p', { className: 'sheet__text' }, t('bn.history_empty')));
+    } else {
+      const list = el('div', { className: 'sg-list' });
+      for (const one of moves) list.appendChild(bonusMove(one));
+      node.appendChild(list);
+    }
+
+    return { node };
+  }
+
   /* ── история ─────────────────────────────────────────────────────────── */
 
   function buildHistory() {
@@ -1059,6 +2037,39 @@ function openProfileSheet(app, startWith) {
 
   /* ── карточка заказа ─────────────────────────────────────────────────── */
 
+  /* Две кнопки под адресом: «сделать домом» и «сделать работой». Нажатая
+     подсвечена — повторный тап снимает отметку, чтобы не искать её в другом
+     месте. Перерисовываем только эту строку: карта в карточке моргать не должна. */
+  function markRow(point) {
+    const box = el('div', { className: 'sg-mark' });
+
+    function paint() {
+      const places = readPlaces();
+      box.replaceChildren(...['home', 'work'].map((kind) => {
+        const on = samePlace(places[kind], point);
+        return el('button', {
+          type: 'button',
+          className: 'sg-mark__b' + (on ? ' is-on' : ''),
+          'aria-pressed': on ? 'true' : 'false',
+          onClick: () => {
+            haptic();
+            if (on) {
+              setPlace(kind, null);
+              toast(t('fav.dropped'), { type: 'ok' });
+            } else {
+              setPlace(kind, point);
+              toast(t(kind === 'home' ? 'fav.saved_home' : 'fav.saved_work'), { type: 'ok' });
+            }
+            paint();
+          },
+        }, svgIcon(kind),
+           t(on ? 'fav.' + kind : (kind === 'home' ? 'fav.set_home' : 'fav.set_work')));
+      }));
+    }
+    paint();
+    return box;
+  }
+
   function buildCard() {
     const { item } = state.card;
     const node = el('div');
@@ -1080,19 +2091,23 @@ function openProfileSheet(app, startWith) {
       statusBadge(item),
       el('span', { className: 'sg-opt__sub' }, dateTime(item.at || item.created_at))));
 
-    // ── адреса
+    // ── адреса. Под каждым — две отметки: дом и работа. Один тап, и адрес
+    // встаёт в начало подсказок, а поездка между домом и работой собирается
+    // из профиля одной кнопкой.
     node.appendChild(group(t('me.points')));
     const list = el('div', { className: 'sg-list' });
     pts.forEach((p, i) => {
       const note = pointNote(p);
-      list.appendChild(el('div', { className: 'sg-item' },
-        el('span', {
-          className: 'sg-item__icon' + (i === 0 ? ' sg-item__icon--accent' : ''),
-          html: icon('pin'),
-        }),
-        el('span', { className: 'sg-item__text' },
-          el('span', { className: 'sg-item__title' }, p.addr),
-          note ? el('span', { className: 'sg-item__sub' }, note) : null)));
+      list.appendChild(el('div', null,
+        el('div', { className: 'sg-item' },
+          el('span', {
+            className: 'sg-item__icon' + (i === 0 ? ' sg-item__icon--accent' : ''),
+            html: icon('pin'),
+          }),
+          el('span', { className: 'sg-item__text' },
+            el('span', { className: 'sg-item__title' }, p.addr),
+            note ? el('span', { className: 'sg-item__sub' }, note) : null)),
+        p.lat != null && p.lng != null ? markRow(p) : null));
     });
     node.appendChild(list);
 
@@ -1206,10 +2221,15 @@ function openProfileSheet(app, startWith) {
   if (startWith === 'history') {
     show(buildHistory);
     loadFirstPage();
+  } else if (startWith === 'bonus') {
+    state.view = 'bonus';
+    show(buildBonus);
   } else {
     show(buildProfile);
   }
   loadProfile();
+  // Баланс нужен и на самом профиле — в строке «Бонусы» он стоит цифрой.
+  if (bonusOn(app.cfg) && clientToken()) loadBonusState(startWith === 'bonus');
 }
 
 /** Заказ из истории превращаем в заготовку нового: те же адреса и та же машина. */
@@ -1232,6 +2252,91 @@ function draftFrom(item) {
     extras,
     comment: item.comment || '',
   };
+}
+
+/* ─────────────────────────────────────────────────────── подсказка над шторкой */
+
+/* Одна плашка над шторкой на экране заказа. Показывает то единственное, что
+   человеку сейчас полезно сделать одним касанием: вернуться в заказ, который
+   уже едет, или повторить прошлый. Закрыл — до перезагрузки больше не лезем:
+   навязчивая подсказка надоедает быстрее, чем помогает. */
+function createFlash() {
+  ensureCss();
+  const shell = document.querySelector('.sg-app') || document.body;
+  let node = null;
+  let off = false;
+
+  function hide() {
+    if (!node) return;
+    node.remove();
+    node = null;
+  }
+
+  function show(o) {
+    if (off) return;
+    hide();
+    const go = el('button', {
+      type: 'button', className: 'sg-flash__go',
+      onClick: () => { haptic(18); o.onClick(); },
+    },
+      el('span', { className: 'sg-flash__ico', html: icon(o.icon) }),
+      el('span', { className: 'sg-flash__text' },
+        el('span', { className: 'sg-flash__title' }, o.title),
+        o.sub ? el('span', { className: 'sg-flash__sub' }, o.sub) : null));
+
+    const close = iconBtn('close', 'sg-flash__x', t('again.hide'), () => {
+      haptic();
+      off = true;
+      hide();
+    });
+
+    node = el('div', { className: 'sg-flash', role: 'group', 'aria-label': o.title }, go, close);
+    shell.appendChild(node);
+    requestAnimationFrame(() => { if (node) node.classList.add('sg-flash--in'); });
+  }
+
+  return {
+    show,
+    hide,
+    /** Подсказкой воспользовались — больше она не нужна. */
+    done() { off = true; hide(); },
+  };
+}
+
+/* ─────────────────────────────────────────────────────── первый заход */
+
+/* Один экран, три строки, кнопка «Пропустить». Показываем ровно один раз и
+   только тому, кто ещё ни разу не заказывал: остальным она уже ничего не
+   объяснит, а место на экране займёт. */
+function showFirstTip(app) {
+  if (readJson(KEY_SEEN)) return;
+  ensureCss();
+
+  const percent = Math.max(0, Number((app.cfg.bonus || {}).percent) || 0);
+  const third = bonusOn(app.cfg) && percent > 0
+    ? t('tip.three', { percent: rate(percent) })
+    : t('tip.three_plain');
+
+  const line = (ico, text) => el('div', { className: 'sg-tip' },
+    el('span', { className: 'sg-tip__ico', 'aria-hidden': 'true' }, ico),
+    el('span', { className: 'sg-tip__text' }, text));
+
+  // Закрыли любым способом — считаем, что подсказку видели. Второй раз
+  // показывать её было бы уже навязчивостью.
+  const seen = () => writeJson(KEY_SEEN, Math.floor(Date.now() / 1000));
+
+  sheet({
+    title: t('tip.title'),
+    content: el('div', null,
+      line('📍', t('tip.one')),
+      line('🚚', t('tip.two')),
+      line('🎁', third)),
+    actions: [
+      { label: t('tip.skip'), kind: 'ghost' },
+      { label: t('tip.ok'), kind: 'primary' },
+    ],
+    onClose: seen,
+  });
 }
 
 /* ─────────────────────────────────────────────────────── шторка */
@@ -1419,6 +2524,8 @@ async function boot() {
       writeJson(KEY_ORDER, { pid, token, at: Math.floor(Date.now() / 1000) });
       // Заказ есть, телефон есть — значит, можно забрать постоянный ключ клиента.
       ensureClientToken();
+      // В заказ могли уйти бонусы: запомненный баланс уже неправда.
+      bonusForget();
     },
     forgetOrder() { writeJson(KEY_ORDER, null); },
 
@@ -1445,6 +2552,30 @@ async function boot() {
 
     openProfile() { openProfileSheet(app, 'profile'); },
     openHistory() { openProfileSheet(app, 'history'); },
+    openBonus() { openProfileSheet(app, 'bonus'); },
+
+    /**
+     * Бонусы для соседних экранов.
+     *
+     * spend({onChange}) отдаёт готовый переключатель «Списать бонусы»:
+     * ставим его узел в нужное место, на каждое изменение цены зовём
+     * setTotal(итог в тыйынах), а при оформлении кладём value() в поле
+     * bonus_spend запроса POST /orders. Сервер всё равно пересчитает сам —
+     * это защита от несходящихся цифр, а не недоверие.
+     */
+    bonus: {
+      on: () => bonusOn(cfg),
+      load: loadBonus,
+      known: bonusKnown,
+      forget: bonusForget,
+      maxFor: bonusMaxFor,
+      spend: (opts) => mountBonusSpend(app, opts),
+      open: () => openProfileSheet(app, 'bonus'),
+    },
+
+    /** Любимые адреса: {home, work}. Ставятся из истории в один тап. */
+    places: readPlaces,
+    setPlace,
 
     /** Заготовка нового заказа из «Повторить заказ». Экран заказа забирает её
         один раз при запуске: второй вызов вернёт null. */
@@ -1471,13 +2602,56 @@ async function boot() {
     lastFit = null;
   }
 
+  const flash = createFlash();
+  let warm = null;          // что знаем о прошлых заказах: {live, last}
+  let touched = false;      // шторку уже трогали — уводить человека с неё нельзя
+
+  // Как только человек взялся за форму заказа, автоматический уход на
+  // отслеживание отменяется: под пальцем не переключают экраны.
+  panel.el.addEventListener('pointerdown', () => { touched = true; }, { passive: true });
+
+  /* Что предложить одним касанием на главном экране. Порядок важен: заказ,
+     который едет прямо сейчас, важнее прошлого. */
+  function paintFlash() {
+    if (!warm) return;
+    if (warm.live) {
+      flash.show({
+        icon: 'car',
+        title: t('again.live'),
+        sub: t('again.live_sub'),
+        onClick: () => {
+          flash.done();
+          app.go('/order/' + warm.live.public_id, { t: warm.live.track_token });
+        },
+      });
+      return;
+    }
+    if (!warm.last) return;
+    const item = warm.last;
+    const pts = (Array.isArray(item.points) ? item.points : []).filter((p) => p && p.addr);
+    const route = [pts[0] && pts[0].addr, pts.length > 1 && pts[pts.length - 1].addr]
+      .filter(Boolean).join(' → ');
+    flash.show({
+      icon: 'repeat',
+      title: t('again.repeat'),
+      sub: route,
+      onClick: () => {
+        flash.done();
+        app.startOrder(draftFrom(item));
+        toast(t('me.repeated'), { type: 'ok' });
+      },
+    });
+  }
+
   const router = createRouter({
     '/': () => {
       leave();
       screen = mountOrder(app);
+      paintFlash();
     },
     '/order/:pid': (ctx) => {
       leave();
+      flash.hide();
       screen = mountTrack(app, String(ctx.params.pid || '').toUpperCase(), ctx.query.t || '');
     },
     '*': () => router.go('/', { replace: true }),
@@ -1514,6 +2688,52 @@ async function boot() {
 
   // Ключ клиента могли не успеть получить в прошлый раз — тихо доберём сейчас.
   ensureClientToken();
+
+  /* Один короткий запрос на старте отвечает сразу на два вопроса: куда вернуть
+     человека и что предложить повторить. Память устройства знает только заказы
+     с этого телефона — а заказ могли сделать и на другом, поэтому спрашиваем. */
+  async function warmUp() {
+    const token = clientToken() || await ensureClientToken();
+    if (!token) return;
+    let res = null;
+    try {
+      res = await api.get('/client/orders',
+        { token, page: 1, per_page: WARM_ORDERS }, { auth: false });
+    } catch (e) {
+      return;                     // не ответил — обойдёмся без подсказки
+    }
+    const items = Array.isArray(res.items) ? res.items : [];
+    const pointsOf = (x) => (Array.isArray(x && x.points) ? x.points : [])
+      .filter((p) => p && p.lat != null && p.lng != null);
+    warm = {
+      live: items.find((x) => x && x.live && x.track_token) || null,
+      last: items.find((x) => pointsOf(x).length >= 2) || null,
+    };
+
+    const at = router.current();
+    const home = at && at.path === '/';
+    // Заказ едет, а человек смотрит на пустую форму — уводим на отслеживание.
+    // Но только если он к ней ещё не притронулся: выдёргивать экран из-под
+    // пальца нельзя ни под каким предлогом.
+    if (warm.live && home && !touched && !app.activeOrder()) {
+      app.saveOrder(warm.live.public_id, warm.live.track_token);
+      router.go('/order/' + warm.live.public_id,
+        { query: { t: warm.live.track_token }, replace: true });
+      return;
+    }
+    if (home) paintFlash();
+  }
+  warmUp();
+
+  // Первому гостю — короткая подсказка. Даём экрану встать: шторка поверх
+  // недорисованной карты выглядит как ошибка загрузки. И не лезем, если за эту
+  // секунду человека увели на отслеживание своего заказа.
+  if (!live && !app.known()) {
+    setTimeout(() => {
+      const at = router.current();
+      if (at && at.path === '/') showFirstTip(app);
+    }, TIP_DELAY_MS);
+  }
 }
 
 function paintLang() {

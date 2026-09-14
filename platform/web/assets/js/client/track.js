@@ -30,7 +30,9 @@ import {
   money, distance, duration, time as clock, date as day,
   plate as fmtPlate, initials,
 } from '../core/fmt.js';
-import { icon, iconBtn, errText, readJson, writeJson, onThemeChange } from './app.js';
+import {
+  icon, iconBtn, errText, readJson, writeJson, onThemeChange, siteUrl,
+} from './app.js';
 
 /* Свои строки модуль приносит сам: общий словарь правят соседние экраны.
    Префиксы нарочно редкие (game./talk./mood.) — так строки клиента не столкнутся
@@ -84,6 +86,18 @@ extend({
     'mood.fav_done': 'Курьер в избранных',
     'mood.fav_off': 'Убрали из избранных',
     'mood.fav_badge': 'Ваш курьер',
+
+    'live.almost': 'Почти на месте',
+    'live.left': 'Осталось {distance}',
+
+    'give.what': 'Отследите мой заказ: видно статус и время в пути.',
+    'give.copied': 'Ссылка скопирована — по ней видно только статус и время',
+    'give.note': 'По ссылке видно статус и примерное время. '
+      + 'Телефон, квартиру и точный адрес не показываем.',
+
+    'gift.title': 'Бонусы',
+    'gift.after_ride': 'Кэшбек за эту поездку уже на счету',
+    'gift.rated': 'Спасибо! Начислили {sum} бонусами',
   },
   ky: {
     'game.title': 'Кутуларды кармаңыз',
@@ -132,6 +146,18 @@ extend({
     'mood.fav_done': 'Курьер тандалмада',
     'mood.fav_off': 'Тандалмадан алынды',
     'mood.fav_badge': 'Сиздин курьер',
+
+    'live.almost': 'Дээрлик жетти',
+    'live.left': '{distance} калды',
+
+    'give.what': 'Заказымды карап туруңуз: абалы жана жолдогу убакыты көрүнөт.',
+    'give.copied': 'Шилтеме көчүрүлдү — анда заказдын абалы менен убактысы гана көрүнөт',
+    'give.note': 'Шилтемеден заказдын абалы жана болжолдуу убакыт көрүнөт. '
+      + 'Телефон, батир жана так дарек көрсөтүлбөйт.',
+
+    'gift.title': 'Бонустар',
+    'gift.after_ride': 'Бул сапардын кэшбеги эсепке түштү',
+    'gift.rated': 'Рахмат! {sum} бонус кошулду',
   },
 });
 
@@ -141,6 +167,21 @@ const CLOSED = ['done', 'cancelled', 'expired'];
 /* Сколько едет машина между двумя точками от сервера: координаты приходят раз
    в несколько секунд, и такая длительность выглядит как непрерывное движение. */
 const CAR_MOVE_MS = 1400;
+
+/* Живое время подачи. Сервер присылает только координаты, поэтому время до
+   подачи считаем сами: прямую между машиной и точкой умножаем на коэффициент
+   дороги (по прямой в городе не ездит никто) и делим на скорость, которую
+   меряем по самой машине. Между посылками координат счётчик просто идёт вниз —
+   так цифра живёт, а не висит колом до следующего обновления. */
+const ROAD_FACTOR = 1.35;
+const SPEED_START = 8;        // м/с, около 29 км/ч — обычный ход по Бишкеку
+const SPEED_MIN = 3;
+const SPEED_MAX = 22;
+const SPEED_STEP_S = 3;       // короче этого отрезка скорость не меряем
+const SPEED_STEP_M = 15;      // и короче этого тоже: иначе меряем дрожание GPS
+const ETA_MIN_S = 40;
+const ETA_MAX_S = 7200;
+const ETA_SMOOTH_S = 70;      // расхождение меньше этого сглаживаем, а не рвём
 
 /* Ключи в localStorage: рекорд в игре и избранные курьеры. */
 const KEY_BEST = 'sg_catch_best';
@@ -1176,6 +1217,105 @@ export function mountTrack(app, pid, token) {
     return order.status === 'draft' && order.payment_status !== 'pending';
   }
 
+  /* ── живое время подачи ──────────────────────────────────────────────── */
+
+  const eta = {
+    at: 0,            // когда ждём машину, unix-секунды
+    goal: '',         // к чему считаем: 'pick' — к вам, 'drop' — до выгрузки
+    pos: '',          // позиция машины, по которой считали в прошлый раз
+    gap: 0,           // сколько метров до цели по дороге
+    speed: SPEED_START,
+    seen: null,       // прошлая посылка координат: {ll, ms}
+  };
+
+  /* Куда едет машина прямо сейчас: сначала к человеку, после погрузки — к
+     месту выгрузки. На остальных статусах считать нечего. */
+  function etaGoal(order) {
+    const pts = points(order);
+    if (!pts.length) return null;
+    const s = order.status;
+    if (s === 'assigned' || s === 'to_pickup') {
+      return { ll: [pts[0].lat, pts[0].lng], goal: 'pick' };
+    }
+    if (s === 'in_transit') {
+      const last = pts[pts.length - 1];
+      return { ll: [last.lat, last.lng], goal: 'drop' };
+    }
+    return null;
+  }
+
+  function etaReset() {
+    eta.at = 0;
+    eta.goal = '';
+    eta.pos = '';
+    eta.gap = 0;
+    eta.seen = null;
+    eta.speed = SPEED_START;
+  }
+
+  /* Пересчёт по новой позиции машины. Зовём на каждое обновление заказа, но
+     работаем только когда машина действительно сдвинулась: считать одно и то же
+     по десять раз в секунду незачем. */
+  function etaFeed(order) {
+    const target = etaGoal(order);
+    const car = order && order.courier && order.courier.at;
+    if (!target || !car || car[0] == null) {
+      if (eta.at) etaReset();
+      return;
+    }
+    const key = Number(car[0]).toFixed(5) + ',' + Number(car[1]).toFixed(5);
+    if (key === eta.pos && target.goal === eta.goal) return;
+
+    const now = Date.now();
+    if (eta.seen && target.goal === eta.goal) {
+      const moved = distanceM(eta.seen.ll, car);
+      const dt = (now - eta.seen.ms) / 1000;
+      // Скорость берём у самой машины, но только на заметных отрезках: на
+      // светофоре и на стоянке вышло бы «едет со скоростью пешехода».
+      if (dt >= SPEED_STEP_S && moved > SPEED_STEP_M) {
+        const v = moved / dt;
+        if (v >= SPEED_MIN && v <= SPEED_MAX) eta.speed = eta.speed * 0.6 + v * 0.4;
+      }
+    } else {
+      eta.speed = SPEED_START;
+    }
+    eta.seen = { ll: car.slice(), ms: now };
+    eta.pos = key;
+
+    eta.gap = Math.round(distanceM(car, target.ll) * ROAD_FACTOR);
+    const left = eta.gap / Math.max(SPEED_MIN, eta.speed);
+    const stamp = Math.floor(now / 1000)
+      + Math.round(Math.min(ETA_MAX_S, Math.max(ETA_MIN_S, left)));
+    // Цель прежняя и расхождение небольшое — усредняем, а не переписываем:
+    // иначе «5 минут» скакало бы туда-сюда на каждой посылке координат.
+    if (eta.at && target.goal === eta.goal && Math.abs(stamp - eta.at) < ETA_SMOOTH_S) {
+      eta.at = Math.round((eta.at + stamp) / 2);
+    } else {
+      eta.at = stamp;
+    }
+    eta.goal = target.goal;
+  }
+
+  /* Строка под заголовком. Пустая строка значит «сказать нечего» — тогда
+     заголовок покажет свою обычную подсказку. */
+  function etaText() {
+    if (!eta.at) return '';
+    const left = eta.at - Math.floor(Date.now() / 1000);
+    if (left <= 60) return eta.goal === 'pick' ? t('track.arriving') : t('live.almost');
+    const time = duration(left);
+    const head = eta.goal === 'pick' ? t('track.eta', { time }) : t('track.eta_drop', { time });
+    return eta.gap > 0 ? head + ' · ' + t('live.left', { distance: distance(eta.gap) }) : head;
+  }
+
+  /* Пока живой цифры нет (машина ещё не прислала координаты), показываем то,
+     что посчитал сервер при оформлении. Лучше приблизительно, чем пусто. */
+  function staticSub(order) {
+    if (order && order.status === 'in_transit' && order.duration_s) {
+      return t('track.eta_drop', { time: duration(order.duration_s) });
+    }
+    return '';
+  }
+
   /* ── игра, пока ищется машина ────────────────────────────────────────── */
 
   let game = null;
@@ -1667,19 +1807,23 @@ export function mountTrack(app, pid, token) {
 
   /* ── действия ────────────────────────────────────────────────────────── */
 
+  /* Ссылка на карточку заказа: /go/share/AB12CD. Токена отслеживания в ней нет,
+     и это главное: по такой ссылке видно только статус, город и примерное время.
+     Телефон, квартира и точный адрес туда не попадают даже в разметку — этим
+     занимается server/share.py, а мы всего лишь не подмешиваем токен. */
   function shareLink() {
-    const url = location.origin + '/#/order/' + pid + '?t=' + encodeURIComponent(token);
+    const url = siteUrl('share/' + encodeURIComponent(pid));
+    haptic();
     if (navigator.share) {
-      navigator.share({ title: t('track.title', { id: pid }), url }).catch(() => {});
+      navigator.share({
+        title: t('track.title', { id: pid }),
+        text: t('give.what'),
+        url,
+      }).catch(() => {});
       return;
     }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url)
-        .then(() => toast(t('common.copied'), { type: 'ok' }))
-        .catch(() => toast(url, { type: 'info', ms: 6000 }));
-      return;
-    }
-    toast(url, { type: 'info', ms: 6000 });
+    // Своего «не получилось» тут не нужно: copyText скажет об этом сам.
+    copyText(url, t('give.copied'));
   }
 
   /* Отмена: сначала спрашиваем причину, она помогает диспетчеру больше, чем факт отмены. */
@@ -1775,18 +1919,30 @@ export function mountTrack(app, pid, token) {
 
   /* ── куски интерфейса ────────────────────────────────────────────────── */
 
+  /* Заголовок шага. Возвращает не голый узел, а {node, setSub}: строка под
+     заголовком обновляется раз в секунду живым временем подачи, и пересобирать
+     ради неё весь шаг было бы расточительно. */
   function headBox(status, order) {
     // Незнакомый статус — берём общее название из словаря, лишь бы не ключ на экране.
     const fallback = has('status.' + status) ? 'status.' + status : 'common.status';
     const pair = HEAD[status] || [fallback, ''];
-    let sub = pair[1] ? t(pair[1]) : '';
-    if (status === 'in_transit' && order && order.duration_s) {
-      sub = t('track.eta_drop', { time: duration(order.duration_s) });
+    const hint = pair[1] ? t(pair[1]) : '';
+    const sub = el('div', { className: 'sg-head__sub' });
+
+    function setSub(text) {
+      const value = text || staticSub(order) || hint;
+      sub.textContent = value;
+      sub.hidden = !value;
     }
-    return el('div', { className: 'sg-head' },
-      el('div', { className: 'sg-head__text' },
-        el('div', { className: 'sg-head__title' }, t(pair[0])),
-        sub ? el('div', { className: 'sg-head__sub' }, sub) : null));
+    setSub('');
+
+    return {
+      node: el('div', { className: 'sg-head' },
+        el('div', { className: 'sg-head__text' },
+          el('div', { className: 'sg-head__title' }, t(pair[0])),
+          sub)),
+      setSub,
+    };
   }
 
   function routeRow(order) {
@@ -1934,7 +2090,7 @@ export function mountTrack(app, pid, token) {
       el('span', { className: 'sg-opt__go', html: icon('go') }));
 
     const node = el('div', { className: 'sg-step' },
-      headBox(order.status, order),
+      headBox(order.status, order).node,
       el('div', { className: 'sg-body' }, line2, play, routeRow(order), priceRow(order)),
       el('div', { className: 'sg-foot' },
         el('button', {
@@ -1946,8 +2102,16 @@ export function mountTrack(app, pid, token) {
   function stepLive(order) {
     const canCancel = !!order.can_cancel;
     const card = courierCard(order);
+    const head = headBox(order.status, order);
+
+    /* Время подачи переписываем на месте — раз в секунду, без пересборки шага. */
+    function paintEta() {
+      head.setSub(etaText());
+    }
+    paintEta();
+
     const node = el('div', { className: 'sg-step' },
-      headBox(order.status, order),
+      head.node,
       el('div', { className: 'sg-body' },
         card ? card.node : null, routeRow(order), priceRow(order)),
       el('div', { className: 'sg-foot' },
@@ -1957,7 +2121,11 @@ export function mountTrack(app, pid, token) {
           }, t('track.share')),
           canCancel ? el('button', {
             type: 'button', className: 'btn btn--danger grow', onClick: askCancel,
-          }, t('track.cancel')) : null)));
+          }, t('track.cancel')) : null),
+        // Одной строкой объясняем, что уходит по ссылке: человек должен понимать,
+        // что он отправляет, до того, как нажмёт «Поделиться».
+        el('div', { className: 'sg-note' }, t('give.note'))));
+
     return {
       name: 'live:' + order.status,
       node,
@@ -1965,10 +2133,13 @@ export function mountTrack(app, pid, token) {
       mount() {
         unreadBadge = card ? card.badge : null;
         paintUnread();
+        paintEta();
       },
       update(state) {
         if (card && state.order) card.sync(state.order);
+        paintEta();
       },
+      tick: paintEta,
     };
   }
 
@@ -2020,6 +2191,20 @@ export function mountTrack(app, pid, token) {
   function stepDone(order) {
     const body = el('div', { className: 'sg-body' }, routeRow(order), priceRow(order));
     const foot = el('div', { className: 'sg-foot' });
+
+    /* Кэшбек за закрытый заказ сервер начисляет сам. Строка ведёт туда, где его
+       видно: без неё человек узнаёт о бонусах случайно и через месяц. */
+    if (app.bonus && typeof app.bonus.on === 'function' && app.bonus.on()) {
+      body.appendChild(el('button', {
+        type: 'button', className: 'sg-item',
+        onClick: () => { haptic(); app.bonus.open(); },
+      },
+        el('span', { className: 'sg-item__icon sg-item__icon--accent', html: icon('gift') }),
+        el('span', { className: 'sg-item__text' },
+          el('span', { className: 'sg-item__title' }, t('gift.title')),
+          el('span', { className: 'sg-item__sub' }, t('gift.after_ride'))),
+        el('span', { className: 'sg-opt__go', html: icon('go') })));
+    }
 
     if (store.get().rated) {
       body.appendChild(el('div', { className: 'sg-rate' },
@@ -2126,7 +2311,14 @@ export function mountTrack(app, pid, token) {
           });
           if (dead) return;
           haptic(20);
-          toast(res.message || t('track.rate_thanks'), { type: 'ok' });
+          // За оценку начисляют бонусы — говорим об этом сразу и цифрой,
+          // иначе человек узнает о подарке только в профиле и не свяжет одно
+          // с другим.
+          const gift = Math.max(0, Number(res && res.bonus) || 0);
+          if (gift > 0 && app.bonus && typeof app.bonus.forget === 'function') app.bonus.forget();
+          toast(gift > 0
+            ? t('gift.rated', { sum: money(gift) })
+            : (res.message || t('track.rate_thanks')), { type: 'ok' });
           store.set({ rated: true });
         } catch (e) {
           toast(errText(e), { type: 'err' });
@@ -2150,7 +2342,7 @@ export function mountTrack(app, pid, token) {
       onClick: () => { app.forgetOrder(); app.go('/'); },
     }, t('track.repeat')));
 
-    const node = el('div', { className: 'sg-step' }, headBox('done', order), body, foot);
+    const node = el('div', { className: 'sg-step' }, headBox('done', order).node, body, foot);
     return { name: 'done:' + (store.get().rated ? '1' : '0'), node, update() {} };
   }
 
@@ -2193,7 +2385,7 @@ export function mountTrack(app, pid, token) {
       ? el('div', { className: 'sg-fail__text' }, order.cancel_reason)
       : null;
     const node = el('div', { className: 'sg-step' },
-      headBox(order.status, order),
+      headBox(order.status, order).node,
       el('div', { className: 'sg-body' }, why, routeRow(order)),
       el('div', { className: 'sg-foot' },
         el('button', {
@@ -2221,7 +2413,26 @@ export function mountTrack(app, pid, token) {
   const offline = el('div', { className: 'sg-offline', hidden: true }, t('common.offline'));
   app.panel.el.querySelector('.sg-panel__box').prepend(offline);
 
+  /* Секундный ход для времени подачи. Заводим его, только если шагу есть что
+     обновлять, и молчим в фоне вкладки: батарея дороже красивой цифры. */
+  let beat = 0;
+
+  function startBeat() {
+    if (beat || dead) return;
+    beat = setInterval(() => {
+      if (dead || document.visibilityState === 'hidden') return;
+      if (view && typeof view.tick === 'function') view.tick();
+    }, 1000);
+  }
+
+  function stopBeat() {
+    if (!beat) return;
+    clearInterval(beat);
+    beat = 0;
+  }
+
   function render(state) {
+    if (state.order) etaFeed(state.order);
     const next = build(state);
     if (!view || view.name !== next.name) {
       unreadBadge = null;            // старая кнопка чата уходит вместе с шагом
@@ -2232,6 +2443,8 @@ export function mountTrack(app, pid, token) {
       view.update(state);
       app.panel.refresh();
     }
+    if (view && typeof view.tick === 'function') startBeat();
+    else stopBeat();
     offline.hidden = state.online;
     if (state.order) syncMap(state.order);
     syncGame();
@@ -2256,6 +2469,7 @@ export function mountTrack(app, pid, token) {
     },
     destroy() {
       dead = true;
+      stopBeat();
       clearTimeout(offTimer);
       clearTimeout(readTimer);
       readTimer = 0;

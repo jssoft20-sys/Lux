@@ -143,6 +143,10 @@ def _points_view(order, full):
             'addr': p.get('addr'), 'lat': p.get('lat'), 'lng': p.get('lng'),
             'entrance': p.get('entrance'), 'floor': p.get('floor'),
             'comment': p.get('comment'),
+            # Подъём к двери оплачен отдельно, и знать об этом курьер должен
+            # до того, как возьмёт заказ: работа другая. Лифт — по той же причине.
+            'door_to_door': bool(p.get('door_to_door')),
+            'lift': p.get('lift') or '',
         }
         if full:
             item['flat'] = p.get('flat')

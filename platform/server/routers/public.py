@@ -274,7 +274,28 @@ def _clean_extras(raw):
     return out
 
 
-def _quote_from(ctx, tariff, points):
+DOOR_CODE = 'door_to_door'
+
+
+def _sync_door(points, extras):
+    """Свести подъём к двери: сколько точек отмечено, столько и в чеке.
+
+    Надбавка считается по строке допуслуги, а курьеру показывают флажок у точки.
+    Если верить и тому и другому по отдельности, найдётся тот, кто отметит обе
+    двери и «забудет» прислать строку: курьер поднимется, а денег за это не будет.
+    Поэтому решает флажок, а строка приводится к нему.
+    """
+    flagged = sum(1 for p in points if p.get(DOOR_CODE))
+    asked = max([_int(e.get('qty')) for e in extras if e.get('code') == DOOR_CODE] or [0])
+    # Берём большее из двух: отмеченные точки и присланная строка. Так не
+    # проскочит ни «отметил, но не оплатил», ни старое приложение, которое
+    # шлёт только строку и флажков у точек не ставит вовсе.
+    n = min(max(flagged, asked), len(points)) if points else max(flagged, asked)
+    rest = [e for e in extras if e.get('code') != DOOR_CODE]
+    return rest + ([{'code': DOOR_CODE, 'qty': float(n)}] if n > 0 else [])
+
+
+def _quote_from(ctx, tariff, points, raw_points=None):
     """Расчёт по телу запроса. Расстояние берём своё — по тем же точкам, что
     и в заказе, иначе цена на экране и цена в чеке разойдутся."""
     if len(points) >= 2:
@@ -286,7 +307,10 @@ def _quote_from(ctx, tariff, points):
     hours = _num(ctx.json.get('hours'))
     return pricing.quote(
         tariff, points=points, distance_m=distance_m, duration_s=duration_s,
-        loaders=max(0, min(loaders, 8)), extras=_clean_extras(ctx.json.get('extras')),
+        loaders=max(0, min(loaders, 8)),
+        # Подъём к двери сводим так же, как при создании заказа: иначе цена на
+        # экране разойдётся с той, что человек увидит в чеке.
+        extras=_sync_door(raw_points or [], _clean_extras(ctx.json.get('extras'))),
         hours=hours if hours and hours > 0 else None)
 
 
@@ -297,8 +321,9 @@ def price_quote(ctx):
         too_many(say('geo.too_often', _lang(ctx)))
     tariff = pricing.load_tariff(ctx.json.get('tariff_id') or ctx.json.get('tariff'))
     limit = max(2, settings.get_int('order.max_points', 5))
-    pts = geo.clean_points(ctx.field('points', list) or [])[:limit]
-    return _quote_from(ctx, tariff, pts)
+    raw = [p for p in (ctx.field('points', list) or []) if isinstance(p, dict)][:limit]
+    pts = geo.clean_points(raw)[:limit]
+    return _quote_from(ctx, tariff, pts, raw)
 
 
 # ─────────────────────────────────────────────────────────────── создание заказа
@@ -420,7 +445,7 @@ def create_order(ctx):
     tariff = pricing.load_tariff(ctx.json.get('tariff_id') or ctx.json.get('tariff'))
     points = _order_points(ctx, lang)
     loaders = max(0, min(ctx.field('loaders', int, default=0) or 0, 8))
-    extras = _clean_extras(ctx.json.get('extras'))
+    extras = _sync_door(points, _clean_extras(ctx.json.get('extras')))
     comment = ctx.field('comment', str, 500) or ''
     hours = _num(ctx.json.get('hours'))
 

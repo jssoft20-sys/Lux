@@ -108,6 +108,14 @@ async function run() {
   await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2200);
 
+  // Первый заход встречает подсказкой — её видит и живой человек, и прогон.
+  const hello = page.locator('button:has-text("Понятно"), button:has-text("Пропустить")').first();
+  if (await hello.count()) {
+    ok('подсказка при первом заходе показана', true);
+    await tap(page, hello);
+    await page.waitForTimeout(700);
+  }
+
   // ── 1. адрес назначения ────────────────────────────────────────────────────
   console.log('\x1b[1m1. Ввод адреса\x1b[0m');
   const rows = page.locator('button.sg-point__main');

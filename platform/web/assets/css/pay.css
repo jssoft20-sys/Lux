@@ -1,0 +1,367 @@
+/* Экран оплаты брони: крупный QR по центру, спокойное ожидание, радостный конец.
+
+   Подключается после client.css и пользуется его шагами (.sg-step, .sg-head,
+   .sg-body, .sg-foot) — здесь только то, чего в общих компонентах нет.
+
+   Два места, где цвет задан не переменной, а прямо: белое поле под кодом и белый
+   кружок под знаком. Так и задумано. QR читается сканером только на белом, и в
+   тёмной теме он тоже обязан остаться белым — иначе телефон его просто не увидит.
+
+   Разметка одна на все состояния, переключает их класс is-* на корне:
+   is-issue · is-wait · is-paid · is-expired · is-declined · is-bank · is-off · is-closed
+*/
+
+.sg-pay__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding-block: var(--sp-2) var(--sp-2);
+  text-align: center;
+}
+
+/* ══════════════════════════════════════════════════════════ сам код */
+
+/* Размер кода: столько, сколько даёт экран, но не в ущерб кнопкам под ним.
+   44dvh держит код целиком видимым на низких экранах и в альбомной ориентации. */
+.sg-pay__stage {
+  position: relative;
+  flex: none;
+  width: clamp(168px, min(68vw, 40dvh), 300px);
+  margin-top: var(--sp-1);
+}
+
+.sg-pay__code {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: var(--sp-2);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  overflow: hidden;
+  transition: background-color var(--dur-2) var(--ease);
+}
+
+/* Код пришёл — квадрат становится белым листом, как в банковской квитанции. */
+.sg-pay.is-wait .sg-pay__code,
+.sg-pay.is-paid .sg-pay__code { background: #FFFFFF; }
+
+.sg-pay__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  /* Код — это сетка квадратов. Сглаживание при растяжении размывает границы
+     модулей, и слабые камеры начинают промахиваться. Пусть остаются острыми. */
+  image-rendering: pixelated;
+}
+
+/* Знак сервиса в середине кода: белое поле и сам знак внутри него.
+   Двадцать один процент стороны — меньше пятой части, как и договаривались:
+   избыточность кода это переживает, а человек сразу видит, чей код держит. */
+.sg-pay__logo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 21%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #FFFFFF;
+  transform: translate(-50%, -50%);
+}
+
+.sg-pay__logo > svg {
+  width: 74%;
+  height: 74%;
+  border-radius: 22%;
+}
+
+/* ══════════════════════════════════════════════════════════ ожидание */
+
+/* Огонёк неспешно обходит код по периметру. Он не мигает и не дёргается:
+   человеку и так тревожно расставаться с деньгами. */
+.sg-pay__orbit {
+  position: absolute;
+  inset: -7px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-2) var(--ease);
+}
+
+.sg-pay.is-issue .sg-pay__orbit,
+.sg-pay.is-wait .sg-pay__orbit { opacity: 1; }
+
+.sg-pay__orbit > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.sg-pay__orbit rect {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 16 84;
+  vector-effect: non-scaling-stroke;
+  animation: sg-pay-orbit 7s linear infinite;
+}
+
+/* Пока код готовится, поверх квадрата три спокойные точки. */
+.sg-pay__veil {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+
+.sg-pay__veil-dots {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.sg-pay__veil-dots > i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted-2);
+  animation: sg-pay-dot 1.4s ease-in-out infinite;
+}
+.sg-pay__veil-dots > i:nth-child(2) { animation-delay: .18s; }
+.sg-pay__veil-dots > i:nth-child(3) { animation-delay: .36s; }
+
+.sg-pay__veil-text {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+/* ══════════════════════════════════════════════════════════ галочка */
+
+/* Оплата прошла: белый лист закрывает код, по нему линией рисуется галочка. */
+.sg-pay__check {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-lg);
+  background: #FFFFFF;
+  animation: sg-pay-fade var(--dur-2) var(--ease) both;
+}
+
+.sg-pay__check > svg {
+  width: 52%;
+  height: 52%;
+  overflow: visible;
+}
+
+.sg-pay__check-ring {
+  fill: none;
+  stroke: var(--ok);
+  stroke-width: 4;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: sg-pay-draw 420ms var(--ease) forwards;
+}
+
+.sg-pay__check-mark {
+  fill: none;
+  stroke: var(--ok);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: sg-pay-draw 320ms var(--ease) 300ms forwards;
+}
+
+/* ══════════════════════════════════════════════════════════ суммы и подписи */
+
+.sg-pay__sum {
+  font-family: var(--font-display);
+  font-size: clamp(28px, 8.6vw, 36px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+  transition: color var(--dur-2) var(--ease);
+}
+
+.sg-pay.is-paid .sg-pay__sum { color: var(--ok); }
+
+.sg-pay__live {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+}
+
+.sg-pay__hint {
+  max-width: 30ch;
+  color: var(--text);
+  font-size: var(--fs-body);
+  line-height: 1.35;
+}
+
+.sg-pay.is-paid .sg-pay__hint { color: var(--ok); font-weight: 600; }
+
+/* Сколько останется отдать курьеру — та самая строка, из-за которой человек
+   не гадает, почему просят сто пятьдесят вместо полутора тысяч. */
+.sg-pay__rest {
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.sg-pay__timer {
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ══════════════════════════════════════════════════════════ разговор не задался */
+
+.sg-pay__state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-5) 0 var(--sp-2);
+}
+
+.sg-pay__state-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--warn-soft);
+  color: var(--warn);
+  animation: sg-pay-pop var(--dur-3) var(--ease-spring) both;
+}
+
+.sg-pay__state-icon > svg { width: 30px; height: 30px; }
+
+.sg-pay.is-declined .sg-pay__state-icon,
+.sg-pay.is-bank .sg-pay__state-icon { background: var(--err-soft); color: var(--err); }
+
+.sg-pay.is-off .sg-pay__state-icon { background: var(--ok-soft); color: var(--ok); }
+
+.sg-pay.is-closed .sg-pay__state-icon { background: var(--surface-2); color: var(--muted); }
+
+/* Пропавшая связь — не поломка сервиса, а сообщение: синий, а не красный. */
+.sg-pay.is-net .sg-pay__state-icon { background: var(--info-soft); color: var(--info); }
+
+.sg-pay__state-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.sg-pay__state-text {
+  max-width: 34ch;
+  color: var(--muted);
+  font-size: var(--fs-body);
+  line-height: 1.4;
+}
+
+/* ══════════════════════════════════════════════════════════ кнопки */
+
+.sg-pay__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: 100%;
+}
+
+/* Кнопки на этом экране нажимают на бегу и в перчатках: меньше 48 px не делаем. */
+.sg-pay__actions .btn { min-height: 48px; }
+
+.sg-pay__actions a.btn { text-decoration: none; }
+
+/* Второстепенные кнопки стоят в ряд: экран невысокий, и каждая лишняя строка
+   кнопок отбирает у кода ровно столько, сколько ему не хватает. */
+.sg-pay__row {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.sg-pay__row > .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 var(--sp-3);
+}
+
+.sg-pay__btn-icon {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+}
+
+.sg-pay__btn-icon > svg { width: 20px; height: 20px; }
+
+/* Оплачено — кнопок нет, но подвал не должен схлопнуться рывком:
+   полторы секунды галочки он просто доживает пустым. */
+.sg-pay.is-paid .sg-pay__foot { min-height: var(--sp-2); }
+
+/* ══════════════════════════════════════════════════════════ движение */
+
+@keyframes sg-pay-orbit {
+  to { stroke-dashoffset: -100; }
+}
+
+@keyframes sg-pay-dot {
+  0%, 100% { opacity: .35; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-3px); }
+}
+
+@keyframes sg-pay-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes sg-pay-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sg-pay-pop {
+  from { opacity: 0; transform: scale(.82); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* ══════════════════════════════════════════════════════════ широкий экран */
+
+/* На планшете и десктопе шторка шире, а код не должен раздуваться до плаката. */
+@media (min-width: 560px) {
+  .sg-pay__stage { width: min(46dvh, 320px); }
+}
+
+/* Альбомная ориентация на телефоне: высоты почти нет, код ужимаем сильнее. */
+@media (max-height: 520px) {
+  .sg-pay__stage { width: clamp(132px, 38dvh, 200px); }
+  .sg-pay__sum { font-size: 26px; }
+  .sg-pay__body { gap: var(--sp-2); }
+}
+
+/* Кто просил меньше движения — тому ровный код без бегающего огонька.
+   Длительности гасит tokens.css, здесь снимаем саму идею вращения. */
+@media (prefers-reduced-motion: reduce) {
+  .sg-pay__orbit rect { stroke-dasharray: none; opacity: .5; }
+  .sg-pay__check-ring,
+  .sg-pay__check-mark { stroke-dashoffset: 0; }
+}

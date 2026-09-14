@@ -368,6 +368,16 @@ def main():
               f"было {q0.get('total')}, стало {q1.get('total')}, за точку {d1}")
         check('в расчёте видно, за сколько точек берём', q1.get('door_points') == 2,
               str(q1.get('door_points')))
+        # Цена на экране считается по тем же правилам, что и в чеке: отметили
+        # точку — надбавка появится, даже если строку оплаты не прислали.
+        flagged = [dict(pts[0], door_to_door=True), dict(pts[1])] \
+            if isinstance(pts[0], dict) else None
+        if flagged:
+            code, qf = req('POST', '/price/quote',
+                           {'tariff_id': tid, 'points': flagged, 'loaders': 0})
+            check('на экране цена считается так же, как в чеке',
+                  (qf or {}).get('door_points') == 1,
+                  f"точек с дверью {(qf or {}).get('door_points')}")
         # Владелец просил брать вперёд пять-десять процентов, а не всю комиссию:
         # 270 сом до подачи машины человека отпугнут, 180 — нет.
         pre, tot = (q1.get('prepay') or 0), (q1.get('total') or 0)
@@ -376,6 +386,44 @@ def main():
               f'бронь {pre} при заказе {tot}, это {pre * 100 // max(tot, 1)}%')
         check('бронь меньше комиссии сервиса', pre <= (q1.get('commission') or 0),
               f"бронь {pre}, комиссия {q1.get('commission')}")
+
+        # Подъём к двери должен дойти до курьера: он оплачен отдельно, и знать,
+        # к какой именно двери подниматься, курьеру нужно до выезда.
+        door_body = dict(order_body, phone='0777112233', extras=[{'code': 'door_to_door', 'qty': 1}])
+        door_body['points'] = [dict(door_body['points'][0], door_to_door=True, lift='no'),
+                               dict(door_body['points'][1])]
+        code, dorder = req('POST', '/orders', door_body)
+        dpid = (dorder or {}).get('public_id')
+        check('заказ с подъёмом к двери создан', code in (200, 201) and bool(dpid),
+              str(dorder)[:200])
+        if atoken and dpid:
+            code, lst = req('GET', '/admin/orders?limit=50', token=atoken)
+            items = (lst or {}).get('items') if isinstance(lst, dict) else lst
+            did = next((o['id'] for o in (items or []) if o.get('public_id') == dpid), None)
+            check('заказ виден в админке', bool(did), f'искали {dpid}')
+            code, full = req('GET', f'/admin/orders/{did}', token=atoken)
+            pts_saved = ((full or {}).get('order') or full or {}).get('points') or []
+            first = pts_saved[0] if pts_saved else {}
+            check('флажок подъёма сохранён у точки', bool(first.get('door_to_door')),
+                  str(first)[:220])
+            check('и про лифт не забыли', str(first.get('lift') or '') == 'no',
+                  str(first.get('lift')))
+
+            # Подъём отмечен у точки, но строку оплаты «забыли» прислать.
+            # Курьер поднимется в любом случае — значит и в чеке это должно быть.
+            sneaky = dict(order_body, phone='0777445566', extras=[])
+            sneaky['points'] = [dict(sneaky['points'][0], door_to_door=True),
+                                dict(sneaky['points'][1], door_to_door=True)]
+            code, sn = req('POST', '/orders', sneaky)
+            spid = (sn or {}).get('public_id')
+            code, lst2 = req('GET', '/admin/orders?limit=50', token=atoken)
+            items2 = (lst2 or {}).get('items') if isinstance(lst2, dict) else lst2
+            sid = next((o['id'] for o in (items2 or []) if o.get('public_id') == spid), None)
+            code, sfull = req('GET', f'/admin/orders/{sid}', token=atoken)
+            se = [e for e in ((sfull or {}).get('extras') or [])
+                  if e.get('code') == 'door_to_door']
+            check('подъём без строки оплаты всё равно попал в чек',
+                  bool(se) and int(se[0].get('qty') or 0) == 2, str((sfull or {}).get('extras'))[:200])
 
         # Клиент получает свой токен, доказав, что заказ его: телефон + токен заказа.
         ctok = None
