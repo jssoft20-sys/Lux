@@ -41,13 +41,15 @@ def soft(name, cond, detail=''):
         print(f'  \033[33m~\033[0m {name}  — {detail or "внешний сервис недоступен"}')
 
 
-def req(method, path, body=None, token=None, raw=False, timeout=25):
+def req(method, path, body=None, token=None, raw=False, timeout=25, headers=None):
     url = path if path.startswith('http') else API + path
     data = json.dumps(body, ensure_ascii=False).encode() if body is not None else None
     r = urllib.request.Request(url, data=data, method=method)
     r.add_header('Content-Type', 'application/json')
     if token:
         r.add_header('Authorization', 'Bearer ' + token)
+    for k, v in (headers or {}).items():
+        r.add_header(k, v)
     try:
         with urllib.request.urlopen(r, timeout=timeout) as resp:
             text = resp.read().decode('utf-8')
@@ -352,6 +354,116 @@ def main():
         for url, name in ((BASE + '/', 'клиент'), (BASE + '/courier', 'курьер'), (BASE + '/admin', 'админка')):
             code, html = req('GET', url, raw=True)
             check(f'страница {name} отдаётся', code == 200 and '<' in str(html), f'код {code}')
+
+        # ── 9. бонусы и «от двери до двери» ──────────────────────────────────
+        print('\n\033[1m9. Бонусы и подъём к двери\033[0m')
+        base_q = {'tariff_id': tid, 'points': pts, 'loaders': 0}
+        code, q0 = req('POST', '/price/quote', base_q)
+        code, q1 = req('POST', '/price/quote',
+                       dict(base_q, extras=[{'code': 'door_to_door', 'qty': 2}]))
+        d1 = (q1 or {}).get('door_price') or 0
+        check('подъём к двери есть в расчёте', code == 200 and d1 > 0, str(q1)[:200])
+        check('две точки с дверью стоят вдвое дороже одной',
+              (q1.get('total') or 0) - (q0.get('total') or 0) == d1 * 2,
+              f"было {q0.get('total')}, стало {q1.get('total')}, за точку {d1}")
+        check('в расчёте видно, за сколько точек берём', q1.get('door_points') == 2,
+              str(q1.get('door_points')))
+        # Владелец просил брать вперёд пять-десять процентов, а не всю комиссию:
+        # 270 сом до подачи машины человека отпугнут, 180 — нет.
+        pre, tot = (q1.get('prepay') or 0), (q1.get('total') or 0)
+        check('бронь — десятая часть заказа, не вся комиссия',
+              0 < pre <= max(tot // 10 + 1, 5000),
+              f'бронь {pre} при заказе {tot}, это {pre * 100 // max(tot, 1)}%')
+        check('бронь меньше комиссии сервиса', pre <= (q1.get('commission') or 0),
+              f"бронь {pre}, комиссия {q1.get('commission')}")
+
+        # Клиент получает свой токен, доказав, что заказ его: телефон + токен заказа.
+        ctok = None
+        if pid and ttok:
+            code, cl = req('POST', '/client/claim',
+                           {'phone': '0555123456', 'order_id': pid, 'track_token': ttok})
+            ctok = (cl or {}).get('token')
+            check('клиент опознан по своему заказу', code == 200 and bool(ctok), str(cl)[:200])
+            code, bad_cl = req('POST', '/client/claim',
+                               {'phone': '0555123456', 'order_id': pid,
+                                'track_token': 'не-тот-токен'})
+            check('с чужим токеном клиента не пускают', bad_cl and code in (403, 429),
+                  f'код {code}')
+
+        if ctok:
+            hdr = {'X-Client-Token': ctok}
+            code, b = req('GET', '/client/bonus', headers=hdr)
+            check('экран бонусов открывается', code == 200 and 'balance' in (b or {}),
+                  str(b)[:200])
+            bal = (b or {}).get('balance') or 0
+            check('кэшбек за выполненный заказ начислен', bal > 0,
+                  f'на счету {bal}, история {str((b or {}).get("history"))[:160]}')
+            code_i = (b or {}).get('invite_code') or (b or {}).get('code')
+            check('у клиента есть свой код приглашения', bool(code_i), str(b)[:200])
+
+            code, mx = req('GET', '/client/bonus/max?total=200000', headers=hdr)
+            cap = (mx or {}).get('max') or 0
+            check('потолок списания не выше доли заказа',
+                  code == 200 and cap <= 200000 * ((mx or {}).get('max_share') or 30) // 100,
+                  str(mx)[:160])
+
+            code, own = req('POST', '/client/bonus/invite', {'code': code_i}, headers=hdr)
+            check('свой же код не принимается', code in (400, 403, 409), f'код {code}: {str(own)[:140]}')
+
+            code, nope = req('GET', '/client/bonus',
+                             headers={'X-Client-Token': 'x' * 48})
+            check('чужой токен клиента не пускает', code in (401, 403, 404), f'код {code}')
+
+        if atoken:
+            code, ab = req('GET', '/admin/bonus', token=atoken)
+            check('сводка по бонусам в админке', code == 200 and isinstance(ab, dict),
+                  str(ab)[:160])
+
+        # ── 10. оплата брони ─────────────────────────────────────────────────
+        print('\n\033[1m10. Оплата брони по QR\033[0m')
+        # Заказ из пятого раздела уже закрыт — по нему платить нечего, и это
+        # правильный отказ. Поэтому для оплаты заводим свежий заказ.
+        code, fresh_order = req('POST', '/orders', dict(order_body, phone='0700998877'))
+        fpid = (fresh_order or {}).get('public_id')
+        fttok = (fresh_order or {}).get('track_token')
+        check('заведён свежий заказ под оплату', bool(fpid and fttok), str(fresh_order)[:160])
+
+        if fpid and fttok:
+            code, pay = req('POST', f'/pay/{fpid}/qr?t={fttok}')
+            check('пока банк не настроен, экран оплаты честно говорит «наличными»',
+                  code == 200 and pay.get('enabled') is False, f'код {code}: {str(pay)[:200]}')
+            code, st = req('GET', f'/pay/{fpid}/status?t={fttok}')
+            check('состояние оплаты читается', code in (200, 429), f'код {code}: {str(st)[:160]}')
+            code, alien = req('POST', f'/pay/{fpid}/qr?t=' + urllib.parse.quote('чужой-токен'))
+            check('чужой токен к оплате не пускает', code in (401, 403, 404, 429), f'код {code}')
+        if pid and ttok:
+            code, closed_pay = req('POST', f'/pay/{pid}/qr?t={ttok}')
+            check('по закрытому заказу платить не дают', code == 409, f'код {code}')
+
+        code, cb = req('POST', '/pay/callback',
+                       {'status': 'PROCESSED', 'sum': 150.0, 'transactionId': '1'})
+        check('уведомление банка без пароля отклонено', code == 401, f'код {code}: {str(cb)[:140]}')
+
+        if atoken:
+            code, ps = req('GET', '/admin/pay/settings', token=atoken)
+            dumped = json.dumps(ps, ensure_ascii=False)
+            check('реквизиты банка читаются в админке', code == 200, str(ps)[:160])
+            check('ключ банка наружу не отдаётся',
+                  'optima_key' not in dumped or '"optima_key": ""' in dumped
+                  or 'key_set' in dumped, dumped[:200])
+            code, sett = req('GET', '/admin/settings', token=atoken)
+            dumped = json.dumps(sett, ensure_ascii=False)
+            check('ключ и пароль банка не утекают в общие настройки',
+                  '"payment.optima_key": ""' in dumped or 'payment.optima_key' not in dumped,
+                  [s for s in dumped.split(',') if 'optima_key' in s][:1])
+            code, sp = req('GET', '/admin/pay/sale-points', token=atoken)
+            check('без ключа точки продаж просят настроить, а не падают',
+                  code in (200, 400, 409, 424, 502), f'код {code}: {str(sp)[:160]}')
+            code, test = req('POST', '/admin/pay/test', token=atoken)
+            check('проверка связи отвечает понятно, а не пятисоткой',
+                  code != 500 and isinstance(test, dict), f'код {code}: {str(test)[:200]}')
+            code, closed = req('GET', '/admin/pay/settings')
+            check('реквизиты закрыты без входа', closed and code in (401, 403), f'код {code}')
 
     finally:
         log.seek(0)

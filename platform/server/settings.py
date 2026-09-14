@@ -25,11 +25,46 @@ DEFAULTS = {
     'commission.max': 100000,           # не больше 1 000 сом
 
     'payment.enabled': False,
-    'payment.provider': 'none',         # none | freedompay | manual
+    'payment.provider': 'none',         # none | optima | manual
     'payment.prepay_commission': False, # клиент платит комиссию вперёд как бронь
     'payment.merchant_id': '',
     'payment.secret': '',
     'payment.test_mode': True,
+
+    # Бронь: клиент платит вперёд только комиссию сервиса, остальное — наличными
+    # курьеру. Размер брони считается от комиссии и зажимается этими границами,
+    # чтобы на дешёвом заказе он не выглядел смешным, а на дорогом — грабительским.
+    'payment.prepay_min': 5000,         # 50 сом
+    'payment.prepay_max': 50000,        # 500 сом
+    'payment.prepay_percent': 0,        # 0 — берём комиссию; иначе процент от заказа
+    # Даже при большой комиссии бронь не должна пугать: держим её в разумной доле
+    # заказа. Пять процентов с полутора тысяч — это 75 сом, человек платит не глядя.
+    'payment.prepay_pct_min': 5,        # не меньше этой доли заказа
+    'payment.prepay_pct_max': 10,       # и не больше этой
+
+    # Оптима Банк. Владелец вводит только ключ и ID компании: точка продаж и касса
+    # определяются сами через get-sale-point-infos.
+    'payment.optima_key': '',           # X-API-KEY
+    'payment.optima_company': '',       # legalPartyId
+    'payment.optima_sale_point': 0,     # подтягивается автоматически
+    'payment.optima_cash': 0,           # подтягивается автоматически
+    'payment.optima_note': 'Бронь заказа Sprinter Go',
+    'payment.callback_login': '',       # логин для обратного уведомления банка
+    'payment.callback_password': '',    # пароль к нему
+    'payment.qr_ttl_s': 600,            # сколько живёт один QR, потом перевыпуск
+
+    # Бонусы. Копятся с выполненных заказов, закрывают часть следующего.
+    'bonus.enabled': True,
+    'bonus.percent': 3,                 # кэшбек с выполненного заказа
+    'bonus.max_share': 30,              # больше этой доли заказа бонусами не закрыть
+    'bonus.expire_days': 180,           # сгорают без заказов
+    'bonus.warn_days': 7,               # за сколько дней предупредить о сгорании
+    'bonus.invite_friend': 20000,       # 200 сом другу на первый заказ
+    'bonus.invite_owner': 30000,        # 300 сом пригласившему
+    'bonus.review': 2000,               # 20 сом за оценку заказа
+    'bonus.signup': 0,                  # приветственные, по умолчанию не даём
+
+    'price.door_to_door': 15000,        # надбавка за подъём к двери, за точку
 
     'dispatch.mode': 'score',           # nearest | score | broadcast
     'dispatch.radius_m': 12000,
@@ -52,6 +87,7 @@ DEFAULTS = {
     'map.center_lng': 74.5698,
     'map.zoom': 13,
     'map.max_zoom': 19,
+    'map.min_zoom': 9,              # дальше город превращается в точку
 
     'geo.provider': 'nominatim',        # nominatim | yandex | 2gis
     'geo.key': '',
@@ -148,7 +184,8 @@ def public():
         'map': {
             'tiles_light': s['map.tiles_light'], 'tiles_dark': s['map.tiles_dark'],
             'attribution': s['map.attribution'], 'center': [s['map.center_lat'], s['map.center_lng']],
-            'zoom': s['map.zoom'], 'max_zoom': s['map.max_zoom'], 'provider': s['map.provider'],
+            'zoom': s['map.zoom'], 'max_zoom': s['map.max_zoom'],
+            'min_zoom': s['map.min_zoom'], 'provider': s['map.provider'],
         },
         'order': {
             'max_points': s['order.max_points'], 'min_price': s['order.min_price'],
@@ -156,8 +193,17 @@ def public():
         },
         'payment': {
             'enabled': bool(s['payment.enabled']),
+            'provider': s['payment.provider'],
             'prepay_commission': bool(s['payment.prepay_commission']),
+            # Ключ и пароли сюда не попадают — только признак, что реквизиты заданы.
+            'ready': bool(s['payment.optima_key'] and s['payment.optima_company']),
         },
+        'bonus': {
+            'enabled': bool(s['bonus.enabled']), 'percent': s['bonus.percent'],
+            'max_share': s['bonus.max_share'], 'expire_days': s['bonus.expire_days'],
+            'invite_friend': s['bonus.invite_friend'], 'invite_owner': s['bonus.invite_owner'],
+        },
+        'price': {'door_to_door': s['price.door_to_door']},
         'commission': {'kind': s['commission.kind'], 'value': s['commission.value']},
     }
 

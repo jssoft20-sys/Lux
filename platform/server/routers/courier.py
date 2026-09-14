@@ -14,7 +14,7 @@
 import threading
 from datetime import timedelta
 
-from .. import auth, db, dispatch, i18n_server as i18n, mailer, pricing, settings
+from .. import auth, bonus, db, dispatch, i18n_server as i18n, mailer, pricing, settings
 from ..core import (ApiError, HUB, Router, bad, conflict, forbidden, log, not_found)
 
 router = Router()
@@ -472,6 +472,11 @@ def _finish(user, order):
         })
 
     fresh = db.row('SELECT * FROM orders WHERE id=?', (order['id'],))
+    # Кэшбек клиенту и награда тому, кто его привёл. Считаем здесь, а не когда
+    # человек откроет экран бонусов: он должен увидеть начисление сразу, пока
+    # помнит про поездку. Начисление идёт один раз на заказ — повтор не пройдёт.
+    gift = bonus.on_order_done(fresh)
+
     _publish_order(fresh, {'breakdown': quote['breakdown']})
     HUB.publish('courier:%s' % user['id'], 'order', dispatch.order_card(fresh, full=True))
     log('заказ', fresh['public_id'], 'завершён курьером', user['name'],
@@ -488,6 +493,7 @@ def _finish(user, order):
             'to_collect': max(0, quote['total'] - paid),
             'breakdown': quote['breakdown'],
         },
+        'bonus': {'cashback': int(gift.get('cashback') or 0)},
     }
 
 

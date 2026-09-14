@@ -9,10 +9,22 @@ Decimal. Считать деньги во float нельзя: на сотне з
 Функция quote() одна на все случаи: и предварительный расчёт в приложении,
 и закрытие заказа. Разница только в том, что при закрытии приходит фактическое
 время ожидания, а иногда и уточнённое расстояние.
+
+Три вещи, которые считаются здесь же, потому что они часть цены:
+
+* «от двери до двери» — надбавка за каждую точку, где курьер поднимается к двери,
+  а не ждёт у машины;
+* списание бонусов — отдельной строкой со знаком минус, не больше доли заказа,
+  разрешённой в настройках (сам счёт и журнал живут в bonus.py);
+* бронь (предоплата) — сколько клиент платит вперёд картой или по QR, остальное
+  отдаёт курьеру наличными.
+
+Старые вызовы quote() работают как раньше: все новые аргументы необязательные,
+а без них новые строки в расчёте просто нулевые.
 """
 from decimal import Decimal, ROUND_HALF_UP
 
-from . import db, geo, settings
+from . import bonus, db, geo, settings
 from .core import ApiError
 
 # Виды допуслуг из таблицы extras.
@@ -20,6 +32,10 @@ KIND_FIXED = 'fixed'        # цена как есть
 KIND_HOURLY = 'hourly'      # цена за час
 KIND_PER_UNIT = 'per_unit'  # цена за предмет
 KIND_PER_FLOOR = 'per_floor'  # цена за этаж
+
+# Код позиции «от двери до двери». В справочнике extras её нет: она считается
+# не за единицу услуги, а за каждую точку маршрута, где человек её включил.
+DOOR_CODE = 'door_to_door'
 
 ONE = Decimal(1)
 
@@ -127,19 +143,149 @@ def commission_for(total):
     return max(0, min(c, total))
 
 
+def prepay_amount(total, commission=None):
+    """Бронь: сколько клиент платит вперёд.
+
+    Смысл брони — не собрать деньги, а убедиться, что человек настоящий: он платит
+    комиссию сервиса, а остальное отдаёт курьеру на месте. Поэтому размер брони
+    привязан к комиссии и зажат границами: на дешёвом заказе бронь не должна
+    выглядеть смешной, на дорогом — грабительской.
+    """
+    total = max(0, _int(total))
+    if total <= 0:
+        return 0
+    share = _dec(settings.get('payment.prepay_percent', 0))
+    if share > 0:
+        # процент задан явно — считаем от заказа, проценты в сотых долях
+        base = (total * _hundredths(share) + 5000) // 10000
+    else:
+        base = commission_for(total) if commission is None else max(0, _int(commission))
+
+    # Комиссия сервиса может быть и пятнадцать процентов, и двадцать — но вперёд,
+    # до подачи машины, столько никто платить не станет. Поэтому бронь дополнительно
+    # зажимается долей самого заказа: обычно это пять-десять процентов. Внутри вилки
+    # размер идёт от комиссии — выше комиссия, больше бронь.
+    pct_low = max(0, settings.get_int('payment.prepay_pct_min', 5))
+    pct_high = max(pct_low, settings.get_int('payment.prepay_pct_max', 10))
+    if pct_high > 0:
+        base = min(base, (total * pct_high + 50) // 100)
+    if pct_low > 0:
+        base = max(base, (total * pct_low + 50) // 100)
+
+    low = settings.get_int('payment.prepay_min', 5000)
+    high = settings.get_int('payment.prepay_max', 50000)
+    if low > 0:
+        base = max(base, low)
+    if high > 0:
+        base = min(base, high)
+    return max(0, min(base, total))
+
+
+def prepay_for_order(order):
+    """Бронь по сохранённому заказу: считаем от его цены и вычитаем то, что уже
+    закрыто бонусами, — просить вперёд больше, чем человек вообще должен, нельзя."""
+    total = max(0, _int(order.get('price_total')))
+    left = max(0, total - bonus.applied_to_order(order.get('id')))
+    return min(prepay_amount(total, order.get('commission')), left)
+
+
+def door_price():
+    """Надбавка «от двери до двери» за одну точку. Это отдельная работа: курьер
+    поднимается к квартире и спускается обратно, а не ждёт у машины."""
+    return max(0, settings.get_int('price.door_to_door', 15000))
+
+
+def bonus_cap(total, client_id=None):
+    """Сколько бонусов разрешено списать в заказ этой суммы.
+
+    Клиент известен — учитываем и его остаток. Неизвестен (предварительный расчёт
+    на экране) — только долю заказа: больше неё сервис работал бы в минус.
+    """
+    total = max(0, _int(total))
+    if total <= 0:
+        return 0
+    if client_id:
+        return max(0, _int(bonus.max_spendable(client_id, total)))
+    return max(0, _int(bonus.cap_for_total(total)))
+
+
+def _flag(v):
+    """Флажок из JSON: true, 1, «on», «да» — всё это «включено»."""
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return v > 0
+    return str(v or '').strip().lower() in ('1', 'true', 'yes', 'on', 'да')
+
+
+def _door_from_points(points):
+    """Точки, где человек попросил поднять груз к двери."""
+    n = 0
+    for p in (points or []):
+        if isinstance(p, dict) and _flag(p.get('door_to_door', p.get('d2d'))):
+            n += 1
+    return n
+
+
+def _door_from_extras(extras):
+    """То же самое, но пришедшее строкой допуслуги.
+
+    Экран заказа шлёт выбор именно так, и по дороге через orders.extras он не
+    теряется: при закрытии заказа надбавка пересчитается из той же записи.
+    """
+    n = 0
+    for raw in (extras or []):
+        if isinstance(raw, dict) and str(raw.get('code') or '').strip() == DOOR_CODE:
+            qty = _int(raw.get('qty'), 1)
+            n = max(n, 1 if qty <= 0 else qty)
+        elif isinstance(raw, str) and raw.strip() == DOOR_CODE:
+            n = max(n, 1)
+    return n
+
+
+def _door_count(door_to_door, points, extras, limit):
+    """Сколько точек оплачивается по «от двери до двери».
+
+    Источников три — явный аргумент, флажок у точки и строка допуслуги, — потому
+    что разные экраны шлют выбор по-разному. Явный аргумент главнее, иначе берём
+    наибольшее: расходиться источники не должны, а молча потерять включённый
+    человеком подъём хуже, чем посчитать его.
+    """
+    if door_to_door is None:
+        count = max(_door_from_points(points), _door_from_extras(extras))
+    elif door_to_door is True:
+        count = limit
+    elif door_to_door is False:
+        count = 0
+    elif isinstance(door_to_door, (list, tuple)):
+        count = sum(1 for f in door_to_door if _flag(f))
+    else:
+        count = _int(door_to_door)
+    return max(0, min(count, limit))
+
+
 # ─────────────────────────────────────────────────────────── расчёт
 
 def quote(tariff, points=None, distance_m=0, duration_s=0, loaders=0, extras=None,
-          waiting_s=0, hours=None, catalog=None):
+          waiting_s=0, hours=None, catalog=None,
+          door_to_door=None, bonus_spend=None, bonus_fixed=False, client_id=None):
     """Полный расчёт заказа.
 
-    tariff      — словарь тарифа, id или код
-    points      — точки маршрута, нужны только если расстояние ещё не посчитано
-    distance_m  — метры, duration_s — секунды в пути
-    loaders     — сколько грузчиков просит клиент (включая бесплатных по тарифу)
-    extras      — [{code, qty}] или готовые позиции с ценой
-    waiting_s   — фактическое ожидание, при предварительном расчёте ноль
-    hours       — часы работы бригады, если клиент выбрал их руками
+    tariff       — словарь тарифа, id или код
+    points       — точки маршрута, нужны только если расстояние ещё не посчитано
+    distance_m   — метры, duration_s — секунды в пути
+    loaders      — сколько грузчиков просит клиент (включая бесплатных по тарифу)
+    extras       — [{code, qty}] или готовые позиции с ценой
+    waiting_s    — фактическое ожидание, при предварительном расчёте ноль
+    hours        — часы работы бригады, если клиент выбрал их руками
+    door_to_door — сколько точек с подъёмом к двери: число, True (все точки),
+                   список флажков. Не задано — смотрим флажки в точках и строку
+                   допуслуги door_to_door
+    bonus_spend  — сколько бонусов списать: число или True («сколько можно»).
+                   Сумма зажимается долей из настроек, а с client_id — ещё и остатком
+    bonus_fixed  — бонусы уже списаны и пересчёту не подлежат: так чек по закрытому
+                   заказу показывает то, что было на самом деле
+    client_id    — клиент, если он известен: нужен только для проверки остатка бонусов
     """
     t = load_tariff(tariff)
     pts = geo.clean_points(points)
@@ -193,10 +339,21 @@ def quote(tariff, points=None, distance_m=0, duration_s=0, loaders=0, extras=Non
     book = catalog if catalog is not None else load_extras()
     items = []
     for raw in (extras or []):
+        code = raw.get('code') if isinstance(raw, dict) else raw
+        if str(code or '').strip() == DOOR_CODE:
+            continue          # это своя позиция ниже, за точки, а не за единицу услуги
         item = _extra_item(raw, book, work_hours)
         if item:
             items.append(item)
     extras_total = sum(i['sum'] for i in items)
+
+    # ── от двери до двери ────────────────────────────────────────────────────
+    # Платится за каждую точку, где курьер поднимается к двери. Больше, чем точек
+    # в заказе, посчитать нельзя — даже если в запросе прислали число побольше.
+    door_limit = len(pts) if pts else max(2, settings.get_int('order.max_points', 5))
+    door_points = _door_count(door_to_door, points, extras, door_limit)
+    door_unit = door_price()
+    price_door = door_unit * door_points
 
     # ── ожидание ─────────────────────────────────────────────────────────────
     waiting_min = -(-waiting_s // 60)
@@ -206,11 +363,32 @@ def quote(tariff, points=None, distance_m=0, duration_s=0, loaders=0, extras=Non
     price_waiting = max(0, _int(_field(t, 'waiting_per_min'))) * paid_wait
 
     # ── итог ─────────────────────────────────────────────────────────────────
-    subtotal = base + price_distance + price_time + price_loaders + extras_total + price_waiting
+    subtotal = (base + price_distance + price_time + price_loaders
+                + extras_total + price_door + price_waiting)
     floor = max(max(0, _int(_field(t, 'min_price'))), settings.get_int('order.min_price', 0))
     total = max(subtotal, floor)
     surcharge = total - subtotal
     commission = commission_for(total)
+
+    # ── бонусы ───────────────────────────────────────────────────────────────
+    # Потолок считаем всегда: экран показывает его человеку, даже когда списывать
+    # он пока не собрался.
+    bonus_max = bonus_cap(total, client_id)
+    if bonus_fixed:
+        # заказ уже закрыт этими бонусами — пересчитывать нечего, показываем факт
+        used = max(0, _int(bonus_spend))
+    elif bonus_spend is True:
+        used = bonus_max
+    elif bonus_spend:
+        used = min(max(0, _int(bonus_spend)), bonus_max)
+    else:
+        used = 0
+    used = max(0, min(used, total))
+    to_pay = total - used
+
+    # Бронь считаем от полной цены, но просить вперёд больше, чем человек должен
+    # деньгами, нельзя: бонусы уже закрыли свою часть.
+    prepay = min(prepay_amount(total, commission), to_pay)
 
     res = {
         'tariff_id': _int(t.get('id')) or None,
@@ -233,10 +411,17 @@ def quote(tariff, points=None, distance_m=0, duration_s=0, loaders=0, extras=Non
         'loaders_price': price_loaders,   # то же число под привычным именем
         'extras': items,
         'extras_total': extras_total,
+        'door_points': door_points,
+        'door_price': door_unit,
+        'door_to_door': price_door,
         'waiting': price_waiting,
         'min_price_extra': surcharge,
         'subtotal': subtotal,
         'total': total,
+        'bonus_max': bonus_max,
+        'bonus_spent': used,
+        'to_pay': to_pay,
+        'prepay': prepay,
         'commission': commission,
         'courier_payout': total - commission,
     }
@@ -333,6 +518,10 @@ def _breakdown(t, res, paid_tenths, paid_min, loader_hours, per_loader):
             continue
         lines.append(_line(it['code'], it['name_ru'], it['name_ky'], it['qty'],
                            it['unit_price'], it['sum'], it['unit_ru'], it['unit_ky']))
+    if res.get('door_to_door', 0) > 0:
+        lines.append(_line(DOOR_CODE, 'От двери до двери', 'Эшиктен эшикке',
+                           res['door_points'], res['door_price'], res['door_to_door'],
+                           'точка', 'чекит'))
     if res['waiting'] > 0:
         lines.append(_line('waiting', 'Платное ожидание', 'Күтүү убактысы',
                            res['waiting_min'], _field(t, 'waiting_per_min'), res['waiting'],
@@ -341,19 +530,32 @@ def _breakdown(t, res, paid_tenths, paid_min, loader_hours, per_loader):
         lines.append(_line('min_price', 'Доплата до минимальной стоимости',
                            'Минималдуу баага чейин кошумча',
                            1, res['min_price_extra'], res['min_price_extra']))
+    if res.get('bonus_spent', 0) > 0:
+        # Последней строкой и со знаком минус: человек сначала видит, за что платит,
+        # и только потом — сколько из этого закрыли бонусы.
+        lines.append(_line('bonus', 'Списание бонусов', 'Бонус менен төлөндү',
+                           1, -res['bonus_spent'], -res['bonus_spent']))
     return lines
 
 
 # ─────────────────────────────────────────────────────────── связь с заказом
 
 def to_order_fields(q):
-    """Расчёт → колонки таблицы orders. Чтобы роутеры не раскладывали руками."""
+    """Расчёт → колонки таблицы orders. Чтобы роутеры не раскладывали руками.
+
+    «От двери до двери» кладём в price_extras: своей колонки под неё нет, а сумма
+    частей обязана сходиться с price_total, иначе отчёты перестанут биться.
+    Отдельной строкой она всё равно видна — в разбивке чека.
+
+    Бонусы в колонки не попадают: заказ стоит столько, сколько стоит, а списание
+    живёт своей строкой в журнале bonus.py. Курьер получает свою выплату целиком.
+    """
     return {
         'price_base': _int(q.get('base')),
         'price_distance': _int(q.get('distance')),
         'price_time': _int(q.get('time')),
         'price_loaders': _int(q.get('loaders_price')),
-        'price_extras': _int(q.get('extras_total')),
+        'price_extras': _int(q.get('extras_total')) + _int(q.get('door_to_door')),
         'price_waiting': _int(q.get('waiting')),
         'price_total': _int(q.get('total')),
         'commission': _int(q.get('commission')),
@@ -363,7 +565,12 @@ def to_order_fields(q):
 
 def quote_order(order, waiting_s=None, distance_m=None, duration_s=None, hours=None):
     """Пересчёт по сохранённому заказу: закрытие смены, ожидание по факту,
-    уточнённый пробег. Цену всегда считаем заново, а не правим сохранённую."""
+    уточнённый пробег. Цену всегда считаем заново, а не правим сохранённую.
+
+    Списанные бонусы подставляем фактом из журнала: это уже случившееся движение,
+    и пересчитывать его по сегодняшним настройкам нельзя — чек должен сходиться
+    с тем, что человек отдал.
+    """
     pts = db.jload(order.get('points'), []) or []
     extras = db.jload(order.get('extras'), []) or []
     return quote(
@@ -375,4 +582,7 @@ def quote_order(order, waiting_s=None, distance_m=None, duration_s=None, hours=N
         extras=extras,
         waiting_s=order.get('waiting_s') if waiting_s is None else waiting_s,
         hours=hours,
+        bonus_spend=bonus.applied_to_order(order.get('id')),
+        bonus_fixed=True,
+        client_id=order.get('client_id'),
     )

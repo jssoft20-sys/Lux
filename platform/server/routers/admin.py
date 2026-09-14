@@ -25,7 +25,8 @@ API = '/api/v1'
 router = Router()
 
 # Значения этих настроек наружу не отдаём — только признак «заполнено».
-SECRET_KEYS = ('payment.secret', 'smtp.pass', 'geo.key', 'map.key', 'route.key')
+SECRET_KEYS = ('payment.secret', 'payment.optima_key', 'payment.callback_password',
+               'smtp.pass', 'geo.key', 'map.key', 'route.key')
 
 # Ключи, которых ещё нет в settings.DEFAULTS. Тип значения берётся отсюда, иначе
 # число приехало бы из формы строкой и границы из LIMITS не сработали бы.
@@ -37,7 +38,8 @@ EXTRA_DEFAULTS = {
 
 # Настройки живут только в этих группах: случайный ключ в базу не попадёт.
 SETTING_PREFIXES = ('service.', 'commission.', 'payment.', 'dispatch.', 'map.',
-                    'geo.', 'route.', 'smtp.', 'mail.', 'order.', 'security.')
+                    'geo.', 'route.', 'smtp.', 'mail.', 'order.', 'security.',
+                    'bonus.', 'price.')
 
 # Числовые настройки с разумными границами: ноль радиуса или ttl в сутки —
 # это не «гибкая настройка», а сломанный сервис.
@@ -1264,6 +1266,40 @@ def stats(ctx):
                             'AND created_at >= ? AND created_at < ?', args, 0)
     clients_new = db.value('SELECT COUNT(*) FROM clients WHERE created_at >= ? AND created_at < ?',
                            args, 0)
+
+    # Новые против вернувшихся. Вернувшийся — тот, кто заказывал в этом периоде,
+    # а завёлся раньше. Это главное число сервиса: если оно не растёт, реклама
+    # приводит людей, которые не возвращаются, и деньги уходят впустую.
+    ordered = db.rows('SELECT o.client_id, COUNT(*) n, MIN(c.created_at) born '
+                      'FROM orders o JOIN clients c ON c.id = o.client_id '
+                      'WHERE o.created_at >= ? AND o.created_at < ? GROUP BY o.client_id', args)
+    clients_active = len(ordered)
+    clients_back = sum(1 for r in ordered if (r['born'] or 0) < frm)
+    clients_repeat = sum(1 for r in ordered if (r['n'] or 0) > 1)
+    orders_per_client = (sum(r['n'] for r in ordered) * 100 // clients_active
+                         if clients_active else 0)
+
+    # Отмены: кто отменил, почему и на каком шаге. Шаг восстанавливаем по отметкам
+    # времени — отдельного поля для него нет, а знать его важнее всего: отмена до
+    # поиска машины ничего не стоит, отмена после подачи стоит курьеру дороги.
+    cancelled_rows = db.rows(
+        'SELECT cancelled_by, cancel_reason, searching_at, assigned_at '
+        "FROM orders WHERE status='cancelled' AND cancelled_at >= ? AND cancelled_at < ?", args)
+    steps = {'before_search': 0, 'searching': 0, 'assigned': 0}
+    reasons, by_whom = {}, {}
+    for r in cancelled_rows:
+        if r.get('assigned_at'):
+            steps['assigned'] += 1
+        elif r.get('searching_at'):
+            steps['searching'] += 1
+        else:
+            steps['before_search'] += 1
+        why = (r.get('cancel_reason') or '').strip() or '—'
+        reasons[why] = reasons.get(why, 0) + 1
+        who = r.get('cancelled_by') or 'system'
+        by_whom[who] = by_whom.get(who, 0) + 1
+    top_reasons = [{'reason': k, 'count': v} for k, v in
+                   sorted(reasons.items(), key=lambda kv: -kv[1])[:10]]
     return {
         'period': {'from': frm, 'to': to, 'tz_offset': off,
                    'label': ctx.q('period') or 'week'},
@@ -1296,7 +1332,13 @@ def stats(ctx):
                                 "AND status='pending'", (), 0),
         },
         'clients': {'new': clients_new,
-                    'total': db.value('SELECT COUNT(*) FROM clients', (), 0)},
+                    'total': db.value('SELECT COUNT(*) FROM clients', (), 0),
+                    'active': clients_active,          # заказывали в этом периоде
+                    'returning': clients_back,         # из них завелись раньше
+                    'repeat': clients_repeat,          # сделали больше одного заказа
+                    'orders_per_client': orders_per_client},   # в сотых долях
+        'cancels': {'total': len(cancelled_rows), 'by_step': steps,
+                    'by_whom': by_whom, 'reasons': top_reasons},
         'by_tariff': by_tariff,
         'by_hour': by_hour,
         'by_day': by_day,

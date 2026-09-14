@@ -21,7 +21,8 @@ import secrets
 import sqlite3
 import time
 
-from .. import auth, db, dispatch, geo, i18n_server as i18n, payments, pricing, settings
+from .. import (auth, bonus, db, dispatch, geo, i18n_server as i18n, payments,
+                pricing, settings)
 from ..core import (HUB, LIMIT, ApiError, Router, bad, conflict, forbidden, log,
                     not_found, too_many)
 
@@ -139,6 +140,15 @@ def _num(v):
         return float(v)
     except (TypeError, ValueError):
         return None
+
+
+def _int(v, default=0):
+    """Целое из чего угодно. Кривое значение — это не повод падать: клиент мог
+    прислать строку, None или вовсе выдумать поле."""
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
 
 
 def _str(v, limit):
@@ -420,10 +430,16 @@ def create_order(ctx):
 
     coords = [(p['lat'], p['lng']) for p in points]
     route = geo.route(coords)
+    # Сколько человек просит списать бонусами. true — «всё, что можно»;
+    # число — конкретная сумма, но сервер всё равно урежет её до потолка.
+    want_bonus = ctx.json.get('bonus_spend')
+    want_bonus = True if want_bonus is True else max(0, _int(want_bonus))
     # Цену считаем сами: присланная клиентом сумма в расчёте не участвует.
+    # Бонусы тоже: сколько их есть и сколько можно списать, знает только сервер.
     price = pricing.quote(tariff, points=coords, distance_m=route['distance_m'],
                           duration_s=route['duration_s'], loaders=loaders, extras=extras,
-                          hours=hours if hours and hours > 0 else None)
+                          hours=hours if hours and hours > 0 else None,
+                          bonus_spend=want_bonus, client_id=client['id'])
 
     fields = {
         'client_id': client['id'], 'tariff_id': tariff['id'], 'status': 'draft', 'lang': lang,
@@ -445,6 +461,12 @@ def create_order(ctx):
         })
         db.execute('UPDATE clients SET orders_count = orders_count + 1, last_order_at=? '
                    'WHERE id=?', (order['created_at'], client['id']))
+        # Списываем ровно столько, сколько насчитал сервер. Если бонусы за это
+        # время потратили в другом окне, spend() спишет меньше и вернёт сколько.
+        spent = _int(price.get('bonus_spent'))
+        if spent > 0:
+            bonus.spend(client['id'], spent, order_id=order['id'],
+                        order_total=order['price_total'])
 
     pay = None
     if payments.enabled():
@@ -677,6 +699,8 @@ def cancel_order(ctx, pid):
 
     # Предложения снимаем уже после записи статуса: курьерам гаснут карточки.
     dispatch.cancel_search(order['id'])
+    # Заказа не будет — бонусы возвращаем на счёт. Человек их заработал.
+    bonus.on_order_cancelled(order)
     fresh = db.row('SELECT * FROM orders WHERE id=?', (order['id'],))
     _publish(fresh, {'cancelled_by': 'client', 'cancel_reason': reason})
     log('заказ', fresh['public_id'], 'отменён клиентом', ('бесплатно' if free else 'со штрафом'))
@@ -716,13 +740,17 @@ def rate_order(ctx, pid):
                        (rating, order['courier_id']))
         _event(order['id'], 'client', 'rated', {'rating': rating, 'comment': comment})
 
+    # Маленький бонус за оценку: без него отзывы просто не пишут.
+    gift = _int(bonus.on_order_rated(order, rating).get('amount'))
+
     body = {'public_id': order['public_id'], 'rating': rating, 'comment': comment,
             'courier_id': order.get('courier_id')}
     HUB.publish('admin', 'rating', body)
     if order.get('courier_id'):
         HUB.publish('courier:%s' % order['courier_id'], 'rating',
                     {'public_id': order['public_id'], 'rating': rating, 'comment': comment})
-    return {'ok': True, 'rating': rating, 'message': say('rate.thanks', lang)}
+    return {'ok': True, 'rating': rating, 'message': say('rate.thanks', lang),
+            'bonus': gift, 'bonus_balance': bonus.balance(order.get('client_id') or 0)}
 
 
 # ─────────────────────────────────────────────────────────────── оплата

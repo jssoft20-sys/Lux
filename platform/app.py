@@ -29,12 +29,13 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from server import auth, db, dispatch, mailer, settings          # noqa: E402
+from server import auth, bonus, db, dispatch, mailer, settings   # noqa: E402
 from server.core import HUB, App, log, serve                     # noqa: E402
 from server.routers import admin as admin_routes                 # noqa: E402
 from server.routers import auth as auth_routes                   # noqa: E402
 from server.routers import courier as courier_routes             # noqa: E402
 from server.routers import extra as extra_routes                 # noqa: E402
+from server.routers import pay as pay_routes                     # noqa: E402
 from server.routers import public as public_routes               # noqa: E402
 
 DEFAULT_HOST = '0.0.0.0'
@@ -104,7 +105,7 @@ def web_dir():
 # ─────────────────────────────────────────────────────────────── сборка приложения
 
 def mount_routes(app):
-    """Подключаем пять наборов маршрутов.
+    """Подключаем все наборы маршрутов.
 
     Точка входа у модулей называется по-разному, и угадывать её через getattr
     нельзя: в routers/auth.py есть обработчик регистрации курьера с именем
@@ -115,6 +116,8 @@ def mount_routes(app):
     courier_routes.mount(app)
     admin_routes.register(app)
     extra_routes.register(app)      # чат, профиль клиента, верификация, зоны спроса
+    bonus.register(app)             # баланс, история, приглашения
+    pay_routes.register(app)        # QR Оптимы, уведомление банка, реквизиты
     return len(app.router.routes)
 
 
@@ -191,6 +194,9 @@ def cleanup_loop(stop_event):
             break
         try:
             db.cleanup()
+            # Сгоревшие бонусы и предупреждения о скором сгорании. Раз в час
+            # избыточно, но дёшево, а зато человек увидит полосу вовремя.
+            bonus.expire_old()
             # WAL после суток работы разрастается, и файл базы перестаёт
             # помещаться в резервную копию по расписанию. Подрезаем его здесь.
             db.execute('PRAGMA wal_checkpoint(TRUNCATE)')

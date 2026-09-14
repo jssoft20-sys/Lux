@@ -145,8 +145,11 @@ if geo_ok:
 if route_ok:
     values.update({'route.provider': '2gis', 'route.key': KEY})
 if tiles_ok:
+    # Глубже восемнадцатого 2ГИС отдаёт 204 без картинки — если разрешить
+    # приближаться дальше, человек упрётся в серый экран и решит, что всё сломалось.
     values.update({'map.provider': '2gis', 'map.tiles_light': TILES,
-                   'map.tiles_dark': TILES, 'map.attribution': '© 2ГИС'})
+                   'map.tiles_dark': TILES, 'map.attribution': '© 2ГИС',
+                   'map.max_zoom': 18, 'map.min_zoom': 9})
 
 con = sqlite3.connect(DB, timeout=15)
 con.execute('PRAGMA journal_mode=WAL')
@@ -157,7 +160,8 @@ for k, v in values.items():
 con.commit()
 con.close()
 for k in sorted(values):
-    print(f'   {k} = ' + (values[k][:8] + '…' if k.endswith('key') else values[k]))
+    v = values[k]
+    print(f'   {k} = ' + (v[:8] + '…' if k.endswith('key') and isinstance(v, str) else str(v)))
 
 run('systemctl', 'restart', SERVICE)
 print(f'   служба {SERVICE} перезапущена')

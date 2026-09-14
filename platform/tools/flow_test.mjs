@@ -41,9 +41,14 @@ async function prepareCourier() {
     // которым владелец добавляет водителя руками.
     const { execFileSync } = await import('node:child_process');
     try {
+      // База у прогона своя (SG_DATA), и без этой подсказки скрипт заводил бы
+      // курьера в соседней базе, а прогон потом не мог понять, почему его нет.
+      const data = process.env.SG_DATA || '';
+      const env = { ...process.env };
+      if (data && !env.SG_DB) env.SG_DB = `${data}/sprintergo.sqlite3`;
       execFileSync('python3', ['tools/mkcourier.py', email, password, 'Талгат Осмонов',
                                '0700112233', 'van', 'Mercedes Sprinter', '01KG762ATN'],
-                   { cwd: process.cwd(), env: process.env, stdio: 'pipe' });
+                   { cwd: process.cwd(), env, stdio: 'pipe' });
       login = await api('POST', '/auth/login', { email, password });
     } catch { /* пойдём обычным путём */ }
   }
@@ -59,7 +64,10 @@ async function prepareCourier() {
     const items = list.body?.items || list.body || [];
     const me = items.find(c => c.email === email) || items[0];
     const cid = me?.id || me?.user_id;
-    if (cid) await api('PATCH', `/admin/couriers/${cid}`, { status: 'active' }, admin.body.token);
+    // Документы тоже одобряем: непроверенным курьерам диспетчер заказов не шлёт,
+    // и прогон падал бы на «предложение не пришло», хотя дело не в диспетчере.
+    if (cid) await api('PATCH', `/admin/couriers/${cid}`,
+                       { status: 'active', verify_status: 'approved' }, admin.body.token);
     login = await api('POST', '/auth/login', { email, password });
   }
   const ct = login.body?.token;
