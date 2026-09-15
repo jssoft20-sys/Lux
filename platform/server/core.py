@@ -265,6 +265,42 @@ class Static:
         self.base = normalize_base(base)
         self.cache = {}
         self.lock = threading.Lock()
+        self.build = self._build_stamp()
+
+    def _build_stamp(self):
+        """Отпечаток текущей сборки: меняется, как только поменялся любой файл.
+
+        Нужен служебному воркеру. Он кэширует оболочку под именем со своей
+        версией, а браузер переустанавливает воркер, только если ИЗМЕНИЛСЯ САМ
+        ФАЙЛ воркера. С зашитой строкой «v1» это значит: обновили сервер, а у
+        человека в приложении по-прежнему старые скрипты, и он уверен, что
+        обновления не приехало. Поэтому версию подставляем сюда на лету.
+        """
+        h = hashlib.md5()
+        for folder, dirs, files in os.walk(self.root):
+            dirs.sort()
+            for name in sorted(files):
+                if name.startswith('sw-') or name.endswith(('.map', '.log')):
+                    continue          # сам воркер в отпечаток не входит: иначе он менял бы сам себя
+                try:
+                    st = os.stat(os.path.join(folder, name))
+                except OSError:
+                    continue
+                h.update(name.encode('utf-8'))
+                h.update(b'%d:%d' % (st.st_mtime_ns, st.st_size))
+        return h.hexdigest()[:12]
+
+    def refresh_build(self):
+        """Пересчитать отпечаток. Зовётся в режиме разработки, где файлы правят на ходу."""
+        self.build = self._build_stamp()
+        return self.build
+
+    SW_VERSION = re.compile(rb"(const\s+VERSION\s*=\s*)'[^']*'")
+
+    def stamp_worker(self, raw):
+        """Подставить отпечаток сборки в служебный воркер."""
+        return self.SW_VERSION.sub(lambda m: m.group(1) + b"'" + self.build.encode() + b"'",
+                                   raw, count=1)
 
     def rebase(self, raw, ctype):
         """Подставляет префикс установки в текстовые файлы, которым это нужно."""
@@ -310,6 +346,10 @@ class Static:
         if ctype.startswith('text/') or ctype in ('application/javascript', 'application/json'):
             ctype += '; charset=utf-8'
         raw = self.rebase(raw, ctype)
+        if os.path.basename(full).startswith('sw-'):
+            if self.dev:
+                self.refresh_build()
+            raw = self.stamp_worker(raw)
         gz = None
         if any(ctype.startswith(t) for t in self.GZIP_TYPES) and len(raw) > 900:
             gz = gzip.compress(raw, 6)
