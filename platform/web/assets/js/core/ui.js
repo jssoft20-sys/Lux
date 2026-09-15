@@ -518,7 +518,13 @@ export function sheet(opts = {}) {
     box.style.height = 'auto';
     const natural = box.offsetHeight;
     box.style.height = prev;
-    contentH = clamp(natural, 120, maxH);
+    /* Содержимое выше экрана — значит «по содержимому» уже ничего не значит:
+       обе остановки слиплись бы на потолке, и растягивание молча перестало бы
+       работать ровно там, где оно нужнее всего — на длинных списках. В этом
+       случае нижняя остановка становится удобной высотой: две трети экрана,
+       остальное человек вытягивает пальцем. */
+    const roomy = clamp(Math.round(vh * 0.62), 200, maxH);
+    contentH = natural >= maxH ? roomy : clamp(natural, 120, maxH);
   }
 
   /** Поставить шторку в положение. 'closed' закрывает её. */
@@ -987,7 +993,20 @@ export function rowGroup(rows, opts = {}) {
       if (r.value !== undefined && r.value !== null) {
         row.appendChild(el('span', { className: 'rowgroup__val truncate' }, r.value));
       }
-      if (r.end) row.appendChild(el('span', { className: 'rowgroup__end' }, anyNodes(r.end)));
+      if (r.end) {
+        const tail = anyNodes(r.end);
+        const end = el('span', { className: 'rowgroup__end' }, tail);
+        /* Сегментному переключателю справа нужна вся свободная ширина строки:
+           зажатый в остаток, он сминает пять сегментов в кружки и буквы
+           S M L XL XXL становится не прочитать. Раскладку меняет css, здесь
+           только отмечаем такую строку — экранам об этом помнить не нужно. */
+        if (tail.some((n) => n.nodeType === 1 &&
+            (n.classList.contains('segmented') || n.querySelector('.segmented')))) {
+          end.classList.add('rowgroup__end--grow');
+          row.classList.add('rowgroup__row--seg');
+        }
+        row.appendChild(end);
+      }
       if (r.chevron || (tap && r.chevron !== false && !r.end)) {
         row.appendChild(el('span', { className: 'rowgroup__chev', 'aria-hidden': 'true' }));
       }

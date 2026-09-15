@@ -42,16 +42,32 @@ async function main() {
 
   console.log('\n\x1b[1m1. Заставка\x1b[0m');
   {
-    const { ctx, page } = await phone(browser, { errors });
-    await page.goto(BASE + '/', { waitUntil: 'commit' });
-    // Сразу после старта она обязана быть на экране — иначе человек видит белый лист.
-    const early = await page.evaluate(() => {
+    // Заставка обязана быть видна БЕЗ единого скрипта: она затем и нужна, чтобы
+    // закрыть белый лист, пока эти скрипты грузятся. Проверяем честно — глушим
+    // все модули и смотрим, что человек видит.
+    const bare = await phone(browser, {});
+    await bare.page.route(/\/assets\/js\//, r => r.abort());
+    await bare.page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
+    await bare.page.waitForTimeout(800);
+    const early = await bare.page.evaluate(() => {
       const s = document.querySelector('.sg-splash');
       if (!s) return { there: false };
       const cs = getComputedStyle(s);
-      return { there: true, shown: cs.display !== 'none' && cs.opacity !== '0' };
+      const r = s.getBoundingClientRect();
+      return {
+        there: true,
+        shown: cs.display !== 'none' && cs.visibility !== 'hidden' && Number(cs.opacity) > 0.5,
+        big: r.width > 200 && r.height > 300,
+        bg: cs.backgroundColor,
+      };
     }).catch(() => ({ there: false }));
-    ok('заставка есть в разметке до загрузки скриптов', early.there, JSON.stringify(early));
+    ok('заставка видна и без единого скрипта',
+       early.there && early.shown && early.big, JSON.stringify(early));
+    await bare.page.screenshot({ path: '/tmp/sg-splash.png' }).catch(() => {});
+    await bare.ctx.close();
+
+    const { ctx, page } = await phone(browser, { errors });
+    await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
 
     await page.waitForTimeout(4500);
     const gone = await page.evaluate(() => {
