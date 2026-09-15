@@ -118,35 +118,61 @@ async function run() {
 
   // ── 1. адрес назначения ────────────────────────────────────────────────────
   console.log('\x1b[1m1. Ввод адреса\x1b[0m');
-  const rows = page.locator('button.sg-point__main');
+  const rows = page.locator('button.sg-addr');
   ok('обе строки адреса на экране', await rows.count() >= 2, `найдено ${await rows.count()}`);
-  await tap(page, rows.nth(1));
-  await page.waitForTimeout(900);
-  await shot(page, '01-address-search');
-  ok('экран поиска адреса открылся', await page.locator('input:visible').count() > 0);
 
-  await page.locator('input:visible').first().fill('Суюмбаева Ахматбека');
-  await page.waitForTimeout(3000);
-  const items = page.locator('button.sg-item');
-  const found = await items.count();
-  ok('подсказки адресов пришли', found > 1, `вариантов ${found}`);
-  await shot(page, '02-suggestions');
-  await tap(page, items.first());
-  await page.waitForTimeout(2500);
-
-  // ── 1б. детали адресов ─────────────────────────────────────────────────────
-  // После адресов появился шаг с подъездом, этажом и подъёмом к двери. Заполнять
-  // ничего не обязательно, но пройти его надо — как и живому человеку.
-  const details = page.locator('.sg-foot .sg-cta, .sg-cta').first();
-  const onDetails = /Детали|Подъезд|двери/i.test(await page.locator('body').innerText());
-  ok('шаг с деталями адресов появился', onDetails,
-     (await page.locator('body').innerText()).replace(/\n+/g, ' | ').slice(0, 200));
-  await shot(page, '02b-details');
-  if (onDetails && await details.count()) {
-    await tap(page, details);
-    await page.waitForTimeout(2500);
+  /* Заполняем обе строки. Раньше «откуда» подставлялось по геолокации, и прогон
+     трогал только «куда»; теперь человек задаёт оба адреса сам, и проверка
+     должна идти тем же путём, а не удобным. */
+  async function pickAddress(index, query, label) {
+    await tap(page, page.locator('button.sg-addr').nth(index));
+    await page.waitForTimeout(900);
+    const field = page.locator('input:visible').first();
+    ok(`экран поиска адреса открылся (${label})`, await field.count() > 0);
+    await field.fill(query);
+    await page.waitForTimeout(3000);
+    const items = page.locator('button.sg-item');
+    const found = await items.count();
+    ok(`подсказки адресов пришли (${label})`, found > 0, `вариантов ${found}`);
+    if (found) await tap(page, items.first());
+    await page.waitForTimeout(2200);
   }
-  await page.waitForTimeout(1200);
+
+  await pickAddress(0, 'Токтогула', 'откуда');
+  await shot(page, '02-suggestions');
+  await pickAddress(1, 'Суюмбаева Ахматбека', 'куда');
+  await shot(page, '02b-addresses');
+
+  // Отдельного шага-анкеты больше нет: детали точки живут кнопкой «Детали»
+  // прямо в строке адреса, и заполнять их необязательно. Проверяем, что
+  // кнопка на месте и открывает форму, — и идём дальше, как живой человек.
+  await page.waitForTimeout(1500);
+  const detailChip = page.locator('.chip.sg-det').first();
+  if (await detailChip.count()) {
+    // Кнопка живёт в строке адреса внизу длинной панели: сначала доводим её до
+    // экрана, иначе тап уходит в то, что оказалось на её месте.
+    await detailChip.scrollIntoViewIfNeeded().catch(() => {});
+    await page.waitForTimeout(300);
+    await detailChip.click({ force: true }).catch(() => {});
+    await page.waitForSelector('.sheet input', { timeout: 4000 }).catch(() => {});
+    const inSheet = await page.locator('.sheet input, .sheet textarea').count();
+    ok('«Детали» открывают форму подъезда и квартиры', inSheet > 0, `полей ${inSheet}`);
+    await shot(page, '02c-details');
+    await page.keyboard.press('Escape').catch(() => {});
+    await page.locator('.sheet__scrim').first().click({ force: true }).catch(() => {});
+    await page.waitForTimeout(700);
+  } else {
+    ok('«Детали» есть в строке адреса', false, 'кнопку не нашли');
+  }
+
+  // Подъём к двери — ОДИН переключатель на весь заказ, а не по одному у точки.
+  const doorSwitch = page.locator('.switch input');
+  const doors = await doorSwitch.count();
+  ok('переключатель «от двери до двери» ровно один', doors === 1, `нашли ${doors}`);
+
+  // Дальше жать не надо: выбранный адрес сам приводит к выбору машины —
+  // отдельного шага между ними больше нет.
+  await page.waitForTimeout(1600);
   await shot(page, '03-tariffs');
 
   // ── 2. тарифы и цена ───────────────────────────────────────────────────────
@@ -155,19 +181,29 @@ async function run() {
   const priceShown = /\d[\d\s ]*сом/.test(bodyText);
   ok('цена посчиталась и показана', priceShown, bodyText.replace(/\n+/g, ' | ').slice(0, 220));
   const hasTariff = /Спринтер|Экспресс|Грузовик/.test(bodyText);
-  ok('карусель тарифов на экране', hasTariff, bodyText.slice(0, 160));
+  ok('машина и её вместимость на экране', hasTariff, bodyText.slice(0, 160));
 
-  // Выбираем «Спринтер»: и карусель проверим, и класс машины совпадёт с курьером.
-  const sprinter = page.getByText('Спринтер', { exact: false }).first();
-  if (await sprinter.count()) {
-    await tap(page, sprinter);
-    await page.waitForTimeout(2200);
+  /* Машина выбирается сегментом «Кузов», как на снимках заказчика: S — легковая,
+     M — Спринтер, дальше грузовики. Берём M: и переключатель проверим, и класс
+     совпадёт с курьером, который ждёт заказ. */
+  const bodySeg = page.locator('.segmented').first().locator('.segmented__i');
+  const segs = await bodySeg.count();
+  ok('размер кузова выбирается сегментами', segs >= 3, `сегментов ${segs}`);
+  if (segs >= 2) {
+    // Выбираем по подписи, а не по месту: шторка деталей могла сдвинуть вёрстку,
+    // и второй по счёту сегмент оказался бы уже не там, где был.
+    const m = page.locator('.segmented__i').filter({ hasText: /^M$/ }).first();
+    const target = await m.count() ? m : bodySeg.nth(1);
+    await target.scrollIntoViewIfNeeded().catch(() => {});
+    await page.waitForTimeout(250);
+    await target.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(2400);
     await shot(page, '03b-tariff-selected');
     const afterPick = await page.locator('body').innerText();
-    ok('выбор тарифа пересчитал цену', /\d[\d\s ]*сом/.test(afterPick),
+    ok('выбран Спринтер', /Спринтер/i.test(afterPick),
+       afterPick.replace(/\n+/g, ' | ').slice(0, 160));
+    ok('выбор машины пересчитал цену', /\d[\d\s ]*сом/.test(afterPick),
        afterPick.replace(/\n+/g, ' | ').slice(0, 200));
-  } else {
-    ok('тариф «Спринтер» доступен для выбора', false, 'карточка не найдена');
   }
 
   // ── 3. оформление ──────────────────────────────────────────────────────────
