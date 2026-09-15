@@ -1,0 +1,39 @@
+plugins { id 'com.android.application' }
+
+// Ни одной сторонней библиотеки. Всё, что делает приложение — WebView,
+// геолокация, уведомления и поток событий — есть в самом Android. Чем меньше
+// чужого кода, тем меньше поводов для сюрпризов при обновлении телефона.
+android {
+  namespace 'kg.sprintergo.courier'
+  compileSdk 34
+
+  defaultConfig {
+    applicationId 'kg.sprintergo.courier'
+    minSdk 24
+    targetSdk 34
+    versionCode 1
+    versionName '1.0'
+    resConfigs 'ru'
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  signingConfigs {
+    release {
+      storeFile file('../keystore/sprintergo.jks')
+      storePassword System.getenv('SG_STORE_PASS') ?: 'sprintergo'
+      keyAlias 'sprintergo'
+      keyPassword System.getenv('SG_KEY_PASS') ?: 'sprintergo'
+    }
+  }
+
+  buildTypes {
+    release {
+      minifyEnabled false
+      signingConfig signingConfigs.release
+    }
+  }
+}

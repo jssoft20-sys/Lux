@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Заставка на время холодного запуска: жёлтый экран со знаком по центру.
+     Android показывает её сам, до первой строчки нашего кода, — поэтому
+     человек не видит белого листа, пока WebView просыпается. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+  <item android:drawable="@color/accent"/>
+  <item android:gravity="center">
+    <bitmap android:src="@drawable/ic_van" android:gravity="center"/>
+  </item>
+</layer-list>
