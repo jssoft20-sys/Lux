@@ -49,6 +49,7 @@ else
     curl -sf -o /dev/null "http://127.0.0.1:$UIPORT/api/v1/config" && break
   done
 
+  run "оболочка и заставка"   env TEST_PORT=$UIPORT SG_DATA="$UIDATA" node tools/shell_test.mjs
   run "вёрстка на телефоне"   env TEST_PORT=$UIPORT SG_DATA="$UIDATA" node tools/ui_test.mjs
   run "экран оплаты"          env TEST_PORT=$UIPORT SG_DATA="$UIDATA" \
       SG_ADMIN_EMAIL=admin@test.kg SG_ADMIN_PASSWORD=admin12345 node tools/payui_test.mjs

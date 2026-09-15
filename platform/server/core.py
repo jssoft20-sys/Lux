@@ -13,6 +13,9 @@ mimetypes.add_type('application/javascript', '.js')
 mimetypes.add_type('font/woff2', '.woff2')
 mimetypes.add_type('application/manifest+json', '.webmanifest')
 mimetypes.add_type('image/svg+xml', '.svg')
+# Приложение курьера лежит файлом рядом со страницами: без этого типа телефон
+# скачивает apk как неизвестный набор байтов и отказывается его ставить.
+mimetypes.add_type('application/vnd.android.package-archive', '.apk')
 
 LOG_LOCK = threading.Lock()
 

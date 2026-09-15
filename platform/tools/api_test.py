@@ -507,6 +507,64 @@ def main():
             check('сводка по бонусам в админке', code == 200 and isinstance(ab, dict),
                   str(ab)[:160])
 
+        # ── 9б. ссылка «поделиться»: смотреть можно, отменять нельзя ─────────
+        print('\n\033[1m9б. Ссылка, которой делятся\033[0m')
+        code, shared = req('POST', '/orders', dict(order_body, phone='0700554433'))
+        spid = (shared or {}).get('public_id')
+        stok = (shared or {}).get('track_token')
+        vtok = (shared or {}).get('view_token')
+        check('у заказа есть отдельный токен для ссылки', bool(vtok) and vtok != stok,
+              f'view={str(vtok)[:10]}…, track={str(stok)[:10]}…')
+
+        if spid and vtok:
+            code, seen = req('GET', f'/orders/{spid}?t={vtok}')
+            check('по ссылке заказ виден', code == 200 and seen.get('public_id') == spid,
+                  f'код {code}: {str(seen)[:160]}')
+            check('и помечен как «только смотреть»', seen.get('readonly') is True,
+                  str(seen.get('readonly')))
+            dumped = json.dumps(seen, ensure_ascii=False)
+            check('телефона заказчика в нём нет', '0555123456' not in dumped
+                  and '996555123456' not in dumped, dumped[:200])
+            pts = seen.get('points') or []
+            check('квартиры и домофона в нём нет',
+                  all('flat' not in p and 'intercom' not in p for p in pts), str(pts)[:200])
+            check('номер дома в адресе срезан',
+                  all(not any(ch.isdigit() for ch in str(p.get('addr') or '')) for p in pts),
+                  str([p.get('addr') for p in pts]))
+
+            code, r = req('POST', f'/orders/{spid}/cancel?t={vtok}', {'reason': 'шутка'})
+            check('по ссылке отменить заказ НЕЛЬЗЯ', code == 403, f'код {code}: {str(r)[:160]}')
+            code, r = req('POST', f'/orders/{spid}/rate?t={vtok}', {'rating': 1})
+            check('и оценить тоже нельзя', code in (403, 409), f'код {code}')
+            code, r = req('POST', f'/orders/{spid}/messages?t={vtok}', {'text': 'привет'})
+            check('и написать курьеру нельзя', code in (403, 404), f'код {code}')
+
+            # Переписка не должна уехать в поток гостя. Проверяем прямо: пишем
+            # сообщение от хозяина и слушаем гостевой поток — там его быть не может.
+            if ctoken:
+                guest_evts, own_evts = [], []
+                gt = threading.Thread(target=sse_collect,
+                                      args=(f'/orders/{spid}/stream?t={vtok}', None, 6, guest_evts),
+                                      daemon=True)
+                ot = threading.Thread(target=sse_collect,
+                                      args=(f'/orders/{spid}/stream?t={stok}', None, 6, own_evts),
+                                      daemon=True)
+                gt.start(); ot.start()
+                time.sleep(1.5)
+                req('POST', f'/orders/{spid}/messages?t={stok}', {'text': 'где вы едете'})
+                time.sleep(3.5)
+                check('переписка гостю по ссылке не уходит',
+                      not any(e[0] == 'message' for e in guest_evts),
+                      f'события гостя: {[e[0] for e in guest_evts][:6]}')
+
+            code, own = req('GET', f'/orders/{spid}?t={stok}')
+            check('хозяин заказа видит всё как раньше',
+                  code == 200 and not own.get('readonly')
+                  and any(p.get('flat') for p in (own.get('points') or [])),
+                  str(own.get('points'))[:200])
+            code, r = req('POST', f'/orders/{spid}/cancel?t={stok}', {'reason': 'передумал'})
+            check('а сам отменить может', code == 200, f'код {code}: {str(r)[:140]}')
+
         # ── 10. оплата брони ─────────────────────────────────────────────────
         print('\n\033[1m10. Оплата брони по QR\033[0m')
         # Заказ из пятого раздела уже закрыт — по нему платить нечего, и это

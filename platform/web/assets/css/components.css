@@ -11,6 +11,8 @@
   --btn-line: transparent;
   --btn-hover: var(--surface-3);
   --btn-press: var(--surface-3);
+  --press: .965;
+  --pop: 1.014;
 
   position: relative;
   display: inline-flex;
@@ -83,15 +85,29 @@
   --btn-press: var(--err-soft);
 }
 
+/* Чёрная кнопка-таблетка с пояснительных экранов: главное действие, когда
+   жёлтый занят чем-то другим или его просто слишком много на экране. */
+.btn--ink {
+  --btn-bg: var(--ink);
+  --btn-fg: var(--ink-fg);
+  --btn-hover: var(--ink-press);
+  --btn-press: var(--ink-press);
+  border-radius: var(--r-full);
+  font-weight: 700;
+}
+
+/* Скругление до конца: чипы-действия, кнопки поверх карты, «Понятно» внизу. */
+.btn--pill { border-radius: var(--r-full); }
+
 .btn--sm {
-  min-height: 34px;
+  min-height: 36px;
   padding: 0 var(--sp-3);
   border-radius: var(--r-sm);
   font-size: var(--fs-sm);
 }
 
 .btn--lg {
-  min-height: 54px;
+  min-height: 56px;
   padding: 0 var(--sp-6);
   border-radius: var(--r-lg);
   font-size: var(--fs-h3);
@@ -106,7 +122,7 @@
   border-radius: var(--r-full);
 }
 .btn--icon.btn--sm { width: 34px; min-width: 34px; }
-.btn--icon.btn--lg { width: 54px; min-width: 54px; }
+.btn--icon.btn--lg { width: 56px; min-width: 56px; }
 
 /* ── состояние загрузки ──────────────────────────────────────────────
    spinner(el, on) из ui.js вешает .is-loading на любой узел: на кнопке
@@ -216,7 +232,7 @@ select.field__input {
   transform: translateY(-11px) scale(.78);
 }
 
-.field__input:focus ~ .field__label { color: var(--accent); }
+.field__input:focus ~ .field__label { color: var(--accent-text); }
 
 /* Стрелка у выпадающего списка — своя, потому что системную мы срезали. */
 .field--sel::after {
@@ -256,6 +272,8 @@ select.field__input {
 .card--flat { background: var(--surface-2); border-color: transparent; }
 
 .card--tap {
+  --press: .985;
+  --pop: 1.006;
   cursor: pointer;
   transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
 }
@@ -291,6 +309,8 @@ select.field__input {
 .list__row + .list__row { border-top: 1px solid var(--line-soft); }
 
 .list__row--tap {
+  --press: .99;
+  --pop: 1.004;
   cursor: pointer;
   transition: background-color var(--dur-1) var(--ease);
 }
@@ -317,8 +337,10 @@ select.field__input {
   align-items: center;
   gap: 6px;
   flex: none;
-  min-height: 36px;
+  min-height: 40px;
   padding: 0 var(--sp-4);
+  --press: .94;
+  --pop: 1.02;
   border: 1px solid transparent;
   border-radius: var(--r-full);
   background: var(--surface-2);
@@ -338,7 +360,7 @@ select.field__input {
 .chip--on {
   background: var(--accent-soft);
   border-color: var(--accent-line);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* ══════════════════════════════════════════════════════════ сегменты */
@@ -353,7 +375,9 @@ select.field__input {
 
 .segmented__i {
   flex: 1;
-  min-height: 34px;
+  min-height: 40px;
+  --press: .93;
+  --pop: 1.02;
   padding: 0 var(--sp-3);
   border-radius: var(--r-full);
   color: var(--muted);
@@ -436,6 +460,12 @@ select.field__input {
   height: 94dvh;
   max-height: 94dvh;
 }
+
+/* Фокус на саму панель ставит ui.js, чтобы клавиатура и скринридер оказались
+   внутри окна. Рамку при этом не рисуем: обводить весь экран смысла нет,
+   а имя окну даёт role="dialog" с подписью. Кнопкам внутри рамка остаётся. */
+.sheet__box:focus,
+.sheet__box:focus-visible { outline: none; }
 
 .sheet__grip {
   flex: none;
@@ -534,9 +564,10 @@ select.field__input {
   width: fit-content;
   max-width: min(440px, 100%);
   padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line-soft);
   border-left: 3px solid var(--line);
   border-radius: var(--r-md);
-  background: var(--surface-3);
+  background: var(--surface);
   color: var(--text);
   font-size: var(--fs-sm);
   line-height: 1.35;
@@ -616,7 +647,7 @@ select.field__input {
   bottom: 0;
   width: 0;
   overflow: hidden;
-  color: var(--accent);
+  color: var(--star);
   pointer-events: none;
   transition: width var(--dur-1) var(--ease);
 }
@@ -658,7 +689,7 @@ select.field__input {
 .badge--warn { background: var(--warn-soft); color: var(--warn); }
 .badge--err { background: var(--err-soft); color: var(--err); }
 .badge--info { background: var(--info-soft); color: var(--info); }
-.badge--accent { background: var(--accent-soft); color: var(--accent); }
+.badge--accent { background: var(--accent-soft); color: var(--accent-text); }
 
 /* Точка-индикатор внутри бейджа: «на линии», «в пути». */
 .badge__dot {
@@ -746,6 +777,8 @@ select.field__input {
 }
 
 .stepper__btn {
+  --press: .9;
+  --pop: 1.03;
   display: grid;
   place-items: center;
   width: 34px;
@@ -786,6 +819,7 @@ select.field__input {
   width: 0;
   border-radius: inherit;
   background: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
   transition: width var(--dur-2) var(--ease);
 }
 
@@ -866,4 +900,373 @@ select.field__input {
 @keyframes sg-slide {
   from { transform: translateX(-110%); }
   to { transform: translateX(260%); }
+}
+
+/* ══════════════════════════════════════════════════════════ живое нажатие */
+
+/* Палец должен видеть, что попал, раньше, чем сработает действие. Класс
+   .is-press вешает ui.js на pointerdown, а на отпускании меняет его на .is-pop —
+   короткий перелёт обратно. :active для этого не годится: на iOS он приходит
+   с опозданием, а стоит пальцу чуть поехать — не приходит вовсе.
+   Насколько проседать, каждый компонент решает сам через --press и --pop:
+   у кнопки это заметно, у строки списка едва-едва, иначе список «дышит». */
+
+.is-press {
+  transform: scale(var(--press, .965));
+  transition-duration: 80ms;
+}
+
+.is-pop { animation: sg-pop var(--dur-2) var(--ease-spring); }
+
+/* Узлы, которым живость навесили руками через pressable(node). */
+[data-press] {
+  -webkit-tap-highlight-color: transparent;
+  transition: transform var(--dur-1) var(--ease);
+}
+
+/* Кто просил меньше движения — тому отклик прозрачностью. Гасим здесь, а не
+   одним --press на :root: каждый компонент объявляет --press у себя, и своё
+   значение всегда сильнее унаследованного. */
+@media (prefers-reduced-motion: reduce) {
+  .is-press {
+    transform: none;
+    opacity: .72;
+  }
+  .is-pop { animation: none; }
+  /* Те же элементы умеют проседать и через :active — глушим и это. */
+  .btn:active:not(:disabled):not(.is-loading),
+  .chip:active,
+  .card--tap:active,
+  .rowgroup__row--tap:active,
+  .stepper__btn:active:not(:disabled),
+  .sheet__x:active { transform: none; }
+}
+
+/* ══════════════════════════════════════════════════════════ сегменты: бегунок */
+
+/* Бегунок добавляет segmented() из ui.js. Разметка .segmented, написанная
+   руками, работает как раньше — там подсветку рисует сам .is-on. */
+
+.segmented--slide { position: relative; }
+
+.segmented--slide .segmented__pill {
+  position: absolute;
+  top: 3px;
+  left: 0;
+  width: var(--seg-w, 0px);
+  height: calc(100% - 6px);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  transform: translateX(var(--seg-x, 0px));
+  transition: transform var(--dur-2) var(--ease), width var(--dur-2) var(--ease);
+  pointer-events: none;
+}
+
+.segmented--slide .segmented__i {
+  position: relative;
+  z-index: 1;
+  background: none;
+  box-shadow: none;
+}
+.segmented--slide .segmented__i.is-on {
+  background: none;
+  box-shadow: none;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.segmented--accent.segmented--slide .segmented__pill { background: var(--accent); box-shadow: none; }
+.segmented--accent.segmented--slide .segmented__i.is-on { color: var(--on-accent); }
+
+/* Крупный переключатель: когда он единственный на карточке (S M L XL XXL). */
+.segmented--lg .segmented__i { min-height: 48px; font-size: var(--fs-body); }
+
+/* ══════════════════════════════════════════════════════════ чипы: кружок (i) */
+
+/* Чип со значком «i» открывает пояснение и ничего не выбирает — поэтому он
+   не красится в акцент даже нажатым. */
+.chip__i {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  opacity: .75;
+}
+
+.chip--lg { min-height: 44px; padding: 0 var(--sp-5); font-size: var(--fs-body); }
+.chip--ghost { background: transparent; border-color: var(--line); }
+
+/* ══════════════════════════════════════════════════════════ группа строк */
+
+/* Несколько строк в одной карточке с тонкими разделителями. Десять отдельных
+   карточек с зазорами читаются как десять разных дел, а это одно дело. */
+
+.rowgroup {
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+.rowgroup--flat { background: var(--surface-2); border-color: transparent; }
+
+.rowgroup__head {
+  padding: var(--sp-4) var(--sp-4) var(--sp-2);
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 700;
+}
+
+.rowgroup__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 60px;
+  padding: var(--sp-3) var(--sp-4);
+  color: inherit;
+  text-align: left;
+}
+
+/* Разделитель рисуем псевдоэлементом: обычный border прошёл бы сквозь
+   скругление карточки и выглядел бы обрубленным на углах. */
+.rowgroup__row + .rowgroup__row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--sp-4);
+  right: 0;
+  height: 1px;
+  background: var(--line-soft);
+}
+
+.rowgroup__row--tap {
+  --press: .99;
+  --pop: 1.004;
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+.rowgroup__row--tap:active { background: var(--surface-2); }
+
+@media (hover: hover) {
+  .rowgroup__row--tap:hover { background: var(--surface-2); }
+}
+
+.rowgroup__ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+}
+.rowgroup__ico > svg { width: 22px; height: 22px; }
+
+.rowgroup__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rowgroup__label { font-size: var(--fs-body); font-weight: 600; line-height: 1.25; }
+.rowgroup__sub { color: var(--muted); font-size: var(--fs-sm); line-height: 1.3; }
+
+.rowgroup__val {
+  flex: none;
+  max-width: 46%;
+  color: var(--muted);
+  font-size: var(--fs-body);
+  text-align: right;
+}
+
+.rowgroup__end { flex: none; display: flex; align-items: center; gap: var(--sp-2); }
+
+/* Уголок «дальше»: рисуем углом, а не значком — одной картинкой меньше. */
+.rowgroup__chev {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-left: 2px;
+  border-right: 2px solid var(--muted-2);
+  border-bottom: 2px solid var(--muted-2);
+  transform: rotate(-45deg);
+}
+
+/* ══════════════════════════════════════════════════════════ шторка: два режима */
+
+/* sheet({ full: true }) — детали заказа во весь экран: листать их в окошке
+   на треть высоты неудобно. Прокручивается только тело, шапка стоит. */
+.sheet--screen .sheet__box {
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  padding-top: var(--safe-t);
+  border-radius: 0;
+}
+.sheet--screen .sheet__grip { display: none; }
+/* Тело уезжает под шапку — тонкая линия не даёт заголовку слипнуться с текстом. */
+.sheet--screen .sheet__head {
+  padding-top: var(--sp-3);
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--line-soft);
+}
+.sheet--screen .sheet__body { padding-top: var(--sp-4); }
+
+@media (min-width: 620px) {
+  /* На большом экране «во весь экран» превращается в высокое окно: растянутая
+     на весь монитор карточка заказа читается хуже, чем колонка посередине. */
+  .sheet--screen .sheet__box {
+    height: 92dvh;
+    padding-top: 0;
+    border-radius: var(--r-xl);
+  }
+}
+
+/* sheet({ expandable: true }) — высотой командует палец. Точную высоту ставит
+   ui.js инлайном, здесь мы только снимаем потолок (он считается по экрану)
+   и разрешаем ей меняться плавно. */
+.sheet--exp .sheet__box {
+  max-height: none;
+  transition: transform var(--dur-2) var(--ease),
+              opacity var(--dur-2) var(--ease),
+              height var(--dur-2) var(--ease);
+}
+
+/* Пока панель в пальцах, анимация только догоняет — снимаем её и здесь тоже:
+   правило выше стоит после общего .sheet--drag и иначе перебило бы его. */
+.sheet--exp.sheet--drag .sheet__box { transition: none; }
+
+.sheet__x {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-right: -8px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--muted);
+  --press: .9;
+  --pop: 1.03;
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+.sheet__x:active { transform: scale(.9); background: var(--surface-3); }
+.sheet__x > svg { width: 20px; height: 20px; }
+
+/* ══════════════════════════════════════════════════════════ пояснительный экран */
+
+/* infoStory(): огромный заголовок, спокойный текст, картинка и одна кнопка
+   внизу. Экран объясняет ровно одну вещь и уходит — поэтому фон у него свой,
+   пастельный, и нажимается на нём только кнопка. */
+
+.sheet--story .sheet__box { background: var(--story-tone, var(--tone-cream)); }
+.sheet--story .sheet__head { padding-bottom: 0; border-bottom: 0; }
+.sheet--story .sheet__x { background: transparent; color: var(--text); }
+.sheet--story .sheet__body { display: flex; }
+.sheet--story .sheet__foot {
+  border-top: 0;
+  background: none;
+  padding-bottom: calc(var(--sp-5) + var(--safe-b));
+}
+
+.story {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--sp-4);
+  width: 100%;
+  padding-top: var(--sp-2);
+}
+
+.story__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-display);
+  font-weight: 800;
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+}
+
+.story__text {
+  color: var(--text);
+  opacity: .74;
+  font-size: var(--fs-h3);
+  line-height: 1.45;
+}
+
+/* Картинка прижата книзу: сверху текст, внизу образ, между ними воздух. */
+.story__art {
+  display: grid;
+  place-items: center;
+  min-height: 140px;
+  margin-top: auto;
+  padding: var(--sp-4) 0;
+  font-size: 96px;
+  line-height: 1;
+}
+.story__art img,
+.story__art svg { max-width: 84%; max-height: 300px; height: auto; }
+
+/* ══════════════════════════════════════════════════════════ потянуть — обновить */
+
+/* Значок висит поверх всего на fixed: так он не лезет в чужую вёрстку и список
+   не дёргается по высоте, пока идёт обновление. */
+.ptr {
+  position: fixed;
+  /* Выше любой страницы, но ниже шторки: пока шторка открыта, жеста всё равно
+     нет, а вот значок, спрятавшийся под списком, — это молчаливая поломка. */
+  z-index: calc(var(--z-sheet) - 1);
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin-left: -18px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--muted);
+  box-shadow: var(--shadow-2);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ptr__ring { width: 20px; height: 20px; }
+.ptr__ring circle {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+
+/* Доехали до порога — значок меняет цвет: дальше тянуть незачем. */
+.ptr--ready { color: var(--accent-text); }
+
+.ptr--busy { color: var(--accent-text); }
+.ptr--busy .ptr__ring { animation: sg-spin 700ms linear infinite; }
+
+/* Отпустили: возврат на место анимируем, во время протяжки — нет. */
+.ptr--ease { transition: transform var(--dur-2) var(--ease), opacity var(--dur-2) var(--ease); }
+
+/* ══════════════════════════════════════════════════════════ ещё движение */
+
+/* Перелёт после нажатия: чуть-чуть за единицу и обратно. Величины приходят
+   с самого элемента, поэтому кнопка отыгрывает заметнее, чем строка списка. */
+@keyframes sg-pop {
+  0% { transform: scale(var(--press, .965)); }
+  55% { transform: scale(var(--pop, 1.014)); }
+  100% { transform: none; }
 }

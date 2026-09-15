@@ -17,6 +17,7 @@
 """
 import hmac
 import json
+import re
 import secrets
 import sqlite3
 import time
@@ -92,6 +93,10 @@ SAY = {
                     'или позвоните {phone}.',
                     'Заказдын шилтемеси туура келбейт. Өз шилтемеңиз менен ачыңыз '
                     'же {phone} номерине чалыңыз.'),
+    'track.readonly': ('По этой ссылке заказ можно только смотреть. Отменять и '
+                       'менять его может тот, кто его оформил.',
+                       'Бул шилтеме боюнча заказды кароого гана болот. Аны жокко '
+                       'чыгарууну заказ бергени гана жасай алат.'),
     'rate.not_done': ('Оценить можно только завершённый заказ.',
                       'Бааны аяктаган заказга гана коюуга болот.'),
     'rate.twice': ('Вы уже оценили этот заказ.', 'Бул заказды буга чейин баалагансыз.'),
@@ -413,6 +418,9 @@ def _insert_order(fields):
         data = dict(fields)
         data['public_id'] = new_public_id()
         data['track_token'] = secrets.token_urlsafe(24)
+        # Второй токен — для ссылки, которой делятся. По нему видно движение
+        # машины, но отменить заказ нельзя: ссылку кидают в общий чат.
+        data['view_token'] = secrets.token_urlsafe(18)
         try:
             oid = db.insert('orders', data)
         except sqlite3.IntegrityError:
@@ -516,6 +524,7 @@ def create_order(ctx):
     return {
         'public_id': order['public_id'],
         'track_token': order['track_token'],
+        'view_token': order['view_token'],
         'order': order_view(order, lang),
         'price': price,
         'payment': pay,
@@ -543,19 +552,37 @@ def _track_token(ctx):
     return str(tok or '').strip()
 
 
-def _check_token(ctx, order):
-    """Сверка токена отслеживания. compare_digest — чтобы время ответа не подсказывало,
+def _same(a, b):
+    """Сверка токенов. compare_digest — чтобы время ответа не подсказывало,
     сколько символов угадано.
 
     Сравниваем байты, а не строки: compare_digest падает с TypeError на любой
     строке вне ASCII, и подделанный токен с кириллицей ронял бы запрос в 500
     вместо честного отказа."""
+    if not a or not b:
+        return False
+    return hmac.compare_digest(str(a).encode('utf-8'), str(b).encode('utf-8'))
+
+
+def _access(ctx, order):
+    """Какой это гость: хозяин заказа или человек по ссылке «поделиться».
+
+    Возвращает 'full' или 'view'. Ссылку кидают в общий чат, и тот, кто её
+    открыл, должен видеть, где машина, но не должен уметь отменить чужую
+    поездку — поэтому токенов два, и они разные.
+    """
     given = _track_token(ctx)
-    real = str(order.get('track_token') or '')
-    if not given or not real:
-        forbidden(say('track.wrong', order.get('lang') or 'ru'))
-    if not hmac.compare_digest(given.encode('utf-8'), real.encode('utf-8')):
-        forbidden(say('track.wrong', order.get('lang') or 'ru'))
+    if _same(given, order.get('track_token')):
+        return 'full'
+    if _same(given, order.get('view_token')):
+        return 'view'
+    forbidden(say('track.wrong', order.get('lang') or 'ru'))
+
+
+def _check_token(ctx, order):
+    """Доступ хозяина заказа. Для действий: отменить, оценить, написать курьеру."""
+    if _access(ctx, order) != 'full':
+        forbidden(say('track.readonly', order.get('lang') or 'ru'))
 
 
 def courier_view(order):
@@ -580,8 +607,8 @@ def _cancel_free_until(order):
     return int(since) + max(0, settings.get_int('order.cancel_free_s', 180))
 
 
-def order_view(order, lang=None):
-    """Заказ глазами клиента."""
+def order_view(order, lang=None, mode='full'):
+    """Заказ глазами клиента. mode='view' — глазами того, кому кинули ссылку."""
     lang = i18n.norm_lang(lang or order.get('lang'))
     tariff = None
     if order.get('tariff_id'):
@@ -589,7 +616,7 @@ def order_view(order, lang=None):
                         '       capacity_kg, body_w, body_d, body_h '
                         'FROM tariffs WHERE id=?', (order['tariff_id'],))
     free_until = _cancel_free_until(order)
-    return {
+    view = {
         'public_id': order['public_id'],
         'status': order['status'],
         'status_name': i18n.status_name(order['status'], lang),
@@ -634,18 +661,66 @@ def order_view(order, lang=None):
         'search_timeout_s': settings.get_int('order.search_timeout_s', 300),
         'now': db.now(),
     }
+    return _guest_view(view) if mode != 'full' else view
+
 
 
 @router.get(API + '/orders/{pid}')
 def get_order(ctx, pid):
     order = _find(pid)
-    _check_token(ctx, order)
-    return order_view(order, _lang(ctx, order.get('lang') or 'ru'))
+    mode = _access(ctx, order)
+    return order_view(order, _lang(ctx, order.get('lang') or 'ru'), mode=mode)
 
 
 # ─────────────────────────────────────────────────────────────── живые обновления
 
-def _safe_event(data):
+# Что не показываем тому, кто пришёл по ссылке «поделиться». Он видит, где едет
+# машина и когда приедет, — но не телефон, не квартиру и не имя заказчика.
+GUEST_HIDDEN_POINT = ('phone', 'name', 'flat', 'intercom', 'entrance', 'comment')
+
+# События, которые гостю не уходят вовсе: переписку двух людей посторонний
+# видеть не должен, даже если ссылку ему дали сами.
+GUEST_MUTED = ('message', 'message_read')
+
+
+def _guest_points(points):
+    """Адреса без номеров квартир и телефонов: улица и дом, не больше."""
+    out = []
+    for p in points or []:
+        if not isinstance(p, dict):
+            continue
+        item = {k: v for k, v in p.items() if k not in GUEST_HIDDEN_POINT}
+        item['addr'] = _short_addr(p.get('addr'))
+        out.append(item)
+    return out
+
+
+def _short_addr(addr):
+    """Улица без номера дома: «Киевская, 120» → «Киевская». Постороннему хватает
+    понять направление, а точный адрес — это уже чужое дело."""
+    s = str(addr or '').strip()
+    if not s:
+        return s
+    head = s.split(',')[0].strip()
+    head = re.sub(r'\s+\d+[А-Яа-яA-Za-z]?(?:\s*/\s*\d+)?$', '', head).strip()
+    return head or s.split(',')[0].strip()
+
+
+def _guest_view(view):
+    """Заказ глазами того, кому кинули ссылку."""
+    out = dict(view)
+    out['points'] = _guest_points(view.get('points'))
+    out['comment'] = None
+    out['readonly'] = True
+    courier = out.get('courier')
+    if isinstance(courier, dict):
+        safe = dict(courier)
+        safe.pop('phone', None)
+        out['courier'] = safe
+    return out
+
+
+def _safe_event(data, mode='full'):
     """Событие из шины перед отправкой клиенту: убираем внутренние id и телефон
     курьера, пока заказ ему не назначен. Копируем — словарь из шины общий."""
     if not isinstance(data, dict):
@@ -657,6 +732,15 @@ def _safe_event(data):
         if out.get('status') not in WITH_COURIER_PHONE:
             safe.pop('phone', None)
         out['courier'] = safe
+    if mode != 'full':
+        # Гость по ссылке видит движение машины и статус, но не контакты.
+        if 'points' in out:
+            out['points'] = _guest_points(out.get('points'))
+        out.pop('comment', None)
+        c = out.get('courier')
+        if isinstance(c, dict):
+            c.pop('phone', None)
+        out['readonly'] = True
     return out
 
 
@@ -668,7 +752,7 @@ def stream_order(ctx, pid):
     фильтр: в шину дежурные модули кладут и внутренние идентификаторы тоже.
     """
     order = _find(pid)
-    _check_token(ctx, order)
+    mode = _access(ctx, order)
     h = ctx.h
     lang = _lang(ctx, order.get('lang') or 'ru')
     h.start_sse()
@@ -676,11 +760,15 @@ def stream_order(ctx, pid):
     started = time.time()
     try:
         h.sse_send(None, {'ok': True}, retry=3000)
-        h.sse_send('order', order_view(order, lang))
+        h.sse_send('order', order_view(order, lang, mode=mode))
         while time.time() - started < STREAM_MAX_S:
             items, alive = sub.wait(STREAM_PING_S)
             for event, data in items:
-                h.sse_send(event, _safe_event(data))
+                # Гостю по ссылке — только движение и статус. Переписку клиента
+                # с курьером ему видеть незачем, и через поток она бы утекла.
+                if mode != 'full' and event in GUEST_MUTED:
+                    continue
+                h.sse_send(event, _safe_event(data, mode))
             if not alive:
                 break
             if not items:

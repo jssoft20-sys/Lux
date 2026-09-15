@@ -11,11 +11,23 @@ extend({
     'ui.photo': 'Фото',
     'ui.grip': 'Потянуть панель',
     'ui.copy_fail': 'Не получилось скопировать',
+    'ui.got_it': 'Понятно',
+    'ui.expand': 'Развернуть',
+    'ui.collapse': 'Свернуть',
+    'ui.refresh': 'Обновить',
+    'ui.refreshing': 'Обновляем',
+    'ui.pull_refresh': 'Потяните вниз, чтобы обновить',
   },
   ky: {
     'ui.photo': 'Сүрөт',
     'ui.grip': 'Панелди сүйрөө',
     'ui.copy_fail': 'Көчүрүлгөн жок',
+    'ui.got_it': 'Түшүндүм',
+    'ui.expand': 'Толук ачуу',
+    'ui.collapse': 'Кичирейтүү',
+    'ui.refresh': 'Жаңылоо',
+    'ui.refreshing': 'Жаңыланып жатат',
+    'ui.pull_refresh': 'Жаңылоо үчүн ылдый тартыңыз',
   },
 });
 
@@ -97,6 +109,20 @@ export function el(tag, props, ...children) {
   return node;
 }
 
+/** Строка нашей собственной разметки → готовые узлы. Нужна там, где значок
+    приходит строкой с <svg>, а лечь он должен прямым потомком кнопки: иначе
+    правила вида «.chip > svg» его не увидят. */
+function htmlNodes(str) {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = String(str);
+  return Array.from(tpl.content.childNodes);
+}
+
+/** Похоже ли на разметку, а не на текст или эмодзи. */
+function looksHtml(str) {
+  return typeof str === 'string' && str.trim().charAt(0) === '<';
+}
+
 /* ─────────────────────────────────────────────────────── мелочи */
 
 /** Короткая вибрация на подтверждение действия. Где её нет — молча ничего. */
@@ -124,6 +150,82 @@ export function skeleton(node, rows = 3) {
   }
   node.replaceChildren(stack);
   return () => node.replaceChildren();
+}
+
+/* ─────────────────────────────────────────────────────── живое нажатие */
+
+/* Кнопки, чипы, строки списков и карточки должны проседать под пальцем сразу,
+   а отпускаться с лёгким перелётом. Слушаем один pointerdown на весь документ:
+   так живым становится и то, что экраны нарисуют через минуту, и ни одному
+   соседнему модулю не нужно ничего звать. :active для этого не годится —
+   на iOS он приходит с опозданием, а стоит пальцу поехать, не приходит вовсе. */
+
+const PRESS_SEL = '.btn, .chip, .card--tap, .list__row--tap, .rowgroup__row--tap,' +
+  '.segmented__i, .stepper__btn, .sheet__x, [data-press]';
+
+const popTimers = new WeakMap();
+
+let pressNode = null;
+let pressId = null;
+let pressX = 0;
+let pressY = 0;
+
+function pressDown(e) {
+  if (e.button) return;
+  const node = e.target && e.target.closest ? e.target.closest(PRESS_SEL) : null;
+  if (!node) return;
+  if (node.disabled || node.getAttribute('aria-disabled') === 'true') return;
+  if (node.classList.contains('is-loading') || node.classList.contains('is-disabled')) return;
+  pressOff(false);
+  pressNode = node;
+  pressId = e.pointerId;
+  pressX = e.clientX;
+  pressY = e.clientY;
+  const timer = popTimers.get(node);
+  if (timer) { clearTimeout(timer); popTimers.delete(node); }
+  node.classList.remove('is-pop');
+  node.classList.add('is-press');
+  // Вибрация только под пальцем: у мыши её нет, а отдавать её на каждый клик мышью глупо.
+  if (e.pointerType !== 'mouse') haptic(5);
+}
+
+function pressMove(e) {
+  if (!pressNode || e.pointerId !== pressId) return;
+  // Палец поехал — значит это прокрутка, а не нажатие: отпускаем без отскока.
+  if (Math.abs(e.clientX - pressX) > 10 || Math.abs(e.clientY - pressY) > 10) pressOff(false);
+}
+
+function pressUp(e) {
+  if (!pressNode || (e.pointerId !== undefined && e.pointerId !== pressId)) return;
+  pressOff(e.type === 'pointerup');
+}
+
+function pressOff(pop) {
+  const node = pressNode;
+  pressNode = null;
+  pressId = null;
+  if (!node) return;
+  node.classList.remove('is-press');
+  if (!pop) return;
+  node.classList.add('is-pop');
+  const timer = setTimeout(() => {
+    popTimers.delete(node);
+    node.classList.remove('is-pop');
+  }, dur('--dur-2', 240) + 120);
+  popTimers.set(node, timer);
+}
+
+/**
+ * Навесить живое нажатие на что угодно, что не попало в список выше:
+ * pressable(node) или pressable(node, {scale: .92, pop: 1.03}).
+ * Возвращает тот же узел, чтобы его можно было сразу отдать в el().
+ */
+export function pressable(node, opts = {}) {
+  if (!node || typeof node.setAttribute !== 'function') return node;
+  node.setAttribute('data-press', '');
+  if (opts.scale) node.style.setProperty('--press', String(opts.scale));
+  if (opts.pop) node.style.setProperty('--pop', String(opts.pop));
+  return node;
 }
 
 /* ─────────────────────────────────────────────────────── тосты */
@@ -314,15 +416,43 @@ function actionNode(a, close) {
   return btn;
 }
 
+/* Пастельные фоны пояснительных экранов из tokens.css. */
+const TONES = ['cream', 'peach', 'mint', 'sky', 'lilac'];
+
+function toneValue(name) {
+  if (!name) return '';
+  return TONES.indexOf(name) >= 0 ? 'var(--tone-' + name + ')' : String(name);
+}
+
 /**
- * Нижняя шторка. Возвращает {el, box, body, close}.
+ * Нижняя шторка. Возвращает {el, box, body, close, expand, collapse, pos}.
+ *
  * content — узел, строка или массив; actions — массив {label, kind, onClick, close, disabled}
  * либо готовых узлов. onClick может вернуть промис: кнопка сама покажет крутилку,
  * а вернув false — оставит шторку открытой.
+ *
+ * Дополнительно:
+ *   expandable: true — шторка ходит между тремя положениями: по содержимому,
+ *                      во весь доступный экран и закрыта. Тянут за грип и шапку,
+ *                      отпустили — доезжает до ближайшего с учётом броска.
+ *   full: true       — сразу во весь экран, с шапкой, крестиком и прокруткой
+ *                      только внутри тела: детали заказа листать так удобнее.
+ *   closeButton      — крестик в шапке и без full.
+ *   tone             — фон панели: 'cream' | 'peach' | 'mint' | 'sky' | 'lilac' или свой цвет.
+ *   className        — дополнительные классы на корне.
  */
 export function sheet(opts = {}) {
   const dismissible = opts.dismissible !== false;
+  const full = !!opts.full;
   const prevFocus = document.activeElement;
+
+  let expandable = !!opts.expandable && !full;
+  let state = 'content';                    // 'content' | 'expanded'
+  let contentH = 0;
+  let maxH = 0;
+  let gripArmed = false;                    // грип уже сделали кнопкой
+  let dragEnded = 0;                        // когда отпустили: гасит клик после протяжки
+  let pid = null;                           // палец, который сейчас держит панель
 
   const grip = el('div', { className: 'sheet__grip' });
   const body = el('div', { className: 'sheet__body' }, opts.content);
@@ -334,10 +464,22 @@ export function sheet(opts = {}) {
   }, grip);
 
   let head = null;
-  if (opts.title) {
-    head = el('div', { className: 'sheet__head' }, el('div', { className: 'sheet__title' }, opts.title));
+  if (opts.title || full || opts.closeButton) {
+    head = el('div', { className: 'sheet__head' },
+      el('div', { className: 'sheet__title' }, opts.title || ''));
+    if (full || opts.closeButton) {
+      const x = el('button', {
+        type: 'button',
+        className: 'sheet__x',
+        html: CLOSE_SVG,
+        'aria-label': t('common.close'),
+        title: t('common.close'),
+      });
+      x.addEventListener('click', () => close());
+      head.appendChild(x);
+    }
     box.appendChild(head);
-    box.setAttribute('aria-label', String(opts.title));
+    if (opts.title) box.setAttribute('aria-label', String(opts.title));
   }
   box.appendChild(body);
 
@@ -349,12 +491,67 @@ export function sheet(opts = {}) {
   }
 
   const scrim = el('div', { className: 'sheet__scrim' });
-  const root = el('div', { className: 'sheet' + (opts.fullHeight ? ' sheet--full' : '') }, scrim, box);
+  const root = el('div', {
+    className: 'sheet' +
+      (full ? ' sheet--screen' : '') +
+      (opts.fullHeight ? ' sheet--full' : '') +
+      (expandable ? ' sheet--exp' : '') +
+      (opts.className ? ' ' + opts.className : ''),
+  }, scrim, box);
+
+  const tone = toneValue(opts.tone);
+  if (tone) box.style.setProperty('--story-tone', tone);
 
   if (dismissible) scrim.addEventListener('click', () => close());
 
   document.body.appendChild(root);
   lockScroll();
+
+  /* Два числа, на которых держится растягивание: сколько шторка занимает по
+     содержимому и сколько ей вообще можно занять. Первое снимается только с
+     height:auto — в остальное время высота задана числом и сама себя не покажет. */
+  function sizes() {
+    if (!expandable) return;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 640;
+    maxH = Math.round(vh * 0.94);
+    const prev = box.style.height;
+    box.style.height = 'auto';
+    const natural = box.offsetHeight;
+    box.style.height = prev;
+    contentH = clamp(natural, 120, maxH);
+  }
+
+  /** Поставить шторку в положение. 'closed' закрывает её. */
+  function go(name) {
+    if (name === 'closed') { close(); return state; }
+    state = name === 'expanded' ? 'expanded' : 'content';
+    box.style.transform = '';
+    scrim.style.opacity = '';
+    if (expandable) box.style.height = (state === 'expanded' ? maxH : contentH) + 'px';
+    root.dataset.pos = state;
+    if (gripArmed) grip.setAttribute('aria-expanded', state === 'expanded' ? 'true' : 'false');
+    return state;
+  }
+
+  /* Шторку можно сделать растягиваемой и после открытия: так expand() работает
+     даже там, где про expandable вспомнили уже по ходу дела. */
+  function makeExpandable() {
+    if (expandable || full) return expandable;
+    expandable = true;
+    root.classList.add('sheet--exp');
+    sizes();
+    box.style.height = contentH + 'px';
+    armGrip();
+    return true;
+  }
+
+  if (expandable) {
+    sizes();
+    box.style.height = contentH + 'px';
+    root.dataset.pos = 'content';
+    armGrip();
+  }
+
   void root.offsetHeight;                 // заставляем браузер зафиксировать начальный кадр
   root.classList.add('sheet--in');
 
@@ -367,15 +564,44 @@ export function sheet(opts = {}) {
     keysHooked = true;
   }
 
-  // ── перетаскивание вниз за грип и шапку ────────────────────────────────
-  let dy = 0, y0 = 0, t0 = 0, pid = null, tall = 400;
+  /* Содержимое приезжает с сервера уже после открытия — тогда шторка подрастает
+     сама. Считаем не чаще кадра: иначе каждая вставка строки меряла бы заново. */
+  let syncJob = 0;
+  const watch = typeof MutationObserver === 'function' ? new MutationObserver(() => {
+    if (syncJob || !expandable) return;
+    syncJob = requestAnimationFrame(() => {
+      syncJob = 0;
+      if (closed || pid !== null || !expandable) return;
+      sizes();
+      box.style.height = (state === 'expanded' ? maxH : contentH) + 'px';
+    });
+  }) : null;
+  if (watch) watch.observe(body, { childList: true, subtree: true, characterData: true });
+
+  function onResize() {
+    if (!expandable || pid !== null) return;
+    sizes();
+    box.style.height = (state === 'expanded' ? maxH : contentH) + 'px';
+  }
+  window.addEventListener('resize', onResize);
+
+  // ── перетаскивание за грип и шапку ──────────────────────────────────────
+  // Одна рука тянет и обычную шторку (только вниз, закрыться), и растягиваемую:
+  // вверх до края экрана, вниз до содержимого и дальше — в закрытие.
+  let dy = 0, y0 = 0, startH = 0, tall = 400;
+  let track = [];
 
   function onDown(e) {
-    if (!dismissible || e.button) return;
+    if (e.button || pid !== null) return;
+    if (!dismissible && !expandable) return;
+    // Тап по кнопке в шапке — это тап по кнопке, а не захват панели.
+    if (e.target.closest && e.target.closest('button, a, input, select, textarea, .switch')) return;
     pid = e.pointerId;
     y0 = e.clientY;
-    t0 = performance.now();
     dy = 0;
+    track = [{ t: performance.now(), y: e.clientY }];
+    sizes();
+    startH = expandable ? (state === 'expanded' ? maxH : contentH) : 0;
     tall = Math.max(220, box.offsetHeight);   // меряем один раз: в onMove это дёргало бы вёрстку
     root.classList.add('sheet--drag');
     try { e.currentTarget.setPointerCapture(pid); } catch (err) { /* не критично */ }
@@ -383,21 +609,66 @@ export function sheet(opts = {}) {
 
   function onMove(e) {
     if (pid === null || e.pointerId !== pid) return;
-    dy = Math.max(0, e.clientY - y0);
-    box.style.transform = 'translateY(' + dy + 'px)';
+    const d = e.clientY - y0;
+    if (expandable) {
+      // Выше доступной высоты не пускаем совсем: пустоты над шторкой быть не должно.
+      const want = startH - d;
+      box.style.height = clamp(want, contentH, maxH) + 'px';
+      dy = dismissible ? Math.max(0, contentH - want) : 0;
+    } else {
+      dy = dismissible ? Math.max(0, d) : 0;
+    }
+    box.style.transform = dy ? 'translateY(' + dy.toFixed(1) + 'px)' : '';
     scrim.style.opacity = String(clamp(1 - dy / tall, 0, 1));
+    const now = performance.now();
+    track.push({ t: now, y: e.clientY });
+    while (track.length > 2 && now - track[0].t > 120) track.shift();
   }
 
   function onUp(e) {
     if (pid === null || e.pointerId !== pid) return;
     pid = null;
-    const speed = dy / Math.max(1, performance.now() - t0);
     root.classList.remove('sheet--drag');
-    box.style.transform = '';
-    scrim.style.opacity = '';
-    // Либо утянули далеко, либо коротко, но резко дёрнули. Порог в 24 px обязателен:
-    // без него быстрый тап по грипу даёт огромную «скорость» и закрывает шторку зря.
-    if (dy > 90 || (dy > 24 && speed > 0.6)) close();
+    const now = performance.now();
+    // Считаем от точки захвата, а не от хвоста трека: медленная долгая протяжка
+    // тоже протяжка, и клик после неё срабатывать не должен.
+    if (Math.abs(e.clientY - y0) > 8) dragEnded = now;
+    const first = track[0] || { t: now, y: e.clientY };
+    const speed = (e.clientY - first.y) / Math.max(1, now - first.t);   // px/мс, вниз положительна
+
+    if (!expandable) {
+      box.style.transform = '';
+      scrim.style.opacity = '';
+      // Либо утянули далеко, либо коротко, но резко дёрнули. Порог в 24 px обязателен:
+      // без него быстрый тап по грипу даёт огромную «скорость» и закрывает шторку зря.
+      if (dismissible && (dy > 90 || (dy > 24 && speed > 0.6))) close();
+      return;
+    }
+
+    // Считаем в одной шкале: 0 — по содержимому, вверх плюс, вниз минус.
+    const nowH = parseFloat(box.style.height) || contentH;
+    const at = nowH - contentH - dy;
+    const spots = [{ name: 'content', at: 0 }, { name: 'expanded', at: maxH - contentH }];
+    if (dismissible) spots.push({ name: 'closed', at: -contentH });
+    // Куда палец доехал бы ещё за 130 мс — туда и садимся.
+    const aim = at - speed * 130;
+    let best = spots[0];
+    for (const spot of spots) {
+      if (Math.abs(spot.at - aim) < Math.abs(best.at - aim)) best = spot;
+    }
+    // Кидок обязан сменить положение: иначе жест читается как «не сработало».
+    if (Math.abs(speed) > 0.45 && best.name === state) {
+      const order = dismissible ? ['closed', 'content', 'expanded'] : ['content', 'expanded'];
+      const i = order.indexOf(state);
+      best = { name: order[clamp(i + (speed > 0 ? -1 : 1), 0, order.length - 1)] };
+    }
+    if (best.name !== state && best.name !== 'closed') haptic();
+    go(best.name);
+  }
+
+  /* Пока панель в пальцах, страница под ней ехать не должна. */
+  function onTouchMove(e) {
+    if (pid !== null && e.cancelable) e.preventDefault();
   }
 
   for (const handle of [grip, head]) {
@@ -406,6 +677,33 @@ export function sheet(opts = {}) {
     handle.addEventListener('pointermove', onMove);
     handle.addEventListener('pointerup', onUp);
     handle.addEventListener('pointercancel', onUp);
+    handle.addEventListener('touchmove', onTouchMove, { passive: false });
+  }
+
+  /* Тап по грипу у растягиваемой шторки разворачивает её и сворачивает обратно.
+     У обычной шторки грип остаётся просто полоской: лишняя остановка для
+     клавиатуры там ни к чему. */
+  function armGrip() {
+    if (gripArmed) return;
+    gripArmed = true;
+    grip.setAttribute('role', 'button');
+    grip.setAttribute('tabindex', '0');
+    grip.setAttribute('aria-label', t('ui.grip'));
+    grip.setAttribute('aria-expanded', 'false');
+    grip.addEventListener('click', gripToggle);
+    // У div с role="button" ни Enter, ни пробел сами клик не рождают — помогаем.
+    grip.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+      e.preventDefault();
+      gripToggle();
+    });
+  }
+
+  function gripToggle() {
+    // Клик, прилетевший сразу после протяжки, пропускаем: иначе жест отменял бы сам себя.
+    if (!expandable || performance.now() - dragEnded < 300) return;
+    haptic();
+    go(state === 'expanded' ? 'content' : 'expanded');
   }
 
   let closed = false;
@@ -415,6 +713,9 @@ export function sheet(opts = {}) {
     closed = true;
     const i = sheetStack.indexOf(api);
     if (i >= 0) sheetStack.splice(i, 1);
+    if (watch) watch.disconnect();
+    if (syncJob) cancelAnimationFrame(syncJob);
+    window.removeEventListener('resize', onResize);
     root.classList.remove('sheet--in');
     unlockScroll();
     setTimeout(() => root.remove(), dur('--dur-2', 240) + 60);
@@ -424,7 +725,28 @@ export function sheet(opts = {}) {
     if (typeof opts.onClose === 'function') opts.onClose(result);
   }
 
-  const api = { el: root, box, body, close, dismissible };
+  const api = {
+    el: root,
+    box,
+    body,
+    close,
+    dismissible,
+    /** Развернуть на весь доступный экран. */
+    expand() {
+      if (closed || full) return state;
+      makeExpandable();
+      sizes();
+      return go('expanded');
+    },
+    /** Вернуть к высоте содержимого. */
+    collapse() {
+      if (closed || !expandable) return state;
+      sizes();
+      return go('content');
+    },
+    /** 'content' | 'expanded' — где шторка стоит сейчас. */
+    pos() { return state; },
+  };
   sheetStack.push(api);
   return api;
 }
@@ -448,6 +770,480 @@ export function confirm(opts = {}) {
       onClose: () => resolve(answer),
     });
   });
+}
+
+/* ─────────────────────────────────────────────────────── общие кирпичи
+
+   Четыре вещи, которые повторяются на каждом втором экране: сегментный
+   переключатель, чип-таблетка, группа строк в одной карточке и пояснительный
+   экран. Держим их здесь, чтобы три приложения выглядели одним сервисом,
+   а не тремя похожими. */
+
+/** Узел, строка разметки или обычный текст → массив узлов для el(). */
+function anyNodes(value) {
+  if (value === null || value === undefined || value === false) return [];
+  if (value instanceof Node) return [value];
+  if (Array.isArray(value)) {
+    const out = [];
+    for (const item of value) out.push(...anyNodes(item));
+    return out;
+  }
+  return looksHtml(value) ? htmlNodes(value) : [document.createTextNode(String(value))];
+}
+
+/**
+ * Сегментный переключатель: S M L XL XXL, «За маршрут / За часы», «Нет / 1».
+ * Выпадающий список на три-пять вариантов — лишний экран и лишнее нажатие,
+ * здесь всё видно сразу.
+ *
+ *   segmented(['S','M','L'], { value: 'M', onChange(v) {…} })
+ *   segmented([{value: 0, label: 'Нет'}, {value: 1, label: '1'}], { value: 0, accent: true })
+ *
+ * opts: {value, onChange(value, item), accent, size:'lg', label, className}
+ * Возвращает элемент с методами .value(), .set(v), .sync() — последний
+ * пересчитывает бегунок, если переключатель показали из скрытого блока.
+ */
+export function segmented(items, opts = {}) {
+  const list = (items || []).filter((it) => it !== null && it !== undefined).map((it) =>
+    (typeof it === 'object' ? it : { value: it, label: String(it) }));
+
+  const pill = el('span', { className: 'segmented__pill', 'aria-hidden': 'true', hidden: true });
+  const root = el('div', {
+    className: 'segmented' +
+      (opts.accent ? ' segmented--accent' : '') +
+      (opts.size === 'lg' ? ' segmented--lg' : '') +
+      (opts.className ? ' ' + opts.className : ''),
+    role: 'tablist',
+  }, pill);
+  if (opts.label) root.setAttribute('aria-label', opts.label);
+
+  const btns = [];
+  let placed = false;                     // бегунок уже встал на место хотя бы раз
+  let idx = Math.max(0, list.findIndex((it) => String(it.value) === String(opts.value)));
+
+  /* Бегунок ставим по живым размерам кнопки. Пока их нет (переключатель ещё не
+     в документе или спрятан), работает обычная подсветка .is-on — потому класс
+     --slide и включается только после удачного замера. */
+  function move() {
+    const on = btns[idx];
+    if (!on) return;
+    root.classList.toggle('segmented--slide', on.offsetWidth > 0);
+    pill.hidden = !on.offsetWidth;
+    if (!on.offsetWidth) return;
+    // Считаем по живым прямоугольникам: бегунок лежит абсолютом внутри
+    // переключателя, и отсчёт у него от того же края, что у прямоугольников.
+    const box = root.getBoundingClientRect();
+    const seat = on.getBoundingClientRect();
+    // Первую постановку не анимируем: бегунок обязан появиться сразу под
+    // выбранным пунктом, а не приехать к нему из левого угла.
+    if (!placed) pill.style.transition = 'none';
+    root.style.setProperty('--seg-w', seat.width.toFixed(2) + 'px');
+    root.style.setProperty('--seg-x', (seat.left - box.left).toFixed(2) + 'px');
+    if (!placed) {
+      placed = true;
+      void pill.offsetWidth;              // фиксируем кадр, дальше бегунок уже ездит плавно
+      pill.style.transition = '';
+    }
+  }
+
+  function paint() {
+    for (let i = 0; i < btns.length; i++) {
+      btns[i].classList.toggle('is-on', i === idx);
+      btns[i].setAttribute('aria-selected', i === idx ? 'true' : 'false');
+      btns[i].tabIndex = i === idx ? 0 : -1;
+    }
+    move();
+  }
+
+  function set(value, quiet) {
+    const i = list.findIndex((it) => String(it.value) === String(value));
+    if (i < 0 || i === idx) return false;
+    idx = i;
+    paint();
+    if (!quiet && typeof opts.onChange === 'function') opts.onChange(list[i].value, list[i]);
+    return true;
+  }
+
+  for (const it of list) {
+    const btn = el('button', {
+      type: 'button',
+      className: 'segmented__i',
+      role: 'tab',
+      disabled: !!it.disabled,
+    }, it.label === undefined ? String(it.value) : it.label);
+    btn.dataset.value = String(it.value);
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      if (set(it.value)) haptic();
+    });
+    btns.push(btn);
+    root.appendChild(btn);
+  }
+
+  // Стрелки влево-вправо: так переключатель ведут с клавиатуры во всех системах.
+  root.addEventListener('keydown', (e) => {
+    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const next = clamp(idx + step, 0, list.length - 1);
+    if (set(list[next].value)) btns[next].focus();
+  });
+
+  paint();
+  // Первый замер до отрисовки: в документ узел попадает сразу после создания,
+  // а кадр анимации браузер отдаёт нам ещё до первой отрисовки — бегунок не мигнёт.
+  requestAnimationFrame(move);
+  if (typeof ResizeObserver === 'function') new ResizeObserver(move).observe(root);
+
+  root.value = () => (list[idx] ? list[idx].value : undefined);
+  root.set = (v) => set(v, true);
+  root.sync = move;
+  return root;
+}
+
+/**
+ * Чип-таблетка для второстепенного действия: «О грузчиках (i)», «Адрес +».
+ *   chip('О грузчиках', { info: true, onClick: () => infoStory({…}) })
+ *   chip('Межгород', { on: true, onClick })
+ * opts: {on, info, icon, disabled, value, size:'lg', className, title, onClick}
+ * Возвращает кнопку с методом .setOn(true|false).
+ */
+export function chip(text, opts = {}) {
+  const kids = [];
+  if (opts.icon) kids.push(...anyNodes(opts.icon));
+  kids.push(el('span', null, text));
+  if (opts.info) kids.push(el('span', { className: 'chip__i', 'aria-hidden': 'true' }, 'i'));
+
+  const toggle = opts.on !== undefined;
+  const node = el('button', {
+    type: 'button',
+    className: 'chip' +
+      (opts.on ? ' chip--on' : '') +
+      (opts.size === 'lg' ? ' chip--lg' : '') +
+      (opts.className ? ' ' + opts.className : ''),
+    disabled: !!opts.disabled,
+    title: opts.title || null,
+  }, kids);
+  if (toggle) node.setAttribute('aria-pressed', opts.on ? 'true' : 'false');
+  if (opts.value !== undefined) node.dataset.value = String(opts.value);
+
+  node.addEventListener('click', (e) => {
+    if (node.disabled) return;
+    haptic();
+    if (typeof opts.onClick === 'function') opts.onClick(e, node);
+  });
+
+  node.setOn = (on) => {
+    node.classList.toggle('chip--on', !!on);
+    if (node.hasAttribute('aria-pressed')) node.setAttribute('aria-pressed', on ? 'true' : 'false');
+    return node;
+  };
+  return node;
+}
+
+/**
+ * Группа строк в одной карточке с разделителями. Десять отдельных карточек
+ * с зазорами читаются как десять разных дел — а это одно дело.
+ *
+ *   rowGroup([
+ *     { label: 'Кузов', end: segmented(['S','M','L']) },
+ *     { label: 'Грузчики', sub: 'Помощь не нужна', end: segmented([…]) },
+ *     { icon: ICON_BOX, hint: 'Откуда', label: 'контур № 5, 1', end: chip('Детали'), onClick },
+ *     любойГотовыйУзел,
+ *   ], { title: 'Расчёт цены' })
+ *
+ * Поля строки: {icon, hint, label, sub, value, end, chevron, onClick, href, className, disabled, node}
+ */
+export function rowGroup(rows, opts = {}) {
+  const box = el('div', {
+    className: 'rowgroup' +
+      (opts.flat ? ' rowgroup--flat' : '') +
+      (opts.className ? ' ' + opts.className : ''),
+  });
+  if (opts.title) box.appendChild(el('div', { className: 'rowgroup__head' }, opts.title));
+
+  for (const raw of (rows || [])) {
+    if (!raw) continue;
+    const r = raw instanceof Node ? { node: raw } : raw;
+    const tap = !!(r.onClick || r.href);
+    const tag = r.href ? 'a' : (tap ? 'button' : 'div');
+    const row = el(tag, {
+      className: 'rowgroup__row' + (tap ? ' rowgroup__row--tap' : '') +
+        (r.className ? ' ' + r.className : ''),
+      type: tag === 'button' ? 'button' : null,
+      href: r.href || null,
+      disabled: tag === 'button' && r.disabled ? true : null,
+    });
+
+    if (r.node) {
+      row.appendChild(r.node);
+    } else {
+      if (r.icon) row.appendChild(el('span', { className: 'rowgroup__ico' }, anyNodes(r.icon)));
+      const main = el('div', { className: 'rowgroup__main' });
+      if (r.hint) main.appendChild(el('span', { className: 'rowgroup__sub' }, r.hint));
+      if (r.label) main.appendChild(el('span', { className: 'rowgroup__label' }, r.label));
+      if (r.sub) main.appendChild(el('span', { className: 'rowgroup__sub' }, r.sub));
+      row.appendChild(main);
+      if (r.value !== undefined && r.value !== null) {
+        row.appendChild(el('span', { className: 'rowgroup__val truncate' }, r.value));
+      }
+      if (r.end) row.appendChild(el('span', { className: 'rowgroup__end' }, anyNodes(r.end)));
+      if (r.chevron || (tap && r.chevron !== false && !r.end)) {
+        row.appendChild(el('span', { className: 'rowgroup__chev', 'aria-hidden': 'true' }));
+      }
+    }
+
+    if (r.onClick) {
+      row.addEventListener('click', (e) => {
+        if (row.disabled) return;
+        haptic();
+        r.onClick(e, row);
+      });
+    }
+    box.appendChild(row);
+  }
+  return box;
+}
+
+/**
+ * Пояснительный экран: огромный заголовок, спокойный текст, картинка и одна
+ * кнопка внизу. Открывается во весь экран поверх всего и объясняет ровно одну
+ * вещь — «что такое грузчики», «как считается ожидание», «почему бронь».
+ *
+ *   infoStory({
+ *     title: 'Грузчики',
+ *     text: ['Выбрали одного — грузит водитель.', 'Выбрали двух — приедет ещё человек.'],
+ *     art: '🛋️',                       // эмодзи, строка с <svg> или готовый узел
+ *     tone: 'peach',                   // cream | peach | mint | sky | lilac
+ *     cta: 'Понятно',                  // или {label, onClick}
+ *   });
+ *
+ * Возвращает то же, что sheet(): {el, box, body, close, …}.
+ */
+export function infoStory(opts = {}) {
+  const story = el('div', { className: 'story' });
+  if (opts.title) story.appendChild(el('h2', { className: 'story__title' }, opts.title));
+  const texts = opts.text === undefined || opts.text === null
+    ? [] : (Array.isArray(opts.text) ? opts.text : [opts.text]);
+  for (const line of texts) {
+    if (line) story.appendChild(el('p', { className: 'story__text' }, anyNodes(line)));
+  }
+  if (opts.art) {
+    story.appendChild(el('div', { className: 'story__art', 'aria-hidden': 'true' }, anyNodes(opts.art)));
+  }
+
+  const raw = opts.cta === undefined ? {} : opts.cta;
+  const cta = raw === null ? null : (typeof raw === 'string' ? { label: raw } : raw);
+  const actions = cta ? [{
+    label: cta.label || t('ui.got_it'),
+    kind: 'ink',
+    className: 'btn--lg btn--block',
+    onClick: cta.onClick,
+    close: cta.close,
+  }] : null;
+
+  const api = sheet({
+    full: opts.full !== false,
+    className: 'sheet--story' + (opts.className ? ' ' + opts.className : ''),
+    tone: opts.tone || 'cream',
+    title: opts.heading || '',
+    content: story,
+    actions,
+    dismissible: opts.dismissible !== false,
+    onClose: opts.onClose,
+  });
+  // Заголовок у нас внутри тела, а не в шапке — окну имя надо дать отдельно,
+  // иначе скринридер объявит просто «диалог».
+  if (opts.title) api.box.setAttribute('aria-label', String(opts.title));
+  return api;
+}
+
+/* ─────────────────────────────────────────────────────── потянуть — обновить */
+
+const PTR_LEN = 50.3;                    // длина окружности значка: 2πr при r = 8
+
+const PTR_SVG =
+  '<svg class="ptr__ring" viewBox="0 0 20 20" aria-hidden="true" focusable="false">' +
+  '<circle cx="10" cy="10" r="8" stroke-dasharray="' + PTR_LEN + '" stroke-dashoffset="' + PTR_LEN + '"></circle></svg>';
+
+/* Прокручиваемый предок, который сам ещё не в нуле. Если палец начал движение
+   внутри такого блока, обновлять нельзя: человек листает список, а не тянет
+   страницу. Именно на это заказчик и жаловался. */
+function scrolledAncestor(from, stop) {
+  let n = from;
+  while (n && n !== stop && n.nodeType === 1) {
+    if (n.scrollTop > 0 && n.scrollHeight > n.clientHeight + 1) {
+      const ov = getComputedStyle(n).overflowY;
+      if (ov === 'auto' || ov === 'scroll') return true;
+    }
+    n = n.parentNode;
+  }
+  return false;
+}
+
+/**
+ * «Потяни сверху — обновится». В установленном как приложение сайте кнопки
+ * перезагрузки нет вовсе, и без этого жеста остаётся только закрыть и открыть
+ * приложение заново.
+ *
+ *   const off = pullToRefresh(document.querySelector('.orders'), () => load());
+ *
+ * onRefresh может вернуть промис — значок крутится, пока он не завершится.
+ * Жест нарочно придирчив и молчит, когда:
+ *   • прокрутка не ровно в нуле;
+ *   • движение началось вбок;
+ *   • открыта шторка или просмотр фото;
+ *   • палец лежит на карте;
+ *   • внутри есть прокручиваемый блок, который сам не в нуле.
+ * Возвращает функцию, которая всё снимает.
+ */
+export function pullToRefresh(scrollEl, onRefresh, opts = {}) {
+  const node = typeof scrollEl === 'string' ? document.querySelector(scrollEl) : scrollEl;
+  if (!node || typeof onRefresh !== 'function') return () => {};
+
+  const trip = opts.threshold || 64;          // сколько надо вытянуть, чтобы сработало
+  const most = opts.max || 120;               // дальше не тянется вовсе
+  const page = node === document.body || node === document.documentElement;
+
+  const ind = el('div', { className: 'ptr', html: PTR_SVG, 'aria-hidden': 'true' });
+  const ring = ind.firstElementChild;
+
+  let pid = null, y0 = 0, x0 = 0, live = false, pull = 0, busy = false, shown = false;
+
+  const top = () => (page
+    ? (document.scrollingElement || document.documentElement).scrollTop
+    : node.scrollTop);
+
+  function place() {
+    const r = node.getBoundingClientRect();
+    ind.style.left = Math.round(r.left + r.width / 2) + 'px';
+    ind.style.top = Math.round(Math.max(0, r.top)) + 'px';
+  }
+
+  function paint() {
+    const part = clamp(pull / trip, 0, 1);
+    ind.classList.toggle('ptr--ready', part >= 1);
+    ind.style.opacity = String(clamp(pull / 28, 0, 1));
+    // Значок выезжает из-за края и доворачивается по мере протяжки.
+    ind.style.transform = 'translateY(' + (pull - 44).toFixed(1) + 'px) rotate(' +
+      Math.round(part * 270) + 'deg)';
+    if (!busy) ring.firstElementChild.setAttribute('stroke-dashoffset', String(PTR_LEN * (1 - part)));
+  }
+
+  function show() {
+    if (!shown) {
+      document.body.appendChild(ind);
+      shown = true;
+    }
+    ind.classList.remove('ptr--ease');
+    place();
+  }
+
+  function hide() {
+    ind.classList.add('ptr--ease');
+    ind.classList.remove('ptr--busy', 'ptr--ready');
+    ind.style.opacity = '0';
+    ind.style.transform = 'translateY(-44px)';
+    pull = 0;
+  }
+
+  function stop() {
+    pid = null;
+    if (live) { live = false; hide(); }
+  }
+
+  /** Значок крутится, пока обновление идёт, но не меньше 400 мс:
+      мигнувшая на кадр крутилка читается как сбой, а не как работа. */
+  function run() {
+    busy = true;
+    pull = trip;
+    ind.classList.add('ptr--ease', 'ptr--busy');
+    ring.firstElementChild.setAttribute('stroke-dashoffset', '16');
+    ind.style.opacity = '1';
+    ind.style.transform = 'translateY(' + (trip - 44).toFixed(1) + 'px)';
+    haptic(14);
+
+    const began = performance.now();
+    const done = () => {
+      const rest = Math.max(0, 400 - (performance.now() - began));
+      setTimeout(() => { busy = false; hide(); }, rest);
+    };
+    let out = null;
+    try {
+      out = onRefresh();
+    } catch (e) {
+      done();
+      throw e;
+    }
+    if (out && typeof out.then === 'function') out.then(done, done);
+    else setTimeout(done, 300);
+  }
+
+  function onDown(e) {
+    if (busy || pid !== null || e.button) return;
+    if (e.pointerType === 'mouse') return;      // мышью так не тянут, там есть кнопки
+    if (lockDepth > 0) return;                  // открыта шторка или фото
+    if (e.target.closest && e.target.closest('[data-map], .map, [data-no-refresh]')) return;
+    if (top() > 0) return;
+    if (scrolledAncestor(e.target, node)) return;
+    pid = e.pointerId;
+    y0 = e.clientY;
+    x0 = e.clientX;
+    live = false;
+    pull = 0;
+  }
+
+  function onMove(e) {
+    if (pid === null || e.pointerId !== pid) return;
+    const dy = e.clientY - y0;
+    const dx = e.clientX - x0;
+    if (!live) {
+      if (dy < 6) {
+        if (dy < -4 || Math.abs(dx) > 10) pid = null;   // вверх или вбок — не наше дело
+        return;
+      }
+      if (Math.abs(dx) > Math.abs(dy)) { pid = null; return; }
+      if (lockDepth > 0 || top() > 0) { pid = null; return; }
+      live = true;
+      y0 = e.clientY;                            // считаем от точки, где жест признан
+      show();
+    }
+    // Сопротивление: дальше тянется всё туже и упирается. Ноль снизу нужен,
+    // потому что первый же ход после опознания жеста даёт ровно ноль, а на
+    // отрицательном значке нечего показывать.
+    pull = clamp((e.clientY - y0) * 0.6, 0, most);
+    paint();
+  }
+
+  function onUp(e) {
+    if (pid === null || (e.pointerId !== undefined && e.pointerId !== pid)) return;
+    pid = null;
+    if (!live) return;
+    live = false;
+    if (pull >= trip) run();
+    else hide();
+  }
+
+  /* Пока тянем, страница под пальцем ехать не должна. */
+  function onTouchMove(e) {
+    if (live && e.cancelable) e.preventDefault();
+  }
+
+  node.addEventListener('pointerdown', onDown);
+  node.addEventListener('touchmove', onTouchMove, { passive: false });
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+
+  return function off() {
+    node.removeEventListener('pointerdown', onDown);
+    node.removeEventListener('touchmove', onTouchMove);
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+    ind.remove();
+    shown = false;
+  };
 }
 
 /* ─────────────────────────────────────────────────────── звёзды */
@@ -1147,8 +1943,21 @@ function autoDock() {
   }
 }
 
+/* Живое нажатие включаем один раз на весь документ. Перехват на фазе
+   погружения: даже если экран остановит всплытие своего клика, отклик
+   под пальцем уже случится. */
+function installPress() {
+  document.addEventListener('pointerdown', pressDown, true);
+  document.addEventListener('pointermove', pressMove, true);
+  document.addEventListener('pointerup', pressUp, true);
+  document.addEventListener('pointercancel', pressUp, true);
+  // Палец ушёл со страницы вообще (свернули приложение) — снимаем нажатие.
+  window.addEventListener('blur', () => pressOff(false));
+}
+
 if (typeof document !== 'undefined') {
   installZoomGuard();
+  installPress();
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', autoDock, { once: true });
   } else {

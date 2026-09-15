@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru" data-theme="dark">
+<html lang="ru" data-app="courier">
 <head>
 <meta charset="utf-8">
 <!-- maximum-scale и user-scalable гасят зум страницы: водитель держит телефон
@@ -8,11 +8,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Sprinter Go — курьер</title>
 <meta name="description" content="Рабочее приложение водителя Sprinter Go: смена, заказы, заработок.">
-<meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#0E0E10">
+<!-- Светлая тема первая: приложение открывается светлым, тёмную водитель
+     включает сам в профиле — днём в кабине светлый экран читается лучше. -->
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F4F4F6">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- default, а не black-translucent: на светлом фоне белые часы не видно. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Sprinter Go">
 <meta name="robots" content="noindex,nofollow">
 
@@ -30,17 +33,88 @@
 <link rel="stylesheet" href="/assets/css/components.css">
 <link rel="stylesheet" href="/assets/css/map.css">
 <link rel="stylesheet" href="/assets/css/courier.css">
+<link rel="stylesheet" href="/assets/css/shell.css">
+
+<!-- Скрипты выключены — гасить заставку некому, поэтому её просто не показываем. -->
+<noscript><style>.sg-splash { display: none; }</style></noscript>
 
 <script>
-  /* Пара строк до первой отрисовки: если токен уже лежит, форма входа не должна
-     мигнуть перед рабочим экраном. Модульный скрипт выполняется отложенно
-     и на это опоздал бы. Без атрибута показывается вход — так надёжнее. */
-  try {
-    if (localStorage.getItem('sg_token')) document.documentElement.dataset.screen = 'app';
-  } catch (e) { /* приватный режим: покажем вход, дальше разберётся приложение */ }
+  /* Всё, что должно случиться до первой отрисовки — иначе мигает.
+
+     1. Токен уже лежит: показываем рабочий экран, а не форму входа.
+        Модульный скрипт выполняется отложенно и на это опоздал бы.
+     2. Тема. По умолчанию светлая — так решил владелец. Ключ читаем и сырым,
+        и в виде JSON (клиентское приложение хранит его через JSON.stringify),
+        а кладём обратно строкой: courier/work.js ждёт именно её.
+     3. Холодный ли запуск: заставку целиком показываем в установленном
+        приложении и при первом заходе за час, иначе она надоедает.
+     4. Строка состояния телефона на время заставки жёлтая, как она сама. */
+  (function () {
+    var r = document.documentElement;
+    try {
+      if (localStorage.getItem('sg_token')) r.dataset.screen = 'app';
+    } catch (e) { /* приватный режим: покажем вход, дальше разберётся приложение */ }
+
+    var theme = '';
+    try {
+      var raw = localStorage.getItem('sg_theme');
+      theme = String(raw === null || raw === undefined ? '' : raw).replace(/^"|"$/g, '');
+    } catch (e) {}
+    if (theme !== 'dark' && theme !== 'light' && theme !== 'auto') theme = 'light';
+    if (theme === 'auto') r.removeAttribute('data-theme');
+    else r.dataset.theme = theme;
+    try { localStorage.setItem('sg_theme', theme); } catch (e) {}
+
+    var cold = true;
+    try {
+      var seen = parseInt(localStorage.getItem('sg_seen_courier') || '0', 10) || 0;
+      var now = Math.floor(Date.now() / 1000);
+      cold = (now - seen) > 3600;
+      localStorage.setItem('sg_seen_courier', String(now));
+    } catch (e) {}
+    if (window.matchMedia && matchMedia('(display-mode: standalone)').matches) cold = true;
+    if (navigator.standalone === true) cold = true;
+    r.dataset.boot = cold ? 'cold' : 'warm';
+
+    var meta = document.querySelector('meta[name="theme-color"]');
+    var accent = getComputedStyle(r).getPropertyValue('--accent').trim();
+    if (meta && accent) meta.setAttribute('content', accent);
+  })();
 </script>
+
+<script type="module" src="/assets/js/core/shell.js"></script>
 </head>
 <body>
+
+<!-- ── заставка ─────────────────────────────────────────────────────────────
+     Видна с первого кадра, ещё до скриптов: у водителя приложение стоит
+     значком на экране, и пустое белое поле при запуске выглядит как сбой.
+     Гасит её core/shell.js — data-ready говорит ему, за чем следить:
+     рабочий экран или форма входа, смотря что покажется. -->
+<div class="sg-splash" id="sg-splash" data-ready="#app-main,#gate" aria-hidden="true">
+  <div class="sg-splash__mark">
+    <svg class="sg-splash__van" viewBox="0 0 512 512" width="132" height="132" aria-hidden="true" focusable="false">
+      <g fill="currentColor">
+        <path d="M96 196a24 24 0 0 1 24-24h150a24 24 0 0 1 24 24v130H96z"/>
+        <path d="M310 216h58a24 24 0 0 1 19.6 10.2l32 45.6A24 24 0 0 1 424 286v40h-114z"/>
+        <rect x="96" y="326" width="328" height="20" rx="10"/>
+        <circle cx="172" cy="352" r="40"/>
+        <circle cx="368" cy="352" r="40"/>
+      </g>
+      <g fill="currentColor" opacity=".5">
+        <rect x="28" y="216" width="54" height="16" rx="8"/>
+        <rect x="8" y="252" width="74" height="16" rx="8"/>
+        <rect x="36" y="288" width="46" height="16" rx="8"/>
+      </g>
+      <g class="sg-splash__hole">
+        <rect x="326" y="232" width="56" height="38" rx="8"/>
+        <circle cx="172" cy="352" r="15"/>
+        <circle cx="368" cy="352" r="15"/>
+      </g>
+    </svg>
+    <span class="sg-splash__name">Sprinter Go</span>
+  </div>
+</div>
 
 <!-- ── набор иконок ──────────────────────────────────────────────────────────
      Один общий лист символов: и нижняя панель, и профиль тянут отсюда через

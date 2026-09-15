@@ -27,6 +27,10 @@ import { bindPlate, getTheme, applyTheme } from './work.js';
 
 extend({
   ru: {
+    'app.title': 'Приложение для водителей',
+    'app.sub': 'Заказы приходят со звуком, даже когда экран погас',
+    'app.sub_size': 'Звук на новый заказ при погасшем экране · {size} МБ',
+    'app.get': 'Скачать',
     'vfy.title': 'Проверка документов',
     'vfy.why_title': 'Зачем это нужно',
     'vfy.why': 'Клиент пускает вас в свой дом и отдаёт свои вещи. Мы должны знать, ' +
@@ -105,6 +109,10 @@ extend({
     'courier.me_support': 'Поддержка',
   },
   ky: {
+    'app.title': 'Айдоочулар үчүн тиркеме',
+    'app.sub': 'Экран өчүп турса да, заказдар үн менен келет',
+    'app.sub_size': 'Экран өчсө да жаңы заказга үн · {size} МБ',
+    'app.get': 'Жүктөө',
     'vfy.title': 'Документтерди текшерүү',
     'vfy.why_title': 'Бул эмне үчүн керек',
     'vfy.why': 'Кардар сизди үйүнө киргизип, буюмун ишенип берет. Ошондуктан рулда ' +
@@ -300,6 +308,30 @@ const OWN_CSS = `
    что нажимать его пока незачем. */
 .shift__toggle:disabled { opacity: .5; }
 .shift__toggle:disabled:active { transform: none; }
+
+
+/* Полоса «поставьте приложение» на экране входа. Живёт здесь, а не в общем
+   courier.css: её показывает только этот экран, и незачем таскать эти правила
+   всем остальным. */
+.gate__app {
+  display: flex; align-items: center; gap: var(--sp-3);
+  margin: 0 0 var(--sp-4); padding: var(--sp-3);
+  border: 1px solid var(--line-soft); border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+.gate__app-ico {
+  flex: none; width: 44px; height: 44px; display: grid; place-items: center;
+  border-radius: var(--r-md); background: var(--accent); color: var(--on-accent);
+}
+.gate__app-ico .ico { width: 26px; height: 26px; }
+.gate__app-text { min-width: 0; flex: 1 1 auto; }
+.gate__app-title { font-weight: 650; font-size: 15px; }
+.gate__app-sub { color: var(--muted); font-size: 12.5px; line-height: 1.3; margin-top: 2px; }
+.gate__app-btn { flex: none; min-height: 40px; padding-inline: var(--sp-4); }
+@media (max-width: 380px) {
+  .gate__app { flex-wrap: wrap; }
+  .gate__app-btn { width: 100%; }
+}
 `;
 
 let cssDone = false;
@@ -1607,6 +1639,76 @@ function sheetSupport(ctx) {
 /* ═══════════════════════════════════════════════════════ наружу */
 
 /** Подготовить экран входа. onAuthed(user) вызывается, когда человек вошёл. */
+/* ── приложение на телефон ─────────────────────────────────────────────────
+
+   Водитель приходит на страницу входа с телефона. В браузере он потеряет
+   заказ, как только свернёт вкладку: фоновой работы там нет. Поэтому прямо
+   на входе предлагаем поставить приложение — оно держит связь, когда экран
+   погас, и будит человека звуком на новый заказ.
+
+   Показываем только там, где это имеет смысл: Android, обычный браузер.
+   Внутри самого приложения и на айфоне полосы нет — на айфоне ставить нечего,
+   там работает установка на домашний экран из веб-приложения. */
+
+const APP_URL = '/app/sprintergo-courier.apk';
+const APP_INFO = '/app/version.json';
+
+function insideApp() {
+  return / SprinterGoApp\//.test(navigator.userAgent || '');
+}
+
+function androidBrowser() {
+  const ua = navigator.userAgent || '';
+  if (!/Android/i.test(ua)) return false;
+  if (insideApp()) return false;
+  // Установленное веб-приложение — это уже «приложение», не пристаём.
+  return !window.matchMedia('(display-mode: standalone)').matches;
+}
+
+function base() {
+  return (window.SG_BASE || '/').replace(/\/$/, '');
+}
+
+async function appInfo() {
+  try {
+    const r = await fetch(base() + APP_INFO, { cache: 'no-store' });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d && d.url ? d : null;
+  } catch (e) {
+    return null;                      // файла нет — значит приложение ещё не выложили
+  }
+}
+
+async function mountAppBar() {
+  if (!androidBrowser()) return;
+  ensureCss();
+  const info = await appInfo();
+  if (!info) return;
+  if (gate.querySelector('.gate__app')) return;
+
+  const size = info.size ? Math.round(info.size / 1024 / 1024 * 10) / 10 : 0;
+  const link = el('a', {
+    className: 'btn btn--primary gate__app-btn',
+    href: base() + (info.url || APP_URL),
+    download: 'sprintergo-courier.apk',
+    rel: 'noopener',
+    onClick: () => haptic(16),
+  }, t('app.get'));
+
+  const bar = el('div', { className: 'gate__app' },
+    el('div', { className: 'gate__app-ico', html: ico('van') }),
+    el('div', { className: 'gate__app-text' },
+      el('div', { className: 'gate__app-title' }, t('app.title')),
+      el('div', { className: 'gate__app-sub' },
+        size ? tp('app.sub_size', { size: String(size).replace('.', ',') }) : t('app.sub'))),
+    link);
+
+  const form = gate.querySelector('.gate__tabs');
+  if (form && form.parentNode) form.parentNode.insertBefore(bar, form);
+  else gate.appendChild(bar);
+}
+
 export function initGate(opts = {}) {
   authed = typeof opts.onAuthed === 'function' ? opts.onAuthed : null;
 
@@ -1622,6 +1724,7 @@ export function initGate(opts = {}) {
   bindLang();
   applyTo(gate);
   handleResetLink();
+  mountAppBar();          // молча ничего не сделает, если приложение ещё не выложено
   return { open: openTab };
 }
 

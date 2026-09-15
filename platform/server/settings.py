@@ -52,6 +52,10 @@ DEFAULTS = {
     'payment.callback_login': '',       # логин для обратного уведомления банка
     'payment.callback_password': '',    # пароль к нему
     'payment.qr_ttl_s': 600,            # сколько живёт один QR, потом перевыпуск
+    # Демо: экран оплаты работает целиком, код рисуем сами, деньги никуда не идут.
+    # Нужен, чтобы владелец увидел своими глазами, что увидит клиент, ещё до
+    # того, как банк выдаст ключи.
+    'payment.demo': False,
 
     # Бонусы. Копятся с выполненных заказов, закрывают часть следующего.
     'bonus.enabled': True,
@@ -210,6 +214,7 @@ def public():
             'prepay_commission': bool(s['payment.prepay_commission']),
             # Ключ и пароли сюда не попадают — только признак, что реквизиты заданы.
             'ready': bool(s['payment.optima_key'] and s['payment.optima_company']),
+            'demo': bool(s['payment.demo']),
         },
         'bonus': {
             'enabled': bool(s['bonus.enabled']), 'percent': s['bonus.percent'],

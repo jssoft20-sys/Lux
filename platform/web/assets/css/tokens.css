@@ -1,48 +1,74 @@
 /* Дизайн-система Sprinter Go.
-   Тёмная тема основная: сервисом пользуются ночью и на улице, тёмный экран
-   меньше слепит и экономит батарею. Светлая поддерживается полностью.
-   Все цвета определены на голом :root, темы только переопределяют значения —
-   иначе при системной теме часть переменных осталась бы неопределённой. */
+
+   Светлая тема основная: сервис открывается светлым, потому что им пользуются
+   днём, на улице, с телефона в руке — сливочный фон и белые карточки читаются
+   на солнце лучше чёрного стекла. Тёмная работает целиком и включается либо
+   выбором человека, либо системной настройкой.
+
+   Правило одно и железное: каждый цвет объявлен на голом :root. Темы только
+   переопределяют значения. Если цвет объявить только внутри @media, при другой
+   системной настройке переменная окажется пустой и экран поедет. */
 
 :root {
-  color-scheme: dark light;
+  color-scheme: light dark;
 
-  /* поверхности */
-  --bg: #0E0E10;
-  --bg-soft: #141417;
-  --surface: #17171A;
-  --surface-2: #202024;
-  --surface-3: #2A2A30;
-  --line: #2E2E36;
-  --line-soft: #24242B;
-  --overlay: rgba(6, 6, 8, .72);
+  /* поверхности: фон сливочный, карточки белые — как на снимках заказчика */
+  --bg: #F3F1EB;
+  --bg-soft: #FAF9F5;
+  --surface: #FFFFFF;
+  --surface-2: #F0EEE7;
+  --surface-3: #E4E1D8;
+  --line: #E2DFD6;
+  --line-soft: #EDEAE1;
+  --overlay: rgba(26, 24, 20, .38);
 
-  /* текст */
-  --text: #F6F6F8;
-  --muted: #9A9AA5;
-  --muted-2: #6E6E78;
+  /* текст: почти чёрный, подписи спокойные серые */
+  --text: #14130F;
+  --muted: #6B6A62;
+  --muted-2: #9A978E;
   --on-accent: #16150F;
 
   /* акценты */
   --accent: #FFDF00;
-  --accent-press: #EBCD00;
-  --accent-soft: rgba(255, 223, 0, .14);
-  --accent-line: rgba(255, 223, 0, .38);
+  --accent-press: #F2CF00;
+  --accent-soft: rgba(255, 223, 0, .30);
+  --accent-line: rgba(199, 172, 0, .55);
+  /* Жёлтый текстом на белом не читается: там, где акцент это буквы или значок,
+     берём его тёмную родню, а не заливку. */
+  --accent-text: #7A6300;
+  /* Звёзды рейтинга: чистый жёлтый на белом почти не виден, там нужен золотой. */
+  --star: #F0B400;
 
-  --ok: #24C07A;
-  --ok-soft: rgba(36, 192, 122, .16);
-  --warn: #FFA726;
-  --warn-soft: rgba(255, 167, 38, .16);
-  --err: #FF5A5A;
-  --err-soft: rgba(255, 90, 90, .16);
-  --info: #4DA3FF;
-  --info-soft: rgba(77, 163, 255, .16);
+  /* чёрная кнопка-таблетка с пояснительных экранов */
+  --ink: #17161A;
+  --ink-fg: #FFFFFF;
+  --ink-press: #2A282E;
 
-  /* радиусы */
+  --ok: #12A566;
+  --ok-soft: rgba(18, 165, 102, .14);
+  --warn: #C97A00;
+  --warn-soft: rgba(201, 122, 0, .14);
+  --err: #DE3B3B;
+  --err-soft: rgba(222, 59, 59, .12);
+  --info: #1B6FF0;
+  --info-soft: rgba(27, 111, 240, .12);
+
+  /* подсветка совпавшей части адреса и кольцо фокуса */
+  --match: #1B6FF0;
+  --focus: #1B6FF0;
+
+  /* фоны пояснительных экранов: пастель, поверх неё чёрный заголовок */
+  --tone-cream: #F1EDE3;
+  --tone-peach: #FBDFCB;
+  --tone-mint: #DBEFE1;
+  --tone-sky: #DBE7FB;
+  --tone-lilac: #E6E0F7;
+
+  /* радиусы: крупные, как в снимках — карточки 22, поля и кнопки 16 */
   --r-xs: 8px;
-  --r-sm: 10px;
-  --r-md: 14px;
-  --r-lg: 20px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 22px;
   --r-xl: 28px;
   --r-full: 999px;
 
@@ -50,12 +76,12 @@
   --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
   --sp-5: 20px; --sp-6: 24px; --sp-7: 32px; --sp-8: 40px;
 
-  /* тени */
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, .32);
-  --shadow-2: 0 8px 24px rgba(0, 0, 0, .38);
-  --shadow-3: 0 18px 48px rgba(0, 0, 0, .46);
-  --shadow-sheet: 0 -12px 40px rgba(0, 0, 0, .5);
-  --shadow-accent: 0 6px 20px rgba(255, 223, 0, .24);
+  /* тени: на светлом мягкие и тёплые, иначе карточка выглядит наклейкой */
+  --shadow-1: 0 1px 2px rgba(34, 28, 12, .07);
+  --shadow-2: 0 8px 24px rgba(34, 28, 12, .10);
+  --shadow-3: 0 18px 48px rgba(34, 28, 12, .16);
+  --shadow-sheet: 0 -10px 40px rgba(34, 28, 12, .16);
+  --shadow-accent: 0 8px 22px rgba(214, 186, 0, .34);
 
   /* движение */
   --ease: cubic-bezier(.22, 1, .36, 1);
@@ -66,13 +92,17 @@
   --dur-3: 380ms;
   --dur-4: 560ms;
 
+  /* насколько проседает элемент под пальцем и как сильно отыгрывает назад */
+  --press: .965;
+  --pop: 1.012;
+
   /* шрифты */
   --font-display: 'Onest', 'Onest Fallback', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-text: 'Inter', 'Inter Fallback', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
 
   /* размеры текста: подобраны под 360–430 px, дальше растут через clamp */
-  --fs-display: clamp(26px, 7vw, 34px);
+  --fs-display: clamp(30px, 8.4vw, 40px);
   --fs-h1: clamp(22px, 5.6vw, 28px);
   --fs-h2: clamp(18px, 4.6vw, 22px);
   --fs-h3: 16px;
@@ -95,50 +125,126 @@
   --z-toast: 300;
 }
 
-/* Светлая тема: системная, если пользователь не выбрал явно тёмную. */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg: #F4F4F6;
-    --bg-soft: #FFFFFF;
-    --surface: #FFFFFF;
-    --surface-2: #F2F2F5;
-    --surface-3: #E7E7EC;
-    --line: #E2E2E8;
-    --line-soft: #EDEDF1;
-    --overlay: rgba(20, 20, 24, .42);
-    --text: #131317;
-    --muted: #6B6B76;
-    --muted-2: #93939E;
-    --shadow-1: 0 1px 2px rgba(16, 16, 24, .08);
-    --shadow-2: 0 8px 24px rgba(16, 16, 24, .10);
-    --shadow-3: 0 18px 48px rgba(16, 16, 24, .14);
-    --shadow-sheet: 0 -12px 40px rgba(16, 16, 24, .14);
+/* ─────────────────────────────────────────────────────── тёмная тема
+
+   Два одинаковых набора значений — это не копипаста по недосмотру, а
+   единственный способ сказать «тёмная по системе, но выбор человека главнее»:
+   :not([data-theme="light"]) внутри media-блока защищает явный светлый выбор,
+   а отдельный [data-theme="dark"] включает тёмную при светлой системе. */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bg: #0E0E10;
+    --bg-soft: #141417;
+    --surface: #17171A;
+    --surface-2: #202024;
+    --surface-3: #2A2A30;
+    --line: #2E2E36;
+    --line-soft: #24242B;
+    --overlay: rgba(6, 6, 8, .72);
+
+    --text: #F6F6F8;
+    --muted: #9A9AA5;
+    --muted-2: #6E6E78;
+    --on-accent: #16150F;
+
+    --accent: #FFDF00;
+    --accent-press: #EBCD00;
+    --accent-soft: rgba(255, 223, 0, .14);
+    --accent-line: rgba(255, 223, 0, .38);
+    --accent-text: #FFDF00;
+    --star: #FFDF00;
+
+    /* На тёмном «чёрная» кнопка невидима — главное действие становится светлым. */
+    --ink: #F4F4F6;
+    --ink-fg: #141417;
+    --ink-press: #DEDEE4;
+
+    --ok: #24C07A;
+    --ok-soft: rgba(36, 192, 122, .16);
+    --warn: #FFA726;
+    --warn-soft: rgba(255, 167, 38, .16);
+    --err: #FF5A5A;
+    --err-soft: rgba(255, 90, 90, .16);
+    --info: #4DA3FF;
+    --info-soft: rgba(77, 163, 255, .16);
+
+    --match: #64B0FF;
+    --focus: #FFDF00;
+
+    --tone-cream: #1B1A16;
+    --tone-peach: #26170F;
+    --tone-mint: #102019;
+    --tone-sky: #101A28;
+    --tone-lilac: #1A1626;
+
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, .32);
+    --shadow-2: 0 8px 24px rgba(0, 0, 0, .38);
+    --shadow-3: 0 18px 48px rgba(0, 0, 0, .46);
+    --shadow-sheet: 0 -12px 40px rgba(0, 0, 0, .5);
+    --shadow-accent: 0 6px 20px rgba(255, 223, 0, .24);
   }
 }
 
-/* Явный выбор пользователя побеждает системную настройку в обе стороны. */
-:root[data-theme="light"] {
-  --bg: #F4F4F6;
-  --bg-soft: #FFFFFF;
-  --surface: #FFFFFF;
-  --surface-2: #F2F2F5;
-  --surface-3: #E7E7EC;
-  --line: #E2E2E8;
-  --line-soft: #EDEDF1;
-  --overlay: rgba(20, 20, 24, .42);
-  --text: #131317;
-  --muted: #6B6B76;
-  --muted-2: #93939E;
-  --shadow-1: 0 1px 2px rgba(16, 16, 24, .08);
-  --shadow-2: 0 8px 24px rgba(16, 16, 24, .10);
-  --shadow-3: 0 18px 48px rgba(16, 16, 24, .14);
-  --shadow-sheet: 0 -12px 40px rgba(16, 16, 24, .14);
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0E0E10;
+  --bg-soft: #141417;
+  --surface: #17171A;
+  --surface-2: #202024;
+  --surface-3: #2A2A30;
+  --line: #2E2E36;
+  --line-soft: #24242B;
+  --overlay: rgba(6, 6, 8, .72);
+
+  --text: #F6F6F8;
+  --muted: #9A9AA5;
+  --muted-2: #6E6E78;
+  --on-accent: #16150F;
+
+  --accent: #FFDF00;
+  --accent-press: #EBCD00;
+  --accent-soft: rgba(255, 223, 0, .14);
+  --accent-line: rgba(255, 223, 0, .38);
+  --accent-text: #FFDF00;
+  --star: #FFDF00;
+
+  --ink: #F4F4F6;
+  --ink-fg: #141417;
+  --ink-press: #DEDEE4;
+
+  --ok: #24C07A;
+  --ok-soft: rgba(36, 192, 122, .16);
+  --warn: #FFA726;
+  --warn-soft: rgba(255, 167, 38, .16);
+  --err: #FF5A5A;
+  --err-soft: rgba(255, 90, 90, .16);
+  --info: #4DA3FF;
+  --info-soft: rgba(77, 163, 255, .16);
+
+  --match: #64B0FF;
+  --focus: #FFDF00;
+
+  --tone-cream: #1B1A16;
+  --tone-peach: #26170F;
+  --tone-mint: #102019;
+  --tone-sky: #101A28;
+  --tone-lilac: #1A1626;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .32);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, .38);
+  --shadow-3: 0 18px 48px rgba(0, 0, 0, .46);
+  --shadow-sheet: 0 -12px 40px rgba(0, 0, 0, .5);
+  --shadow-accent: 0 6px 20px rgba(255, 223, 0, .24);
 }
 
-:root[data-theme="dark"] {
-  --bg: #0E0E10;
-  --surface: #17171A;
-  --text: #F6F6F8;
+/* Явный светлый выбор: значения уже стоят на :root, здесь остаётся сказать
+   браузеру, какими рисовать системные части — полосы прокрутки и поля. */
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 /* Кто просил меньше движения — тот получает мгновенные переходы.
@@ -146,6 +252,9 @@
 @media (prefers-reduced-motion: reduce) {
   :root {
     --dur-1: 1ms; --dur-2: 1ms; --dur-3: 1ms; --dur-4: 1ms;
+    /* Отклик на нажатие остаётся, но без движения: его даёт прозрачность. */
+    --press: 1;
+    --pop: 1;
   }
   *, *::before, *::after {
     animation-duration: 1ms !important;

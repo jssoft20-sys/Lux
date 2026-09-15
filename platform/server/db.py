@@ -253,6 +253,12 @@ ADDED_COLUMNS = {
         ('online_s', 'INTEGER NOT NULL DEFAULT 0'),          # накоплено за сегодня
         ('online_day', 'INTEGER NOT NULL DEFAULT 0'),        # за какой день накоплено
     ],
+    'orders': [
+        # Токен для ссылки «поделиться». Отличается от track_token намеренно:
+        # по нему видно, где едет машина, но отменить заказ нельзя. Иначе
+        # человек, которому кинули ссылку в общий чат, отменяет чужую поездку.
+        ('view_token', 'TEXT'),
+    ],
     'clients': [
         ('token', 'TEXT'),          # опознаём вернувшегося клиента без регистрации
         ('name_asked', 'INTEGER NOT NULL DEFAULT 0'),

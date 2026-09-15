@@ -1,0 +1,386 @@
+/* Оболочка страницы: заставка, полоса установки, шторка с шагами для айфона,
+   подсказка «вернуться туда, где был».
+
+   Подключается последней — после стилей экрана: пара правил здесь двигает
+   верхний ряд страницы, когда над ним встаёт полоса установки.
+   Поведением рулит core/shell.js, здесь только внешний вид.
+
+   Цвета берём только из токенов: тему правят в tokens.css, и дублировать
+   значения тут нельзя — иначе светлая тема где-нибудь да останется тёмной. */
+
+/* ══════════════════════════════════════════════════════ заставка
+
+   Жёлтый экран со знаком, который видно с первого кадра: разметка лежит прямо
+   в html, до всяких скриптов. Гасит её shell.js, когда шрифты и первый экран
+   готовы. Цвет жёлтый в любой теме — это лицо сервиса, а не поверхность. */
+
+.sg-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;                 /* выше всего, включая тосты и шторки */
+  display: grid;
+  place-items: center;
+  padding: var(--sp-6);
+  background: var(--accent);
+  color: var(--on-accent);
+  /* Пока висит заставка, палец под ней ничего не должен двигать. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  /* Уход — 300 мс: быстро, но глазу видно, что экран не моргнул, а растаял. */
+  transition: opacity calc(var(--dur-2) + 60ms) var(--ease-in);
+}
+
+.sg-splash.is-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sg-splash__mark {
+  display: grid;
+  justify-items: center;
+  gap: var(--sp-3);
+  will-change: transform;
+}
+
+/* Знак чуть подрастает на выходе — заставка не гаснет, а уходит вперёд. */
+.sg-splash.is-out .sg-splash__mark {
+  transform: scale(1.06);
+  transition: transform calc(var(--dur-2) + 60ms) var(--ease-in);
+}
+
+.sg-splash__van {
+  width: clamp(96px, 30vw, 132px);
+  height: auto;
+  color: var(--on-accent);
+}
+
+/* Окно и диски вырезаны цветом заставки: знак читается силуэтом.
+   Через var() в атрибуте fill этого не сделать — только правилом. */
+.sg-splash__hole { fill: var(--accent); }
+
+.sg-splash__name {
+  font-family: var(--font-display);
+  font-size: clamp(22px, 6.2vw, 28px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--on-accent);
+}
+
+/* Холодный запуск — знак въезжает. Тёплая перезагрузка показывает его сразу:
+   мигание анимацией на каждом обновлении страницы быстро надоедает. */
+:root[data-boot="cold"] .sg-splash__van {
+  animation: sg-splash-in var(--dur-3) var(--ease) both;
+}
+
+:root[data-boot="cold"] .sg-splash__name {
+  animation: sg-splash-up var(--dur-3) var(--ease) 80ms both;
+}
+
+@keyframes sg-splash-in {
+  from { opacity: 0; transform: scale(.86); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes sg-splash-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ══════════════════════════════════════════════════════ полоса установки
+
+   Аккуратная плашка сверху: значок, название, кнопка. Одно нажатие — и
+   приложение стоит на экране. Больше от человека ничего не требуется. */
+
+.sg-install {
+  position: fixed;
+  top: calc(var(--safe-t) + var(--sp-2));
+  left: var(--sp-2);
+  right: var(--sp-2);
+  max-width: 520px;
+  margin-inline: auto;
+  z-index: calc(var(--z-ui) + 2);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  border-radius: 22px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-2);
+  animation: sg-bar-in var(--dur-3) var(--ease) both;
+}
+
+@keyframes sg-bar-in {
+  from { opacity: 0; transform: translateY(-14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.sg-install__logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  flex: none;
+}
+
+.sg-install__text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.sg-install__name {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.sg-install__note {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  line-height: 1.25;
+  /* В 360 px подпись длинная — обрезаем её, а не ломаем плашку. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sg-install__go {
+  flex: none;
+  min-height: 44px;
+  padding: 0 var(--sp-4);
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease-spring), background var(--dur-1) linear;
+}
+
+.sg-install__go:active {
+  transform: scale(.94);
+  background: var(--accent-press);
+}
+
+.sg-install__x {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--muted-2);
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease-spring), color var(--dur-1) linear;
+}
+
+.sg-install__x svg { width: 18px; height: 18px; fill: none; }
+.sg-install__x:active { transform: scale(.9); color: var(--text); }
+
+/* Установилось — плашка на пару секунд говорит спасибо и уходит. */
+.sg-install.is-done .sg-install__go,
+.sg-install.is-done .sg-install__x { display: none; }
+.sg-install.is-done .sg-install__note { color: var(--ok); }
+
+/* Верхний ряд клиента уезжает вниз, чтобы плашка не легла на логотип. */
+:root[data-install-bar="on"] .sg-top {
+  padding-top: calc(var(--safe-t) + 68px);
+}
+
+/* ══════════════════════════════════════════════════════ шаги для айфона
+
+   Safari своего окна установки не даёт, поэтому показываем ровно два шага
+   с теми же значками, что человек увидит в браузере. */
+
+.sg-guide {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sg-guide__back {
+  position: absolute;
+  inset: 0;
+  background: var(--overlay);
+  opacity: 0;
+  transition: opacity var(--dur-2) var(--ease);
+}
+
+.sg-guide.is-on .sg-guide__back { opacity: 1; }
+
+.sg-guide__box {
+  position: relative;
+  width: 100%;
+  max-width: var(--sheet-max);
+  padding: var(--sp-2) var(--sp-5) calc(var(--sp-5) + var(--safe-b));
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-sheet);
+  transform: translateY(101%);
+  transition: transform var(--dur-3) var(--ease);
+}
+
+.sg-guide.is-on .sg-guide__box { transform: none; }
+
+.sg-guide__grip {
+  display: block;
+  width: 40px;
+  height: 4px;
+  margin: 0 auto var(--sp-4);
+  border-radius: var(--r-full);
+  background: var(--line);
+}
+
+.sg-guide__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--sp-4);
+}
+
+.sg-guide__steps {
+  display: grid;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-5);
+}
+
+.sg-guide__step {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+
+.sg-guide__n {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sg-guide__text {
+  flex: 1 1 auto;
+  font-size: var(--fs-body);
+  line-height: 1.35;
+}
+
+.sg-guide__ico {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--info);
+  box-shadow: var(--shadow-1);
+}
+
+/* Значки нарисованы линией. В base.css у svg стоит fill: currentColor,
+   и без этой строки они залились бы сплошным пятном. */
+.sg-guide__ico svg { width: 22px; height: 22px; fill: none; }
+
+/* ══════════════════════════════════════════════════════ «вернуться, где был»
+
+   Человек закрыл сайт на середине — при следующем заходе предлагаем вернуться
+   туда же. Именно предлагаем: перебрасывать без спроса нельзя. */
+
+.sg-restore {
+  position: fixed;
+  top: calc(var(--safe-t) + 72px);
+  left: var(--sp-2);
+  right: var(--sp-2);
+  max-width: 520px;
+  margin-inline: auto;
+  z-index: calc(var(--z-ui) + 3);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-2);
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease);
+}
+
+.sg-restore.is-on {
+  opacity: 1;
+  transform: none;
+}
+
+.sg-restore__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.sg-restore__go {
+  flex: none;
+  min-height: 44px;
+  padding: 0 var(--sp-4);
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease-spring), background var(--dur-1) linear;
+}
+
+.sg-restore__go:active {
+  transform: scale(.94);
+  background: var(--accent-press);
+}
+
+.sg-restore__x {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--muted-2);
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease-spring), color var(--dur-1) linear;
+}
+
+.sg-restore__x svg { width: 18px; height: 18px; fill: none; }
+.sg-restore__x:active { transform: scale(.9); color: var(--text); }
+
+/* Узкий телефон: подпись в плашке установки лишняя, кнопка важнее. */
+@media (max-width: 359px) {
+  .sg-install__note { display: none; }
+  .sg-install__go { padding: 0 var(--sp-3); }
+}
