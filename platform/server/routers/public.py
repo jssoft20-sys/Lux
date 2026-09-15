@@ -665,7 +665,13 @@ def order_view(order, lang=None, mode='full'):
         'search_timeout_s': settings.get_int('order.search_timeout_s', 300),
         'now': db.now(),
     }
-    return _guest_view(view) if mode != 'full' else view
+    if mode != 'full':
+        return _guest_view(view)
+    # Токен просмотра отдаём только владельцу заказа: из него клиент собирает
+    # ссылку «поделиться», по которой чужой человек увидит карту с машиной, но
+    # ни телефона, ни квартиры, ни кнопки «Отменить».
+    view['view_token'] = order.get('view_token')
+    return view
 
 
 
@@ -707,6 +713,11 @@ def _short_addr(addr):
         return s
     head = s.split(',')[0].strip()
     head = re.sub(r'\s+\d+[А-Яа-яA-Za-z]?(?:\s*/\s*\d+)?$', '', head).strip()
+    # «Контур № 5» без номера превращался в «Контур №» — хвост без смысла.
+    # Убираем такие остатки: значка номера, дефиса или запятой на конце быть
+    # не должно, иначе человек видит обрубок и думает, что сервис сломался.
+    head = re.sub(r'[\s,.;:\-–—]*(?:№|#|дом|д\.|уй)\s*$', '', head, flags=re.I).strip()
+    head = head.strip(' ,.;:-–—')
     return head or s.split(',')[0].strip()
 
 

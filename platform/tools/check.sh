@@ -56,6 +56,7 @@ else
       SG_ADMIN_EMAIL=admin@test.kg SG_ADMIN_PASSWORD=admin12345 node tools/payui_test.mjs
   run "карта: серые дыры"     env TEST_PORT=$UIPORT SG_DATA="$UIDATA" node tools/map_test.mjs
   run "сценарий: заказ вживую" env TEST_PORT=$UIPORT SG_DATA="$UIDATA" node tools/flow_test.mjs
+  run "ссылка: живая карта"    env TEST_PORT=$UIPORT SG_DATA="$UIDATA" node tools/watch_test.mjs
 
   kill "$srv" 2>/dev/null
   wait "$srv" 2>/dev/null

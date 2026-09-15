@@ -21,10 +21,23 @@ PNG — формат простой. Восьмибитный RGB, фильтр 
 через отдачу статики — см. hook_static() внизу файла. Язык в короткой ссылке
 задаётся хвостом пути: /share/AB12CD.ky, потому что до строки запроса на этом
 пути мы не дотягиваемся.
+
+И то же самое для человека. В ссылке, которой делятся, есть ещё токен просмотра:
+    /share/AB12CD?v=токен
+Робот мессенджера приходит без него и получает ровно ту карточку, что и раньше,
+— поэтому разметку и мета-теги ниже трогать нельзя. А когда токен подходит к
+заказу, к той же странице добавляются стили карты и модуль assets/js/share/watch.js:
+он берёт заказ и поток событий по этому же токену и показывает живую карту с
+машиной, маршрутом и временем. Кнопки «Отменить» на такой странице нет: токен
+просмотра умеет только смотреть, любое действие им — 403 на стороне API.
+Карточка при этом остаётся под картой: не собрался модуль, не подошёл токен,
+пропала сеть — человек видит статус и маршрут, а не пустой экран.
 """
 import gzip
 import hashlib
+import hmac
 import html as html_mod
+import json
 import math
 import os
 import re
@@ -54,11 +67,21 @@ CACHE_MAX = 150
 # Попадания в кэш не считаем: мессенджер часто ходит десятком роботов сразу.
 BUILD_PER_MIN = 60
 
+# Сколько раз в минуту с одного адреса сверяем токен просмотра. Человек открывает
+# ссылку раз или два, так что предел бьёт только по перебору — а перебирать тут
+# нечего: токен случайный и длинный, и не подошедший просто показывает карточку.
+VIEW_PER_MIN = 30
+
 # Номер заказа: буквы и цифры без путаницы, восемь знаков (см. public.py).
 PID_RX = re.compile(r'^[0-9A-Z]{4,16}$')
 
 # Короткий путь: /share/AB12CD, /share/AB12CD.ky, /share/AB12CD.png
 PATH_RX = re.compile(r'^/share/([0-9A-Za-z]{4,16})(?:\.(ru|ky))?(\.png)?/?$')
+
+# Токен просмотра из ссылки. Его выдаёт secrets.token_urlsafe, поэтому знаки
+# только такие; длину не зашиваем намертво, чтобы её можно было поменять на
+# сервере, не переписывая этот файл.
+VIEW_RX = re.compile(r'^[A-Za-z0-9_\-]{16,64}$')
 
 # Адрес сайта, каким его видит посетитель. Проверяем строго: значение уходит
 # в мета-теги, а Host приходит снаружи и доверять ему нельзя.
@@ -188,6 +211,10 @@ TONE = {
 HOUSE_RX = re.compile(r'[\s,]+(д\.?\s*|дом\s*)?\d+\s*[а-яёa-z]?(\s*[/\-]\s*\d+\s*[а-яёa-z]?)?$',
                       re.IGNORECASE)
 
+# Хвост без номера: «Контур №», «Джал дом», «Ала-Тоо уй». Остаётся после того,
+# как номер дома уже убрали, и смысла в нём никакого.
+TAIL_RX = re.compile(r'[\s,.;:\-–—]*(?:№|#|дом|д\.|уй)\s*$', re.IGNORECASE)
+
 
 def soft_addr(addr):
     """Адрес без точного дома: постороннему показываем улицу, а не подъезд клиента.
@@ -200,6 +227,9 @@ def soft_addr(addr):
         return ''
     head = text.split(',')[0].strip()
     short = HOUSE_RX.sub('', head).strip(' ,.-')
+    # «Контур № 5» без дома превращался в «Контур №»: значок номера остался, а
+    # номера нет. Такой обрубок выглядит как поломка — убираем и его.
+    short = TAIL_RX.sub('', short).strip(' ,.;:-–—')
     return short or head
 
 
@@ -814,7 +844,10 @@ a{color:inherit}
   font-size:17px;font-weight:700;text-decoration:none;
   border:1px solid transparent
 }
-.btn--primary{background:var(--accent);color:var(--ink)}
+/* На живой странице поверх этих правил ложится tokens.css, где --ink на тёмной
+   теме становится светлым. Поэтому буквы на жёлтом берём из --on-accent, а --ink
+   остаётся запасным для карточки, которая живёт сама по себе. */
+.btn--primary{background:var(--accent);color:var(--on-accent,var(--ink))}
 .btn--ghost{background:transparent;color:var(--text);border-color:var(--line)}
 .btn:active{transform:translateY(1px)}
 
@@ -866,8 +899,50 @@ def describe(data):
     return ' · '.join(p for p in parts if p)
 
 
-def render_page(data, origin='', base='/'):
-    """Страница превью: мета-теги для роботов и человеческая карточка для людей."""
+def _js(value):
+    """Значение для встроенного скрипта. Закрывающую скобку тега и невидимые
+    разделители строк экранируем: иначе разметка может кончиться раньше времени."""
+    return (json.dumps(value, ensure_ascii=False)
+            .replace('<', '\\u003c')
+            .replace('\u2028', '\\u2028')
+            .replace('\u2029', '\\u2029'))
+
+
+def watch_config(data, token, base):
+    """Что живой странице нужно знать до первого кадра.
+
+    Настройки карты кладём прямо в разметку, а не заставляем страницу спрашивать
+    /config: лишний запрос на медленном телефоне — это лишняя секунда серого поля
+    вместо города. Ничего чувствительного здесь нет: те же значения /config
+    отдаёт кому угодно без всякого токена.
+    """
+    return {
+        'pid': data['pid'],
+        'token': token,
+        'lang': data['lang'],
+        'base': base,
+        'service': data['service'],
+        'city': data['city'],
+        'tz': str(settings.get('service.tz', '') or ''),
+        'map': {
+            'tiles_light': str(settings.get('map.tiles_light', '') or ''),
+            'tiles_dark': str(settings.get('map.tiles_dark', '') or ''),
+            'attribution': str(settings.get('map.attribution', '') or ''),
+            'center': [settings.get_float('map.center_lat', 42.8746),
+                       settings.get_float('map.center_lng', 74.5698)],
+            'zoom': settings.get_int('map.zoom', 13),
+            'min_zoom': settings.get_int('map.min_zoom', 10),
+            'max_zoom': settings.map_max_zoom(),
+        },
+    }
+
+
+def render_page(data, origin='', base='/', live=''):
+    """Страница превью: мета-теги для роботов и человеческая карточка для людей.
+
+    live — подошедший токен просмотра. С ним к той же странице добавляются стили
+    карты и модуль watch.js, и поверх карточки встаёт живая карта.
+    """
     lang = data['lang']
     other = 'ky' if lang == 'ru' else 'ru'
     pid = data['pid']
@@ -929,31 +1004,42 @@ def render_page(data, origin='', base='/'):
            # карточки в чате, и она не должна выглядеть чужой. Файла нет — браузер
            # молча возьмёт системный, ничего не сломается.
            '  <link rel="stylesheet" href="%sassets/css/fonts.css">' % esc(base),
-           '  <style>%s</style>' % PAGE_CSS,
-           '</head>',
-           '<body>',
-           '<div class="page">',
-           '  <header class="head">',
-           '    <a class="brand" href="%s">%s<span class="brand__name">Sprinter<span>Go</span>'
-           '</span></a>' % (esc(base), LOGO_SVG),
-           '    <a class="lang" href="%sshare/%s.%s" hreflang="%s">%s</a>'
-           % (esc(base), esc(pid), other, other, esc(say('share.lang_other', lang))),
-           '  </header>',
-           '  <main class="card">',
-           '    <p class="card__id">%s %s</p>' % (esc(say('share.order', lang)), esc(pid)),
-           '    <h1 class="card__title"><span class="dot%s" aria-hidden="true"></span>%s</h1>'
-           % (tone_class, esc(data['title'])),
-           '    <p class="card__sub">%s</p>' % esc(' · '.join(s for s in sub if s)),
-           '    <ul class="route">',
-           '      <li><span class="route__pin" aria-hidden="true"></span>'
-           '<span class="route__label">%s</span>'
-           '<span class="route__value">%s</span></li>'
-           % (esc(say('share.from', lang)), esc(data['from'] or say('share.nothing', lang))),
-           '      <li><span class="route__pin route__pin--b" aria-hidden="true"></span>'
-           '<span class="route__label">%s</span>'
-           '<span class="route__value">%s</span></li>'
-           % (esc(say('share.to', lang)), esc(data['to'] or say('share.nothing', lang))),
-           '    </ul>']
+           '  <style>%s</style>' % PAGE_CSS]
+
+    if live:
+        # Токен лежит в адресе страницы, и ему незачем уезжать в чужие журналы
+        # вместе с запросом плитки карты или шрифта.
+        out += ['  <meta name="referrer" content="no-referrer">',
+                # Стили ставим после встроенных: дизайн-система должна победить,
+                # иначе живая карта окажется в чужих цветах.
+                '  <link rel="stylesheet" href="%sassets/css/tokens.css">' % esc(base),
+                '  <link rel="stylesheet" href="%sassets/css/map.css">' % esc(base),
+                '  <link rel="stylesheet" href="%sassets/css/share.css">' % esc(base)]
+
+    out += ['</head>',
+            '<body>',
+            '<div class="page">',
+            '  <header class="head">',
+            '    <a class="brand" href="%s">%s<span class="brand__name">Sprinter<span>Go</span>'
+            '</span></a>' % (esc(base), LOGO_SVG),
+            '    <a class="lang" href="%sshare/%s.%s" hreflang="%s">%s</a>'
+            % (esc(base), esc(pid), other, other, esc(say('share.lang_other', lang))),
+            '  </header>',
+            '  <main class="card">',
+            '    <p class="card__id">%s %s</p>' % (esc(say('share.order', lang)), esc(pid)),
+            '    <h1 class="card__title"><span class="dot%s" aria-hidden="true"></span>%s</h1>'
+            % (tone_class, esc(data['title'])),
+            '    <p class="card__sub">%s</p>' % esc(' · '.join(s for s in sub if s)),
+            '    <ul class="route">',
+            '      <li><span class="route__pin" aria-hidden="true"></span>'
+            '<span class="route__label">%s</span>'
+            '<span class="route__value">%s</span></li>'
+            % (esc(say('share.from', lang)), esc(data['from'] or say('share.nothing', lang))),
+            '      <li><span class="route__pin route__pin--b" aria-hidden="true"></span>'
+            '<span class="route__label">%s</span>'
+            '<span class="route__value">%s</span></li>'
+            % (esc(say('share.to', lang)), esc(data['to'] or say('share.nothing', lang))),
+            '    </ul>']
 
     if stats:
         out.append('    <ul class="stats">')
@@ -974,8 +1060,20 @@ def render_page(data, origin='', base='/'):
         tail += ' · <a href="tel:%s">%s</a>' % (esc(re.sub(r'[^\d+]', '', data['phone'])),
                                                 esc(data['phone']))
     out += ['  <footer class="foot">%s</footer>' % tail,
-            '</div>',
-            '</body>',
+            '</div>']
+
+    if live:
+        # Префикс установки страница знает сама: разметку собрал роутер, а не
+        # отдача статики, и подставить window.SG_BASE больше некому. Без него
+        # api.js ушёл бы запросами в корень домена, где стоит чужой сайт.
+        out += ['<script>window.SG_BASE=%s;window.SG_WATCH=%s;</script>'
+                % (_js(base), _js(watch_config(data, live, base))),
+                # type="module" заодно отсекает старые браузеры: они тег
+                # пропустят и оставят человека на карточке, а не на поломанной
+                # странице.
+                '<script type="module" src="%sassets/js/share/watch.js"></script>' % esc(base)]
+
+    out += ['</body>',
             '</html>']
     return '\n'.join(out)
 
@@ -1093,6 +1191,27 @@ def base_path():
     return _state['base']
 
 
+_spool = {'dir': None}
+
+
+def spool_dir(create=False):
+    """Папка рядом с базой, где лежит запомненный адрес сайта.
+
+    Держать домен только в памяти мало: после перезапуска сервис забыл бы его до
+    первого запроса из приложения, а робот мессенджера может прийти раньше — и
+    получить карточку с относительной ссылкой на картинку, то есть без картинки.
+    Кладём одним файлом прямо в папку данных: каталог под это заводить незачем.
+    """
+    path = _spool['dir']
+    if path is None:
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        path = os.path.abspath(os.environ.get('SG_DATA') or os.path.join(root, 'data'))
+        _spool['dir'] = path
+    if create:
+        os.makedirs(path, exist_ok=True)
+    return path
+
+
 def remember_origin(scheme, host):
     """Запоминаем, под каким адресом сервис видят снаружи.
 
@@ -1146,10 +1265,41 @@ def origin_from(ctx):
     return known_origin()
 
 
-def share_url(public_id, origin=''):
-    """Ссылка на карточку заказа — её и отправляют в мессенджер."""
-    return '%s%sshare/%s' % (origin or known_origin(), base_path(),
-                             str(public_id or '').upper())
+def share_url(order, origin='', token=None):
+    """Ссылка на заказ — её и отправляют в мессенджер. Теперь с токеном просмотра.
+
+    Принимает сам заказ (строку с номером тоже) и возвращает путь с токеном:
+        /go/share/AB12CDEF?v=токен
+    Токен берётся из поля view_token, а не из track_token: по нему заказ можно
+    только смотреть, отменить или оценить им нельзя. Робот мессенджера придёт по
+    этой же ссылке, токен ему не помешает — карточку с Open Graph он получит и
+    без него, а человек по тому же адресу увидит живую карту с машиной.
+    """
+    own = token
+    if isinstance(order, dict):
+        pid = order.get('public_id') or ''
+        if own is None:
+            own = order.get('view_token')
+    else:
+        pid = order
+    url = '%s%sshare/%s' % (origin or known_origin(), base_path(), str(pid or '').upper())
+    own = str(own or '')
+    return '%s?v=%s' % (url, own) if VIEW_RX.match(own) else url
+
+
+def view_ok(pid, token):
+    """Подходит ли токен просмотра к этому заказу.
+
+    Сверяем побайтно через compare_digest: время ответа не должно подсказывать,
+    сколько символов уже угадано. Не подошёл — это не ошибка, а обычная карточка:
+    так отвечаем и роботу мессенджера, и тому, кто потерял символ при копировании.
+    """
+    if not token or not VIEW_RX.match(token):
+        return False
+    real = db.value('SELECT view_token FROM orders WHERE public_id=?', (pid,), '')
+    if not real:
+        return False
+    return hmac.compare_digest(str(real).encode('utf-8'), token.encode('utf-8'))
 
 
 def image_url(public_id, lang='ru', origin=''):
@@ -1183,13 +1333,18 @@ def parse_target(raw, query_lang=None):
 
 # ─────────────────────────────────────────────────────────────── маршруты
 
-def _send(ctx, body, ctype, status=200):
+def _send(ctx, body, ctype, status=200, private=False):
     """Ответ файлом: с ETag и минутным кэшем. Разметка и картинка не секретные —
-    пусть их держит у себя и браузер, и прокси мессенджера."""
+    пусть их держит у себя и браузер, и прокси мессенджера.
+
+    private — про живую страницу: в ней лежит токен просмотра, и класть её в
+    общий кэш нельзя. Ни прокси оператора, ни браузер по кнопке «назад» не должны
+    отдать её чужому.
+    """
     h = ctx.h
-    cache = 'public, max-age=%d' % TTL_S
+    cache = 'no-store' if private else 'public, max-age=%d' % TTL_S
     etag = '"%s"' % hashlib.md5(body).hexdigest()[:20]
-    if status == 200 and ctx.header('If-None-Match') == etag:
+    if status == 200 and not private and ctx.header('If-None-Match') == etag:
         h.send_response(304)
         h.send_header('ETag', etag)
         h.send_header('Cache-Control', cache)
@@ -1253,14 +1408,31 @@ def _image_response(ctx, pid, lang):
     return _send(ctx, body, 'image/png')
 
 
+def _live_token(ctx, pid):
+    """Токен просмотра из ссылки, если он подходит к этому заказу.
+
+    Пустая строка значит «показываем прежнюю карточку»: так отвечаем и роботу
+    мессенджера, который приходит без токена, и тому, кто ошибся символом.
+    Частоту сверок режем по адресу — не потому, что перебор реален (токен
+    случайный и длинный), а потому, что он не должен быть ещё и дешёвым.
+    """
+    raw = str(ctx.q('v') or '').strip()
+    if not raw or not VIEW_RX.match(raw):
+        return ''
+    if not LIMIT.check('sharev:' + ctx.ip, VIEW_PER_MIN, 60):
+        return ''
+    return raw if view_ok(pid, raw) else ''
+
+
 def _page_response(ctx, pid, lang):
     origin = origin_from(ctx)
     base = base_path()
     if pid:
         data = data_for(pid, lang)
         if data is not None:
-            body = render_page(data, origin, base).encode('utf-8')
-            return _send(ctx, body, 'text/html; charset=utf-8')
+            live = _live_token(ctx, pid)
+            body = render_page(data, origin, base, live).encode('utf-8')
+            return _send(ctx, body, 'text/html; charset=utf-8', private=bool(live))
     body = render_missing_page(lang or _lang_of(ctx), base).encode('utf-8')
     return _send(ctx, body, 'text/html; charset=utf-8', 404)
 

@@ -27,7 +27,7 @@ EOF
 # базой и рабочую не трогают, зато на сервере можно одной командой убедиться,
 # что после обновления всё цело. А вот сценарии сборки внутри не нужны —
 # они ссылаются на пути машины, где всё это писалось.
-rm -f "$TMP/$NAME"/tools/*workflow*.js 2>/dev/null || true
+rm -f "$TMP/$NAME"/tools/*workflow*.js "$TMP/$NAME"/tools/v4-*.js 2>/dev/null || true
 rm -f "$TMP/$NAME"/tools/icons.mjs 2>/dev/null || true
 chmod +x "$TMP/$NAME"/tools/*.sh 2>/dev/null || true
 

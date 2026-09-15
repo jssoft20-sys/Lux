@@ -8,7 +8,7 @@
 
 Запуск:  python3 tools/share_test.py
 """
-import os, shutil, struct, sys, tempfile, threading, time, http.client
+import json, os, shutil, struct, sys, tempfile, threading, time, http.client
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -52,10 +52,14 @@ threading.Thread(target=srv.serve_forever, kwargs={'poll_interval': 0.2}, daemon
 time.sleep(0.2)
 
 
-def ask(path, method='GET', headers=None):
+def ask(path, method='GET', headers=None, body=None):
     c = http.client.HTTPConnection('127.0.0.1', port, timeout=20)
-    c.request(method, path, headers=dict(headers or {}, Host='sprintergo.kg',
-                                         **{'X-Forwarded-Proto': 'https'}))
+    head = dict(headers or {}, Host='sprintergo.kg', **{'X-Forwarded-Proto': 'https'})
+    raw = None
+    if body is not None:
+        raw = json.dumps(body).encode('utf-8')
+        head['Content-Type'] = 'application/json'
+    c.request(method, path, body=raw, headers=head)
     r = c.getresponse()
     body = r.read()
     out = (r.status, dict(r.getheaders()), body)
@@ -145,6 +149,84 @@ st, h, body = ask('/share/../../app.py')
 check('выход из каталога не работает', st in (400, 404), str(st))
 st, h, body = ask('/share/%2e%2e/app.py')
 check('обход через проценты не работает', st in (400, 404), str(st))
+
+print('\n— живая страница по ссылке, которой поделились')
+# Токен просмотра выдаёт сам сервис при создании заказа; здесь заказ положили
+# в базу руками, поэтому дописываем поле — всё остальное как в жизни.
+VIEW = 'Vw7kQ2mNpR8sT4xY6zAbCdEf'
+db.execute('UPDATE orders SET view_token=? WHERE id=?', (VIEW, oid))
+
+st, h, body = ask('/share/AB12CDEF?v=' + VIEW)
+live_text = body.decode('utf-8', 'replace')
+check('страница с токеном отвечает 200', st == 200, str(st))
+check('подключился модуль живой карты',
+      'assets/js/share/watch.js' in live_text)
+check('настройки уехали в разметку', 'window.SG_WATCH' in live_text)
+check('префикс установки тоже', 'window.SG_BASE' in live_text)
+check('стили карты подключены',
+      'assets/css/map.css' in live_text and 'assets/css/share.css' in live_text)
+check('токен не утекает в чужие журналы',
+      'name="referrer" content="no-referrer"' in live_text)
+check('страницу с токеном не кэшируют',
+      h.get('Cache-Control') == 'no-store', h.get('Cache-Control', ''))
+check('карточка осталась запасным вариантом',
+      'og:image' in live_text and 'Заказ в пути' in live_text)
+# Главное требование: посторонний смотрит, но ничем не распоряжается.
+check('кнопки «Отменить» на странице нет',
+      'Отменить' not in live_text and 'cancel' not in live_text.lower())
+check('и личного тоже нет',
+      '999888' not in live_text and 'Нурлан' not in live_text
+      and 'домофон' not in live_text and 'secret-track-token' not in live_text)
+
+st, h, body = ask('/share/AB12CDEF?v=' + 'X' * len(VIEW))
+wrong = body.decode('utf-8', 'replace')
+check('чужой токен — обычная карточка',
+      st == 200 and 'watch.js' not in wrong and 'og:image' in wrong, str(st))
+check('и её снова можно кэшировать',
+      'max-age=60' in h.get('Cache-Control', ''), h.get('Cache-Control', ''))
+st, h, body = ask('/share/AB12CDEF')
+check('без токена — тоже карточка (так приходит робот)',
+      st == 200 and 'watch.js' not in body.decode('utf-8', 'replace'), str(st))
+st, h, body = ask('/share/AB12CDEF?v=' + 'a' * 300)
+check('слишком длинный токен не роняет страницу', st == 200, str(st))
+
+check('сверка токена: свой подходит', share.view_ok('AB12CDEF', VIEW))
+check('сверка токена: чужой нет', not share.view_ok('AB12CDEF', 'X' * len(VIEW)))
+check('сверка токена: пустой нет', not share.view_ok('AB12CDEF', ''))
+# compare_digest на не-ASCII бросает TypeError — проверяем, что не роняем сервис.
+check('сверка токена: кириллица нет', not share.view_ok('AB12CDEF', 'токентокентокен'))
+check('сверка токена: чужой заказ нет', not share.view_ok('ZZZZZZZZ', VIEW))
+
+order_row = db.row('SELECT * FROM orders WHERE id=?', (oid,))
+check('ссылка «поделиться» собирается с токеном',
+      share.share_url(order_row, 'https://sprintergo.kg').endswith('/go/share/AB12CDEF?v=' + VIEW),
+      share.share_url(order_row, 'https://sprintergo.kg'))
+check('и по номеру заказа она прежняя',
+      share.share_url('AB12CDEF', 'https://sprintergo.kg')
+      == 'https://sprintergo.kg/go/share/AB12CDEF')
+
+print('\n— что этим токеном можно, а что нельзя')
+st, h, body = ask('/api/v1/orders/AB12CDEF?t=' + VIEW)
+got = json.loads(body.decode('utf-8')) if st == 200 else {}
+check('заказ по токену просмотра отдают', st == 200, str(st))
+check('и помечают только для чтения', got.get('readonly') is True, str(got.get('readonly')))
+check('телефона и квартиры в нём нет',
+      '999888' not in body.decode('utf-8') and 'домофон' not in body.decode('utf-8'))
+st, h, body = ask('/api/v1/orders/AB12CDEF/cancel', 'POST',
+                  body={'t': VIEW, 'reason': 'передумал'})
+check('отменить им нельзя — 403', st == 403, str(st))
+st, h, body = ask('/api/v1/orders/AB12CDEF/rate', 'POST', body={'t': VIEW, 'rating': 1})
+check('оценить им тоже нельзя', st == 403, str(st))
+check('заказ остался в пути',
+      db.value('SELECT status FROM orders WHERE id=?', (oid,), '') == 'in_transit')
+
+# Перебирать тут нечего, но дешёвым перебор быть не должен: после предела
+# страница просто становится обычной карточкой, а не отвечает ошибкой.
+for _ in range(share.VIEW_PER_MIN + 5):
+    ask('/share/AB12CDEF?v=' + VIEW)
+st, h, body = ask('/share/AB12CDEF?v=' + VIEW)
+check('перебор упирается в предел и отдаёт карточку',
+      st == 200 and 'watch.js' not in body.decode('utf-8', 'replace'), str(st))
 
 print('\n— соседям ничего не сломали')
 st, h, body = ask('/go/../index.html') if False else ask('/index.html')
