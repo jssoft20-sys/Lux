@@ -1,0 +1,27 @@
+/* Десктоп и ноутбуки: hero в две колонки — сцена видна сразу, без прокрутки. На очень высоких экранах (≥1000px) остаётся кинематографичная full-bleed раскладка */
+@media (min-width:1100px) and (max-height:999px){
+  .hero{display:grid;grid-template-columns:minmax(440px,46%) minmax(0,1fr);align-items:stretch}
+  .hero-glow{grid-column:1/-1;grid-row:1}
+  .hero-copy{grid-column:1;grid-row:1;text-align:left;padding-block:36px 36px;padding-left:max(var(--gutter),calc((100vw - var(--max))/2));padding-right:28px;max-width:none;width:auto;margin:0;display:flex;flex-direction:column;justify-content:center;align-items:flex-start}
+  .hero-h1{margin-left:0;margin-right:0;font-size:clamp(34px,3.6vw,52px);max-width:100%}
+  .hero-lead{margin-inline:0;font-size:17px;max-width:520px}
+  .hero-actions{justify-content:flex-start;margin-top:24px}
+  .hero-stats{justify-content:flex-start;margin-top:22px}
+  .hero-stats{flex-wrap:nowrap}
+  .hero-stats li{padding:2px 16px}
+  .hero-stats b{font-size:19px}
+  .hero-stats span{font-size:12px;white-space:nowrap}
+  .hero-stage{grid-column:2;grid-row:1;aspect-ratio:auto;height:100%;max-height:none;min-height:520px}
+  .hero-stage::before{height:16%}
+  .st-scene{transform-origin:62% 100%;transform:translateX(-4%) scale(1.06)}
+  .hero-card--1{left:14px;top:14px}
+  .hero-card--2{right:14px;top:14px}
+  .hero-card--3{display:none}
+}
+
+/* Читаемость мелких подписей и тап-зоны (по итогам ревью) */
+.calc-step__hint,.calc-tariff__for,.price-incl,.why-fact-label,.fleet-spec dt,.fleet-spec dd,.contact-label{font-size:13.5px}
+.fleet-tag{font-size:12px}
+.svc-dot,.fleet-dot{position:relative}
+.svc-dot::before,.fleet-dot::before{content:"";position:absolute;inset:-18px -8px}
+.footer-links a{min-height:40px;padding:6px 0}

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="ru" data-app="admin">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sprinter Go — панель управления</title>
+<meta name="description" content="Панель управления сервисом грузоперевозок Sprinter Go.">
+<!-- Светлая тема первая: панель открывается светлой, тёмную владелец включает сам. -->
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F4F4F6">
+<meta name="robots" content="noindex,nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<!-- default, а не black-translucent: на светлом фоне белые часы не видно. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+<link rel="preload" href="/assets/fonts/onest-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/inter-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+
+<link rel="stylesheet" href="/assets/css/fonts.css">
+<link rel="stylesheet" href="/assets/css/tokens.css">
+<link rel="stylesheet" href="/assets/css/base.css">
+<link rel="stylesheet" href="/assets/css/components.css">
+<link rel="stylesheet" href="/assets/css/map.css">
+<link rel="stylesheet" href="/assets/css/admin.css">
+<link rel="stylesheet" href="/assets/css/shell.css">
+
+<!-- Скрипты выключены — гасить заставку некому, поэтому её просто не показываем. -->
+<noscript><style>.sg-splash { display: none; }</style></noscript>
+
+<script>
+  /* Всё, что должно случиться до первой отрисовки, чтобы ничего не мигало.
+
+     1. Признак «токен есть» — иначе форма входа успевает показаться поверх
+        панели. Модульный скрипт выполняется отложенно и на это опоздал бы.
+     2. Тема. По умолчанию светлая — так решил владелец. Ключ читаем и сырым,
+        и в виде JSON (клиентское приложение хранит его через JSON.stringify),
+        а кладём обратно строкой: admin/app.js ждёт именно её.
+     3. Холодный ли запуск: заставку целиком показываем при первом заходе
+        за час, при обычной перезагрузке она только мелькает.
+     4. Строка состояния телефона на время заставки жёлтая, как она сама. */
+  (function () {
+    var r = document.documentElement;
+    try {
+      if (localStorage.getItem('sg_token')) r.dataset.screen = 'app';
+    } catch (e) { /* приватный режим: покажем вход, дальше разберётся приложение */ }
+
+    var theme = '';
+    try {
+      var raw = localStorage.getItem('sg_theme');
+      theme = String(raw === null || raw === undefined ? '' : raw).replace(/^"|"$/g, '');
+    } catch (e) {}
+    if (theme !== 'dark' && theme !== 'light' && theme !== 'auto') theme = 'light';
+    if (theme === 'auto') r.removeAttribute('data-theme');
+    else r.dataset.theme = theme;
+    try { localStorage.setItem('sg_theme', theme); } catch (e) {}
+
+    var cold = true;
+    try {
+      var seen = parseInt(localStorage.getItem('sg_seen_admin') || '0', 10) || 0;
+      var now = Math.floor(Date.now() / 1000);
+      cold = (now - seen) > 3600;
+      localStorage.setItem('sg_seen_admin', String(now));
+    } catch (e) {}
+    if (window.matchMedia && matchMedia('(display-mode: standalone)').matches) cold = true;
+    if (navigator.standalone === true) cold = true;
+    r.dataset.boot = cold ? 'cold' : 'warm';
+
+    var meta = document.querySelector('meta[name="theme-color"]');
+    var accent = getComputedStyle(r).getPropertyValue('--accent').trim();
+    if (meta && accent) meta.setAttribute('content', accent);
+  })();
+</script>
+
+<script type="module" src="/assets/js/core/shell.js"></script>
+</head>
+<body>
+
+<!-- ── заставка ─────────────────────────────────────────────────────────────
+     Лежит прямо в разметке и видна до загрузки скриптов. Гасит её
+     core/shell.js: следит за панелью и за формой входа — что покажется. -->
+<div class="sg-splash" id="sg-splash" data-ready="#main,#gate" aria-hidden="true">
+  <div class="sg-splash__mark">
+    <svg class="sg-splash__van" viewBox="0 0 512 512" width="132" height="132" aria-hidden="true" focusable="false">
+      <g fill="currentColor">
+        <path d="M96 196a24 24 0 0 1 24-24h150a24 24 0 0 1 24 24v130H96z"/>
+        <path d="M310 216h58a24 24 0 0 1 19.6 10.2l32 45.6A24 24 0 0 1 424 286v40h-114z"/>
+        <rect x="96" y="326" width="328" height="20" rx="10"/>
+        <circle cx="172" cy="352" r="40"/>
+        <circle cx="368" cy="352" r="40"/>
+      </g>
+      <g fill="currentColor" opacity=".5">
+        <rect x="28" y="216" width="54" height="16" rx="8"/>
+        <rect x="8" y="252" width="74" height="16" rx="8"/>
+        <rect x="36" y="288" width="46" height="16" rx="8"/>
+      </g>
+      <g class="sg-splash__hole">
+        <rect x="326" y="232" width="56" height="38" rx="8"/>
+        <circle cx="172" cy="352" r="15"/>
+        <circle cx="368" cy="352" r="15"/>
+      </g>
+    </svg>
+    <span class="sg-splash__name">Sprinter Go</span>
+  </div>
+</div>
+
+<!-- ── вход ───────────────────────────────────────────────────────────────
+     Форма лежит прямо в разметке: это первое, что видит человек, и ждать
+     загрузки скриптов ради двух полей незачем. -->
+<section class="gate" id="gate" aria-labelledby="gate-title">
+  <div class="gate__card">
+    <img class="gate__logo" src="/assets/img/logo.svg" width="48" height="48" alt="" aria-hidden="true">
+    <h1 class="gate__title" id="gate-title" data-t="admin.login_title">Вход в админку</h1>
+    <p class="gate__sub" id="gate-sub">Панель управления сервисом</p>
+
+    <form id="form-login" novalidate>
+      <label class="field">
+        <input class="field__input" type="email" name="email" id="login-email" placeholder=" "
+               autocomplete="username" inputmode="email" enterkeyhint="next" required>
+        <span class="field__label" data-t="common.email">Почта</span>
+      </label>
+
+      <label class="field">
+        <input class="field__input" type="password" name="password" id="login-password" placeholder=" "
+               autocomplete="current-password" enterkeyhint="go" required>
+        <span class="field__label" data-t="common.password">Пароль</span>
+        <button class="field__eye" type="button" data-eye="login-password"
+                aria-label="Показать пароль" title="Показать пароль"></button>
+      </label>
+
+      <p class="gate__err" id="login-err" role="alert" hidden></p>
+
+      <button class="btn btn--primary btn--lg btn--block" type="submit">Войти</button>
+    </form>
+
+    <div class="gate__foot">
+      <button class="gate__lang" type="button" data-lang="ru">Русский</button>
+      <span class="gate__dot" aria-hidden="true"></span>
+      <button class="gate__lang" type="button" data-lang="ky">Кыргызча</button>
+    </div>
+  </div>
+</section>
+
+<!-- ── панель ─────────────────────────────────────────────────────────── -->
+<div class="adm" id="app">
+  <aside class="adm__side">
+    <div class="adm__logo">
+      <img src="/assets/img/logo.svg" width="28" height="28" alt="" aria-hidden="true">
+      <span>Sprinter Go</span>
+    </div>
+    <nav class="adm__nav" id="nav" aria-label="Разделы"></nav>
+    <div class="adm__side-foot" id="side-foot"></div>
+  </aside>
+
+  <div class="adm__col">
+    <header class="adm__top" id="top"></header>
+    <main class="adm__main" id="main" tabindex="-1"></main>
+  </div>
+
+  <nav class="adm__dock" id="dock" aria-label="Разделы"></nav>
+</div>
+
+<script type="module" src="/assets/js/admin/app.js"></script>
+</body>
+</html>

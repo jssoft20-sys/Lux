@@ -1,0 +1,1518 @@
+/* Панель управления Sprinter Go.
+
+   Работают с ней чаще с ноутбука, поэтому здесь появляется то, чего нет
+   в клиентских экранах: боковое меню, плотные таблицы, две колонки.
+   Но телефон никто не отменял: на узком экране меню уезжает вниз,
+   таблицы превращаются в карточки, а формы — в одну колонку.
+   Горизонтальной прокрутки нет нигде: таскать таблицу пальцем невозможно.
+
+   Панель открывается светлой. Это не «тёмная наоборот»: жёлтый акцент, которым
+   на чёрном рисовали и буквы, и столбцы графиков, на белом почти не виден.
+   Поэтому там, где акцент — это данные (столбец, точка, линия), он заменён на
+   свою тёмную родню, а тёмная тема возвращает чистый жёлтый. */
+
+/* ══════════════════════════════════════════════════════ цвета данных
+
+   Два одинаковых набора — единственный способ сказать «тёмная по системе,
+   но выбор человека главнее». Правило то же, что в tokens.css. */
+
+:root {
+  /* Столбцы, линии и точки графиков: янтарь вместо чистого жёлтого. */
+  --chart-ink: #D9A400;
+  --chart-ink-on: #A87D00;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --chart-ink: var(--accent);
+    --chart-ink-on: var(--accent-press);
+  }
+}
+
+:root[data-theme="dark"] {
+  --chart-ink: var(--accent);
+  --chart-ink-on: var(--accent-press);
+}
+
+/* ══════════════════════════════════════════════════════ переключение экранов */
+
+/* Без атрибута data-screen показывается вход: если скрипт в шапке не отработал,
+   человек увидит форму, а не пустую страницу. */
+#gate { display: flex; }
+#app { display: none; }
+
+html[data-screen='app'] #gate { display: none; }
+html[data-screen='app'] #app { display: grid; }
+
+/* ══════════════════════════════════════════════════════ вход */
+
+.gate {
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: var(--sp-4);
+}
+
+.gate__card {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-6) var(--sp-5) var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+}
+
+.gate__logo { width: 48px; height: 48px; }
+
+.gate__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 700;
+}
+
+.gate__sub { color: var(--muted); margin-top: calc(var(--sp-2) * -1); }
+
+.gate__card form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.gate__err {
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--err-soft);
+  color: var(--err);
+  font-size: var(--fs-sm);
+}
+
+.gate__foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  color: var(--muted-2);
+  font-size: var(--fs-sm);
+}
+
+/* Палец толще курсора: даём переключателю языка нормальную зону нажатия,
+   19 пикселей высоты на телефоне промахиваются. */
+.gate__lang {
+  color: inherit; font-size: inherit; cursor: pointer;
+  min-height: 44px; padding: 0 12px; border-radius: var(--r-sm);
+  display: inline-flex; align-items: center;
+  transition: color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
+.gate__lang:hover { color: var(--text); background: var(--surface-2); }
+.gate__lang[aria-pressed="true"], .gate__lang.is-on { color: var(--accent-text); }
+.gate__dot { width: 3px; height: 3px; border-radius: 50%; background: currentColor; }
+
+/* Глазок в поле пароля: своя кнопка, потому что системную мы не показываем. */
+.field__eye {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.field__eye::before,
+.field__eye::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.field__eye::before {
+  width: 18px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-radius: 12px 12px 10px 10px / 10px 10px 12px 12px;
+}
+
+.field__eye::after {
+  width: 6px;
+  height: 6px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.field__eye.is-on { color: var(--accent-text); }
+
+/* ══════════════════════════════════════════════════════ каркас */
+
+.adm {
+  grid-template-columns: 1fr;
+  min-height: 100dvh;
+}
+
+.adm__side { display: none; }
+
+.adm__col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.adm__top {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-ui);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--header-h);
+  padding: var(--sp-2) var(--sp-4);
+  padding-top: calc(var(--sp-2) + var(--safe-t));
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+/* Название раздела — крупно и жирно, имя хозяина под ним спокойным серым:
+   на снимках заказчика заголовок всегда главный предмет на экране. */
+.adm__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  letter-spacing: -.01em;
+  line-height: 1.15;
+}
+
+.adm__sub { color: var(--muted-2); font-size: var(--fs-xs); }
+
+.adm__main {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sp-4) var(--sp-4) calc(var(--dock-h) + var(--safe-b) + var(--sp-4));
+}
+
+.adm__dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-ui);
+  display: flex;
+  padding: var(--sp-2) var(--sp-2) calc(var(--sp-2) + var(--safe-b));
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--line-soft);
+}
+
+.dock__i {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 54px;
+  min-width: 0;
+  padding: 0 2px;
+  overflow: hidden;
+  white-space: nowrap;
+  border-radius: var(--r-md);
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+
+.dock__i > span { display: block; }
+.dock__i svg { width: 22px; height: 22px; }
+.dock__i:active { background: var(--surface-2); }
+.dock__i.is-on { color: var(--accent-text); }
+
+/* ── боковое меню появляется на широком экране ─────────────────────────── */
+
+@media (min-width: 900px) {
+  .adm { grid-template-columns: 240px minmax(0, 1fr); }
+
+  .adm__side {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    height: 100dvh;
+    padding: var(--sp-4) var(--sp-3);
+    border-right: 1px solid var(--line);
+    background: var(--surface);
+  }
+
+  .adm__dock { display: none; }
+
+  .adm__main {
+    padding: var(--sp-5) var(--sp-6) var(--sp-8);
+  }
+}
+
+.adm__logo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+}
+
+.adm__logo img { width: 28px; height: 28px; }
+
+.adm__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.adm__side-foot {
+  margin-top: auto;
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line-soft);
+}
+
+.navi {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 10px var(--sp-3);
+  border-radius: var(--r-md);
+  color: var(--muted);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.navi:hover { background: var(--surface-2); color: var(--text); }
+.navi.is-on { background: var(--accent-soft); color: var(--accent-text); }
+.navi__ico { display: block; flex: none; }
+.navi__ico svg { width: 20px; height: 20px; }
+.navi__txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ══════════════════════════════════════════════════════ раздел */
+
+.sect {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: 1240px;
+}
+
+.sect__title { font-size: var(--fs-h2); }
+
+.toolbar { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+
+.phead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.phead__back { flex: none; }
+.phead__title { font-family: var(--font-display); font-size: var(--fs-h2); font-weight: 700; }
+.phead__sub { color: var(--muted); font-size: var(--fs-sm); }
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.block__head {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+}
+
+.two-col {
+  display: grid;
+  gap: var(--sp-4);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1000px) {
+  .two-col { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ── фильтры ───────────────────────────────────────────────────────────── */
+
+.filters {
+  display: grid;
+  gap: var(--sp-2);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.filters > .btn,
+.filters > .chip { justify-self: start; }
+
+@media (min-width: 760px) {
+  .filters {
+    grid-template-columns: minmax(200px, 2fr) minmax(150px, 1fr) auto auto auto;
+    align-items: center;
+  }
+  .filters__search { grid-column: span 1; }
+}
+
+.filters__day .field__input { min-height: 52px; }
+
+/* ══════════════════════════════════════════════════════ плитки */
+
+.tiles {
+  display: grid;
+  gap: var(--sp-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 760px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .tiles { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+@media (min-width: 760px) { .tiles--sm { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .tiles--sm { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.tile__cap {
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.tile__val {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.tile__hint { color: var(--muted); font-size: var(--fs-xs); }
+
+/* ══════════════════════════════════════════════════════ таблицы */
+
+/* Таблица шире карточки не обрезается: на широком экране появляется своя
+   прокрутка, на телефоне таблицы всё равно превращаются в карточки. */
+.tbl-wrap {
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.tbl th {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.tbl td {
+  padding: 11px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: middle;
+}
+
+.tbl tr:last-child td { border-bottom: 0; }
+.tbl__wide { max-width: 340px; }
+.tbl__row--tap { cursor: pointer; }
+.tbl__row--tap:hover td { background: var(--surface-2); }
+.tbl__row--tap:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* Узкие колонки уходят первыми: на ноутбуке важнее видеть строки целиком. */
+@media (max-width: 1100px) {
+  .tbl .tbl__hide { display: none; }
+}
+
+/* Колонка с маршрутом — единственная, которая умеет сжиматься: адрес обрежется
+   многоточием, а сумма и статус останутся на месте. */
+@media (min-width: 861px) {
+  .tbl__wide { overflow: hidden; }
+}
+
+/* На телефоне строка превращается в карточку: подпись слева, значение справа. */
+@media (max-width: 860px) {
+  .tbl-wrap { overflow-x: visible; }
+  .tbl, .tbl thead, .tbl tbody, .tbl tr, .tbl td { display: block; }
+  .tbl thead { display: none; }
+
+  .tbl tr {
+    margin-bottom: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--surface);
+  }
+
+  .tbl td,
+  .tbl td.tbl__hide {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    padding: 5px 0;
+    border: 0;
+    max-width: none;
+    text-align: left;
+  }
+
+  .tbl td::before {
+    content: attr(data-label);
+    flex: none;
+    color: var(--muted-2);
+    font-size: var(--fs-xs);
+  }
+
+  .tbl__row--tap:hover td { background: transparent; }
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding-top: var(--sp-2);
+}
+
+.pager__now { color: var(--muted); font-size: var(--fs-sm); }
+
+/* ══════════════════════════════════════════════════════ графики */
+
+.chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 150px;
+}
+
+.chart__col {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 100%;
+}
+
+.chart__bar {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  max-width: 28px;
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+}
+
+.chart__fill {
+  width: 100%;
+  border-radius: var(--r-xs);
+  background: var(--chart-ink);
+  transition: height var(--dur-2) var(--ease);
+}
+
+.chart__bar.is-zero .chart__fill { background: var(--surface-3); }
+
+.chart__x {
+  color: var(--muted-2);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart--dense .chart__bar { max-width: 18px; }
+
+@media (max-width: 600px) {
+  .chart--dense .chart__x { display: none; }
+  .chart { gap: 2px; }
+}
+
+/* ══════════════════════════════════════════════════════ строки и списки */
+
+.route-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.route-line__arrow { flex: none; color: var(--muted-2); }
+.route-line .truncate { flex: 1 1 0; min-width: 0; max-width: 170px; }
+
+.list__row.is-on { background: var(--accent-soft); }
+
+.kv { display: flex; flex-direction: column; gap: 2px; }
+
+.kv__i {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 7px 0;
+  border-bottom: 1px dashed var(--line-soft);
+}
+
+.kv__i:last-child { border-bottom: 0; }
+.kv__k { color: var(--muted); font-size: var(--fs-sm); min-width: 0; }
+.kv__v { text-align: right; font-weight: 600; }
+
+.kv__i--total {
+  margin-top: var(--sp-1);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+  font-size: var(--fs-h3);
+}
+
+.kv__i--total .kv__k { color: var(--text); font-size: inherit; font-weight: 700; }
+.kv__i--total .kv__v { font-family: var(--font-display); font-size: var(--fs-h2); }
+
+.note {
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.point__no {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-full);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+/* Лента событий заказа. */
+.tl { display: flex; flex-direction: column; }
+
+.tl__i {
+  position: relative;
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0 var(--sp-2) var(--sp-4);
+}
+
+.tl__i::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 16px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--chart-ink);
+}
+
+.tl__i::after {
+  content: '';
+  position: absolute;
+  left: 7.5px;
+  top: 24px;
+  bottom: -4px;
+  width: 1px;
+  background: var(--line);
+}
+
+.tl__i:last-child::after { display: none; }
+.tl__time { flex: none; color: var(--muted-2); font-size: var(--fs-sm); }
+
+/* ══════════════════════════════════════════════════════ живая карта */
+
+.live {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  height: calc(100dvh - var(--header-h) - var(--dock-h) - var(--sp-6));
+  min-height: 400px;
+}
+
+@media (min-width: 900px) {
+  .live { height: calc(100dvh - var(--header-h) - var(--sp-8) - var(--sp-6)); }
+}
+
+.live__map {
+  position: relative;
+  flex: 1;
+  min-height: 260px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+.live__filters { flex: none; }
+
+.live__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.legend__i { display: inline-flex; align-items: center; gap: 6px; }
+
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted-2); }
+.dot--free { background: var(--ok); }
+.dot--busy { background: var(--chart-ink); }
+.dot--off { background: var(--surface-3); border: 1px solid var(--line); }
+.dot--order { background: var(--info); }
+
+/* Цвет машины на карте — это её состояние, и другого способа его увидеть нет. */
+.car { display: block; }
+.car.is-free .map-pin--car { background: var(--ok); color: #05240f; }
+.car.is-free .map-pin--car::after { border-bottom-color: var(--ok); }
+.car.is-busy .map-pin--car { background: var(--accent); color: var(--on-accent); }
+.car.is-busy .map-pin--car::after { border-bottom-color: var(--accent); }
+.car.is-off .map-pin--car { background: var(--surface-3); color: var(--muted); }
+.car.is-off .map-pin--car::after { border-bottom-color: var(--surface-3); }
+
+.order-pin .map-pin--a { background: var(--info); }
+.order-pin .map-pin--a::after { border-color: var(--info); }
+
+.order__map {
+  position: relative;
+  height: 260px;
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+@media (min-width: 900px) { .order__map { height: 340px; } }
+
+/* ══════════════════════════════════════════════════════ формы */
+
+.form { display: flex; flex-direction: column; gap: var(--sp-4); }
+
+.form__grid {
+  display: grid;
+  gap: var(--sp-3);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 700px) {
+  .form__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .form__f { grid-column: span var(--span, 1); }
+  .form__head { grid-column: span 2; }
+}
+
+.form__head {
+  margin-top: var(--sp-2);
+  color: var(--muted-2);
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.form__f { min-width: 0; }
+
+/* Подписи в админке длинные («Грузоподъёмность, кг»), и плавающая метка
+   наезжает на значение. Поэтому здесь метка стоит над полем и спокойно
+   переносится на вторую строку. */
+.form__f.field,
+.calc .field {
+  display: flex;
+  flex-direction: column;
+}
+
+.form__f.field > .field__input,
+.calc .field > .field__input {
+  order: 2;
+  min-height: 46px;
+  padding: 11px var(--sp-3);
+}
+
+.form__f.field > textarea.field__input,
+.calc .field > textarea.field__input {
+  min-height: 80px;
+  padding-top: 10px;
+}
+
+.form__f.field > .field__label,
+.calc .field > .field__label {
+  order: 1;
+  position: static;
+  transform: none;
+  margin: 0 0 5px 2px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  white-space: normal;
+}
+
+.form__f.field > .field__hint,
+.calc .field > .field__hint { order: 3; }
+
+.form__f.field:focus-within > .field__label { color: var(--accent-text); }
+
+/* Стрелку выпадающего списка опускаем к самому полю. */
+.form__f.field--sel::after { top: auto; bottom: 19px; }
+
+.form__f--sw {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.form__f--range {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.form__cap { display: block; font-size: var(--fs-sm); font-weight: 600; }
+.form__range-val { color: var(--accent-text); font-size: var(--fs-h3); }
+
+/* Ползунок рисуем сами: системный на тёмной карточке сливается с фоном —
+   виден один бегунок, а дорожки будто и нет. Высота 44 px не для красоты,
+   а чтобы в него попадали пальцем. */
+.form__range {
+  width: 100%;
+  height: 44px;
+  background: transparent;
+  cursor: pointer;
+  accent-color: var(--accent);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.form__range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+}
+
+/* Жёлтый бегунок на светлой дорожке теряется — обводим его тёмной роднёй
+   акцента: в тёмной теме она и есть жёлтая, так что кольцо не мешает. */
+.form__range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  margin-top: -9px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-line), var(--shadow-1);
+}
+
+.form__range::-moz-range-track {
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+}
+
+.form__range::-moz-range-progress {
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--chart-ink);
+}
+
+.form__range::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--accent-line);
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.form__range:focus-visible::-webkit-slider-thumb,
+.form__range:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.form__chips { flex-wrap: wrap; overflow: visible; }
+
+.form__foot {
+  position: sticky;
+  bottom: calc(var(--dock-h) + var(--safe-b));
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-top: var(--sp-2);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line-soft);
+  background: var(--surface);
+}
+
+@media (min-width: 900px) { .form__foot { bottom: 0; } }
+
+.form__mark {
+  display: none;
+  color: var(--warn);
+  font-size: var(--fs-sm);
+}
+
+.form.is-dirty .form__mark { display: inline; }
+
+.form__f--err .form__cap { color: var(--err); }
+
+/* ══════════════════════════════════════════════════════ справочники */
+
+.catalog {
+  display: grid;
+  gap: var(--sp-4);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+@media (min-width: 1000px) {
+  .catalog { grid-template-columns: 300px minmax(0, 1fr); }
+}
+
+/* На телефоне список и форма не помещаются рядом: пока правим — виден редактор. */
+@media (max-width: 999px) {
+  .catalog.is-editing .catalog__list { display: none; }
+}
+
+.catalog__list { align-self: start; }
+
+.catalog__edit {
+  display: grid;
+  gap: var(--sp-4);
+  grid-template-columns: minmax(0, 1fr);
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+@media (min-width: 1240px) {
+  .catalog__edit { grid-template-columns: minmax(0, 1fr) 280px; }
+}
+
+.catalog__form { min-width: 0; }
+
+/* ── калькулятор рядом с тарифом ───────────────────────────────────────── */
+
+.calc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  align-self: start;
+  padding: var(--sp-4);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-lg);
+  background: var(--bg-soft);
+}
+
+@media (min-width: 1240px) { .calc { position: sticky; top: calc(var(--header-h) + var(--sp-4)); } }
+
+.calc__head { font-family: var(--font-display); font-size: var(--fs-h3); font-weight: 700; }
+
+.calc__grid {
+  display: grid;
+  gap: var(--sp-2);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.calc__out { display: flex; flex-direction: column; gap: var(--sp-1); }
+
+.calc__total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
+  font-weight: 600;
+}
+
+.calc__total b { font-family: var(--font-display); font-size: var(--fs-h2); color: var(--accent-text); }
+.calc__hint { color: var(--muted-2); font-size: var(--fs-xs); }
+
+/* ══════════════════════════════════════════════════════ вкладки настроек */
+
+.tabs { flex-wrap: wrap; overflow: visible; }
+
+/* ── Проверка документов ─────────────────────────────────────────────────────
+   Карточка на всю ширину: фото должно быть крупным, иначе решение приходится
+   принимать вслепую. На телефоне фото уезжает наверх, кнопки — во всю ширину. */
+.vf-list { display: grid; gap: var(--sp-3); }
+
+.vf {
+  display: grid; grid-template-columns: 132px 1fr; gap: var(--sp-4);
+  align-items: start; padding: var(--sp-4);
+}
+.vf__photo {
+  width: 132px; aspect-ratio: 3 / 4; border-radius: var(--r-md);
+  overflow: hidden; border: 1px solid var(--line); background: var(--surface-2);
+  padding: 0; cursor: zoom-in; display: block;
+  transition: transform var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+.vf__photo:hover { border-color: var(--accent-line); }
+.vf__photo:active { transform: scale(.98); }
+.vf__photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vf__photo--empty {
+  display: grid; place-items: center; text-align: center; cursor: default;
+  color: var(--muted-2); font-size: var(--fs-xs); padding: var(--sp-3);
+}
+.vf__body { display: grid; gap: var(--sp-2); min-width: 0; }
+.vf__head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.vf__meta { font-size: var(--fs-sm); line-height: 1.5; }
+.vf__note {
+  padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm);
+  background: var(--err-soft); color: var(--text); font-size: var(--fs-sm);
+}
+.vf__actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-1); }
+
+@media (max-width: 620px) {
+  .vf { grid-template-columns: 1fr; }
+  .vf__photo { width: 100%; aspect-ratio: 4 / 3; }
+  .vf__actions .btn { flex: 1 1 140px; }
+}
+
+/* ══════════════════════════════════════════════════════ отчёты, оплата, бонусы */
+
+/* Заголовок блока с кнопкой справа: «CSV», «Прогнать сгорание» и прочее,
+   что относится ровно к этому блоку, а не ко всей странице. */
+.block__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.block__bar .block__head { margin: 0; }
+
+/* Две даты и сброс — своя сетка: в общей .filters первая колонка вдвое шире,
+   и поле «с даты» растянулось бы на пол-экрана. */
+.filters--dates { grid-template-columns: minmax(0, 1fr); }
+
+@media (min-width: 760px) {
+  .filters--dates { grid-template-columns: repeat(2, minmax(140px, 210px)) auto; }
+}
+
+/* ── графики ─────────────────────────────────────────────────────────────
+
+   Высота коробки задана здесь, а не в скрипте: считать пиксели в JS,
+   когда это умеет CSS, — лишний способ разойтись с вёрсткой.
+   --plot-x — полоса под подписями оси X, по ней выравнивается и левая ось,
+   и сетка, и линия. */
+
+.plot {
+  --plot-h: 172px;
+  --plot-x: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  margin: 0;
+}
+
+.plot__read {
+  min-height: 19px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.plot__wrap {
+  display: flex;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.plot__axis {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  width: 56px;
+  height: var(--plot-h);
+  padding-bottom: var(--plot-x);
+  color: var(--muted-2);
+  font-size: 10px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.plot__body {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  height: var(--plot-h);
+}
+
+.plot__grid {
+  position: absolute;
+  inset: 0 0 var(--plot-x) 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.plot__grid i {
+  display: block;
+  height: 1px;
+  background: var(--line-soft);
+}
+
+.plot__cols {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 100%;
+}
+
+.plot__col {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.plot__slot {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
+}
+
+.plot__bar {
+  width: 100%;
+  max-width: 34px;
+  border-radius: var(--r-xs) var(--r-xs) 2px 2px;
+  background: var(--chart-ink);
+  transition: background-color var(--dur-1) var(--ease);
+}
+
+.plot__bar.is-zero { background: var(--surface-3); }
+.plot__col.is-on .plot__bar { background: var(--chart-ink-on); }
+.plot__col.is-on .plot__bar.is-zero { background: var(--line); }
+
+/* Точка стоит ровно на своём значении, поэтому её сдвигают на половину себя. */
+.plot__dot {
+  position: absolute;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin: 0 0 -4px -4px;
+  border-radius: 50%;
+  background: var(--chart-ink);
+  transition: width var(--dur-1) var(--ease), height var(--dur-1) var(--ease);
+}
+
+.plot__col.is-on .plot__dot { width: 12px; height: 12px; margin: 0 0 -6px -6px; }
+
+.plot__x {
+  height: var(--plot-x);
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--muted-2);
+  font-size: 10px;
+  line-height: var(--plot-x);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.plot__col.is-on .plot__x { color: var(--text); }
+
+/* Линия лежит под точками: так видно и ход, и каждое значение. */
+.plot__line {
+  position: absolute;
+  inset: 0 0 var(--plot-x) 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.plot__line svg { display: block; width: 100%; height: 100%; }
+.plot__fill { fill: var(--accent-soft); }
+
+.plot__stroke {
+  stroke: var(--chart-ink);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.plot--dense .plot__bar { max-width: 15px; }
+
+/* Плотный график: столбцов больше трёх десятков, зазор между ними съел бы
+   всю ширину экрана. */
+.plot--tight .plot__cols { gap: 0; }
+.plot--tight .plot__bar { border-radius: 1px; }
+
+.plot--tight .plot__dot {
+  width: 5px;
+  height: 5px;
+  margin: 0 0 -2.5px -2.5px;
+}
+
+.plot--tight .plot__col.is-on .plot__dot {
+  width: 10px;
+  height: 10px;
+  margin: 0 0 -5px -5px;
+}
+
+@media (max-width: 520px) {
+  .plot { --plot-h: 150px; }
+  .plot__axis { width: 46px; }
+  .plot--dense .plot__x { font-size: 9px; }
+}
+
+/* ── выбор торговой точки ────────────────────────────────────────────── */
+
+.pick { align-items: flex-start; }
+
+.pick__mark {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 3px;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+}
+
+.pick__mark.is-on {
+  border-color: var(--accent-text);
+  background: radial-gradient(circle at center, var(--accent-text) 0 5px, transparent 5px);
+}
+
+.pick__name,
+.pick__addr { display: block; }
+.pick__addr { margin-top: 2px; line-height: 1.4; }
+
+.pick__cash {
+  margin-top: var(--sp-2);
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+/* ── строка «скопировать» ────────────────────────────────────────────── */
+
+.copyline {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.copyline__cap {
+  flex: none;
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+/* Адрес обработчика длинный, и на телефоне он должен переноситься,
+   а не уезжать за край карточки. */
+.copyline__val {
+  flex: 1 1 180px;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* ── живые пояснения ─────────────────────────────────────────────────── */
+
+.example {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px dashed var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+}
+
+.example__head {
+  color: var(--accent-text);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.hintline {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.hints {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.hints .hintline { color: var(--muted); }
+.hints .hintline::before { content: '· '; color: var(--accent-text); }
+
+.note--warn { background: var(--warn-soft); color: var(--warn); }
+
+/* Приход и расход бонусов различаются цветом: в журнале это первое,
+   что ищут глазами. */
+.amt--in { color: var(--ok); }
+.amt--out { color: var(--err); }
+
+/* Шестая кнопка в нижней полосе появилась вместе с отчётами: на 360 px
+   подписям тесно, поэтому ужимаем их, а не ломаем строку. */
+@media (max-width: 400px) {
+  .dock__i { font-size: 10px; }
+}
+
+/* ══════════════════════════════════════════════════════ карточка во весь экран
+
+   Заказ, курьер и клиент открываются шторкой поверх своего списка. Имя и
+   подпись стоят в шапке шторки — второй заголовок внутри карточки съел бы
+   на телефоне целую строку ни за что. */
+
+.sheet--card .sheet__title {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.cardpage__name {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.cardpage__sub {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+}
+
+/* Внутри шторки поля страницы уже заданы её телом, а нижней полосы нет —
+   значит, липкому подвалу формы некуда прятаться и он стоит у самого низа. */
+.cardpage .sect { max-width: none; gap: var(--sp-3); }
+.cardpage .block { padding: var(--sp-3); }
+.cardpage .form__foot { bottom: 0; }
+.cardpage .order__map { height: 220px; }
+
+@media (min-width: 900px) {
+  .cardpage .order__map { height: 300px; }
+}
+
+/* ══════════════════════════════════════════════════════ демо-оплата
+
+   Тот самый экран, который увидит клиент: код, сумма, номер заказа. */
+
+.qrcard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-5) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+/* Подложка кода белая в обеих темах: камера читает чёрные квадраты на белом,
+   а не на «фоне карточки», каким бы он ни был. */
+.qrcard__img {
+  width: min(260px, 66vw);
+  height: auto;
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: #FFFFFF;
+  image-rendering: pixelated;
+}
+
+.qrcard__cap {
+  margin-top: var(--sp-3);
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.qrcard__sum {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.qrcard__id { color: var(--muted); font-size: var(--fs-sm); }
+
+.hintline--ok { color: var(--ok); font-weight: 600; }
+
+/* ══════════════════════════════════════════════════════ тема, язык, выход */
+
+/* Три варианта темы и два языка видны сразу: ради двух строк открывать
+   список незачем. В боковом меню и в шторке «Ещё» это одна и та же полоса. */
+.admbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.admbar .segmented { width: 100%; }
+
+/* ── сегмент внутри формы ──────────────────────────────────────────────── */
+
+.form__f--seg {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.form__f--seg .form__cap {
+  margin-left: 2px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.form__f--err.form__f--seg .form__cap { color: var(--err); }
+
+/* ══════════════════════════════════════════════════════ отклик и переходы */
+
+/* Раздел въезжает снизу на несколько пикселей: переход должен читаться
+   движением, а не морганием. Кто просил меньше движения — получит 1 мс,
+   это решено в tokens.css одной строкой на все анимации. */
+@keyframes adm-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+.adm__main.is-in { animation: adm-in var(--dur-2) var(--ease) both; }
+
+/* Строку таблицы браузер не двигает: у display: table-row трансформации нет.
+   На широком экране отклик даёт фон, на телефоне строка уже блок и проседает
+   как все. */
+.tbl__row--tap.is-press td { background: var(--surface-2); }
+
+/* ══════════════════════════════════════════════════════ округления покрупнее */
+
+/* Плитки, карточки-строки и карта берут тот же радиус, что и карточки:
+   разнобой в скруглениях читается как небрежность. */
+.tile { border-radius: var(--r-lg); }
+.order__map { border-radius: var(--r-lg); }
+
+@media (max-width: 860px) {
+  .tbl tr { border-radius: var(--r-lg); padding: var(--sp-3); }
+}
+
+/* Палец толще курсора: в панели сегменты чуть выше стандартных, иначе по
+   «Светлая / Тёмная / Система» с телефона промахиваешься. */
+.form__f--seg .segmented__i,
+.admbar .segmented__i { min-height: 44px; }
+
+/* В карточке чип — это действие («Позвонить»), а не подпись: палец должен
+   попадать в него так же уверенно, как в кнопку. */
+.cardpage .chip { min-height: 44px; }
+
+/* ══════════════════════════════════════════════════════ мелочи для телефона */
+
+/* Две даты стоят рядом. По одной в строке они съедали пол-экрана до первой
+   строки списка — человек открывал «Заказы» и не видел ни одного заказа.
+   Правило нарочно стоит после .filters--dates: у отчётов та же беда. */
+@media (max-width: 759px) {
+  .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .filters__search,
+  .filters__status { grid-column: span 2; }
+  .filters > .btn,
+  .filters > .chip { grid-column: span 2; }
+}
+
+/* Вкладки настроек на телефоне едут вбок, а не растут вниз: восемь подписей
+   в четыре ряда занимали треть экрана раньше, чем начинались сами настройки. */
+@media (max-width: 700px) {
+  .tabs { flex-wrap: nowrap; overflow-x: auto; }
+}
+
+/* Подвал формы липнет к нижнему краю экрана. Форма, стоящая прямо на сливочном
+   фоне (настройки, оплата, бонусы), получала белую полосу во всю ширину — она
+   читалась как обрезок страницы. Даём ей форму карточки; внутри карточки
+   (тарифы, курьер, заказ) подвал остаётся простой линией, там он и так на белом. */
+.form__foot {
+  padding: var(--sp-3);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-2);
+}
+
+.block .form__foot,
+.catalog__form .form__foot,
+.cardpage .form__foot {
+  padding-left: 0;
+  padding-right: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Длинное название способа оплаты налезало на стрелку списка: у выпадающего
+   поля в форме её место справа надо освободить. */
+.form__f.field--sel > select.field__input { padding-right: var(--sp-7); }

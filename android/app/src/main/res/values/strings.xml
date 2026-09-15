@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">Sprinter Go</string>
+
+  <string name="ch_shift_name">На линии</string>
+  <string name="ch_shift_desc">Постоянное уведомление, пока вы на смене. Без него Android выгрузит приложение и заказы перестанут приходить.</string>
+  <string name="ch_offer_name">Новые заказы</string>
+  <string name="ch_offer_desc">Звук и вибрация, когда приходит предложение.</string>
+
+  <string name="shift_on">Вы на линии</string>
+  <string name="shift_hint">Заказы придут со звуком, даже если экран погас</string>
+  <string name="shift_off">Смена не начата</string>
+
+  <string name="offer_title">Новый заказ</string>
+  <string name="no_net">Нет связи с сервером. Проверьте интернет.</string>
+  <string name="retry">Обновить</string>
+
+  <string name="why_location_title">Зачем приложению ваше местоположение</string>
+  <string name="why_location">Клиент видит на карте, где едет машина, а заказы приходят тем, кто ближе. Без координат предложений не будет.</string>
+  <string name="why_background_title">Разрешите «Всегда»</string>
+  <string name="why_background">Чтобы заказ не потерялся, пока экран погас, выберите в настройках «Разрешать всегда». Иначе Android отключит связь через пару минут.</string>
+  <string name="why_notify_title">Разрешите уведомления</string>
+  <string name="why_notify">Иначе о новом заказе вы узнаете, только когда сами откроете приложение.</string>
+  <string name="ok">Понятно</string>
+  <string name="settings">Открыть настройки</string>
+</resources>

@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "Sprinter Go",
+  "short_name": "Sprinter Go",
+  "description": "Грузоперевозки по Бишкеку: спринтер, газель или грузовик с грузчиками. Цена известна до заказа, машину видно на карте.",
+  "lang": "ru",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#FFDF00",
+  "theme_color": "#F4F4F6",
+  "categories": ["travel", "navigation", "shopping"],
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Заказать машину", "short_name": "Заказать", "url": "/#/" }
+  ]
+}

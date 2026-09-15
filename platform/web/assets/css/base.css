@@ -1,0 +1,262 @@
+/* Базовый слой: сброс, типографика, утилиты.
+   Порядок подключения строгий: tokens.css → fonts.css → base.css → components.css → стили экрана.
+   Здесь нет ни одного готового компонента — только фундамент, на котором они стоят. */
+
+/* ─────────────────────────────────────────────────────────── сброс */
+
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; padding: 0; }
+
+html {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* «Потяни, чтобы обновить» на карте срабатывает случайно и рушит заказ — выключаем. */
+  overscroll-behavior-y: none;
+}
+
+body {
+  min-height: 100%;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-text);
+  font-size: var(--fs-body);
+  font-weight: 400;
+  line-height: 1.45;
+  font-synthesis-weight: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+  /* clip вместо hidden: не создаёт лишний контейнер прокрутки и не ломает position: sticky */
+  overflow-x: clip;
+}
+
+img, svg, video, canvas, picture { display: block; max-width: 100%; }
+img, video { height: auto; }
+svg { fill: currentColor; }
+
+ul, ol { list-style: none; }
+
+a { color: inherit; text-decoration: none; }
+a.link { color: var(--accent-text); text-decoration: underline; text-underline-offset: 3px; }
+
+hr { border: 0; height: 1px; background: var(--line); }
+
+[hidden] { display: none !important; }
+
+/* ─────────────────────────────────────────────────────────── типографика */
+
+h1, h2, h3, h4, .h1, .h2, .h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+h1, .h1 { font-size: var(--fs-h1); }
+h2, .h2 { font-size: var(--fs-h2); }
+h3, h4, .h3 { font-size: var(--fs-h3); }
+/* Заголовок пояснительного экрана: крупный и жирный на весь взгляд.
+   Переносы по словам, а не «красиво» — balance на трёх строках рвёт смысл. */
+.display {
+  font-family: var(--font-display);
+  font-size: var(--fs-display);
+  font-weight: 800;
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  text-wrap: pretty;
+}
+
+p { text-wrap: pretty; }
+small, .t-sm { font-size: var(--fs-sm); line-height: 1.4; }
+.t-xs { font-size: var(--fs-xs); line-height: 1.35; }
+b, strong { font-weight: 700; }
+.t-mid { font-weight: 600; }
+.mono, code, kbd, pre { font-family: var(--font-mono); font-size: .92em; }
+.num { font-variant-numeric: tabular-nums; }
+
+.muted   { color: var(--muted); }
+.muted-2 { color: var(--muted-2); }
+.t-accent { color: var(--accent-text); }
+.t-ok    { color: var(--ok); }
+.t-warn  { color: var(--warn); }
+.t-err   { color: var(--err); }
+.t-info  { color: var(--info); }
+
+/* ─────────────────────────────────────────────────────────── формы */
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  background: none;
+  border: 0;
+}
+
+button {
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  touch-action: manipulation;   /* без задержки 300 мс на тап */
+}
+
+/* iOS сам рисует полям тени и скругления — срезаем, радиусы задаёт components.css.
+   Селектор нарочно без border-radius: он весит больше класса .field__input и перебил бы его. */
+input:not([type='checkbox']):not([type='radio']),
+textarea, select {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+textarea { resize: vertical; }
+select { cursor: pointer; }
+
+input::placeholder, textarea::placeholder { color: var(--muted-2); opacity: 1; }
+
+input[type='number'] { -moz-appearance: textfield; }
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type='search']::-webkit-search-cancel-button { -webkit-appearance: none; }
+
+/* Автозаполнение в Chrome заливает поле белым — возвращаем свои цвета. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text);
+  caret-color: var(--text);
+  box-shadow: inset 0 0 0 1000px var(--surface-2);
+  transition: background-color 9999s ease 0s;
+}
+
+::selection { background: var(--accent-soft); color: var(--text); }
+
+/* Совпавшая часть в поиске адреса — синим, как в снимках заказчика.
+   Это не выделение мышью, а разметка ответа: <b class="hl">контур</b> № 5. */
+.hl { color: var(--match); font-weight: inherit; }
+
+/* ─────────────────────────────────────────────────────────── фокус */
+
+:focus { outline: none; }
+
+/* Единственный индикатор для тех, кто ходит клавиатурой. Цвет свой у каждой
+   темы: на светлом жёлтый по белому не виден вовсе, там кольцо синее. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* ─────────────────────────────────────────────────────────── прокрутка */
+
+.scroll-y {
+  overflow-y: auto;
+  overscroll-behavior: contain;   /* прокрутка не «протекает» на страницу под ним */
+  -webkit-overflow-scrolling: touch;
+}
+
+.scroll-x {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.scroll-x::-webkit-scrollbar { display: none; }
+
+.snap-x { scroll-snap-type: x mandatory; }
+.snap-x > * { scroll-snap-align: start; }
+
+* { scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: var(--r-full); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Пока открыта шторка, страница под ней не должна ездить.
+   Позицию прокрутки сохраняет и возвращает ui.js через body { top: -Npx }. */
+html.is-locked { overflow: hidden; }
+html.is-locked body { position: fixed; left: 0; right: 0; width: 100%; overflow: hidden; }
+
+/* ─────────────────────────────────────────────────────────── раскладка */
+
+.row { display: flex; flex-direction: row; align-items: center; }
+.col { display: flex; flex-direction: column; }
+.wrap { flex-wrap: wrap; }
+.grow { flex: 1 1 auto; min-width: 0; }
+.none { flex: 0 0 auto; }
+.between { justify-content: space-between; }
+.around { justify-content: space-around; }
+.end { justify-content: flex-end; }
+.items-start { align-items: flex-start; }
+.items-end { align-items: flex-end; }
+.items-stretch { align-items: stretch; }
+.center { display: flex; align-items: center; justify-content: center; }
+.mt-auto { margin-top: auto; }
+.ml-auto { margin-left: auto; }
+
+.gap-1 { gap: var(--sp-1); }
+.gap-2 { gap: var(--sp-2); }
+.gap-3 { gap: var(--sp-3); }
+.gap-4 { gap: var(--sp-4); }
+.gap-5 { gap: var(--sp-5); }
+.gap-6 { gap: var(--sp-6); }
+.gap-7 { gap: var(--sp-7); }
+.gap-8 { gap: var(--sp-8); }
+
+.pad { padding: var(--sp-4); }
+.pad-x { padding-left: var(--sp-4); padding-right: var(--sp-4); }
+.pad-y { padding-top: var(--sp-4); padding-bottom: var(--sp-4); }
+
+.page {
+  width: 100%;
+  max-width: var(--page-max);
+  margin-inline: auto;
+  padding-inline: var(--sp-4);
+}
+
+/* Нижний отступ под «чёлку» и жестовую полосу iPhone. */
+.safe-b { padding-bottom: calc(var(--sp-4) + var(--safe-b)); }
+.safe-t { padding-top: calc(var(--sp-3) + var(--safe-t)); }
+
+/* ─────────────────────────────────────────────────────────── текст и видимость */
+
+.truncate {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.nowrap { white-space: nowrap; }
+.ta-c { text-align: center; }
+.ta-r { text-align: right; }
+.upper { text-transform: uppercase; letter-spacing: .04em; }
+
+.hide { display: none !important; }
+.no-sel { user-select: none; -webkit-user-select: none; }
+.tap { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+
+/* Видно только скринридеру: подписи к иконкам и живые сообщения о статусе. */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ─────────────────────────────────────────────────────────── десктоп */
+
+@media (min-width: 720px) {
+  body { font-size: 16px; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+}

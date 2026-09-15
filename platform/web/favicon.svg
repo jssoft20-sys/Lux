@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Sprinter Go">
+  <rect width="512" height="512" rx="116" fill="#FFDF00"/>
+  <g fill="#16150F">
+    <!-- фургон: кабина, кузов, колёса -->
+    <path d="M96 196a24 24 0 0 1 24-24h150a24 24 0 0 1 24 24v130H96z"/>
+    <path d="M310 216h58a24 24 0 0 1 19.6 10.2l32 45.6A24 24 0 0 1 424 286v40h-114z"/>
+    <rect x="326" y="232" width="56" height="38" rx="8" fill="#FFDF00"/>
+    <rect x="96" y="326" width="328" height="20" rx="10"/>
+  </g>
+  <g fill="#16150F">
+    <circle cx="172" cy="352" r="40"/><circle cx="368" cy="352" r="40"/>
+  </g>
+  <g fill="#FFDF00">
+    <circle cx="172" cy="352" r="15"/><circle cx="368" cy="352" r="15"/>
+  </g>
+  <!-- линии скорости -->
+  <g fill="#16150F" opacity=".55">
+    <rect x="28" y="216" width="54" height="16" rx="8"/>
+    <rect x="8"  y="252" width="74" height="16" rx="8"/>
+    <rect x="36" y="288" width="46" height="16" rx="8"/>
+  </g>
+</svg>
