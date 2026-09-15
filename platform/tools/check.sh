@@ -34,6 +34,7 @@ run "ядро: база, маршруты, деньги"      python3 tools/core
 run "API: заказ целиком"                env TEST_PORT=$((PORT + 1)) python3 tools/api_test.py
 run "деньги: бронь и уведомление банка" env TEST_PORT=$((PORT + 2)) python3 tools/pay_test.py
 run "карточка для мессенджеров"         python3 tools/share_test.py
+run "свой кодировщик QR"                python3 tools/qr_test.py
 
 if [ "$FAST" = "быстро" ] || [ -z "$NODE" ]; then
   [ -z "$NODE" ] && printf '\n\033[33mnode не найден — прогоны с браузером пропущены\033[0m\n'
