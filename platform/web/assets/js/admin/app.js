@@ -9,15 +9,14 @@
 import { api, ApiError } from '../core/api.js';
 import { setLang, getLang, applyTo, onLangChange } from '../core/i18n.js';
 import { createRouter } from '../core/router.js';
-import { el, toast, sheet, haptic } from '../core/ui.js';
+import { el, toast, sheet, haptic, segmented, pressable } from '../core/ui.js';
 import { setTimeZone } from '../core/fmt.js';
 
 import { t, guardLeave, errText } from './forms.js';
 import {
-  renderOverview, renderLive, renderOrders, renderOrder,
-  renderCouriers, renderCourier, renderClients, renderVerify,
-  renderTariffs, renderExtras, renderSettings,
-  renderReports, renderPay, renderBonus,
+  renderOverview, renderLive, renderOrders, renderCouriers, renderClients,
+  renderVerify, renderTariffs, renderExtras, renderSettings,
+  renderReports, renderPay, renderBonus, openCard,
 } from './pages.js';
 
 /* ─────────────────────────────────────────────────────── иконки меню */
@@ -84,21 +83,24 @@ let booted = false;
 
 /* ─────────────────────────────────────────────────────── тема */
 
+/* Светлая по умолчанию. Владелец сказал прямо: панель открывается светлой,
+   тёмную он включает сам. Разметка в admin.html думает так же и ставит
+   data-theme ещё до первой отрисовки — здесь мы только не спорим с ней. */
 function getTheme() {
   try {
     const v = localStorage.getItem(THEME_KEY);
     if (v === 'dark' || v === 'light' || v === 'auto') return v;
   } catch (e) { /* хранилище закрыто */ }
-  return 'dark';
+  return 'light';
 }
 
 function applyTheme(next) {
-  const value = next === 'light' || next === 'auto' ? next : 'dark';
+  const value = next === 'dark' || next === 'auto' ? next : 'light';
   if (value === 'auto') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = value;
   try { localStorage.setItem(THEME_KEY, value); } catch (e) { /* переживём */ }
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', mapTheme() === 'light' ? '#F4F4F6' : '#0E0E10');
+  // Цвет строки состояния телефона ведёт core/shell.js: он следит за data-theme
+  // и берёт цвет из токенов. Красить meta отсюда — значит спорить с ним.
   return value;
 }
 
@@ -177,29 +179,31 @@ function setting(key, fallback) {
 
 /* ─────────────────────────────────────────────────────── оболочка */
 
+/* pressable() на каждом пункте: нажатие должно ощущаться и в меню, а не только
+   на кнопках. Живой отклик собран в core/ui.js — здесь мы только отмечаем узлы. */
 function paintNav() {
-  nav.replaceChildren(...SECTIONS.map((item) => el('button', {
+  nav.replaceChildren(...SECTIONS.map((item) => pressable(el('button', {
     className: 'navi' + (item.path === section ? ' is-on' : ''),
     type: 'button',
     'aria-current': item.path === section ? 'page' : null,
     onClick: () => go(item.path),
   }, el('span', { className: 'navi__ico', html: ICONS[item.icon] }),
-    el('span', { className: 'navi__txt' }, t(item.title)))));
+    el('span', { className: 'navi__txt' }, t(item.title))), { scale: .97 })));
 }
 
 function paintDock() {
   const items = SECTIONS.filter((s) => s.dock);
-  dock.replaceChildren(...items.map((item) => el('button', {
+  dock.replaceChildren(...items.map((item) => pressable(el('button', {
     className: 'dock__i' + (item.path === section ? ' is-on' : ''),
     type: 'button',
     'aria-current': item.path === section ? 'page' : null,
     onClick: () => { haptic(); go(item.path); },
-  }, el('span', { html: ICONS[item.icon] }), t(item.title))),
-  el('button', {
+  }, el('span', { html: ICONS[item.icon] }), t(item.title)), { scale: .9, pop: 1.05 })),
+  pressable(el('button', {
     className: 'dock__i' + (items.every((s) => s.path !== section) ? ' is-on' : ''),
     type: 'button',
     onClick: () => { haptic(); moreSheet(); },
-  }, el('span', { html: ICONS.more }), t('adm.more')));
+  }, el('span', { html: ICONS.more }), t('adm.more')), { scale: .9, pop: 1.05 }));
 }
 
 /* Остальные разделы на телефоне — в шторке: в нижнюю полосу влезает четыре. */
@@ -234,39 +238,42 @@ function paintTop() {
       state.connected ? t('status.online') : t('common.offline')));
 }
 
-/** Язык, тема и выход — одинаковые и в боковом меню, и в шторке «Ещё». */
+/** Язык, тема и выход — одинаковые и в боковом меню, и в шторке «Ещё».
+ *  Тема и язык — сегментные переключатели: вариантов по два-три, и все они
+ *  должны быть видны сразу, а не открываться по нажатию. */
 function settingsBar(done) {
-  const themes = ['dark', 'light', 'auto'];
-  const now = getTheme();
   const close = () => { if (typeof done === 'function') done(); };
 
-  const themeBtn = el('button', {
-    className: 'btn btn--ghost btn--sm', type: 'button',
-    onClick: () => {
-      applyTheme(themes[(themes.indexOf(getTheme()) + 1) % themes.length]);
-      close();
+  const theme = segmented([
+    { value: 'light', label: t('common.theme_light') },
+    { value: 'dark', label: t('common.theme_dark') },
+    { value: 'auto', label: t('adm.theme_auto') },
+  ], {
+    value: getTheme(),
+    label: t('common.theme'),
+    onChange: (value) => {
+      applyTheme(value);
       paint();
       // Карта живёт своими цветами, поэтому раздел пересобираем целиком.
-      if (currentRoute) render(section, currentRoute);
+      redraw();
     },
-  }, t('common.theme') + ': ' +
-     t(now === 'light' ? 'common.theme_light' : now === 'auto' ? 'common.theme_auto' : 'common.theme_dark'));
+  });
 
-  const langBtn = el('button', {
-    className: 'btn btn--ghost btn--sm', type: 'button',
-    onClick: () => {
-      close();
-      setLang(getLang() === 'ru' ? 'ky' : 'ru');
-      haptic();
-    },
-  }, getLang() === 'ru' ? t('common.lang_ky') : t('common.lang_ru'));
+  const lang = segmented([
+    { value: 'ru', label: t('common.lang_ru') },
+    { value: 'ky', label: t('common.lang_ky') },
+  ], {
+    value: getLang(),
+    label: t('common.language'),
+    onChange: (value) => { close(); setLang(value); },
+  });
 
   const outBtn = el('button', {
-    className: 'btn btn--ghost btn--sm', type: 'button',
+    className: 'btn btn--ghost btn--sm btn--block', type: 'button',
     onClick: () => { close(); signOut(); },
   }, t('common.logout'));
 
-  return el('div', { className: 'row gap-2 wrap' }, themeBtn, langBtn, outBtn);
+  return el('div', { className: 'admbar' }, theme, lang, outBtn);
 }
 
 function paint() {
@@ -276,9 +283,21 @@ function paint() {
   sideFoot.replaceChildren(settingsBar());
 }
 
-/* ─────────────────────────────────────────────────────── маршруты */
+/* ─────────────────────────────────────────────────────── маршруты
 
-let currentRoute = null;
+   Адрес отвечает сразу за две вещи: какой раздел открыт и какая карточка лежит
+   поверх него. #/orders — список заказов, #/orders/123 — тот же список и
+   карточка заказа во весь экран. Перезагрузил страницу — вернулся ровно туда же,
+   а не на первый экран, как было раньше. */
+
+let currentRoute = null;      // что сейчас нарисовано в главной области
+let cardSpec = null;          // какая карточка должна быть открыта
+let cardNow = '';             // какая открыта на самом деле: 'order:123'
+let cardPanel = null;         // сама шторка
+let cardClosing = false;      // закрываем мы сами, по смене адреса
+
+/* Куда возвращает крестик карточки: у каждой свой список. */
+const CARD_HOME = { order: '/orders', courier: '/couriers', client: '/clients' };
 
 const ctx = {
   get config() { return state.config; },
@@ -307,18 +326,14 @@ async function back() {
   if (router) router.back();
 }
 
-/** Показать раздел: уборка старого, отрисовка нового, подсветка меню. */
-function render(sectionPath, route) {
-  section = sectionPath;
+/** Показать раздел: уборка старого, отрисовка нового, лёгкий въезд. */
+function render(route) {
   currentRoute = route;
   if (cleanup) {
     try { cleanup(); } catch (e) { console.error('[admin] уборка раздела упала', e); }
   }
   cleanup = null;
   main.replaceChildren();
-  paintNav();
-  paintDock();
-  paintTop();
   try {
     cleanup = route.draw(main) || null;
   } catch (e) {
@@ -327,40 +342,118 @@ function render(sectionPath, route) {
       el('div', { className: 'empty__title' }, errText(e)),
       el('button', {
         className: 'btn btn--ghost', type: 'button',
-        onClick: () => render(sectionPath, route),
+        onClick: () => render(route),
       }, t('common.retry'))));
   }
   applyTo(main);
   main.scrollTop = 0;
+  // Переход между разделами должен читаться движением, а не морганием.
+  // Класс снимаем и ставим заново, иначе анимация не запустится второй раз.
+  main.classList.remove('is-in');
+  void main.offsetWidth;
+  main.classList.add('is-in');
+}
+
+/** Перерисовать то, что открыто сейчас: после смены темы или языка. */
+function redraw() {
+  if (!currentRoute) return;
+  const card = cardSpec;
+  render(currentRoute);
+  if (!card) return;
+  dropCard();
+  openCardFor(card);
+}
+
+/* ── карточка поверх раздела ───────────────────────────────────────────── */
+
+function dropCard() {
+  const panel = cardPanel;
+  cardPanel = null;
+  cardNow = '';
+  cardSpec = null;
+  if (!panel) return;
+  cardClosing = true;
+  try { panel.close(); } catch (e) { console.error('[admin] карточка не закрылась', e); }
+  cardClosing = false;
+}
+
+function openCardFor(want) {
+  cardSpec = want;
+  cardNow = want.kind + ':' + want.id;
+  cardPanel = openCard(ctx, want.kind, want.id, () => {
+    // Крестик, свайп вниз или Esc: карточку закрыл человек. Адрес обязан
+    // вернуться к списку, иначе перезагрузка снова откроет ту же карточку.
+    if (cardClosing) return;
+    cardPanel = null;
+    cardNow = '';
+    cardSpec = null;
+    if (router) router.go(CARD_HOME[want.kind] || '/overview', { replace: true });
+  });
+}
+
+/** Свести показанное с адресом: раздел, подсветка меню и карточка поверх. */
+function show(spec) {
+  section = spec.section;
+  paintNav();
+  paintDock();
+  paintTop();
+  // Тот же раздел под карточкой перерисовывать незачем: список остаётся на
+  // месте вместе с прокруткой, меняется только то, что лежит поверх него.
+  if (!currentRoute || currentRoute.key !== spec.key) {
+    render({ key: spec.key, draw: spec.draw });
+  }
+  const want = spec.card || null;
+  const key = want ? want.kind + ':' + want.id : '';
+  if (key === cardNow) return;
+  dropCard();
+  if (want) openCardFor(want);
 }
 
 function routes() {
-  const at = (sectionPath, draw) => () => render(sectionPath, { draw, path: sectionPath });
+  const draws = {
+    '/overview': (host) => renderOverview(host, ctx),
+    '/map': (host) => renderLive(host, ctx),
+    '/orders': (host) => renderOrders(host, ctx),
+    '/couriers': (host) => renderCouriers(host, ctx),
+    '/verify': (host) => renderVerify(host, ctx),
+    '/tariffs': (host) => renderTariffs(host, ctx),
+    '/extras': (host) => renderExtras(host, ctx),
+    '/reports': (host) => renderReports(host, ctx),
+    '/pay': (host) => renderPay(host, ctx),
+    '/bonus': (host) => renderBonus(host, ctx),
+    '/settings': (host) => renderSettings(host, ctx),
+  };
+  const page = (path) => () => show({ section: path, key: path, draw: draws[path] });
+  const card = (path, kind) => (r) => show({
+    section: path, key: path, draw: draws[path],
+    card: { kind, id: r.params.id },
+  });
+  /* Список клиентов зависит от строки поиска в адресе, поэтому его ключ — не
+     только путь: по #/clients?q=996… должен открыться отфильтрованный список. */
+  const clientsKey = (r) => '/clients?' + (r.query.q || '');
+  const clientsDraw = (r) => (host) => renderClients(host, ctx, r.query);
   return {
-    '/overview': at('/overview', (host) => renderOverview(host, ctx)),
-    '/map': at('/map', (host) => renderLive(host, ctx)),
-    '/orders': at('/orders', (host) => renderOrders(host, ctx)),
-    '/orders/:id': (r) => render('/orders', {
-      draw: (host) => renderOrder(host, ctx, r.params.id),
-      path: '/orders/' + r.params.id,
+    '/overview': page('/overview'),
+    '/map': page('/map'),
+    '/orders': page('/orders'),
+    '/orders/:id': card('/orders', 'order'),
+    '/couriers': page('/couriers'),
+    '/couriers/:id': card('/couriers', 'courier'),
+    '/clients': (r) => show({
+      section: '/clients', key: clientsKey(r), draw: clientsDraw(r),
     }),
-    '/couriers': at('/couriers', (host) => renderCouriers(host, ctx)),
-    '/couriers/:id': (r) => render('/couriers', {
-      draw: (host) => renderCourier(host, ctx, r.params.id),
-      path: '/couriers/' + r.params.id,
+    '/clients/:id': (r) => show({
+      section: '/clients', key: clientsKey(r), draw: clientsDraw(r),
+      card: { kind: 'client', id: r.params.id },
     }),
-    '/verify': at('/verify', (host) => renderVerify(host, ctx)),
-    '/clients': (r) => render('/clients', {
-      draw: (host) => renderClients(host, ctx, r.query),
-      path: '/clients',
-    }),
-    '/tariffs': at('/tariffs', (host) => renderTariffs(host, ctx)),
-    '/extras': at('/extras', (host) => renderExtras(host, ctx)),
-    '/reports': at('/reports', (host) => renderReports(host, ctx)),
-    '/pay': at('/pay', (host) => renderPay(host, ctx)),
-    '/bonus': at('/bonus', (host) => renderBonus(host, ctx)),
-    '/settings': at('/settings', (host) => renderSettings(host, ctx)),
-    '*': at('/overview', (host) => renderOverview(host, ctx)),
+    '/verify': page('/verify'),
+    '/tariffs': page('/tariffs'),
+    '/extras': page('/extras'),
+    '/reports': page('/reports'),
+    '/pay': page('/pay'),
+    '/bonus': page('/bonus'),
+    '/settings': page('/settings'),
+    '*': page('/overview'),
   };
 }
 
@@ -452,10 +545,14 @@ async function signOut() {
 function teardown() {
   if (source) source.close();
   source = null;
+  dropCard();
   if (cleanup) {
     try { cleanup(); } catch (e) { /* раздел уже не важен */ }
   }
   cleanup = null;
+  // Обнулить обязательно: без этого после нового входа show() решит, что нужный
+  // раздел уже нарисован, и оставит человека перед пустым экраном.
+  currentRoute = null;
   liveSubs.clear();
   booted = false;
   state.user = null;
@@ -532,7 +629,7 @@ onLangChange(() => {
   paintGate();
   if (!booted) return;
   paint();
-  if (currentRoute) render(section, currentRoute);
+  redraw();
 });
 
 boot();

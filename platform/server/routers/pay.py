@@ -473,6 +473,10 @@ def admin_settings_put(ctx):
         save['payment.provider'] = code
     if 'enabled' in body:
         save['payment.enabled'] = _as_bool(body.get('enabled'))
+    if 'demo' in body:
+        # Демо-режим: код рисуем сами, деньги не ходят. Нужен владельцу, чтобы
+        # увидеть экран клиента раньше, чем банк выдаст ключи.
+        save['payment.demo'] = _as_bool(body.get('demo'))
 
     for field, key_name in (('sale_point', 'payment.optima_sale_point'),
                             ('cash', 'payment.optima_cash')):

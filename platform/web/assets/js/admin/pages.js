@@ -12,7 +12,9 @@
 
 import { api, ApiError } from '../core/api.js';
 import {
-  el, toast, sheet, confirm as ask, skeleton, haptic, mountStars, photoViewer, copyText,
+  el, toast, sheet, confirm as ask, skeleton, spinner, haptic,
+  mountStars, photoViewer, copyText,
+  chip, rowGroup, infoStory, pressable,
 } from '../core/ui.js';
 import {
   money, moneyShort, num, distance as fmtDistance, duration as fmtDuration,
@@ -72,6 +74,27 @@ function tile(label, value, hint) {
     el('div', { className: 'tile__cap' }, label),
     el('div', { className: 'tile__val num' }, value),
     hint ? el('div', { className: 'tile__hint' }, hint) : null);
+}
+
+/* Сегмент или список. Дело не только в числе вариантов: сегменты стоят в ряд
+   и не переносятся, поэтому три подписи вроде «По рейтингу и расстоянию» вылезут
+   за край экрана, а прокрутки вбок у нас нигде нет. Считаем и буквы тоже —
+   бюджет подобран под 360 px, самый узкий телефон, ради которого всё и делалось. */
+const SEG_MAX_ITEMS = 5;
+const SEG_MAX_CHARS = 30;       // сумма всех подписей
+const SEG_MAX_ONE = 16;         // и самая длинная из них
+
+function pickKind(options) {
+  const list = options || [];
+  if (!list.length || list.length > SEG_MAX_ITEMS) return 'select';
+  let total = 0;
+  let longest = 0;
+  for (const o of list) {
+    const len = String(o.text === undefined ? o.value : o.text).length;
+    total += len;
+    longest = Math.max(longest, len);
+  }
+  return total <= SEG_MAX_CHARS && longest <= SEG_MAX_ONE ? 'seg' : 'select';
 }
 
 function block(title, ...kids) {
@@ -137,6 +160,9 @@ function dataTable(cols, rows, opts) {
     if (o.onRow) {
       tr.tabIndex = 0;
       tr.setAttribute('role', 'link');
+      // Строка таблицы — такая же кнопка, как всё остальное: под пальцем она
+      // должна просесть, иначе непонятно, попал ты по ней или нет.
+      pressable(tr, { scale: .99, pop: 1.004 });
       tr.addEventListener('click', () => o.onRow(row));
       tr.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -700,6 +726,66 @@ function kv(label, value) {
     value instanceof Node ? value : el('span', { className: 'kv__v' }, value));
 }
 
+/* ═══════════════════════════════════════════════════════ карточки поверх раздела
+
+   Заказ, курьер и клиент открываются шторкой во весь экран поверх своего списка.
+   Список остаётся на месте вместе с прокруткой и фильтрами, а карточка листается
+   сама по себе — и закрывается одним движением, а не «назад, подожди, найди
+   строку заново». Открытая карточка живёт в адресе (#/orders/123), поэтому
+   перезагрузка возвращает человека ровно к ней.
+
+   Кто какую карточку рисует, знает только эта таблица: оболочке достаточно
+   сказать openCard(ctx, 'order', 123). */
+
+const CARD_KINDS = {
+  order: { title: 'admin.nav_orders', draw: renderOrder },
+  courier: { title: 'admin.nav_couriers', draw: renderCourier },
+  client: { title: 'admin.nav_clients', draw: renderClient },
+};
+
+/**
+ * Открыть карточку во весь экран. onClose зовётся, когда её закрыл человек, —
+ * оболочка по этому сигналу возвращает адрес к списку.
+ * Возвращает {close} — этим оболочка гасит карточку при смене адреса.
+ */
+export function openCard(ctx, kind, id, onClose) {
+  const spec = CARD_KINDS[kind];
+  if (!spec) return { close() {} };
+
+  const host = el('div', { className: 'cardpage' });
+  let clean = null;
+
+  const panel = sheet({
+    full: true,
+    className: 'sheet--card',
+    title: t(spec.title),
+    content: host,
+    onClose: () => {
+      if (clean) {
+        try { clean(); } catch (e) { console.error('[admin] уборка карточки упала', e); }
+      }
+      clean = null;
+      if (typeof onClose === 'function') onClose();
+    },
+  });
+
+  const titleNode = panel.box.querySelector('.sheet__title');
+  const card = {
+    /* Пока данные едут, в шапке стоит название раздела; приехали — настоящий
+       номер заказа или имя человека. Заголовок в шторке один, и он же служит
+       ручкой: дублировать его строкой внутри карточки незачем. */
+    setTitle(text, sub) {
+      if (!titleNode) return;
+      const kids = [el('span', { className: 'cardpage__name truncate' }, text || '')];
+      if (sub) kids.push(el('span', { className: 'cardpage__sub truncate' }, sub));
+      titleNode.replaceChildren(...kids);
+    },
+  };
+
+  clean = spec.draw(host, ctx, id, card) || null;
+  return { close: () => panel.close() };
+}
+
 /* ═══════════════════════════════════════════════════════ заказы */
 
 const ordersState = { page: 1, status: '', q: '', from: '', to: '' };
@@ -899,7 +985,7 @@ function eventDetail(ev) {
   return bits.join(' · ');
 }
 
-export function renderOrder(host, ctx, id) {
+export function renderOrder(host, ctx, id, card) {
   let alive = true;
   let map = null;
   let order = null;
@@ -1021,40 +1107,43 @@ export function renderOrder(host, ctx, id) {
     price.appendChild(kv(t('admin.ov_commission'), money(o.commission || 0)));
     price.appendChild(kv(t('adm.order_payout'), money(o.courier_payout || 0)));
 
-    const addr = el('div', { className: 'list' });
-    points.forEach((p, i) => {
-      addr.appendChild(listRow([
-        el('span', { className: 'point__no' }, i === 0 ? 'A' : String.fromCharCode(65 + i)),
-        el('div', { className: 'grow' },
-          el('div', { className: 't-mid' }, p.addr || '—'),
-          el('div', { className: 'muted t-sm' }, [
-            p.entrance ? t('order.entrance') + ' ' + p.entrance : '',
-            p.flat ? t('order.flat') + ' ' + p.flat : '',
-            p.floor ? tp(p.floor, 'common.n_floor') : '',
-            p.intercom || '',
-            p.comment || '',
-          ].filter(Boolean).join(' · ')),
-          p.phone ? el('a', { className: 'link t-sm', href: 'tel:' + p.phone }, fmtPhone(p.phone)) : null),
-      ]));
-    });
+    /* Адреса — одна карточка с разделителями, а не стопка отдельных: это один
+       маршрут, и читать его надо сверху вниз, а не перепрыгивая через зазоры. */
+    const addr = rowGroup(points.map((p, i) => ({
+      icon: el('span', { className: 'point__no' }, String.fromCharCode(65 + i)),
+      hint: i === 0 ? t('order.from')
+        : i === points.length - 1 ? t('order.to') : t('order.point', { n: i + 1 }),
+      label: p.addr || '—',
+      sub: [
+        p.entrance ? t('order.entrance') + ' ' + p.entrance : '',
+        p.flat ? t('order.flat') + ' ' + p.flat : '',
+        p.floor ? tp(p.floor, 'common.n_floor') : '',
+        p.intercom || '',
+        p.comment || '',
+        p.phone ? fmtPhone(p.phone) : '',
+      ].filter(Boolean).join(' · '),
+      end: p.phone
+        ? el('a', { className: 'chip', href: 'tel:' + p.phone, title: fmtPhone(p.phone) },
+          t('common.call'))
+        : null,
+    })));
 
     const people = el('div', { className: 'two-col' },
-      block(t('admin.col_client'), o.client ? el('div', { className: 'list' }, listRow([
-        avatarFor(o.client.name),
-        el('div', { className: 'grow truncate' },
-          el('div', { className: 't-mid truncate' }, o.client.name || '—'),
-          el('div', { className: 'muted t-sm' }, fmtPhone(o.client.phone))),
-        el('span', { className: 'badge' }, tp(o.client.orders_count || 0, 'common.n_order')),
-      ], () => ctx.go('/clients', { q: o.client.phone || '' }))) : emptyBox('—')),
-      block(t('admin.col_courier'), o.courier ? el('div', { className: 'list' }, listRow([
-        avatarFor(o.courier.name),
-        el('div', { className: 'grow truncate' },
-          el('div', { className: 't-mid truncate' }, o.courier.name || '—'),
-          el('div', { className: 'muted t-sm truncate' },
-            [o.courier.car && o.courier.car.model, fmtPlate(o.courier.car && o.courier.car.plate)]
-              .filter(Boolean).join(' · '))),
-        el('span', { className: 'badge' }, String(o.courier.rating || '—').replace('.', ',')),
-      ], () => ctx.go('/couriers/' + o.courier.id)) ) : emptyBox(t('common.empty'))));
+      block(t('admin.col_client'), o.client ? rowGroup([{
+        icon: avatarFor(o.client.name),
+        label: o.client.name || fmtPhone(o.client.phone) || '—',
+        sub: fmtPhone(o.client.phone),
+        value: tp(o.client.orders_count || 0, 'common.n_order'),
+        onClick: () => ctx.go('/clients/' + o.client.id),
+      }]) : emptyBox('—')),
+      block(t('admin.col_courier'), o.courier ? rowGroup([{
+        icon: avatarFor(o.courier.name),
+        label: o.courier.name || '—',
+        sub: [o.courier.car && o.courier.car.model,
+          fmtPlate(o.courier.car && o.courier.car.plate)].filter(Boolean).join(' · '),
+        value: String(o.courier.rating || '—').replace('.', ','),
+        onClick: () => ctx.go('/couriers/' + o.courier.id),
+      }]) : emptyBox(t('common.empty'))));
 
     const timeline = el('ol', { className: 'tl' });
     for (const ev of o.events || []) {
@@ -1118,9 +1207,17 @@ export function renderOrder(host, ctx, id) {
         },
       }, t('common.save')));
 
+    // В шторке заголовок уже стоит в шапке — второй раз его писать незачем,
+    // вместо него сразу состояние заказа и оплаты.
+    if (card) card.setTitle(t('admin.order_card', { id: o.public_id }), dateTime(o.created_at));
+
     body.replaceChildren(
-      pageHead(ctx, t('admin.order_card', { id: o.public_id }),
-        dateTime(o.created_at), statusBadge(o.status)),
+      // Оплата стоит плиткой ниже, поэтому здесь только статус самого заказа:
+      // два одинаковых значка подряд читаются как ошибка.
+      card
+        ? el('div', { className: 'row gap-2 wrap' }, statusBadge(o.status))
+        : pageHead(ctx, t('admin.order_card', { id: o.public_id }),
+          dateTime(o.created_at), statusBadge(o.status)),
       el('div', { className: 'tiles tiles--sm' },
         tile(t('admin.col_price'), money(o.price_total)),
         tile(t('adm.order_distance'), fmtDistance(o.distance_m || 0)),
@@ -1138,14 +1235,7 @@ export function renderOrder(host, ctx, id) {
           o.track_url),
         el('button', {
           className: 'btn btn--ghost btn--sm', type: 'button',
-          onClick: async () => {
-            try {
-              await navigator.clipboard.writeText(o.track_url);
-              toast(t('common.copied'), { type: 'ok' });
-            } catch (e) {
-              toast(t('err.unknown'), { type: 'err' });
-            }
-          },
+          onClick: () => copyText(o.track_url, t('common.copied')),
         }, t('common.copy')))) : null,
       offers ? block(t('adm.order_offers'), offers) : null,
       block(t('admin.order_timeline'), timeline),
@@ -1308,7 +1398,7 @@ export function renderCouriers(host, ctx) {
   return () => { alive = false; };
 }
 
-export function renderCourier(host, ctx, id) {
+export function renderCourier(host, ctx, id, card) {
   let alive = true;
   let form = null;
   const body = el('div', { className: 'sect' });
@@ -1373,6 +1463,10 @@ export function renderCourier(host, ctx, id) {
         },
         { name: 'note', kind: 'textarea', label: 'admin.courier_note', span: 2, maxlength: 1000 },
       ],
+      // Карточка закрывается одним движением, и вопрос «уходим с несохранённым?»
+      // после свайпа вниз выглядит придиркой: два поля проще выставить заново.
+      // Настройки и тарифы, где потерять правки жалко, сторожатся как раньше.
+      guard: false,
       values: { priority: c.priority || 0, note: c.note || '' },
       onChange: (values, name) => {
         if (name !== 'priority') return;
@@ -1412,11 +1506,19 @@ export function renderCourier(host, ctx, id) {
       { key: 'status', label: t('admin.col_status'), cell: (r) => statusBadge(r.status) },
     ], c.orders, { onRow: (r) => ctx.go('/orders/' + r.id) }) : emptyBox(t('common.empty'));
 
+    if (card) card.setTitle(c.name || '—', fmtPhone(c.phone));
+
+    const stateBadge = el('span', {
+      className: 'badge badge--' +
+        (c.status === 'active' ? 'ok' : c.status === 'blocked' ? 'err' : 'warn'),
+    }, t('status.user_' + c.status));
+
     body.replaceChildren(
-      pageHead(ctx, c.name || '—', fmtPhone(c.phone),
-        el('span', {
-          className: 'badge badge--' + (c.status === 'active' ? 'ok' : c.status === 'blocked' ? 'err' : 'warn'),
-        }, t('status.user_' + c.status))),
+      card
+        ? el('div', { className: 'row gap-2 wrap' }, stateBadge,
+          el('span', { className: 'badge ' + (c.online ? 'badge--ok' : '') },
+            c.online ? (c.busy ? t('status.busy') : t('admin.ov_free')) : t('status.offline')))
+        : pageHead(ctx, c.name || '—', fmtPhone(c.phone), stateBadge),
       el('div', { className: 'two-col' },
         block(t('admin.courier_stats'), courierBrief(c)),
         block(t('adm.cour_money'), el('div', { className: 'kv' },
@@ -1477,52 +1579,6 @@ export function renderClients(host, ctx, query) {
       },
     }, t('admin.client_blocked')));
 
-  async function openClient(row) {
-    const box = el('div', { className: 'col gap-3' });
-    const panel = sheet({ title: row.name || fmtPhone(row.phone), content: box });
-    rowsSkeleton(box, 5);
-    try {
-      const c = await api.get('/admin/clients/' + row.id);
-      const m = c.money || {};
-      const orders = (c.orders || []).length ? dataTable([
-        { key: 'public_id', label: t('admin.col_id'), cell: (r) => el('b', { className: 'mono' }, r.public_id) },
-        { key: 'created_at', label: t('admin.col_created'), cell: (r) => timeAgo(r.created_at) },
-        { key: 'price_total', label: t('admin.col_price'), num: true, cell: (r) => money(r.price_total) },
-        { key: 'status', label: t('admin.col_status'), cell: (r) => statusBadge(r.status) },
-      ], c.orders, {
-        onRow: (r) => { panel.close(); ctx.go('/orders/' + r.id); },
-      }) : emptyBox(t('common.empty'));
-
-      const toggle = el('button', {
-        className: 'btn btn--' + (c.blocked ? 'ghost' : 'danger') + ' btn--sm',
-        type: 'button',
-        onClick: async () => {
-          try {
-            await api.patch('/admin/clients/' + c.id, { blocked: c.blocked ? 0 : 1 });
-            toast(t('common.saved'), { type: 'ok' });
-            panel.close();
-            load();
-          } catch (e) {
-            toast(errText(e), { type: 'err' });
-          }
-        },
-      }, c.blocked ? t('admin.client_unblock') : t('admin.client_block'));
-
-      box.replaceChildren(
-        el('div', { className: 'kv' },
-          kv(t('common.phone'), fmtPhone(c.phone)),
-          kv(t('admin.client_orders'), num(c.orders_count || 0)),
-          kv(t('adm.cli_spent'), money(m.spent || 0)),
-          kv(t('admin.client_last'), c.last_order_at ? timeAgo(c.last_order_at) : '—'),
-          kv(t('common.language'), c.lang === 'ky' ? t('common.lang_ky') : t('common.lang_ru')),
-          kv(t('adm.cli_since_label'), c.created_at ? fmtDate(c.created_at) : '—')),
-        el('div', { className: 'row gap-2' }, toggle),
-        block(t('adm.cli_orders'), orders));
-    } catch (e) {
-      box.replaceChildren(el('p', { className: 'muted' }, errText(e)));
-    }
-  }
-
   async function load() {
     rowsSkeleton(body, 6);
     try {
@@ -1564,13 +1620,84 @@ export function renderClients(host, ctx, query) {
           cell: (r) => el('span', { className: 'badge ' + (r.blocked ? 'badge--err' : 'badge--ok') },
             r.blocked ? t('admin.client_blocked') : t('status.user_active')),
         },
-      ], data.items, { onRow: openClient });
+      ], data.items, { onRow: (r) => ctx.go('/clients/' + r.id) });
       const foot = pager(data, (page) => { clientsState.page = page; load(); });
       body.replaceChildren(table, foot || el('span'));
     } catch (e) {
       if (!alive || (e instanceof ApiError && e.isAuth)) return;
       body.replaceChildren(failBox(e, load));
     }
+  }
+
+  load();
+  return () => { alive = false; };
+}
+
+/** Карточка клиента: кто это, сколько привёз денег и что с ним делать. */
+export function renderClient(host, ctx, id, card) {
+  let alive = true;
+  const body = el('div', { className: 'sect' });
+  host.replaceChildren(body);
+  rowsSkeleton(body, 6);
+
+  async function load() {
+    try {
+      const c = await api.get('/admin/clients/' + id);
+      if (!alive) return;
+      paint(c);
+    } catch (e) {
+      if (!alive || (e instanceof ApiError && e.isAuth)) return;
+      body.replaceChildren(failBox(e, load));
+    }
+  }
+
+  async function setBlocked(c, blocked) {
+    try {
+      await api.patch('/admin/clients/' + c.id, { blocked: blocked ? 1 : 0 });
+      if (!alive) return;
+      haptic();
+      toast(t('common.saved'), { type: 'ok' });
+      load();
+    } catch (e) {
+      toast(errText(e), { type: 'err' });
+    }
+  }
+
+  function paint(c) {
+    const m = c.money || {};
+    if (card) card.setTitle(c.name || fmtPhone(c.phone) || '—', fmtPhone(c.phone));
+
+    const orders = (c.orders || []).length ? dataTable([
+      { key: 'public_id', label: t('admin.col_id'), cell: (r) => el('b', { className: 'mono' }, r.public_id) },
+      { key: 'created_at', label: t('admin.col_created'), cell: (r) => timeAgo(r.created_at) },
+      { key: 'price_total', label: t('admin.col_price'), num: true, cell: (r) => money(r.price_total) },
+      { key: 'status', label: t('admin.col_status'), cell: (r) => statusBadge(r.status) },
+    ], c.orders, { onRow: (r) => ctx.go('/orders/' + r.id) }) : emptyBox(t('common.empty'));
+
+    const toggle = el('button', {
+      className: 'btn btn--' + (c.blocked ? 'primary' : 'danger'), type: 'button',
+      onClick: () => setBlocked(c, !c.blocked),
+    }, c.blocked ? t('admin.client_unblock') : t('admin.client_block'));
+
+    body.replaceChildren(
+      card ? el('div', { className: 'row gap-2 wrap' },
+        el('span', { className: 'badge ' + (c.blocked ? 'badge--err' : 'badge--ok') },
+          c.blocked ? t('admin.client_blocked') : t('status.user_active')),
+        el('span', { className: 'badge' }, tp(c.orders_count || 0, 'common.n_order')))
+        : pageHead(ctx, c.name || '—', fmtPhone(c.phone)),
+      el('div', { className: 'tiles tiles--sm' },
+        tile(t('admin.client_orders'), num(c.orders_count || 0)),
+        tile(t('adm.cli_spent'), money(m.spent || 0)),
+        tile(t('admin.order_rating'), c.rating ? String(c.rating).replace('.', ',') : '—'),
+        tile(t('admin.client_last'), c.last_order_at ? timeAgo(c.last_order_at) : '—')),
+      block(null, rowGroup([
+        { hint: t('common.phone'), label: fmtPhone(c.phone) || '—',
+          end: c.phone ? el('a', { className: 'chip', href: 'tel:' + c.phone }, t('common.call')) : null },
+        { hint: t('common.language'), label: c.lang === 'ky' ? t('common.lang_ky') : t('common.lang_ru') },
+        { hint: t('adm.cli_since_label'), label: c.created_at ? fmtDate(c.created_at) : '—' },
+      ])),
+      block(t('adm.order_actions'), el('div', { className: 'row gap-2 wrap' }, toggle)),
+      block(t('adm.cli_orders'), orders));
   }
 
   load();
@@ -1729,6 +1856,8 @@ const EXTRA_FIELDS = [
   { name: 'name_ru', kind: 'text', label: 'admin.tariff_name_ru', required: true },
   { name: 'name_ky', kind: 'text', label: 'admin.tariff_name_ky', required: true },
   {
+    /* Списком, а не сегментом: «Фиксированная цена» рядом с тремя соседями
+       не помещается на телефоне, а резать подписи нельзя. */
     name: 'kind', kind: 'select', label: 'admin.extra_kind', options: [
       { value: 'fixed', label: 'admin.extra_kind_fixed' },
       { value: 'hourly', label: 'admin.extra_kind_hourly' },
@@ -1947,6 +2076,12 @@ function choiceOptions(choices, key, labels) {
   }));
 }
 
+/* Поле выбора: до пяти вариантов показываем сегментом, больше — списком.
+   Сколько их будет, знает только сервер, поэтому решаем по факту. */
+function choiceField(name, label, options, extra) {
+  return Object.assign({ name, label, options, kind: pickKind(options) }, extra || {});
+}
+
 /* Описание вкладки: какие ключи настроек показываем и как. */
 function tabFields(code, data, pick) {
   const choices = data.choices || {};
@@ -1958,10 +2093,8 @@ function tabFields(code, data, pick) {
       { name: 'service.name', kind: 'text', label: 'admin.set_name', required: true, group: 'admin.set_service' },
       { name: 'service.phone', kind: 'text', label: 'admin.set_phone' },
       { name: 'service.city', kind: 'text', label: 'admin.set_city' },
-      {
-        name: 'service.currency', kind: 'select', label: 'adm.currency',
-        options: choiceOptions(choices, 'service.currency'),
-      },
+      choiceField('service.currency', 'adm.currency',
+        choiceOptions(choices, 'service.currency')),
       { name: 'service.tz', kind: 'text', label: 'admin.set_tz', hint: 'adm.tz_hint' },
       { name: 'service.support_wa', kind: 'text', label: 'adm.wa' },
       {
@@ -1979,16 +2112,13 @@ function tabFields(code, data, pick) {
 
   if (code === 'dispatch') {
     return [
-      {
-        name: 'dispatch.mode', kind: 'select', label: 'admin.disp_mode', span: 2,
-        options: choiceOptions(choices, 'dispatch.mode', {
+      choiceField('dispatch.mode', 'admin.disp_mode',
+        choiceOptions(choices, 'dispatch.mode', {
           nearest: t('admin.disp_mode_nearest'),
           score: t('admin.disp_mode_score'),
           broadcast: t('admin.disp_mode_broadcast'),
         }),
-        hint: 'admin.disp_hint',
-        group: 'admin.disp_title',
-      },
+        { span: 2, hint: 'admin.disp_hint', group: 'admin.disp_title' }),
       { name: 'dispatch.radius_m', kind: 'number', label: 'admin.disp_radius', min: 300, max: 100000 },
       { name: 'dispatch.offer_ttl_s', kind: 'number', label: 'admin.disp_ttl', min: 5, max: 120 },
       { name: 'dispatch.batch', kind: 'number', label: 'admin.disp_batch', min: 1, max: 50 },
@@ -2004,10 +2134,8 @@ function tabFields(code, data, pick) {
 
   if (code === 'map') {
     return [
-      {
-        name: 'map.provider', kind: 'select', label: 'admin.map_provider',
-        options: choiceOptions(choices, 'map.provider'), group: 'admin.map_title',
-      },
+      choiceField('map.provider', 'admin.map_provider',
+        choiceOptions(choices, 'map.provider'), { group: 'admin.map_title', span: 2 }),
       { name: 'map.zoom', kind: 'number', label: 'admin.map_zoom', min: 1, max: 21 },
       { name: 'map.tiles_light', kind: 'text', label: 'admin.map_tiles_light', span: 2, maxlength: 300 },
       { name: 'map.tiles_dark', kind: 'text', label: 'admin.map_tiles_dark', span: 2, maxlength: 300 },
@@ -2019,10 +2147,8 @@ function tabFields(code, data, pick) {
         name: 'map.key', kind: 'password', label: 'admin.map_key',
         hintText: (data.secrets || {})['map.key'] ? t('adm.secret_saved') : t('adm.secret_empty'),
       },
-      {
-        name: 'geo.provider', kind: 'select', label: 'admin.set_geo_provider',
-        options: choiceOptions(choices, 'geo.provider'), group: 'admin.set_geo',
-      },
+      choiceField('geo.provider', 'admin.set_geo_provider',
+        choiceOptions(choices, 'geo.provider'), { group: 'admin.set_geo', span: 2 }),
       { name: 'geo.country', kind: 'text', label: 'adm.geo_country', maxlength: 8 },
       { name: 'geo.bbox', kind: 'text', label: 'admin.set_geo_bbox', span: 2, maxlength: 120 },
       {
@@ -2034,10 +2160,8 @@ function tabFields(code, data, pick) {
 
   if (code === 'route') {
     return [
-      {
-        name: 'route.provider', kind: 'select', label: 'admin.set_route_provider',
-        options: choiceOptions(choices, 'route.provider'), group: 'adm.set_router',
-      },
+      choiceField('route.provider', 'admin.set_route_provider',
+        choiceOptions(choices, 'route.provider'), { group: 'adm.set_router', span: 2 }),
       { name: 'route.url', kind: 'text', label: 'admin.set_route_url', span: 2, maxlength: 200 },
       { name: 'route.road_factor', kind: 'number', label: 'admin.set_road_factor', min: 1, max: 3 },
       { name: 'route.avg_speed_kmh', kind: 'number', label: 'adm.route_speed', min: 5, max: 120 },
@@ -2048,12 +2172,9 @@ function tabFields(code, data, pick) {
     const providers = meta.payment_providers || [];
     return [
       { name: 'payment.enabled', kind: 'switch', label: 'admin.pay_enabled', span: 2, group: 'admin.pay_title' },
-      {
-        name: 'payment.provider', kind: 'select', label: 'admin.pay_provider', span: 2,
-        options: providers.map((p) => ({
-          value: p.code, text: p.title + (p.ready ? '' : ' · ' + t('adm.secret_empty')),
-        })),
-      },
+      choiceField('payment.provider', 'admin.pay_provider', providers.map((p) => ({
+        value: p.code, text: p.title + (p.ready ? '' : ' · ' + t('adm.secret_empty')),
+      })), { span: 2 }),
       { name: 'payment.merchant_id', kind: 'text', label: 'admin.pay_merchant' },
       {
         name: 'payment.secret', kind: 'password', label: 'admin.pay_secret',
@@ -2070,10 +2191,9 @@ function tabFields(code, data, pick) {
       { name: 'mail.enabled', kind: 'switch', label: 'admin.mail_enabled', span: 2, group: 'admin.mail_title' },
       { name: 'smtp.host', kind: 'text', label: 'admin.mail_host' },
       { name: 'smtp.port', kind: 'number', label: 'admin.mail_port', min: 1, max: 65535 },
-      {
-        name: 'smtp.secure', kind: 'select', label: 'admin.mail_secure',
-        options: choiceOptions(choices, 'smtp.secure', { none: t('adm.smtp_none'), ssl: 'SSL', tls: 'STARTTLS' }),
-      },
+      choiceField('smtp.secure', 'admin.mail_secure',
+        choiceOptions(choices, 'smtp.secure',
+          { none: t('adm.smtp_none'), ssl: 'SSL', tls: 'STARTTLS' }), { span: 2 }),
       { name: 'smtp.user', kind: 'text', label: 'admin.mail_user', maxlength: 120 },
       {
         name: 'smtp.pass', kind: 'password', label: 'admin.mail_pass',
@@ -2096,7 +2216,7 @@ function tabFields(code, data, pick) {
   const kind = (pick && pick.commissionKind) || data.values['commission.kind'];
   return [
     {
-      name: 'commission.kind', kind: 'select', label: 'admin.pay_commission', span: 2,
+      name: 'commission.kind', kind: 'seg', label: 'admin.pay_commission', span: 2,
       options: [
         { value: 'percent', label: 'admin.pay_kind_percent' },
         { value: 'fixed', label: 'admin.pay_kind_fixed' },
@@ -2597,6 +2717,27 @@ extend({
     'apay.not_ready': 'Ещё не настроено',
     'apay.off': 'Оплата выключена',
     'apay.manual_note': 'Сейчас оплату отмечает оператор вручную',
+    'apay.prepay_about': 'Что такое бронь',
+    'apay.prepay_story1': 'Вперёд человек платит только бронь — обычно это комиссия сервиса. Остальное он отдаёт курьеру наличными, как привык.',
+    'apay.prepay_story2': 'Бронь нужна не ради денег, а ради того, чтобы машина ехала к настоящему человеку: заплатил — значит, заказ живой.',
+
+    /* ── демо-оплата ── */
+    'apay.demo': 'Демо-режим',
+    'apay.demo_hint': 'Клиент увидит настоящий экран оплаты, но деньги никуда не уйдут',
+    'apay.demo_show': 'Показать пример',
+    'apay.demo_on': 'Демо включено',
+    'apay.demo_off': 'Демо выключено',
+    'apay.demo_sheet': 'Так выглядит оплата',
+    'apay.demo_lead': 'Код настоящий: его читает любое банковское приложение. Заказ учебный — денег по нему не спишется.',
+    'apay.demo_sum': 'К оплате',
+    'apay.demo_link': 'Ссылка на этот заказ',
+    'apay.demo_wait_pay': 'Заказ ждёт оплаты',
+    'apay.demo_done': 'Оплачено. Ровно это увидит и клиент',
+    'apay.demo_noqr': 'Код не нарисовался — посмотрите журнал сервиса',
+    'apay.demo_about': 'Зачем это',
+    'apay.demo_story1': 'Банк выдаёт ключи не в первый день, а посмотреть, как всё выглядит, хочется сегодня.',
+    'apay.demo_story2': 'В демо-режиме QR-код рисует сам сервис. Клиент проходит тот же путь, что и с банком: сумма брони, код, «оплачено» в конце. Деньги при этом никуда не уходят.',
+    'apay.demo_story3': 'Придут ключи банка — выключите демо, и тот же экран начнёт принимать настоящие деньги.',
 
     /* ── бонусы ── */
     'abn.nav': 'Бонусы',
@@ -2772,6 +2913,27 @@ extend({
     'apay.not_ready': 'Дагы жөндөлө элек',
     'apay.off': 'Төлөм өчүрүлгөн',
     'apay.manual_note': 'Азыр төлөмдү оператор кол менен белгилейт',
+    'apay.prepay_about': 'Брон деген эмне',
+    'apay.prepay_story1': 'Адам алдын ала бронду гана төлөйт — көбүнчө бул сервистин комиссиясы. Калганын курьерге накталай берет, көнгөнүндөй.',
+    'apay.prepay_story2': 'Брон акча үчүн эмес, унаа чыныгы кишиге барсын деп керек: төлөдүбү — заказ тирүү дегени.',
+
+    /* ── демо-төлөм ── */
+    'apay.demo': 'Демо-режим',
+    'apay.demo_hint': 'Кардар чыныгы төлөм экранын көрөт, бирок акча эч жакка кетпейт',
+    'apay.demo_show': 'Мисалды көрсөтүү',
+    'apay.demo_on': 'Демо күйдү',
+    'apay.demo_off': 'Демо өчтү',
+    'apay.demo_sheet': 'Төлөм ушундай көрүнөт',
+    'apay.demo_lead': 'Код чыныгы: аны каалаган банк тиркемеси окуйт. Заказ окуу үчүн — андан акча алынбайт.',
+    'apay.demo_sum': 'Төлөнүүчү',
+    'apay.demo_link': 'Ушул заказдын шилтемеси',
+    'apay.demo_wait_pay': 'Заказ төлөмдү күтүп турат',
+    'apay.demo_done': 'Төлөндү. Кардар да так ушуну көрөт',
+    'apay.demo_noqr': 'Код тартылган жок — сервистин журналын кароңуз',
+    'apay.demo_about': 'Бул эмнеге керек',
+    'apay.demo_story1': 'Банк ачкычты биринчи күнү бербейт, а баары кандай көрүнөрүн бүгүн көргүң келет.',
+    'apay.demo_story2': 'Демо-режимде QR-кодду сервис өзү тартат. Кардар банк менен кандай жол жүрсө, ошону басып өтөт: брондун суммасы, код, аягында «төлөндү». Акча болсо эч жакка кетпейт.',
+    'apay.demo_story3': 'Банктын ачкычтары келгенде демону өчүрөсүз — ошол эле экран чыныгы акчаны кабыл ала баштайт.',
 
     /* ── бонустар ── */
     'abn.nav': 'Бонустар',
@@ -3079,6 +3241,23 @@ function dayIso(unix, offset) {
 
 const PREPAY_SAMPLE = 150000;      // заказ на 1500 сом: с него и считаем пример
 
+/** Код от сервера: и голый base64, и готовый data-адрес показываем одинаково. */
+function qrSource(raw) {
+  const s = String(raw === null || raw === undefined ? '' : raw).trim();
+  if (!s) return '';
+  return s.startsWith('data:') ? s : 'data:image/png;base64,' + s;
+}
+
+/* Ссылка на заказ глазами клиента. api.base — это «…/api/v1», клиентское
+   приложение живёт на том же префиксе без хвоста: так ссылка соберётся и когда
+   сервис стоит в корне домена, и когда его повесили в подпапку /go/. */
+function clientLink(publicId, token) {
+  const root = String(api.base || '/').replace(/api\/v1\/?$/, '');
+  const base = new URL(root, location.href).href;
+  return base + '#/order/' + encodeURIComponent(publicId || '') +
+    (token ? '?t=' + encodeURIComponent(token) : '');
+}
+
 export function renderPay(host, ctx) {
   let alive = true;
   let data = null;            // последний ответ сервера
@@ -3172,16 +3351,14 @@ export function renderPay(host, ctx) {
         hint: 'apay.key_hint', maxlength: 200, span: 2, autocomplete: 'new-password',
       });
     }
+    const ways = (s.providers || []).map((p) => ({
+      value: p.code,
+      text: p.title + (p.ready ? '' : ' · ' + t('apay.not_ready')),
+    }));
     fields.push({
       name: 'enabled', kind: 'switch', label: 'apay.on', hint: 'apay.on_hint',
       span: 2, group: 'apay.way',
-    }, {
-      name: 'provider', kind: 'select', label: 'admin.pay_provider', span: 2,
-      options: (s.providers || []).map((p) => ({
-        value: p.code,
-        text: p.title + (p.ready ? '' : ' · ' + t('apay.not_ready')),
-      })),
-    });
+    }, choiceField('provider', 'admin.pay_provider', ways, { span: 2 }));
 
     const form = createForm({
       fields,
@@ -3383,7 +3560,17 @@ export function renderPay(host, ctx) {
     });
     redraw();
 
-    return panel(t('apay.prepay'), null,
+    return panel(t('apay.prepay'),
+      chip(t('apay.prepay_about'), {
+        info: true,
+        onClick: () => infoStory({
+          title: t('apay.prepay'),
+          text: [t('apay.prepay_story1'), t('apay.prepay_story2')],
+          art: '🤝',
+          tone: 'cream',
+          cta: t('common.ok'),
+        }),
+      }),
       el('p', { className: 'muted t-sm' }, t('apay.prepay_hint')),
       form.el,
       el('div', { className: 'example' },
@@ -3391,6 +3578,115 @@ export function renderPay(host, ctx) {
         el('label', { className: 'field field--fill' },
           sampleInput, el('span', { className: 'field__label' }, t('apay.example_order'))),
         hint));
+  }
+
+  /* ── блок «демо-оплата» ─────────────────────────────────────────────
+
+     Владелец хочет увидеть экран оплаты своими глазами до того, как банк
+     выдаст ключи. В демо-режиме сервис рисует настоящий QR сам, а кнопка
+     «Показать пример» выпускает учебный заказ прямо здесь, в шторке. */
+
+  function demoBlock() {
+    const s = data.settings || {};
+    const on = !!s.demo;
+
+    const box = el('input', { type: 'checkbox', checked: on });
+    box.addEventListener('change', async () => {
+      const want = box.checked;
+      box.disabled = true;
+      try {
+        await put({ demo: want }, want ? t('apay.demo_on') : t('apay.demo_off'));
+        haptic();
+      } catch (e) {
+        box.checked = !want;            // сервер не принял — возвращаем как было
+        box.disabled = false;
+        toast(errText(e), { type: 'err' });
+      }
+    });
+
+    const show = el('button', {
+      className: 'btn btn--primary', type: 'button',
+      onClick: async () => {
+        if (show.classList.contains('is-loading')) return;
+        spinner(show, true);
+        try {
+          const demo = await api.post('/admin/pay/demo', {});
+          if (!alive) return;
+          demoSheet(demo);
+        } catch (e) {
+          toast(errText(e), { type: 'err', ms: 7000 });
+        } finally {
+          spinner(show, false);
+        }
+      },
+    }, t('apay.demo_show'));
+
+    const switchRow = el('div', { className: 'form__f--sw' },
+      el('div', { className: 'grow' },
+        el('span', { className: 'form__cap' }, t('apay.demo')),
+        el('span', { className: 'field__hint' }, t('apay.demo_hint'))),
+      el('label', { className: 'switch' }, box, el('span', { className: 'switch__track' })));
+
+    return panel(t('apay.demo'),
+      el('div', { className: 'row gap-2 wrap' },
+        el('span', { className: 'badge ' + (on ? 'badge--ok' : '') },
+          on ? t('apay.demo_on') : t('apay.demo_off')),
+        chip(t('apay.demo_about'), {
+          info: true,
+          onClick: () => infoStory({
+            title: t('apay.demo'),
+            text: [t('apay.demo_story1'), t('apay.demo_story2'), t('apay.demo_story3')],
+            art: '🧾',
+            tone: 'mint',
+            cta: t('common.ok'),
+          }),
+        })),
+      switchRow,
+      el('div', { className: 'row gap-2 wrap' }, show));
+  }
+
+  /** Тот самый экран, который увидит клиент: настоящий код и настоящая сумма. */
+  function demoSheet(demo) {
+    const src = qrSource(demo.qr_base64);
+    const state = el('p', { className: 'hintline' }, t('apay.demo_wait_pay'));
+    const link = clientLink(demo.public_id, demo.token);
+
+    sheet({
+      full: true,
+      title: t('apay.demo_sheet'),
+      content: el('div', { className: 'col gap-3' },
+        el('p', { className: 'sheet__text' }, t('apay.demo_lead')),
+        el('div', { className: 'qrcard' },
+          src
+            ? el('img', {
+              className: 'qrcard__img', src, alt: t('apay.qr'),
+              width: 260, height: 260, decoding: 'async',
+            })
+            : emptyBox(t('apay.demo_noqr')),
+          el('div', { className: 'qrcard__cap' }, t('apay.demo_sum')),
+          el('div', { className: 'qrcard__sum num' }, money(demo.amount || 0)),
+          el('div', { className: 'qrcard__id mono' }, demo.public_id || '')),
+        copyLine(t('apay.demo_link'), link),
+        state),
+      actions: [
+        { label: t('common.close'), kind: 'ghost' },
+        {
+          label: t('adm.order_mark_paid'),
+          kind: 'primary',
+          // Шторку не закрываем: человек должен увидеть, как экран стал «оплачено».
+          close: false,
+          onClick: async (btn) => {
+            await api.post('/admin/pay/demo/confirm', { public_id: demo.public_id });
+            haptic(20);
+            btn.disabled = true;
+            state.className = 'hintline hintline--ok';
+            state.textContent = t('apay.demo_done');
+            toast(t('apay.demo_done'), { type: 'ok' });
+            return true;
+          },
+        },
+      ],
+    });
   }
 
   /* ── блок «уведомление банка» ───────────────────────────────────── */
@@ -3461,6 +3757,7 @@ export function renderPay(host, ctx) {
     forms = [];
     body.replaceChildren(
       bankBlock(),
+      demoBlock(),
       pointsBlock(),
       prepayBlock(),
       callbackBlock());

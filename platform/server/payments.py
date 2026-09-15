@@ -196,6 +196,7 @@ def admin_view():
         'qr_ttl_s': cfg['ttl'],
         'callback_login': cfg['callback_login'],      # логин не секрет, пароль — секрет
         'callback_password_set': bool(cfg['callback_password']),
+        'demo': cfg['demo'],
         'prepay': {
             'min': cfg['prepay_min'], 'max': cfg['prepay_max'],
             'percent': cfg['prepay_percent'], 'commission': cfg['prepay_commission'],

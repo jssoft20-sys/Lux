@@ -11,7 +11,7 @@
       сохранения тарифа. Настоящую цену заказа всё равно считает сервер.
 */
 
-import { el, toast, confirm as ask, spinner } from '../core/ui.js';
+import { el, toast, confirm as ask, spinner, segmented } from '../core/ui.js';
 import { t as coreT, tp, has as hasKey, getLang } from '../core/i18n.js';
 
 /* ─────────────────────────────────────────────────────── тексты
@@ -29,6 +29,7 @@ const EXTRA = {
     'adm.sections': 'Разделы',
     'adm.period_year': 'Год',
     'adm.period_all': 'Всё время',
+    'adm.theme_auto': 'Система',
     'adm.live_on': 'Данные идут в реальном времени',
     'adm.live_off': 'Связь с сервером потерялась, восстанавливаем',
     'adm.ov_conversion': 'Конверсия поиска',
@@ -164,6 +165,7 @@ const EXTRA = {
     'adm.sections': 'Бөлүмдөр',
     'adm.period_year': 'Жыл',
     'adm.period_all': 'Бардык убакыт',
+    'adm.theme_auto': 'Система',
     'adm.live_on': 'Маалымат түз эфирде келип турат',
     'adm.live_off': 'Сервер менен байланыш үзүлдү, кайра туташтырып жатабыз',
     'adm.ov_conversion': 'Издөөнүн конверсиясы',
@@ -557,6 +559,25 @@ function buildField(def, form) {
     read = () => picked.slice();
     write = (v) => { picked = Array.isArray(v) ? v.slice() : []; paint(); };
     input = box;
+  } else if (def.kind === 'seg') {
+    /* Вариантов до пяти — показываем их все сразу. Выпадающий список ради трёх
+       строк прячет выбор за лишним нажатием: человек не видит, из чего выбирал,
+       пока не откроет. Сегмент виден целиком и переключается одним пальцем. */
+    const options = def.options || [];
+    const box = segmented(options.map((o) => ({ value: o.value, label: optionLabel(o) })), {
+      value: options.length ? options[0].value : '',
+      label: labelText(def),
+      onChange: () => form.touch(def.name),
+    });
+    wrap = el('div', { className: 'form__f form__f--seg' },
+      el('span', { className: 'form__cap' }, labelText(def)), box, hint);
+    read = () => {
+      const v = box.value();
+      if (v === undefined) return def.number ? 0 : '';
+      return def.number ? Number(v) : v;
+    };
+    write = (v) => { box.set(v === null || v === undefined ? '' : String(v)); };
+    input = box;
   } else if (def.kind === 'select') {
     input = el('select', { className: 'field__input', id });
     for (const o of def.options || []) {
@@ -666,8 +687,9 @@ export function createForm(spec) {
     grid.appendChild(cell.wrap);
     // Переключатель и список сообщают о себе через change, остальные — по каждому
     // нажатию: живой калькулятор тарифа должен считать, пока человек печатает.
+    // Чипы и сегменты зовут form.touch() сами — у них нет ни input, ни change.
     const evt = def.kind === 'switch' || def.kind === 'select' ? 'change' : 'input';
-    if (cell.input && def.kind !== 'chips') {
+    if (cell.input && def.kind !== 'chips' && def.kind !== 'seg') {
       cell.input.addEventListener(evt, () => onEdit(def.name));
     }
   }
