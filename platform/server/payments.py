@@ -125,6 +125,7 @@ def config():
         'prepay_max': max(0, settings.get_int('payment.prepay_max', PREPAY_MAX)),
         'prepay_percent': settings.get_float('payment.prepay_percent', 0),
         'prepay_commission': settings.get_bool('payment.prepay_commission', True),
+        'demo': settings.get_bool('payment.demo', False),
     }
 
 
@@ -144,6 +145,11 @@ def provider():
     if not cfg['enabled']:
         return 'none'
     code = cfg['provider']
+    # В демо-режиме реквизиты банка не нужны: код рисуем сами, деньги не ходят.
+    # Это единственный способ показать владельцу настоящий экран оплаты до того,
+    # как банк выдаст ключи.
+    if code == 'optima' and cfg['demo']:
+        return 'optima'
     if code == 'optima' and not (cfg['key'] and cfg['company']):
         _warn_once('optima_creds',
                    'Оптима включена, но не заполнены payment.optima_key или'
@@ -980,6 +986,42 @@ def last_qr(order):
                   'ORDER BY created_at DESC, rowid DESC LIMIT 1', (order_id,))
 
 
+def demo_qr(order, amount):
+    """Код оплаты, нарисованный нами, без похода в банк.
+
+    Нужен, чтобы владелец увидел настоящий экран оплаты раньше, чем банк выдаст
+    ключи: клиент видит то же самое, что увидит в бою, а деньги никуда не идут.
+    Код внутри честный — камера его прочитает и откроет отслеживание заказа.
+    """
+    from . import qrcode                       # ленивый импорт: в бою он не нужен
+    _ensure_schema()
+    cfg = config()
+    t = db.now()
+    tid = 'demo-%s-%d' % (order['public_id'], t)
+    base = cfg['base_url'] or ''
+    text = ('%s/share/%s' % (base, order['public_id'])) if base else \
+           ('SPRINTERGO:%s:%d' % (order['public_id'], amount))
+
+    row = {
+        'transaction_id': tid, 'order_id': order['id'], 'public_id': order['public_id'],
+        'provider': 'demo', 'amount': int(amount), 'status': 'pending',
+        'qr_url': None,
+        'qr_base64': base64.b64encode(qrcode.png(text, size=512)).decode('ascii'),
+        'note': _note_for(order, cfg), 'sale_point': 0, 'cash': 0,
+        'created_at': t, 'expires_at': t + cfg['ttl'], 'checked_at': 0, 'paid_amount': 0,
+    }
+    with db.tx():
+        db.execute("UPDATE payment_qr SET status='stale' "
+                   "WHERE order_id=? AND status='pending'", (order['id'],))
+        db.insert('payment_qr', row)
+        db.update('orders', {'payment_method': 'online', 'payment_status': 'pending',
+                             'payment_id': tid}, 'id=?', (order['id'],))
+        _event(order['id'], 'payment_started',
+               {'amount': int(amount), 'provider': 'demo', 'transaction_id': tid})
+    log('оплата: демо-код по заказу', order['public_id'], 'на', money_str(amount), 'сом')
+    return qr_view(row)
+
+
 def qr_for_order(order, refresh=False, amount=None):
     """Код оплаты заказа: живой отдаём как есть, протухший или на другую сумму —
     перевыпускаем. Повторное нажатие кнопки не должно плодить транзакции."""
@@ -996,6 +1038,9 @@ def qr_for_order(order, refresh=False, amount=None):
                  and int(row['amount']) == want and int(row['expires_at']) > db.now())
         if alive:
             return qr_view(row)
+        # В демо-режиме банк не участвует: код рисуем сами.
+        if config()['demo']:
+            return demo_qr(order, want)
         return optima.init_payment(order, want)
 
 

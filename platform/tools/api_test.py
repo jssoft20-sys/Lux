@@ -641,6 +641,37 @@ def main():
             code, closed = req('GET', '/admin/pay/settings')
             check('реквизиты закрыты без входа', closed and code in (401, 403), f'код {code}')
 
+            # Демо-оплата: владелец должен увидеть настоящий экран раньше банка.
+            code, off = req('POST', '/admin/pay/demo', {}, token=atoken)
+            check('без включённого демо пример не выпускается', code == 400, f'код {code}')
+
+            req('PUT', '/admin/settings',
+                {'values': {'payment.demo': True, 'payment.enabled': True,
+                            'payment.provider': 'optima'}}, token=atoken)
+            code, demo = req('POST', '/admin/pay/demo', {}, token=atoken)
+            dpid = (demo or {}).get('public_id')
+            check('пример оплаты выпущен', code in (200, 201) and bool(dpid), str(demo)[:200])
+            check('в нём настоящая картинка кода',
+                  len((demo or {}).get('qr_base64') or '') > 500,
+                  f"символов {len((demo or {}).get('qr_base64') or '')}")
+            check('и сумма брони названа', bool((demo or {}).get('sum')), str(demo.get('sum')))
+
+            if dpid:
+                code, conf = req('POST', '/admin/pay/demo/confirm',
+                                 {'public_id': dpid}, token=atoken)
+                check('пример можно отметить оплаченным',
+                      code == 200 and (conf or {}).get('payment_status') == 'paid',
+                      str(conf)[:160])
+            # Самое важное: этой кнопкой нельзя объявить оплаченным живой заказ.
+            if spid:
+                code, bad_conf = req('POST', '/admin/pay/demo/confirm',
+                                     {'public_id': spid}, token=atoken)
+                check('настоящий заказ этой кнопкой оплаченным не сделать',
+                      code == 403, f'код {code}: {str(bad_conf)[:140]}')
+            req('PUT', '/admin/settings',
+                {'values': {'payment.demo': False, 'payment.enabled': False,
+                            'payment.provider': 'none'}}, token=atoken)
+
     finally:
         log.seek(0)
         server_log = log.read()

@@ -39,7 +39,7 @@
 import hmac
 import secrets
 
-from .. import auth, db, i18n_server as i18n, payments, settings
+from .. import auth, db, i18n_server as i18n, payments, pricing, settings
 from ..core import (LIMIT, ApiError, Router, bad, conflict, forbidden, log,
                     not_found, too_many)
 
@@ -362,6 +362,85 @@ def admin_test(ctx):
     if res.get('hint'):
         body['hint'] = res['hint']
     return body
+
+
+@router.post(API + '/admin/pay/demo')
+def admin_demo(ctx):
+    """Показать владельцу тот самый экран оплаты, не дожидаясь банка.
+
+    Заводим настоящий заказ на самую дешёвую машину, выпускаем настоящий QR —
+    нарисованный нами, а не банком, — и отдаём ссылку, по которой его видно
+    так же, как увидит клиент. Деньги никуда не идут.
+    """
+    user = _admin(ctx)
+    if not LIMIT.check('paydemo:%s' % user['id'], TEST_PER_MIN, 60):
+        too_many('Слишком часто. Подождите минуту.')
+    if not settings.get_bool('payment.demo', False):
+        bad('Сначала включите демо-режим', 'demo_off')
+
+    tariff = db.row('SELECT * FROM tariffs WHERE active=1 ORDER BY sort LIMIT 1')
+    if not tariff:
+        conflict('Нет ни одного тарифа — сначала заведите машины')
+
+    # Заказ помечаем в комментарии: чтобы через месяц было понятно, откуда он
+    # взялся в списке, и чтобы его не искали как настоящий.
+    pts = [{'addr': 'Пример: Чуй 100', 'lat': settings.get_float('map.center_lat', 42.8746),
+            'lng': settings.get_float('map.center_lng', 74.5698)},
+           {'addr': 'Пример: Ахунбаева 50',
+            'lat': settings.get_float('map.center_lat', 42.8746) - 0.03,
+            'lng': settings.get_float('map.center_lng', 74.5698) + 0.04}]
+    quote = pricing.quote(tariff, points=[(p['lat'], p['lng']) for p in pts],
+                          distance_m=5200, duration_s=900)
+    t = db.now()
+    fields = {
+        'client_id': None, 'tariff_id': tariff['id'], 'status': 'draft', 'lang': 'ru',
+        'points': db.jdump(pts), 'route': db.jdump([]),
+        'distance_m': 5200, 'duration_s': 900, 'loaders': 0, 'extras': db.jdump([]),
+        'comment': 'Демонстрация оплаты для администратора', 'created_at': t,
+        'payment_method': 'online', 'payment_status': 'none',
+        'public_id': 'DEMO' + secrets.token_hex(2).upper(),
+        'track_token': secrets.token_urlsafe(24),
+        'view_token': secrets.token_urlsafe(18),
+    }
+    fields.update(pricing.to_order_fields(quote))
+    oid = db.insert('orders', fields)
+    order = db.row('SELECT * FROM orders WHERE id=?', (oid,))
+
+    qr = payments.qr_for_order(order, refresh=True)
+    log('админ', user.get('email'), 'выпустил демо-код по заказу', order['public_id'])
+    return {
+        'ok': True,
+        'public_id': order['public_id'],
+        'token': order['track_token'],
+        'amount': qr['amount'],
+        'sum': qr['sum'],
+        'qr_base64': qr['qr_base64'],
+        'price_total': order['price_total'],
+        'hint': 'Это пример. Деньги никуда не идут, заказ можно удалить.',
+    }, 201
+
+
+@router.post(API + '/admin/pay/demo/confirm')
+def admin_demo_confirm(ctx):
+    """Отметить демо-заказ оплаченным — за банк, которого нет."""
+    user = _admin(ctx)
+    pid = str(ctx.need('public_id', str, 32) or '').strip().upper()
+    order = db.row('SELECT * FROM orders WHERE public_id=?', (pid,))
+    if not order:
+        not_found('Такого заказа нет')
+    if not str(order.get('comment') or '').startswith('Демонстрация'):
+        # Чтобы кнопкой из админки нельзя было объявить оплаченным настоящий
+        # заказ, по которому деньги не приходили.
+        forbidden('Отметить оплаченным можно только демонстрационный заказ')
+
+    row = payments.last_qr(order)
+    if not row:
+        conflict('По этому заказу код не выпускался')
+    state, fresh = payments.confirm(row, int(row['amount']), source='demo')
+    log('админ', user.get('email'), 'отметил демо-заказ', pid, 'оплаченным:', state)
+    return {'ok': state in ('paid', 'duplicate'), 'state': state,
+            'payment_status': (fresh or {}).get('payment_status'),
+            'order_status': (fresh or {}).get('status')}
 
 
 @router.put(API + '/admin/pay/settings')
