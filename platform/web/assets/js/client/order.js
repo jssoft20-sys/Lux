@@ -1337,7 +1337,10 @@ export function mountOrder(app) {
       chip(t('info.delivery'), { info: true, onClick: tellDelivery }),
       chip(t('info.loaders'), { info: true, onClick: tellLoaders }),
       chip(bodyLabel, { info: true, onClick: tellBody }),
-      chip(t('d2d.title'), { info: true, onClick: tellDoor }),
+      // Подпись у справочного чипа своя, не такая же, как у переключателя:
+      // две одинаковые надписи «От двери до двери» на одном экране читаются как
+      // две кнопки, хотя вторая всего лишь объясняет первую.
+      chip(t('info.door'), { info: true, onClick: tellDoor }),
       chip(t('info.wait'), { info: true, onClick: tellWaiting }));
 
     const extrasVal = el('span');
