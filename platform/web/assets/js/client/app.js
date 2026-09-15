@@ -20,10 +20,11 @@ import {
 import { createMap, pin } from '../core/map.js';
 import {
   el, toast, sheet, confirm, haptic, skeleton, mountStars, copyText,
+  pressable, rowGroup, segmented,
 } from '../core/ui.js';
 import { createRouter } from '../core/router.js';
 import {
-  setTimeZone, money, distance, duration, dateTime, date as fmtDate,
+  setTimeZone, money, moneyShort, distance, duration, dateTime, date as fmtDate,
   phone as fmtPhone, plate as fmtPlate, initials,
 } from '../core/fmt.js';
 import { mountOrder } from './order.js';
@@ -64,6 +65,14 @@ extend({
     'me.forgot': 'Готово. Больше мы вас не помним',
     'me.support_call': 'Позвонить в поддержку',
     'me.wa_hello': 'Здравствуйте! У меня вопрос по заказу машины.',
+    'me.hub_orders': 'Заказы',
+    'me.places': 'Адреса',
+    'me.places_none': 'Не отмечены',
+    'me.details': 'Заказ целиком',
+    'me.no_phone': 'Номер узнаем с первого заказа',
+    'me.recent': 'Недавние адреса',
+    'me.recent_empty': 'Адреса появятся здесь после первой поездки.',
+    'me.theme_note': 'Открываемся светлой — на улице так виднее',
 
     'bn.title': 'Бонусы',
     'bn.sub': 'Кэшбек и приглашения',
@@ -88,6 +97,7 @@ extend({
     'bn.applied': 'Готово, {sum} уже на счету',
     'bn.history': 'Движение бонусов',
     'bn.history_empty': 'Здесь появятся начисления и списания.',
+    'bn.show_all': 'Показать все движения',
     'bn.spend': 'Списать бонусы',
     'bn.spend_on': 'Спишем {sum} с бонусного счёта',
     'bn.spend_rest': 'Останется {sum}',
@@ -116,8 +126,8 @@ extend({
     'fav.drop': 'Убрать',
     'fav.dropped': 'Убрали из любимых',
     'fav.hint': 'Отметьте второй адрес — и поездка между ними будет в одно касание.',
-    'fav.empty': 'Откройте любой заказ в истории и отметьте дом и работу — '
-      + 'они встанут в начало подсказок адреса.',
+    'fav.empty': 'Отметьте дом и работу — они встанут в начало подсказок адреса, '
+      + 'а поездка между ними соберётся одной кнопкой.',
     'fav.ride_home': 'Домой',
     'fav.ride_work': 'На работу',
     'fav.ride_sub': '{from} → {to}',
@@ -159,6 +169,14 @@ extend({
     'me.forgot': 'Болду. Эми сизди эстебейбиз',
     'me.support_call': 'Колдоо кызматына чалуу',
     'me.wa_hello': 'Саламатсызбы! Унаа заказы боюнча суроом бар.',
+    'me.hub_orders': 'Заказдар',
+    'me.places': 'Даректер',
+    'me.places_none': 'Белгиленген эмес',
+    'me.details': 'Заказдын толугу',
+    'me.no_phone': 'Номериңизди биринчи заказдан билебиз',
+    'me.recent': 'Акыркы даректер',
+    'me.recent_empty': 'Биринчи сапардан кийин даректер ушул жерде турат.',
+    'me.theme_note': 'Ачык түс менен ачылабыз — көчөдө ушул жакшы көрүнөт',
 
     'bn.title': 'Бонустар',
     'bn.sub': 'Кэшбек жана чакыруу',
@@ -184,6 +202,7 @@ extend({
     'bn.applied': 'Болду, {sum} эсепке түштү',
     'bn.history': 'Бонустун кыймылы',
     'bn.history_empty': 'Кошулган жана алынган сумма ушул жерден көрүнөт.',
+    'bn.show_all': 'Бардык кыймылды көрсөтүү',
     'bn.spend': 'Бонус менен төлөө',
     'bn.spend_on': 'Бонус эсебинен {sum} кетет',
     'bn.spend_rest': '{sum} калат',
@@ -212,8 +231,8 @@ extend({
     'fav.drop': 'Алып салуу',
     'fav.dropped': 'Сүйүктүүлөрдөн алынды',
     'fav.hint': 'Экинчи даректи да белгилеңиз — ортосундагы сапар бир басууда болот.',
-    'fav.empty': 'Тарыхтан каалаган заказды ачып, үйүңүз менен жумушуңузду белгилеңиз — '
-      + 'алар дарек тизмесинин башына турат.',
+    'fav.empty': 'Үйүңүз менен жумушуңузду белгилеңиз — алар дарек тизмесинин башына '
+      + 'турат, ортосундагы сапар бир баскычта чогулат.',
     'fav.ride_home': 'Үйгө',
     'fav.ride_work': 'Жумушка',
     'fav.ride_sub': '{from} → {to}',
@@ -232,6 +251,8 @@ export const KEY_ME = 'sg_me';
 export const KEY_CLIENT = 'sg_client';
 export const KEY_RECENT = 'sg_recent';
 export const KEY_THEME = 'sg_theme';
+/* Тот же ключ читает скрипт в index.html: «выбор темы человек уже делал». */
+export const KEY_THEME_SET = 'sg_theme_set';
 export const KEY_SEEN = 'sg_seen';       // подсказку при первом заходе уже показали
 export const KEY_PLACES = 'sg_places';   // любимые адреса: дом и работа
 
@@ -406,9 +427,29 @@ const THEMES = ['auto', 'dark', 'light'];
 const lightMedia = window.matchMedia('(prefers-color-scheme: light)');
 const themeWatchers = new Set();
 
+/**
+ * Какая тема выбрана: 'light' | 'dark' | 'auto'.
+ *
+ * Владелец сказал прямо: сервис открывается светлым. Поэтому «ничего не
+ * выбирали» — это светлая, а не «как в системе»: человек с тёмным телефоном
+ * увидел бы иначе покрашенный сервис ещё до того, как что-то настроил.
+ *
+ * «Как в системе» хранится отсутствием ключа рядом с отметкой о сделанном
+ * выборе — ровно так же, как это делает скрипт в index.html, который красит
+ * страницу до первой отрисовки. Две правды об одной настройке нам не нужны.
+ */
 export function getTheme() {
   const saved = readJson(KEY_THEME);
-  return THEMES.indexOf(saved) >= 0 ? saved : 'auto';
+  if (THEMES.indexOf(saved) >= 0) return saved;
+  return themePicked() ? 'auto' : 'light';
+}
+
+function themePicked() {
+  try {
+    return !!localStorage.getItem(KEY_THEME_SET);
+  } catch (e) {
+    return false;               // хранилище закрыто — считаем, что не выбирали
+  }
 }
 
 /** Светло ли сейчас на самом деле: «как в системе» спрашиваем у системы. */
@@ -419,8 +460,15 @@ export function isLightNow() {
 
 /** Выбор темы. 'auto' убирает атрибут и отдаёт решение системе. */
 export function setTheme(mode) {
-  const next = THEMES.indexOf(mode) >= 0 ? mode : 'auto';
+  const next = THEMES.indexOf(mode) >= 0 ? mode : 'light';
   writeJson(KEY_THEME, next === 'auto' ? null : next);
+  // Отметка о сделанном выборе: без неё «как в системе» на следующей загрузке
+  // не отличить от «ничего не выбирали», и человека молча вернуло бы к светлой.
+  try {
+    localStorage.setItem(KEY_THEME_SET, '1');
+  } catch (e) {
+    /* приватный режим: выбор продержится до перезагрузки, это не повод падать */
+  }
   applyTheme();
   return next;
 }
@@ -542,6 +590,7 @@ const ICONS = {
   home: '<path d="M4.2 10.8 12 4.4l7.8 6.4V19a1.1 1.1 0 0 1-1.1 1.1h-3.6v-5.3H8.9v5.3H5.3A1.1 1.1 0 0 1 4.2 19z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>',
   work: '<path d="M3.6 8.4h16.8v10a1.1 1.1 0 0 1-1.1 1.1H4.7a1.1 1.1 0 0 1-1.1-1.1z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 8.4V6.2c0-.6.5-1.1 1.1-1.1h3.8c.6 0 1.1.5 1.1 1.1v2.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M3.6 13.2h16.8" fill="none" stroke="currentColor" stroke-width="1.7"/>',
   repeat: '<path d="M5 9.4a7 7 0 0 1 11.6-2.6l2 1.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M19 14.6a7 7 0 0 1-11.6 2.6l-2-1.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M18.9 4.6v4.3h-4.3M5.1 19.4v-4.3h4.3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+  gear: '<circle cx="12" cy="12" r="3.1" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 14.2a1.5 1.5 0 0 0 .3 1.7l.1.1a1.8 1.8 0 1 1-2.6 2.6l-.1-.1a1.5 1.5 0 0 0-2.6 1.1v.3a1.8 1.8 0 1 1-3.6 0v-.2a1.5 1.5 0 0 0-2.6-1.1l-.1.1a1.8 1.8 0 1 1-2.6-2.6l.1-.1a1.5 1.5 0 0 0-1.1-2.6h-.3a1.8 1.8 0 1 1 0-3.6h.2a1.5 1.5 0 0 0 1.1-2.6l-.1-.1a1.8 1.8 0 1 1 2.6-2.6l.1.1a1.5 1.5 0 0 0 1.7.3h.1a1.5 1.5 0 0 0 .9-1.4v-.3a1.8 1.8 0 1 1 3.6 0v.2a1.5 1.5 0 0 0 2.6 1.1l.1-.1a1.8 1.8 0 1 1 2.6 2.6l-.1.1a1.5 1.5 0 0 0 1.1 2.6h.3a1.8 1.8 0 1 1 0 3.6h-.2a1.5 1.5 0 0 0-1.4.9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>',
   share: '<circle cx="17.6" cy="6.2" r="2.6" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="6.4" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="17.6" cy="17.8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8.8 10.8 15.2 7.4M8.8 13.2l6.4 3.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
 };
 
@@ -813,6 +862,242 @@ const OWN_CSS = `
 /* На широком экране шторка стоит слева, подсказке хватает места рядом с ней. */
 @media (min-width: 620px) {
   .sg-flash { left: var(--sp-4); right: auto; width: 420px; }
+}
+
+/* ── профиль: полки вместо одной длинной ленты ─────────────────────────── */
+
+/* Профиль открывается во весь экран, и разделы в нём переключают, а не листают.
+   Шапка шторки работает шапкой раздела: слева «назад», посередине название,
+   справа крестик — так же, как в приложениях, к которым человек привык. */
+
+.sg-me .sheet__body {
+  padding-bottom: calc(var(--sp-6) + var(--safe-b));
+  /* Раздел уезжает вбок; без этого на время переезда появлялась бы
+     горизонтальная прокрутка и экран дёргался бы вправо. */
+  overflow-x: hidden;
+}
+
+.sg-me__wrap { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+/* Подпись группы и так отделена промежутком колонки — своего отступа сверху
+   ей тут не нужно, иначе между карточками зияет дыра. */
+.sg-me__wrap > .sg-group { padding: var(--sp-1) 0 0; }
+.sg-me__wrap > .sheet__text { padding-bottom: 0; }
+
+/* Сцена держит высоту, пока разделы меняются местами: уходящий лежит абсолютом
+   и места в потоке не занимает, а без подпорки шторка схлопнулась бы до нуля
+   и тут же прыгнула обратно. */
+.sg-stage {
+  position: relative;
+  transition: min-height var(--dur-2) var(--ease);
+}
+
+.sg-view {
+  transition: opacity var(--dur-2) var(--ease),
+              transform var(--dur-2) var(--ease-spring);
+}
+
+/* Вглубь — раздел въезжает справа, назад — слева. Направление и есть ответ на
+   вопрос «где я оказался»: его читают быстрее любой надписи. */
+.sg-view--enter { opacity: 0; transform: translateX(30px); }
+.sg-view--back.sg-view--enter { transform: translateX(-30px); }
+
+.sg-view--out {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  opacity: 0;
+  transform: translateX(-24px);
+  pointer-events: none;
+  transition: opacity var(--dur-1) var(--ease-in),
+              transform var(--dur-2) var(--ease);
+}
+.sg-view--out.sg-view--back-out { transform: translateX(24px); }
+
+/* Шапка профиля: лицо, имя, телефон. Нажатие ведёт в настройки — имя правят там. */
+.sg-me__card {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sg-me__who {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sg-me__name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -.01em;
+}
+
+.sg-me__phone {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.sg-me__since { color: var(--muted-2); font-size: var(--fs-xs); }
+
+/* Четыре полки. Две в ряд: на 360 px три уже не читаются, а одна в ряд —
+   это снова лента, от которой мы и уходим. */
+.sg-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+.sg-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 118px;
+  padding: var(--sp-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sg-tile__ico {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.sg-tile__ico > svg { width: 22px; height: 22px; }
+
+.sg-tile--accent .sg-tile__ico { background: var(--accent-soft); color: var(--accent-text); }
+
+.sg-tile__name { color: var(--muted); font-size: var(--fs-sm); line-height: 1.3; }
+
+.sg-tile__val {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 800;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Плотная группа строк в одной карточке: разделители внутри, а не зазоры
+   снаружи — десять отдельных карточек читаются как десять разных дел. */
+.sg-me__rows {
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.sg-me__rows > * + * { border-top: 1px solid var(--line-soft); }
+
+/* Строка въезжает один раз — когда список впервые появился. Задержку ставит
+   скрипт по номеру строки, здесь только само движение. */
+.sg-rise { animation: sg-me-rise var(--dur-2) var(--ease) backwards; }
+
+@keyframes sg-me-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Три цифры о заказах одной строкой: сколько всего, сколько доехало, на сколько. */
+.sg-stats {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--sp-2);
+}
+
+.sg-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.sg-stat__val {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.sg-stat__name { color: var(--muted); font-size: var(--fs-xs); line-height: 1.3; }
+
+/* Карта в карточке заказа: только посмотреть, куда ездили. */
+.sg-me__map {
+  position: relative;
+  height: 172px;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+/* Разбивка цены стоит карточкой, как и всё остальное на экране. */
+.sg-me__sums {
+  padding: var(--sp-1) var(--sp-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+/* Отметки «дом» и «работа» внутри профиля. Ужиматься кнопкам нельзя: подпись
+   ломается на две строки и строка адреса раздувается вдвое. Поэтому отступы
+   тут поджаты — на 360 px обе подписи должны встать в один ряд. Если всё-таки
+   не хватит, вторая кнопка перенесётся под первую, а не порвёт надпись. */
+.sg-me .sg-mark { flex-wrap: wrap; padding: 0 0 var(--sp-2); }
+.sg-me .sg-mark__b { flex: none; padding: 0 var(--sp-3) 0 var(--sp-2); }
+
+/* Убрать отметку «дом»/«работа» — кнопка на 44 px, иначе в неё не попасть. */
+.sg-me__x {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-full);
+  color: var(--muted-2);
+}
+.sg-me__x > svg { width: 20px; height: 20px; }
+.sg-me__x.is-press { color: var(--err); }
+
+/* Заказ, который едет прямо сейчас, и поездка «домой» — единственные строки
+   профиля с жёлтым значком: это то, ради чего его чаще всего и открывают. */
+.sg-me__live .rowgroup__ico,
+.sg-me__ride .rowgroup__ico { background: var(--accent-soft); color: var(--accent-text); }
+
+/* На большом экране полок в ряд больше: место есть, а тянуться пальцем
+   через весь монитор не нужно. */
+@media (min-width: 620px) {
+  .sg-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 `;
 
@@ -1217,25 +1502,6 @@ function paintProfileButton() {
 
 /* ─────────────────────────────────────────────────────── кирпичики профиля */
 
-/* Шапка вида. Липкая: список заказов длинный, а кнопка «назад» должна
-   оставаться под большим пальцем, куда бы человек ни прокрутил. */
-function viewHead(title, sub, onBack, onClose) {
-  const close = onClose ? iconBtn('close', 'sg-back', t('common.close'), onClose) : null;
-  if (close) close.style.marginLeft = '0';   // отрицательный отступ у .sg-back — для левого края
-  return el('div', {
-    className: 'sg-head',
-    style: {
-      position: 'sticky', top: '0', zIndex: '3',
-      background: 'var(--surface)', padding: 'var(--sp-1) 0 var(--sp-3)',
-    },
-  },
-    onBack ? iconBtn('back', 'sg-back', t('common.back'), onBack) : null,
-    el('div', { className: 'sg-head__text' },
-      el('div', { className: 'sg-head__title truncate' }, title),
-      sub ? el('div', { className: 'sg-head__sub' }, sub) : null),
-    close);
-}
-
 function group(title) {
   return el('div', { className: 'sg-group' }, title);
 }
@@ -1265,42 +1531,6 @@ function textField(label, value, opts = {}) {
     el('span', { className: 'field__label' }, label),
     opts.hint ? el('span', { className: 'field__hint' }, opts.hint) : null);
   return { node, input };
-}
-
-/* Переключатель из нескольких кнопок. Высоту поднимаем до 44 px: базовые
-   34 px в components.css рассчитаны на мышь, а здесь палец. */
-function segmented(items, active, onPick) {
-  const box = el('div', { className: 'segmented' });
-  for (const item of items) {
-    const on = item.value === active;
-    box.appendChild(el('button', {
-      type: 'button',
-      className: 'segmented__i' + (on ? ' is-on' : ''),
-      'aria-pressed': on ? 'true' : 'false',
-      style: { minHeight: '44px' },
-      onClick: () => { if (!on) { haptic(); onPick(item.value); } },
-    }, item.label));
-  }
-  return box;
-}
-
-/** Строка списка с иконкой: ведёт куда-то или звонит. */
-function linkRow(iconName, title, sub, opts = {}) {
-  const kids = [
-    el('span', { className: 'sg-item__icon' + (opts.accent ? ' sg-item__icon--accent' : ''), html: icon(iconName) }),
-    el('span', { className: 'sg-item__text' },
-      el('span', { className: 'sg-item__title' }, title),
-      sub ? el('span', { className: 'sg-item__sub' }, sub) : null),
-    el('span', { className: 'sg-opt__go', html: icon('go') }),
-  ];
-  if (opts.href) {
-    return el('a', {
-      className: 'sg-item', href: opts.href,
-      target: opts.blank ? '_blank' : null,
-      rel: opts.blank ? 'noopener noreferrer' : null,
-    }, kids);
-  }
-  return el('button', { type: 'button', className: 'sg-item', onClick: opts.onClick }, kids);
 }
 
 /** Приписка к адресу: подъезд, квартира, этаж — то, что человек уточнил сам. */
@@ -1339,6 +1569,23 @@ function historyRow(item, onOpen) {
     el('span', { className: 'sg-opt__total' }, money(item.price_total || 0)));
 }
 
+/** Одна строка движения бонусов: плюс начислили, минус потратили. */
+function bonusMove(item) {
+  const amount = Number(item.amount) || 0;
+  const plus = amount > 0;
+  return el('div', { className: 'sg-item' },
+    el('span', {
+      className: 'sg-item__icon' + (plus ? ' sg-item__icon--accent' : ''),
+      html: icon(plus ? 'plus' : 'minus'),
+    }),
+    el('span', { className: 'sg-item__text' },
+      el('span', { className: 'sg-item__title' }, item.text || ''),
+      el('span', { className: 'sg-item__sub' }, dateTime(item.at))),
+    el('span', {
+      className: 'sg-opt__total' + (plus ? ' t-accent' : ''),
+    }, (plus ? '+' : '−') + money(Math.abs(amount))));
+}
+
 /* Настройки плиток из /config. Пустые значения не подставляем совсем:
    Object.assign внутри createMap перекрыл бы ими её собственные умолчания,
    и вместо карты остался бы серый квадрат. Подпись — исключение: пустую
@@ -1354,12 +1601,7 @@ function mapTiles(cfg) {
 /* Маленькая карта в карточке заказа: пальцем не двигается, только показывает,
    куда ездили. Живёт вместе с видом и уничтожается вместе с ним. */
 function miniMap(app, coords, line) {
-  const box = el('div', {
-    style: {
-      position: 'relative', height: '168px', marginBottom: 'var(--sp-3)',
-      borderRadius: 'var(--r-md)', overflow: 'hidden',
-    },
-  });
+  const box = el('div', { className: 'sg-me__map' });
   const cfg = (app.cfg && app.cfg.map) || {};
   const map = createMap(box, Object.assign({
     center: coords[0] || cfg.center || [42.8746, 74.5698],
@@ -1399,20 +1641,199 @@ function miniMap(app, coords, line) {
   };
 }
 
-/* ─────────────────────────────────────────────────────── шторка профиля */
+/* ─────────────────────────────────────────────────────── живое движение
+
+   Три приёма, которые делают профиль приятным на ощупь, и ни один из них не
+   заставляет ждать: всё гаснет само, когда человек просил меньше движения —
+   длительности мы берём из токенов, а там в этом режиме стоит 1 мс. */
 
 /**
- * Профиль, история и карточка заказа в одной шторке. Шторка, а не отдельный
- * экран: под ней остаётся нетронутым набранный заказ, и человек возвращается
- * ровно туда, откуда ушёл.
+ * Число добегает до нового значения. Возвращает «остановить».
+ *
+ * onValue зовётся на каждом кадре: туда кладут «сколько показано сейчас», и
+ * если раздел пересоберётся на полпути, добег продолжится с того же места,
+ * а не начнётся сначала.
+ *
+ * grain — с каким шагом считать по дороге. Для денег это сто тыйынов: бегущие
+ * копейки читаются как сбой, а не как начисление. В конце показываем ровно то,
+ * что просили, — на цифру без округления человек и смотрит.
  */
-function openProfileSheet(app, startWith) {
+function countUp(node, from, to, render, onValue, grain) {
+  const time = dur('--dur-4', 560);
+  const a = Math.round(Number(from) || 0);
+  const b = Math.round(Number(to) || 0);
+  const step = Math.max(1, Math.round(Number(grain) || 1));
+  const show = (v) => {
+    node.textContent = render(v);
+    if (onValue) onValue(v);
+  };
+  if (time <= 20 || a === b) {
+    show(b);
+    return () => {};
+  }
+  let raf = 0;
+  const t0 = performance.now();
+  const frame = (now) => {
+    const k = Math.min(1, (now - t0) / time);
+    // Кубическое замедление: цифра стартует резво и мягко садится на место.
+    const eased = 1 - Math.pow(1 - k, 3);
+    show(k < 1 ? Math.round((a + (b - a) * eased) / step) * step : b);
+    raf = k < 1 ? requestAnimationFrame(frame) : 0;
+  };
+  show(a);
+  raf = requestAnimationFrame(frame);
+  return () => { if (raf) cancelAnimationFrame(raf); };
+}
+
+const fadeJobs = new WeakMap();
+
+/**
+ * Короткое растворение на месте: текст гаснет, меняется и проявляется обратно.
+ * Нужно при смене языка — мгновенная подмена всех надписей читается как сбой,
+ * а полноценный переезд был бы враньём: экран-то тот же самый.
+ */
+function fadeSwap(target, apply) {
+  const nodes = (Array.isArray(target) ? target : [target]).filter(Boolean);
+  const time = Math.round(dur('--dur-1', 140) * 0.8);
+  if (!nodes.length || time <= 20) {
+    apply();
+    return;
+  }
+  for (const node of nodes) {
+    const job = fadeJobs.get(node);
+    if (job) clearTimeout(job);
+    node.style.transition = 'opacity ' + time + 'ms var(--ease-in)';
+    node.style.opacity = '0';
+  }
+  const back = setTimeout(() => {
+    apply();
+    for (const node of nodes) {
+      node.style.transition = 'opacity ' + time + 'ms var(--ease)';
+      node.style.opacity = '';
+      const done = setTimeout(() => {
+        node.style.transition = '';
+        fadeJobs.delete(node);
+      }, time + 40);
+      fadeJobs.set(node, done);
+    }
+  }, time);
+  for (const node of nodes) fadeJobs.set(node, back);
+}
+
+/**
+ * Сцена, по которой ездят разделы. Новый раздел въезжает сбоку, старый уходит
+ * в ту же сторону и ложится абсолютом — в потоке его больше нет, поэтому
+ * высоту на время переезда держит сама сцена, иначе шторка успела бы
+ * схлопнуться до нуля и прыгнуть обратно.
+ *
+ * scroller — прокручиваемый ящик шторки: при смене раздела он возвращается
+ * наверх, а при перерисовке на месте остаётся там, где стоял.
+ */
+function createStage(scroller) {
+  const node = el('div', { className: 'sg-stage' });
+  let current = null;
+  let timer = 0;
+  let leaving = [];
+
+  function clean() {
+    for (const gone of leaving) gone.remove();
+    leaving = [];
+    node.style.minHeight = '';
+  }
+
+  /** Новый раздел с переездом. back — движение в обратную сторону. */
+  function show(next, back) {
+    next.classList.add('sg-view');
+    const old = current;
+    current = next;
+    clearTimeout(timer);
+    clean();
+
+    if (!old) {
+      node.replaceChildren(next);
+      return next;
+    }
+
+    const h0 = node.offsetHeight;
+    node.style.minHeight = h0 + 'px';
+    old.classList.add('sg-view--out');
+    if (back) old.classList.add('sg-view--back-out');
+    next.classList.add('sg-view--enter');
+    if (back) next.classList.add('sg-view--back');
+    node.appendChild(next);
+
+    const h1 = next.offsetHeight;          // заодно и есть тот самый пересчёт вёрстки
+    node.style.minHeight = h1 + 'px';
+    requestAnimationFrame(() => next.classList.remove('sg-view--enter', 'sg-view--back'));
+
+    leaving.push(old);
+    timer = setTimeout(clean, dur('--dur-2', 240) + 80);
+    if (scroller) scroller.scrollTop = 0;
+    return next;
+  }
+
+  /** Тот же раздел, собранный заново: данные пришли или сменился язык. */
+  function swap(next) {
+    next.classList.add('sg-view');
+    clearTimeout(timer);
+    clean();
+    current = next;
+    node.replaceChildren(next);
+    return next;
+  }
+
+  return { node, show, swap, current: () => current };
+}
+
+/* ─────────────────────────────────────────────────────── шторка профиля */
+
+/* Разделы профиля. overlay — то, что видно в адресе (#/~profile:bonus), по нему
+   человек возвращается в тот же раздел после перезагрузки. depth нужен только
+   для направления переезда: вглубь вправо, обратно влево. */
+const ME_SECTIONS = {
+  hub: { overlay: 'profile', depth: 0, title: () => t('common.profile') },
+  orders: { overlay: 'profile:orders', depth: 1, title: () => t('order.my_orders') },
+  bonus: { overlay: 'profile:bonus', depth: 1, title: () => t('bn.title') },
+  places: { overlay: 'profile:places', depth: 1, title: () => t('me.places') },
+  settings: { overlay: 'profile:settings', depth: 1, title: () => t('common.settings') },
+  order: { overlay: 'profile:order', depth: 2, title: () => t('me.details') },
+};
+
+/* Куда ведёт кнопка «назад» из раздела. */
+const ME_PARENT = {
+  orders: 'hub', bonus: 'hub', places: 'hub', settings: 'hub', order: 'orders',
+};
+
+/** Раздел по имени наложения из адреса. Незнакомое имя — это корень профиля. */
+function meSection(overlay) {
+  const raw = String(overlay || '');
+  if (raw !== 'profile' && raw.indexOf('profile:') !== 0) return '';
+  const tail = raw.slice('profile'.length).replace(/^:/, '');
+  return Object.prototype.hasOwnProperty.call(ME_SECTIONS, tail) ? tail : 'hub';
+}
+
+/**
+ * Профиль целиком: шапка, плитки разделов, заказы, бонусы, адреса, настройки.
+ *
+ * Открывается во весь экран и разложен по полочкам: разделы переключают, а не
+ * прокручивают — каждый помещается в экран, и до настроек больше не нужно
+ * пролистывать всю историю заказов.
+ *
+ * Открытый раздел живёт в адресе, поэтому перезагрузка возвращает человека
+ * ровно туда, где он был. Меняем адрес заменой записи, а не добавлением: иначе
+ * «назад» пришлось бы жать столько раз, сколько разделов человек успел открыть,
+ * а одного нажатия должно хватать, чтобы выйти из профиля на карту.
+ *
+ * Возвращает {apply(section), close(fromRouter), section()} — этим управляет
+ * оболочка, когда адрес меняется.
+ */
+function openProfileSheet(app, startWith, onGone) {
   ensureCss();
-  // Состояние живёт рядом со шторкой, а не внутри вида: виды перерисовываются
-  // на смене языка и после сохранения имени, а загруженные страницы истории
-  // при этом должны остаться на месте.
+
+  /* Состояние живёт рядом со шторкой, а не внутри раздела: разделы собираются
+     заново на смене языка и после сохранения имени, а уже загруженные страницы
+     истории при этом должны остаться на месте. */
   const state = {
-    view: 'profile',      // profile | history | card | bonus
     profile: null,
     loading: true,
     error: null,
@@ -1426,67 +1847,165 @@ function openProfileSheet(app, startWith) {
     bonus: bonusKnown(),  // весь бонусный счёт
     bonusLoading: false,
     bonusError: null,
+    /* С какого числа бонусов начинать добег. Память своя у плитки в корне и у
+       крупного счёта в разделе: каждое место показывает своё прошлое значение,
+       и цифра добегает и при первом появлении, и потом — при начислении. */
+    shownTile: 0,
+    shownBig: 0,
   };
 
   let alive = true;
-  let current = null;     // {node, destroy}
-  let redraw = null;      // как перерисовать то, что открыто сейчас
-  const holder = el('div');
+  let byRouter = false;   // закрывает оболочка, потому что наложение ушло из адреса
+  let view = ME_SECTIONS[startWith] ? startWith : 'hub';
+  let current = null;     // {node, destroy?, apply?}
+  let stopCount = null;   // остановить добег числа, если раздел ушёл раньше
+  let child = null;       // экран поверх профиля: все движения бонусов
+  const shown = new Set();  // заказы, которые уже въезжали строкой
+  let fresh = 0;            // сколько строк анимируем в этой сборке
+
+  if (view === 'order') view = 'orders';   // карточку из адреса не восстановить
+
+  const stage = createStage(null);
 
   const ui = sheet({
-    fullHeight: true,
-    content: holder,
+    full: true,
+    className: 'sg-me',
+    title: ME_SECTIONS[view].title(),
+    content: stage.node,
     onClose: () => {
       alive = false;
       offLang();
       offTheme();
       drop();
+      // Экран поверх профиля закрываем вместе с ним: системная «назад» знает
+      // только про наложение в адресе, и брошенный поверх пустоты список
+      // движений остался бы висеть сам по себе.
+      if (child) {
+        const gone = child;
+        child = null;
+        gone.close();
+      }
+      if (typeof onGone === 'function') onGone();
+      // Закрыли крестиком, смахиванием или Esc — адрес обязан догнать, иначе
+      // перезагрузка снова откроет профиль поверх карты.
+      if (!byRouter && app.router) app.router.closeOverlay();
     },
   });
-  ui.box.setAttribute('aria-label', t('common.profile'));
 
-  // Язык переключают прямо здесь, поэтому вид обязан перерисоваться сам.
+  const head = ui.box.querySelector('.sheet__head');
+  const titleNode = ui.box.querySelector('.sheet__title');
+  const backBtn = iconBtn('back', 'sg-back', t('common.back'), () => {
+    haptic();
+    nav(ME_PARENT[view] || 'hub');
+  });
+  if (head && titleNode) head.insertBefore(backBtn, titleNode);
+
+  /* Язык переключают прямо здесь, в настройках, поэтому профиль обязан
+     переодеться сам — и не рывком, а короткой растворяющейся сменой. */
   const offLang = onLangChange(() => {
     if (!alive) return;
-    if (redraw) redraw();
+    fadeSwap([titleNode, ui.body], () => {
+      paintHead();
+      repaint();
+    });
     // Строки истории бонусов («Кэшбек с заказа», «Пригласили Азамата») собирает
     // сервер, и на новом языке за ними надо сходить заново.
     if (state.bonus && clientToken()) loadBonusState(true);
   });
-  const offTheme = onThemeChange(() => { if (alive && redraw) redraw(); });
+
+  // Тему меняют в настройках, а мини-карта в карточке заказа нарисована в
+  // старой — только её и пересобираем, остальным разделам это безразлично.
+  const offTheme = onThemeChange(() => {
+    if (alive && view === 'order') repaint();
+  });
 
   function drop() {
+    if (stopCount) { stopCount(); stopCount = null; }
     if (current && typeof current.destroy === 'function') current.destroy();
     current = null;
   }
 
-  function show(build) {
+  const BUILD = {
+    hub: buildHub,
+    orders: buildOrders,
+    order: buildCard,
+    bonus: buildBonus,
+    places: buildPlaces,
+    settings: buildSettings,
+  };
+
+  function paintHead() {
+    const at = ME_SECTIONS[view];
+    titleNode.textContent = at.title();
+    backBtn.hidden = !ME_PARENT[view];
+    backBtn.setAttribute('aria-label', t('common.back'));
+    backBtn.title = t('common.back');
+    ui.box.setAttribute('aria-label', at.title());
+  }
+
+  /** Раздел с переездом. Направление считаем по глубине: вглубь или обратно. */
+  function render(next, back) {
     if (!alive) return;
-    redraw = () => {
-      const top = ui.body.scrollTop;
-      drop();
-      current = build();
-      holder.replaceChildren(current.node);
-      ui.body.scrollTop = top;      // перерисовка не должна швырять список наверх
-    };
+    view = next;
+    fresh = 0;
+    paintHead();
     drop();
-    current = build();
-    holder.replaceChildren(current.node);
+    current = BUILD[view]();
+    stage.show(current.node, back);
     ui.body.scrollTop = 0;
   }
 
-  const nav = {
-    profile: () => { state.view = 'profile'; show(buildProfile); },
-    history: () => { state.view = 'history'; show(buildHistory); loadFirstPage(); },
-    card: (item) => {
-      state.view = 'card';
-      state.card = { item, order: null };
-      show(buildCard);
-      loadCard(item);
-    },
-    bonus: () => { state.view = 'bonus'; show(buildBonus); loadBonusState(); },
-    close: () => ui.close(),
-  };
+  /** Тот же раздел заново, без переезда: пришли данные или сменился язык. */
+  function repaint() {
+    if (!alive || !current) return;
+    const top = ui.body.scrollTop;
+    fresh = 0;
+    // Гасим прежний раздел до сборки нового: иначе его destroy остановил бы
+    // добег числа, который новый раздел только что запустил.
+    drop();
+    current = BUILD[view]();
+    stage.swap(current.node);
+    ui.body.scrollTop = top;
+  }
+
+  /* Переход внутри профиля идёт через адрес: так открытый раздел переживает
+     перезагрузку. Роутер тут же позовёт нас обратно через onOverlay, поэтому
+     рисовать здесь ничего не нужно. Без роутера (такого быть не должно, но
+     проверка дешёвая) рисуем сами. */
+  function nav(next) {
+    const name = ME_SECTIONS[next] ? next : 'hub';
+    if (name === view) return;
+    const router = app.router;
+    if (!router) {
+      render(name, ME_SECTIONS[name].depth < ME_SECTIONS[view].depth);
+      return;
+    }
+    router.overlay(ME_SECTIONS[name].overlay, { replace: true });
+  }
+
+  /* Уйти собирать новый заказ. Сначала убираем профиль из адреса и только
+     потом просим заказ: иначе роутер сочтёт это сменой одного наложения на
+     другое, экран заказа не пересоберётся и заготовку никто не заберёт. */
+  function startOrder(next) {
+    if (app.router) app.router.closeOverlay({ replace: true });
+    app.startOrder(next);
+  }
+
+  /** Уйти из профиля на экран сервиса: адрес профиля заменяем, а не копим. */
+  function leave(path, query) {
+    if (app.router) app.router.go(path, { query, replace: true });
+    else app.go(path, query);
+  }
+
+  /** Строка списка въезжает один раз — при первом появлении, а не на каждой
+      перерисовке: мигающий на ровном месте список выглядит как сбой. */
+  function riseOnce(node, key) {
+    if (shown.has(key)) return node;
+    shown.add(key);
+    node.classList.add('sg-rise');
+    node.style.animationDelay = Math.min(fresh++, 9) * 26 + 'ms';
+    return node;
+  }
 
   /* ── данные ──────────────────────────────────────────────────────────── */
 
@@ -1507,9 +2026,11 @@ function openProfileSheet(app, startWith) {
     }
     state.loading = false;
     if (!alive) return;
-    if (redraw) redraw();
+    // Карточку заказа не трогаем: в ней живая карта, а счётчики профиля к ней
+    // отношения не имеют — пересборка только моргнула бы картой.
+    if (view !== 'order') repaint();
     // Ключ мог приехать только что — тогда список ждал именно его.
-    if (state.view === 'history') loadFirstPage();
+    if (view === 'orders') loadFirstPage();
   }
 
   async function loadPage(page) {
@@ -1517,7 +2038,7 @@ function openProfileSheet(app, startWith) {
     if (!token || state.listing) return;
     state.listing = true;
     state.listError = null;
-    if (redraw) redraw();
+    if (view === 'orders') repaint();
     try {
       const res = await api.get('/client/orders',
         { token, page, per_page: HISTORY_PAGE }, { auth: false });
@@ -1532,7 +2053,7 @@ function openProfileSheet(app, startWith) {
       state.listError = e;
     }
     state.listing = false;
-    if (alive && redraw) redraw();
+    if (alive && view === 'orders') repaint();
   }
 
   function loadFirstPage() {
@@ -1554,479 +2075,246 @@ function openProfileSheet(app, startWith) {
         { t: item.track_token }, { auth: false });
       if (!alive || !state.card || state.card.item.public_id !== item.public_id) return;
       state.card.order = order;
-      if (state.view !== 'card') return;
+      if (view !== 'order') return;
       if (current && typeof current.apply === 'function') current.apply(order);
-      else if (redraw) redraw();
+      else repaint();
     } catch (e) {
       /* не пришло — карточка и без разбивки полная, шуметь не о чем */
     }
   }
 
-  /* Бонусный счёт. Тянем при каждом открытии экрана: сервер по дороге доначисляет
-     кэшбек по закрытым заказам, и показать вчерашний баланс было бы обидно. */
+  /* Бонусный счёт. Тянем при каждом открытии раздела: сервер по дороге
+     доначисляет кэшбек по закрытым заказам, и показать вчерашний баланс
+     было бы обидно. */
   async function loadBonusState(force) {
     if (state.bonusLoading || !clientToken()) return;
     state.bonusLoading = true;
     state.bonusError = null;
-    if (redraw) redraw();
+    // Пересобираем только если показывать пока нечего: иначе счёт моргнул бы
+    // скелетом на ровном месте, да ещё и сбил добег числа.
+    if (view === 'bonus' && !state.bonus) repaint();
     try {
       state.bonus = await loadBonus(force !== false);
     } catch (e) {
       state.bonusError = e;
     }
     state.bonusLoading = false;
-    if (alive && redraw) redraw();
+    // Баланс виден в двух местах: крупно в разделе и цифрой на плитке в корне.
+    if (alive && (view === 'bonus' || view === 'hub')) repaint();
   }
 
-  /* ── профиль ─────────────────────────────────────────────────────────── */
+  /* ── корень профиля ──────────────────────────────────────────────────── */
 
-  function buildProfile() {
+  /** Крупная плитка раздела: значок, название, одна цифра по делу. */
+  function tile(o) {
+    const value = el('span', { className: 'sg-tile__val' });
+    if (o.value instanceof Node) value.appendChild(o.value);
+    else value.textContent = o.value === undefined || o.value === null ? '' : String(o.value);
+
+    const node = el('button', {
+      type: 'button',
+      className: 'sg-tile' + (o.accent ? ' sg-tile--accent' : ''),
+      onClick: () => { haptic(); nav(o.to); },
+    },
+      el('span', { className: 'sg-tile__ico', html: icon(o.icon) }),
+      el('span', { className: 'sg-tile__name' }, o.name),
+      value);
+    // Плитка большая, и проседать ей положено заметнее строки списка.
+    pressable(node, { scale: 0.955, pop: 1.03 });
+    return { node, value };
+  }
+
+  /** Пока счётчики не приехали, вместо цифры стоит серая полоска. */
+  function waitBar() {
+    return el('span', {
+      className: 'skeleton',
+      style: { display: 'block', width: '54px', height: '16px' },
+    });
+  }
+
+  function buildHub() {
     const me = readClient();
     const p = state.profile;
-    const node = el('div');
+    const node = el('div', { className: 'sg-me__wrap' });
 
-    node.appendChild(viewHead(t('common.profile'), null, null, nav.close));
-
+    // ── шапка: лицо, имя, телефон. Нажатие ведёт в настройки — имя правят там.
     const face = me.photo
       ? el('span', { className: 'avatar avatar--lg' }, el('img', { src: me.photo, alt: '' }))
       : el('span', { className: 'avatar avatar--lg avatar--accent' },
-        initials(me.name) || iconNode('user', 28));
+        initials(me.name) || iconNode('user', 30));
 
-    node.appendChild(el('div', {
-      className: 'col center gap-2', style: { padding: '0 0 var(--sp-4)' },
+    // Третья строка шапки: оценка и с какого дня человек с нами. Обе цифры
+    // необязательные, поэтому собираем из того, что пришло.
+    const meta = [];
+    if (p && p.rating) meta.push('★ ' + rate(p.rating));
+    if (p && p.created_at) meta.push(t('me.since', { date: fmtDate(p.created_at) }));
+
+    const card = el('button', {
+      type: 'button', className: 'sg-me__card',
+      'aria-label': t('common.settings'),
+      onClick: () => { haptic(); nav('settings'); },
     },
       face,
-      el('div', { className: 'sg-head__title ta-c' }, me.name || t('me.noname')),
-      p && p.created_at
-        ? el('div', { className: 'muted-2 t-xs' }, t('me.since', { date: fmtDate(p.created_at) }))
-        : null));
+      el('span', { className: 'sg-me__who' },
+        el('span', { className: 'sg-me__name' }, me.name || t('me.noname')),
+        el('span', { className: 'sg-me__phone' },
+          me.phone ? fmtPhone(me.phone) : t('me.no_phone')),
+        meta.length ? el('span', { className: 'sg-me__since' }, meta.join(' · ')) : null),
+      el('span', { className: 'sg-opt__go', html: icon('go') }));
+    pressable(card, { scale: 0.985, pop: 1.008 });
+    node.appendChild(card);
 
-    // ── имя и телефон
-    const nameField = textField(t('common.name'), me.name || '', {
-      autocomplete: 'name', maxLength: 80, hint: t('me.name_ph'),
-    });
-    nameField.input.addEventListener('change', () => saveName(nameField.input));
-    node.appendChild(nameField.node);
-
-    const phoneField = textField(t('common.phone'), me.phone ? fmtPhone(me.phone) : '', {
-      type: 'tel', disabled: true, hint: t('me.phone_note'),
-    });
-    node.appendChild(el('div', { style: { paddingTop: 'var(--sp-3)' } }, phoneField.node));
-
-    // ── счёт заказов и оценка
-    if (state.loading) {
-      const box = el('div', { style: { padding: 'var(--sp-5) 0' } });
-      skeleton(box, 3);
-      node.appendChild(box);
-    } else if (!clientToken()) {
-      node.appendChild(el('p', {
-        className: 'sheet__text', style: { paddingTop: 'var(--sp-4)' },
-      }, t('me.unknown')));
-    } else if (state.error) {
+    // ── человек нам ещё незнаком: объясняем это словами, а не пустыми плитками
+    if (!state.loading && !clientToken() && !state.error) {
+      node.appendChild(el('p', { className: 'sheet__text' }, t('me.unknown')));
+    }
+    if (state.error) {
       node.appendChild(el('div', { className: 'sg-fail' },
         el('div', { className: 'sg-fail__text' }, errText(state.error)),
         el('button', {
           type: 'button', className: 'btn btn--ghost', onClick: loadProfile,
         }, t('common.retry'))));
-    } else if (p) {
-      const stats = el('div', { style: { paddingTop: 'var(--sp-3)' } });
-      stats.appendChild(sumRow(t('me.orders'), String(p.orders_count || 0)));
-      stats.appendChild(sumRow(t('me.done'), String(p.orders_done || 0)));
-      if (p.spent) stats.appendChild(sumRow(t('me.spent'), money(p.spent)));
-
-      const starsBox = el('div');
-      mountStars(starsBox, { value: p.rating || 0, readonly: true });
-      stats.appendChild(el('div', { className: 'sg-sum', style: { alignItems: 'center' } },
-        el('span', { className: 'sg-sum__name' }, t('me.rating')),
-        el('span', { className: 'row gap-2' },
-          starsBox,
-          el('span', { className: 'sg-sum__val' },
-            p.rating ? rate(p.rating) : t('me.no_rating')))));
-      node.appendChild(stats);
-
-      node.appendChild(group(t('me.history')));
-      for (const one of (Array.isArray(p.active) ? p.active : [])) {
-        node.appendChild(linkRow('car', t('me.live_now'),
-          statusName(one) + ' · ' + t('me.card', { id: one.public_id }), {
-            accent: true,
-            onClick: () => {
-              ui.close();
-              app.go('/order/' + one.public_id, { t: one.track_token });
-            },
-          }));
-      }
-      node.appendChild(linkRow('list', t('order.my_orders'),
-        p.orders_count ? tp(p.orders_count, 'common.n_order') : t('common.empty'),
-        { onClick: nav.history }));
-
-      // ── бонусы. Баланс показываем прямо в строке: ради одной цифры человек
-      // не должен открывать отдельный экран.
-      if (bonusOn(app.cfg)) {
-        const b = state.bonus;
-        const balance = b ? Math.max(0, Number(b.balance) || 0) : 0;
-        const sub = b
-          ? (balance > 0 ? money(balance) : t('bn.empty'))
-          : t('bn.sub');
-        node.appendChild(linkRow('gift', t('bn.title'), sub, {
-          accent: true, onClick: nav.bonus,
-        }));
-      }
     }
 
-    // ── дом и работа
-    node.appendChild(favouritesBlock());
-
-    // ── язык и тема
-    node.appendChild(group(t('common.settings')));
-    node.appendChild(el('div', { className: 'sg-sum' },
-      el('span', { className: 'sg-sum__name' }, t('common.language'))));
-    node.appendChild(segmented(
-      LANGS.map((code) => ({ value: code, label: t('common.lang_' + code) })),
-      getLang(), pickLang));
-
-    node.appendChild(el('div', { className: 'sg-sum', style: { paddingTop: 'var(--sp-3)' } },
-      el('span', { className: 'sg-sum__name' }, t('common.theme'))));
-    node.appendChild(segmented([
-      { value: 'auto', label: t('common.theme_auto') },
-      { value: 'dark', label: t('common.theme_dark') },
-      { value: 'light', label: t('common.theme_light') },
-    ], getTheme(), setTheme));
-
-    // ── поддержка
-    const waNumber = String((p && p.support_wa)
-      || (app.cfg.service && app.cfg.service.support_wa) || '').replace(/\D/g, '');
-    const phoneNumber = String((p && p.support_phone)
-      || (app.cfg.service && app.cfg.service.phone) || '').replace(/[^\d+]/g, '');
-    if (waNumber || phoneNumber) {
-      node.appendChild(group(t('common.support')));
-      if (waNumber) {
-        node.appendChild(linkRow('wa', t('common.whatsapp'), null, {
-          accent: true, blank: true,
-          href: 'https://wa.me/' + waNumber + '?text=' + encodeURIComponent(t('me.wa_hello')),
-        }));
-      }
-      if (phoneNumber) {
-        node.appendChild(linkRow('phone', t('me.support_call'), fmtPhone(phoneNumber), {
-          href: 'tel:' + phoneNumber,
-        }));
-      }
+    // ── заказ, который едет прямо сейчас: важнее всего остального на экране
+    const live = (p && Array.isArray(p.active) ? p.active : [])[0];
+    if (live && live.track_token) {
+      node.appendChild(rowGroup([{
+        icon: icon('car'),
+        label: t('me.live_now'),
+        sub: statusName(live) + ' · ' + t('me.card', { id: live.public_id }),
+        className: 'sg-me__live',
+        onClick: () => leave('/order/' + live.public_id, { t: live.track_token }),
+      }]));
     }
 
-    node.appendChild(el('div', { style: { padding: 'var(--sp-5) 0 var(--sp-2)' } },
-      el('button', {
-        type: 'button', className: 'btn btn--danger btn--lg btn--block',
-        onClick: askForget,
-      }, t('me.forget'))));
-
-    return { node };
-  }
-
-  async function saveName(input) {
-    const name = input.value.trim().slice(0, 80);
-    const me = readClient();
-    if (name === (me.name || '')) return;
-    saveClient({ name });
-    const token = clientToken();
-    if (!token) {
-      toast(t('common.saved'), { type: 'ok' });
-      return;
-    }
-    try {
-      const fresh = await api.patch('/client/profile', { token, name }, { auth: false });
-      if (fresh && fresh.phone !== undefined) state.profile = fresh;
-      toast(t('common.saved'), { type: 'ok' });
-    } catch (e) {
-      toast(errText(e), { type: 'err' });
-    }
-    if (alive && redraw) redraw();
-  }
-
-  function pickLang(code) {
-    setLang(code);
-    const token = clientToken();
-    // Язык нужен и серверу: письма, смс и названия статусов приходят на нём.
-    if (token) api.patch('/client/profile', { token, lang: code }, { auth: false }).catch(() => {});
-  }
-
-  async function askForget() {
-    const yes = await confirm({
-      title: t('me.forget_q'),
-      text: t('me.forget_text'),
-      ok: t('me.forget_ok'),
-      cancel: t('common.cancel'),
-      danger: true,
-    });
-    if (!yes) return;
-    forgetClient();
-    ui.close();
-    toast(t('me.forgot'), { type: 'ok' });
-  }
-
-  /* ── дом и работа ────────────────────────────────────────────────────── */
-
-  /* Отмечаются они в карточке заказа одним тапом, а пользуются ими здесь:
-     когда отмечены оба адреса, поездка между ними собирается одной кнопкой. */
-  function favouritesBlock() {
-    const box = el('div');
+    // ── четыре полки, между которыми и разложен весь профиль
+    const balance = state.bonus ? Math.max(0, Number(state.bonus.balance) || 0) : 0;
     const places = readPlaces();
-    const home = places.home || null;
-    const work = places.work || null;
-    // Тому, кто у нас впервые, этот блок нечего показать: ни адресов, ни истории,
-    // из которой их отмечают. Пустой раздел только мешает.
-    if (!home && !work && !clientToken()) return box;
+    const marked = ['home', 'work'].filter((k) => places[k]);
 
-    box.appendChild(group(t('fav.group')));
-    if (!home && !work) {
-      box.appendChild(el('p', { className: 'sheet__text' }, t('fav.empty')));
-      return box;
-    }
+    const known = !!clientToken();
+    const tiles = [tile({
+      to: 'orders', icon: 'list', name: t('me.hub_orders'),
+      value: !known ? '—' : (state.loading && !p ? waitBar() : String((p && p.orders_count) || 0)),
+    }).node];
 
-    const saved = el('div', { className: 'sg-list' });
-    for (const [kind, place] of [['home', home], ['work', work]]) {
-      if (!place) continue;
-      const drop = iconBtn('trash', 'sg-back', t('fav.drop'), () => {
-        setPlace(kind, null);
-        haptic();
-        toast(t('fav.dropped'), { type: 'ok' });
-        if (redraw) redraw();
+    if (bonusOn(app.cfg)) {
+      const gift = tile({
+        to: 'bonus', icon: 'gift', name: t('bn.title'), accent: true,
+        value: !known ? '—' : (state.bonus ? '' : waitBar()),
       });
-      drop.style.marginLeft = '0';
-      saved.appendChild(el('div', { className: 'sg-item' },
-        el('span', { className: 'sg-item__icon', html: icon(kind) }),
-        el('span', { className: 'sg-item__text' },
-          el('span', { className: 'sg-item__title' }, t('fav.' + kind)),
-          el('span', { className: 'sg-item__sub' }, place.addr)),
-        drop));
-    }
-    box.appendChild(saved);
-
-    if (!home || !work) {
-      box.appendChild(el('p', { className: 'sheet__text' }, t('fav.hint')));
-      return box;
-    }
-
-    const ride = (from, to, label) => el('button', {
-      type: 'button', className: 'sg-item',
-      onClick: () => {
-        haptic(18);
-        ui.close();
-        app.startOrder({
-          points: [from, to], tariffId: 0, loaders: 0, extras: {}, comment: '',
-        });
-      },
-    },
-      el('span', { className: 'sg-item__icon sg-item__icon--accent', html: icon('car') }),
-      el('span', { className: 'sg-item__text' },
-        el('span', { className: 'sg-item__title' }, label),
-        el('span', { className: 'sg-item__sub' },
-           t('fav.ride_sub', { from: from.addr, to: to.addr }))),
-      el('span', { className: 'sg-opt__go', html: icon('go') }));
-
-    box.appendChild(el('div', { className: 'sg-list' },
-      ride(home, work, t('fav.ride_work')),
-      ride(work, home, t('fav.ride_home'))));
-    return box;
-  }
-
-  /* ── бонусы ──────────────────────────────────────────────────────────── */
-
-  function bonusMove(item) {
-    const amount = Number(item.amount) || 0;
-    const plus = amount > 0;
-    return el('div', { className: 'sg-item' },
-      el('span', {
-        className: 'sg-item__icon' + (plus ? ' sg-item__icon--accent' : ''),
-        html: icon(plus ? 'plus' : 'minus'),
-      }),
-      el('span', { className: 'sg-item__text' },
-        el('span', { className: 'sg-item__title' }, item.text || ''),
-        el('span', { className: 'sg-item__sub' }, dateTime(item.at))),
-      el('span', {
-        className: 'sg-opt__total' + (plus ? ' t-accent' : ''),
-      }, (plus ? '+' : '−') + money(Math.abs(amount))));
-  }
-
-  /* Ссылкой делятся в мессенджере, поэтому отдаём человеческий текст целиком:
-     код отдельной строкой никто пересказывать не будет. */
-  function shareInvite(b) {
-    const service = (app.cfg.service && app.cfg.service.name) || 'Sprinter Go';
-    const text = t('bn.share_text', {
-      service, code: b.code || '', sum: money(b.invite_friend || 0),
-    });
-    const url = siteUrl();
-    haptic();
-    if (navigator.share) {
-      navigator.share({ title: service, text, url }).catch(() => {});
-      return;
-    }
-    copyText(text + ' ' + url, t('bn.copied'));
-  }
-
-  function inviteField(b) {
-    const field = textField(t('bn.have_code'), '', {
-      maxLength: 16, hint: t('bn.code_ph'), autocomplete: 'off',
-    });
-    field.input.setAttribute('autocapitalize', 'characters');
-    field.input.setAttribute('spellcheck', 'false');
-    const go = el('button', {
-      type: 'button', className: 'btn btn--ghost btn--lg btn--block',
-      onClick: async () => {
-        const code = field.input.value.trim();
-        if (code.length < 4) {
-          toast(t('bn.code_ph'), { type: 'err' });
-          field.input.focus();
-          return;
-        }
-        go.disabled = true;
-        try {
-          const res = await applyInviteCode(code);
-          haptic(20);
-          toast(t('bn.applied', { sum: money((res && res.amount) || 0) }), { type: 'ok' });
-          await loadBonusState(true);
-        } catch (e) {
-          toast(errText(e), { type: 'err' });
-          go.disabled = false;
-        }
-      },
-    }, t('bn.apply'));
-    return el('div', { className: 'col gap-3' }, field.node, go);
-  }
-
-  function buildBonus() {
-    const node = el('div');
-    node.appendChild(viewHead(t('bn.title'), t('bn.sub'), nav.profile, nav.close));
-
-    if (!clientToken()) {
-      node.appendChild(el('p', { className: 'sheet__text' }, t('bn.unknown')));
-      return { node };
-    }
-
-    const b = state.bonus;
-    if (!b) {
-      if (state.bonusLoading) {
-        const box = el('div', { style: { padding: 'var(--sp-5) 0' } });
-        skeleton(box, 4);
-        node.appendChild(box);
-      } else {
-        node.appendChild(el('div', { className: 'sg-fail' },
-          el('div', { className: 'sg-fail__text' }, errText(state.bonusError)),
-          el('button', {
-            type: 'button', className: 'btn btn--ghost',
-            onClick: () => loadBonusState(true),
-          }, t('common.retry'))));
+      if (known && state.bonus) {
+        // Начисленные бонусы приятнее увидеть, чем застать: цифра добегает.
+        stopCount = countUp(gift.value, state.shownTile, balance, money,
+          (v) => { state.shownTile = v; }, 100);
       }
-      return { node };
+      tiles.push(gift.node);
     }
 
-    const balance = Math.max(0, Number(b.balance) || 0);
+    tiles.push(tile({
+      to: 'places', icon: 'home', name: t('me.places'),
+      value: marked.length
+        ? marked.map((k) => t('fav.' + k)).join(' · ')
+        : t('me.places_none'),
+    }).node);
 
-    // ── баланс крупно и срок, до которого он живёт
-    let burn = null;
-    if (balance > 0 && b.expires_at) {
-      const when = fmtDate(b.expires_at);
-      burn = b.expire_soon
-        ? el('div', { className: 'sg-bal__burn' }, t('bn.burn_soon', { date: when }))
-        : el('div', { className: 'muted-2 t-xs ta-c' }, t('bn.burn', { date: when }));
-    }
-    node.appendChild(el('div', { className: 'sg-bal' },
-      el('div', { className: 'sg-bal__val' }, money(balance)),
-      el('div', { className: 'sg-bal__name' }, balance > 0 ? t('bn.balance') : t('bn.empty')),
-      burn));
+    tiles.push(tile({
+      to: 'settings', icon: 'gear', name: t('common.settings'),
+      value: t('common.lang_' + getLang()),
+    }).node);
 
-    node.appendChild(el('p', { className: 'sheet__text ta-c' },
-      b.enabled === false
-        ? t('bn.off')
-        : t('bn.how', { percent: rate(b.percent), share: rate(b.max_share) })));
+    node.appendChild(el('div', { className: 'sg-tiles' }, tiles));
 
-    // ── код приглашения: выгода объяснена одной строкой, кнопка одна
-    if (b.code) {
-      node.appendChild(group(t('bn.invite')));
-      node.appendChild(el('div', { className: 'sg-code' },
-        el('span', { className: 'sg-code__val' }, b.code),
-        // Иконку кладём прямым потомком кнопки: правило .btn > svg в
-        // components.css достаёт только их, а в обёртке svg растянется до 300×150.
-        el('button', {
-          type: 'button', className: 'btn btn--primary sg-code__btn',
-          onClick: () => shareInvite(b),
-        }, svgIcon('share'), t('common.share'))));
-      node.appendChild(el('p', { className: 'sheet__text' },
-        t('bn.invite_gain', {
-          friend: money(b.invite_friend || 0), owner: money(b.invite_owner || 0),
-        })));
-
-      const counters = [];
-      if (b.invites_done) counters.push(t('bn.done_n', { n: b.invites_done }));
-      if (b.invites_waiting) counters.push(t('bn.waiting', { n: b.invites_waiting }));
-      if (counters.length) {
-        node.appendChild(el('div', { className: 'muted t-xs' }, counters.join(' · ')));
-      }
-    }
-
-    // ── чужой код принимаем только у тех, кто ещё ни разу не ездил
-    if (!b.invited && b.enabled !== false && !(state.profile && state.profile.orders_done)) {
-      node.appendChild(group(t('bn.have_code')));
-      node.appendChild(inviteField(b));
-    }
-
-    // ── история движений понятными строками
-    node.appendChild(group(t('bn.history')));
-    const moves = Array.isArray(b.history) ? b.history : [];
-    if (!moves.length) {
-      node.appendChild(el('p', { className: 'sheet__text' }, t('bn.history_empty')));
-    } else {
-      const list = el('div', { className: 'sg-list' });
-      for (const one of moves) list.appendChild(bonusMove(one));
-      node.appendChild(list);
-    }
+    // ── поддержка: два способа дозвониться, оба в одной карточке
+    const rows = supportRows();
+    if (rows.length) node.appendChild(rowGroup(rows));
 
     return { node };
   }
 
-  /* ── история ─────────────────────────────────────────────────────────── */
+  /** Строки «написать» и «позвонить» — их место и в корне, и в настройках. */
+  function supportRows() {
+    const p = state.profile;
+    const wa = String((p && p.support_wa)
+      || (app.cfg.service && app.cfg.service.support_wa) || '').replace(/\D/g, '');
+    const line = String((p && p.support_phone)
+      || (app.cfg.service && app.cfg.service.phone) || '').replace(/[^\d+]/g, '');
+    const rows = [];
+    if (wa) {
+      rows.push({
+        icon: icon('wa'),
+        label: t('common.whatsapp'),
+        href: 'https://wa.me/' + wa + '?text=' + encodeURIComponent(t('me.wa_hello')),
+        chevron: true,
+      });
+    }
+    if (line) {
+      rows.push({
+        icon: icon('phone'),
+        label: t('me.support_call'),
+        sub: fmtPhone(line),
+        href: 'tel:' + line,
+        chevron: true,
+      });
+    }
+    return rows;
+  }
 
-  function buildHistory() {
-    const node = el('div');
-    node.appendChild(viewHead(t('order.my_orders'),
-      state.total ? tp(state.total, 'common.n_order') : null,
-      nav.profile, nav.close));
+  /* ── заказы ──────────────────────────────────────────────────────────── */
 
-    const list = el('div');
-    node.appendChild(list);
+  function buildOrders() {
+    const node = el('div', { className: 'sg-me__wrap' });
 
     if (!clientToken()) {
-      list.appendChild(el('p', { className: 'sheet__text' }, t('me.unknown')));
+      node.appendChild(el('p', { className: 'sheet__text' }, t('me.unknown')));
       return { node };
     }
 
-    for (const item of state.items) list.appendChild(historyRow(item, nav.card));
+    // Три цифры одной строкой: сколько заказов, сколько доехало, сколько денег.
+    // Тому, кто ещё не ездил, три нуля ничего не расскажут — их и не показываем.
+    const p = state.profile;
+    if (p && p.orders_count) {
+      node.appendChild(el('div', { className: 'sg-stats' },
+        statCell(t('me.orders'), String(p.orders_count || 0)),
+        statCell(t('me.done'), String(p.orders_done || 0)),
+        // В третью ячейку длинная сумма не влезает — здесь у денег короткая форма.
+        p.spent ? statCell(t('me.spent'), moneyShort(p.spent)) : null));
+    }
+
+    const rows = el('div', { className: 'sg-me__rows' });
+    for (const item of state.items) {
+      rows.appendChild(riseOnce(historyRow(item, openCard), item.public_id));
+    }
+    if (state.items.length) node.appendChild(rows);
 
     if (state.listing) {
       const box = el('div', { style: { padding: 'var(--sp-4) 0' } });
       skeleton(box, state.items.length ? 2 : 4);
-      list.appendChild(box);
+      node.appendChild(box);
     } else if (state.listError) {
-      list.appendChild(el('div', { className: 'sg-fail' },
+      node.appendChild(el('div', { className: 'sg-fail' },
         el('div', { className: 'sg-fail__text' }, errText(state.listError)),
         el('button', {
           type: 'button', className: 'btn btn--ghost',
           onClick: () => { state.listError = null; loadPage(state.page + 1); },
         }, t('common.retry'))));
     } else if (!state.items.length) {
-      list.appendChild(el('div', { className: 'empty' },
+      node.appendChild(el('div', { className: 'empty' },
         el('div', { className: 'empty__icon', html: icon('list') }),
         el('div', { className: 'empty__title' }, t('me.empty_title')),
         el('div', { className: 'empty__text' }, t('me.empty_text')),
         el('button', {
           type: 'button', className: 'btn btn--primary btn--lg',
-          onClick: () => { ui.close(); app.go('/'); },
+          onClick: () => leave('/'),
         }, t('order.submit'))));
     } else if (state.more) {
       // Прокрутка догружает сама, но кнопка нужна: мышью до низа доезжают не все,
-      // да и на длинном списке видно, что дальше ещё есть.
-      list.appendChild(el('div', { style: { padding: 'var(--sp-3) 0 var(--sp-5)' } },
-        el('button', {
-          type: 'button', className: 'btn btn--ghost btn--lg btn--block', onClick: loadMore,
-        }, t('me.load_more'))));
+      // да и на длинном списке видно, что дальше ещё есть — и сколько именно.
+      const rest = Math.max(0, state.total - state.items.length);
+      node.appendChild(el('button', {
+        type: 'button', className: 'btn btn--ghost btn--lg btn--block', onClick: loadMore,
+      }, rest ? t('me.load_more') + ' · ' + tp(rest, 'common.n_order') : t('me.load_more')));
     }
 
     function onScroll() {
@@ -2042,12 +2330,24 @@ function openProfileSheet(app, startWith) {
     };
   }
 
-  /* ── карточка заказа ─────────────────────────────────────────────────── */
+  function statCell(name, value) {
+    return el('div', { className: 'sg-stat' },
+      el('span', { className: 'sg-stat__val' }, value),
+      el('span', { className: 'sg-stat__name' }, name));
+  }
+
+  function openCard(item) {
+    state.card = { item, order: null };
+    nav('order');
+    loadCard(item);
+  }
+
+  /* ── карточка одного заказа ──────────────────────────────────────────── */
 
   /* Две кнопки под адресом: «сделать домом» и «сделать работой». Нажатая
      подсвечена — повторный тап снимает отметку, чтобы не искать её в другом
      месте. Перерисовываем только эту строку: карта в карточке моргать не должна. */
-  function markRow(point) {
+  function markRow(point, whole) {
     const box = el('div', { className: 'sg-mark' });
 
     function paint() {
@@ -2067,10 +2367,14 @@ function openProfileSheet(app, startWith) {
               setPlace(kind, point);
               toast(t(kind === 'home' ? 'fav.saved_home' : 'fav.saved_work'), { type: 'ok' });
             }
-            paint();
+            // В разделе «Адреса» отмеченный адрес переезжает из недавних наверх,
+            // поэтому там пересобираем всё; в карточке заказа — только строку,
+            // иначе моргнула бы карта.
+            if (whole) repaint();
+            else paint();
           },
         }, svgIcon(kind),
-           t(on ? 'fav.' + kind : (kind === 'home' ? 'fav.set_home' : 'fav.set_work')));
+        t(on ? 'fav.' + kind : (kind === 'home' ? 'fav.set_home' : 'fav.set_work')));
       }));
     }
     paint();
@@ -2078,10 +2382,12 @@ function openProfileSheet(app, startWith) {
   }
 
   function buildCard() {
+    const node = el('div', { className: 'sg-me__wrap' });
+    if (!state.card) {
+      node.appendChild(el('p', { className: 'sheet__text' }, t('me.empty_text')));
+      return { node };
+    }
     const { item } = state.card;
-    const node = el('div');
-    node.appendChild(viewHead(t('me.card', { id: item.public_id }),
-      statusName(item), nav.history, nav.close));
 
     const pts = (Array.isArray(item.points) ? item.points : []).filter((p) => p && p.addr);
     const coords = pts.filter((p) => p.lat != null && p.lng != null).map((p) => [p.lat, p.lng]);
@@ -2094,15 +2400,16 @@ function openProfileSheet(app, startWith) {
       node.appendChild(map.node);
     }
 
-    node.appendChild(el('div', { className: 'row wrap gap-2', style: { paddingBottom: 'var(--sp-2)' } },
+    node.appendChild(el('div', { className: 'row wrap gap-2' },
       statusBadge(item),
-      el('span', { className: 'sg-opt__sub' }, dateTime(item.at || item.created_at))));
+      el('span', { className: 'sg-opt__sub' }, dateTime(item.at || item.created_at)),
+      el('span', { className: 'sg-opt__sub' }, t('me.card', { id: item.public_id }))));
 
     // ── адреса. Под каждым — две отметки: дом и работа. Один тап, и адрес
     // встаёт в начало подсказок, а поездка между домом и работой собирается
-    // из профиля одной кнопкой.
+    // из раздела «Адреса» одной кнопкой.
     node.appendChild(group(t('me.points')));
-    const list = el('div', { className: 'sg-list' });
+    const list = el('div', { className: 'sg-me__rows' });
     pts.forEach((p, i) => {
       const note = pointNote(p);
       list.appendChild(el('div', null,
@@ -2121,31 +2428,31 @@ function openProfileSheet(app, startWith) {
     // ── из чего цена. Итог и общие цифры знаем сразу, разбивку — когда придёт
     // полный заказ, поэтому строки собираются отдельной функцией.
     node.appendChild(group(t('order.price_details')));
-    const rows = el('div');
+    const rows = el('div', { className: 'sg-me__sums' });
     function fillPrice(full) {
       const price = (full && full.price) || {};
-      const list = [];
-      if (item.distance_m) list.push(sumRow(t('order.distance'), distance(item.distance_m)));
-      if (item.duration_s) list.push(sumRow(t('order.duration'), duration(item.duration_s)));
-      if (item.tariff) list.push(sumRow(t('me.car'), nameOf(item.tariff)));
-      if (price.base) list.push(sumRow(t('order.price_base'), money(price.base)));
-      if (price.distance) list.push(sumRow(t('order.price_distance'), money(price.distance)));
-      if (price.time) list.push(sumRow(t('order.price_time'), money(price.time)));
+      const out = [];
+      if (item.distance_m) out.push(sumRow(t('order.distance'), distance(item.distance_m)));
+      if (item.duration_s) out.push(sumRow(t('order.duration'), duration(item.duration_s)));
+      if (item.tariff) out.push(sumRow(t('me.car'), nameOf(item.tariff)));
+      if (price.base) out.push(sumRow(t('order.price_base'), money(price.base)));
+      if (price.distance) out.push(sumRow(t('order.price_distance'), money(price.distance)));
+      if (price.time) out.push(sumRow(t('order.price_time'), money(price.time)));
       if (item.loaders) {
-        list.push(sumRow(t('order.price_loaders'),
+        out.push(sumRow(t('order.price_loaders'),
           price.loaders ? money(price.loaders) : String(item.loaders)));
       }
       for (const ex of (Array.isArray(item.extras) ? item.extras : [])) {
         const found = app.extras.find((x) => x && x.code === ex.code);
         const qty = Number(ex.qty) || 1;
-        list.push(sumRow(nameOf(found) || ex.code,
+        out.push(sumRow(nameOf(found) || ex.code,
           qty === 1 ? t('common.yes') : '×' + String(qty).replace('.', ',')));
       }
-      if (price.waiting) list.push(sumRow(t('order.price_waiting'), money(price.waiting)));
-      list.push(sumRow(t('order.price_total'), money(item.price_total || 0), true));
+      if (price.waiting) out.push(sumRow(t('order.price_waiting'), money(price.waiting)));
+      out.push(sumRow(t('order.price_total'), money(item.price_total || 0), true));
       const payKey = 'status.pay_' + (item.payment_status || 'none');
-      if (has(payKey)) list.push(sumRow(t('me.pay'), t(payKey)));
-      rows.replaceChildren(...list);
+      if (has(payKey)) out.push(sumRow(t('me.pay'), t(payKey)));
+      rows.replaceChildren(...out);
     }
     fillPrice(order);
     node.appendChild(rows);
@@ -2187,15 +2494,12 @@ function openProfileSheet(app, startWith) {
     }
 
     // ── что можно сделать дальше
-    const foot = el('div', { className: 'col gap-2', style: { padding: 'var(--sp-5) 0 var(--sp-2)' } });
+    const foot = el('div', { className: 'col gap-2', style: { paddingTop: 'var(--sp-3)' } });
     const live = item.live || LIVE_STATUSES.indexOf(item.status) >= 0;
     if (live && item.track_token) {
       foot.appendChild(el('button', {
         type: 'button', className: 'btn btn--ghost btn--lg btn--block',
-        onClick: () => {
-          ui.close();
-          app.go('/order/' + item.public_id, { t: item.track_token });
-        },
+        onClick: () => leave('/order/' + item.public_id, { t: item.track_token }),
       }, t('me.watch')));
     }
     if (pts.length >= 2) {
@@ -2203,8 +2507,7 @@ function openProfileSheet(app, startWith) {
         type: 'button', className: 'sg-cta',
         onClick: () => {
           haptic(18);
-          ui.close();
-          app.startOrder(draftFrom(item));
+          startOrder(draftFrom(item));
           toast(t('me.repeated'), { type: 'ok' });
         },
       }, el('span', { className: 'sg-cta__label' }, t('order.repeat'))));
@@ -2223,20 +2526,386 @@ function openProfileSheet(app, startWith) {
     };
   }
 
-  /* Экран открываем сразу, данные подтягиваем следом: пустая шторка с крутилкой
-     раздражает сильнее, чем профиль, у которого секунду догружается счётчик. */
-  if (startWith === 'history') {
-    show(buildHistory);
-    loadFirstPage();
-  } else if (startWith === 'bonus') {
-    state.view = 'bonus';
-    show(buildBonus);
-  } else {
-    show(buildProfile);
+  /* ── бонусы ──────────────────────────────────────────────────────────── */
+
+  /* Ссылкой делятся в мессенджере, поэтому отдаём человеческий текст целиком:
+     код отдельной строкой никто пересказывать не будет. */
+  function shareInvite(b) {
+    const service = (app.cfg.service && app.cfg.service.name) || 'Sprinter Go';
+    const text = t('bn.share_text', {
+      service, code: b.code || '', sum: money(b.invite_friend || 0),
+    });
+    const url = siteUrl();
+    haptic();
+    if (navigator.share) {
+      navigator.share({ title: service, text, url }).catch(() => {});
+      return;
+    }
+    copyText(text + ' ' + url, t('bn.copied'));
   }
+
+  function inviteField() {
+    const field = textField(t('bn.have_code'), '', {
+      maxLength: 16, hint: t('bn.code_ph'), autocomplete: 'off',
+    });
+    field.input.setAttribute('autocapitalize', 'characters');
+    field.input.setAttribute('spellcheck', 'false');
+    const go = el('button', {
+      type: 'button', className: 'btn btn--ghost btn--lg btn--block',
+      onClick: async () => {
+        const code = field.input.value.trim();
+        if (code.length < 4) {
+          toast(t('bn.code_ph'), { type: 'err' });
+          field.input.focus();
+          return;
+        }
+        go.disabled = true;
+        try {
+          const res = await applyInviteCode(code);
+          haptic(20);
+          toast(t('bn.applied', { sum: money((res && res.amount) || 0) }), { type: 'ok' });
+          await loadBonusState(true);
+        } catch (e) {
+          toast(errText(e), { type: 'err' });
+          go.disabled = false;
+        }
+      },
+    }, t('bn.apply'));
+    return el('div', { className: 'col gap-3' }, field.node, go);
+  }
+
+  function buildBonus() {
+    const node = el('div', { className: 'sg-me__wrap' });
+
+    if (!clientToken()) {
+      node.appendChild(el('p', { className: 'sheet__text' }, t('bn.unknown')));
+      return { node };
+    }
+
+    const b = state.bonus;
+    if (!b) {
+      if (state.bonusLoading) {
+        const box = el('div', { style: { padding: 'var(--sp-5) 0' } });
+        skeleton(box, 4);
+        node.appendChild(box);
+      } else {
+        node.appendChild(el('div', { className: 'sg-fail' },
+          el('div', { className: 'sg-fail__text' }, errText(state.bonusError)),
+          el('button', {
+            type: 'button', className: 'btn btn--ghost',
+            onClick: () => loadBonusState(true),
+          }, t('common.retry'))));
+      }
+      return { node };
+    }
+
+    const balance = Math.max(0, Number(b.balance) || 0);
+
+    // ── баланс крупно и срок, до которого он живёт
+    let burn = null;
+    if (balance > 0 && b.expires_at) {
+      const when = fmtDate(b.expires_at);
+      burn = b.expire_soon
+        ? el('div', { className: 'sg-bal__burn' }, t('bn.burn_soon', { date: when }))
+        : el('div', { className: 'muted-2 t-xs ta-c' }, t('bn.burn', { date: when }));
+    }
+    const big = el('div', { className: 'sg-bal__val' });
+    stopCount = countUp(big, state.shownBig, balance, money,
+      (v) => { state.shownBig = v; }, 100);
+
+    node.appendChild(el('div', { className: 'sg-bal' },
+      big,
+      el('div', { className: 'sg-bal__name' }, balance > 0 ? t('bn.balance') : t('bn.empty')),
+      burn));
+
+    node.appendChild(el('p', { className: 'sheet__text ta-c' },
+      b.enabled === false
+        ? t('bn.off')
+        : t('bn.how', { percent: rate(b.percent), share: rate(b.max_share) })));
+
+    // ── код приглашения: выгода объяснена одной строкой, кнопка одна
+    if (b.code) {
+      node.appendChild(group(t('bn.invite')));
+      node.appendChild(el('div', { className: 'sg-code' },
+        el('span', { className: 'sg-code__val' }, b.code),
+        // Иконку кладём прямым потомком кнопки: правило .btn > svg в
+        // components.css достаёт только их, а в обёртке svg растянется до 300×150.
+        el('button', {
+          type: 'button', className: 'btn btn--primary sg-code__btn',
+          onClick: () => shareInvite(b),
+        }, svgIcon('share'), t('common.share'))));
+      node.appendChild(el('p', { className: 'sheet__text' },
+        t('bn.invite_gain', {
+          friend: money(b.invite_friend || 0), owner: money(b.invite_owner || 0),
+        })));
+
+      const counters = [];
+      if (b.invites_done) counters.push(t('bn.done_n', { n: b.invites_done }));
+      if (b.invites_waiting) counters.push(t('bn.waiting', { n: b.invites_waiting }));
+      if (counters.length) {
+        node.appendChild(el('div', { className: 'muted t-xs' }, counters.join(' · ')));
+      }
+    }
+
+    // ── чужой код принимаем только у тех, кто ещё ни разу не ездил
+    if (!b.invited && b.enabled !== false && !(state.profile && state.profile.orders_done)) {
+      node.appendChild(group(t('bn.have_code')));
+      node.appendChild(inviteField());
+    }
+
+    // ── движение бонусов: три последних строки здесь, остальное отдельным
+    // экраном. Раздел должен помещаться в экран, а движений за год набирается
+    // на сотню строк — им тут не место.
+    const moves = Array.isArray(b.history) ? b.history : [];
+    node.appendChild(group(t('bn.history')));
+    if (!moves.length) {
+      node.appendChild(el('p', { className: 'sheet__text' }, t('bn.history_empty')));
+    } else {
+      const rows = el('div', { className: 'sg-me__rows' });
+      moves.slice(0, 3).forEach((one, i) => {
+        rows.appendChild(riseOnce(bonusMove(one), 'bn' + (one.at || '') + '-' + i));
+      });
+      node.appendChild(rows);
+      if (moves.length > 3) {
+        node.appendChild(el('button', {
+          type: 'button', className: 'btn btn--ghost btn--lg btn--block',
+          onClick: () => {
+            haptic();
+            child = openBonusMoves(moves, () => { child = null; });
+          },
+        }, t('bn.show_all')));
+      }
+    }
+
+    return { node };
+  }
+
+  /* ── адреса ──────────────────────────────────────────────────────────── */
+
+  function buildPlaces() {
+    const node = el('div', { className: 'sg-me__wrap' });
+    const places = readPlaces();
+    const home = places.home || null;
+    const work = places.work || null;
+
+    if (home || work) {
+      const rows = [];
+      for (const [kind, place] of [['home', home], ['work', work]]) {
+        if (!place) continue;
+        // Живое нажатие вешаем через pressable: тогда и просевшая кнопка, и
+        // «меньше движения» работают ровно так же, как у всех остальных.
+        const forget = iconBtn('trash', 'sg-me__x', t('fav.drop'), (e) => {
+          e.stopPropagation();
+          setPlace(kind, null);
+          haptic();
+          toast(t('fav.dropped'), { type: 'ok' });
+          repaint();
+        });
+        pressable(forget, { scale: 0.9 });
+        rows.push({
+          icon: icon(kind),
+          hint: t('fav.' + kind),
+          label: place.addr,
+          sub: place.subtitle || '',
+          end: forget,
+        });
+      }
+      node.appendChild(rowGroup(rows));
+    }
+
+    if (home && work) {
+      // Оба адреса на месте — поездка между ними собирается одной кнопкой.
+      node.appendChild(group(t('fav.group')));
+      node.appendChild(rowGroup([
+        ride(home, work, t('fav.ride_work')),
+        ride(work, home, t('fav.ride_home')),
+      ]));
+    } else {
+      node.appendChild(el('p', { className: 'sheet__text' },
+        home || work ? t('fav.hint') : t('fav.empty')));
+    }
+
+    // ── недавние адреса: отсюда их и отмечают домом или работой
+    const recent = (readJson(KEY_RECENT, []) || [])
+      .filter((p) => p && p.addr && p.lat != null && p.lng != null)
+      .filter((p) => !samePlace(home, p) && !samePlace(work, p));
+    node.appendChild(group(t('me.recent')));
+    if (!recent.length) {
+      node.appendChild(el('p', { className: 'sheet__text' }, t('me.recent_empty')));
+    } else {
+      const rows = el('div', { className: 'sg-me__rows' });
+      recent.slice(0, 6).forEach((p, i) => {
+        rows.appendChild(riseOnce(el('div', null,
+          el('div', { className: 'sg-item' },
+            el('span', { className: 'sg-item__icon', html: icon('pin') }),
+            el('span', { className: 'sg-item__text' },
+              el('span', { className: 'sg-item__title' }, p.addr),
+              p.subtitle ? el('span', { className: 'sg-item__sub' }, p.subtitle) : null)),
+          markRow(p, true)), 'rc' + i + p.addr));
+      });
+      node.appendChild(rows);
+    }
+
+    return { node };
+  }
+
+  function ride(from, to, label) {
+    return {
+      icon: icon('car'),
+      label,
+      sub: t('fav.ride_sub', { from: from.addr, to: to.addr }),
+      className: 'sg-me__ride',
+      onClick: () => {
+        haptic(18);
+        startOrder({
+          points: [from, to], tariffId: 0, loaders: 0, extras: {}, comment: '',
+        });
+      },
+    };
+  }
+
+  /* ── настройки ───────────────────────────────────────────────────────── */
+
+  function buildSettings() {
+    const me = readClient();
+    const node = el('div', { className: 'sg-me__wrap' });
+
+    const nameField = textField(t('common.name'), me.name || '', {
+      autocomplete: 'name', maxLength: 80, hint: t('me.name_ph'),
+    });
+    nameField.input.addEventListener('change', () => saveName(nameField.input));
+    node.appendChild(nameField.node);
+
+    const phoneField = textField(t('common.phone'), me.phone ? fmtPhone(me.phone) : '', {
+      type: 'tel', disabled: true, hint: me.phone ? t('me.phone_note') : t('me.no_phone'),
+    });
+    node.appendChild(phoneField.node);
+
+    /* Язык и тема — сегментами, а не списками: вариантов по два-три, и выбор
+       должен быть виден целиком, без лишнего нажатия. Тема идёт отдельной
+       строкой во всю ширину: «Как в системе» рядом с подписью не помещается. */
+    const langSeg = segmented(
+      LANGS.map((code) => ({ value: code, label: t('common.lang_' + code) })),
+      { value: getLang(), label: t('common.language'), onChange: pickLang });
+    const themeSeg = segmented([
+      { value: 'light', label: t('common.theme_light') },
+      { value: 'dark', label: t('common.theme_dark') },
+      { value: 'auto', label: t('common.theme_auto') },
+    ], { value: getTheme(), label: t('common.theme'), onChange: setTheme });
+
+    node.appendChild(rowGroup([
+      { label: t('common.language'), end: langSeg },
+      { label: t('common.theme'), sub: t('me.theme_note') },
+      themeSeg,
+    ]));
+
+    const rows = supportRows();
+    if (rows.length) {
+      node.appendChild(group(t('common.support')));
+      node.appendChild(rowGroup(rows));
+    }
+
+    node.appendChild(el('div', { style: { paddingTop: 'var(--sp-3)' } },
+      el('button', {
+        type: 'button', className: 'btn btn--danger btn--lg btn--block',
+        onClick: askForget,
+      }, t('me.forget'))));
+
+    return { node };
+  }
+
+  async function saveName(input) {
+    const name = input.value.trim().slice(0, 80);
+    const me = readClient();
+    if (name === (me.name || '')) return;
+    saveClient({ name });
+    const token = clientToken();
+    if (!token) {
+      toast(t('common.saved'), { type: 'ok' });
+      return;
+    }
+    try {
+      const fresh = await api.patch('/client/profile', { token, name }, { auth: false });
+      if (fresh && fresh.phone !== undefined) state.profile = fresh;
+      toast(t('common.saved'), { type: 'ok' });
+    } catch (e) {
+      toast(errText(e), { type: 'err' });
+    }
+  }
+
+  function pickLang(code) {
+    setLang(code);
+    const token = clientToken();
+    // Язык нужен и серверу: письма, смс и названия статусов приходят на нём.
+    if (token) api.patch('/client/profile', { token, lang: code }, { auth: false }).catch(() => {});
+  }
+
+  async function askForget() {
+    const yes = await confirm({
+      title: t('me.forget_q'),
+      text: t('me.forget_text'),
+      ok: t('me.forget_ok'),
+      cancel: t('common.cancel'),
+      danger: true,
+    });
+    if (!yes) return;
+    forgetClient();
+    ui.close();
+    toast(t('me.forgot'), { type: 'ok' });
+  }
+
+  /* ── запуск ──────────────────────────────────────────────────────────── */
+
+  paintHead();
+  current = BUILD[view]();
+  stage.show(current.node, false);
+  if (view === 'orders') loadFirstPage();
   loadProfile();
-  // Баланс нужен и на самом профиле — в строке «Бонусы» он стоит цифрой.
-  if (bonusOn(app.cfg) && clientToken()) loadBonusState(startWith === 'bonus');
+  // Баланс нужен и на плитке в корне профиля — там он стоит цифрой.
+  if (bonusOn(app.cfg) && clientToken()) loadBonusState(view === 'bonus');
+
+  return {
+    /** Раздел сменился в адресе: показываем его и считаем направление переезда. */
+    apply(next) {
+      const name = ME_SECTIONS[next] ? next : 'hub';
+      if (name === view) return;
+      // Карточку из адреса не восстановить — честно правим адрес на список.
+      if (name === 'order' && !state.card) {
+        if (app.router) app.router.overlay(ME_SECTIONS.orders.overlay, { replace: true });
+        else render('orders', true);
+        return;
+      }
+      render(name, ME_SECTIONS[name].depth < ME_SECTIONS[view].depth);
+      if (name === 'orders') loadFirstPage();
+      if (name === 'bonus') loadBonusState(true);
+    },
+    /** Закрыть. fromRouter — закрывает оболочка, адрес уже без наложения. */
+    close(fromRouter) {
+      byRouter = !!fromRouter;
+      ui.close();
+    },
+    section() { return view; },
+  };
+}
+
+/* Все движения бонусов отдельным экраном: в разделе «Бонусы» им места нет —
+   он обязан помещаться в экран, а движений за год набирается на сотню строк. */
+function openBonusMoves(list, onGone) {
+  const rows = el('div', { className: 'sg-me__rows' });
+  (list || []).forEach((one, i) => {
+    const row = bonusMove(one);
+    row.classList.add('sg-rise');
+    row.style.animationDelay = Math.min(i, 9) * 26 + 'ms';
+    rows.appendChild(row);
+  });
+  return sheet({
+    full: true,
+    className: 'sg-me',
+    title: t('bn.history'),
+    content: el('div', { className: 'sg-me__wrap' },
+      list && list.length ? rows : el('p', { className: 'sheet__text' }, t('bn.history_empty'))),
+    onClose: onGone,
+  });
 }
 
 /** Заказ из истории превращаем в заготовку нового: те же адреса и та же машина. */
@@ -2557,9 +3226,12 @@ async function boot() {
     theme: getTheme,
     setTheme,
 
-    openProfile() { openProfileSheet(app, 'profile'); },
-    openHistory() { openProfileSheet(app, 'history'); },
-    openBonus() { openProfileSheet(app, 'bonus'); },
+    /* Профиль открываем не напрямую, а через адрес: шторка попадает в
+       #/~profile, и перезагрузка возвращает человека в тот же раздел.
+       Саму шторку поднимает подписка на наложения — она ниже, в boot(). */
+    openProfile() { openMe('hub'); },
+    openHistory() { openMe('orders'); },
+    openBonus() { openMe('bonus'); },
 
     /**
      * Бонусы для соседних экранов.
@@ -2577,7 +3249,7 @@ async function boot() {
       forget: bonusForget,
       maxFor: bonusMaxFor,
       spend: (opts) => mountBonusSpend(app, opts),
-      open: () => openProfileSheet(app, 'bonus'),
+      open: () => openMe('bonus'),
     },
 
     /** Любимые адреса: {home, work}. Ставятся из истории в один тап. */
@@ -2619,6 +3291,12 @@ async function boot() {
 
   /* Что предложить одним касанием на главном экране. Порядок важен: заказ,
      который едет прямо сейчас, важнее прошлого. */
+  /** Открыть профиль на нужном разделе. Шторку поднимет подписка на наложения. */
+  function openMe(section) {
+    const at = ME_SECTIONS[section] ? section : 'hub';
+    router.overlay(ME_SECTIONS[at].overlay);
+  }
+
   function paintFlash() {
     if (!warm) return;
     if (warm.live) {
@@ -2666,18 +3344,53 @@ async function boot() {
 
   app.router = router;
 
+  /* Профиль живёт в адресе отдельным куском (#/~profile:bonus). Роутер зовёт
+     эту подписку и при открытии, и при перезагрузке страницы — так человек
+     возвращается ровно в тот раздел, где был, а системная «назад» закрывает
+     профиль, а не уводит с сервиса. */
+  let me = null;
+  router.onOverlay((name) => {
+    const section = meSection(name);
+    if (!section) {
+      if (me) {
+        const going = me;
+        me = null;
+        going.close(true);
+      }
+      return;
+    }
+    if (me) {
+      me.apply(section);
+      return;
+    }
+    me = openProfileSheet(app, section, () => { me = null; });
+    /* Раздел мог получиться не тем, что просили в адресе: карточку отдельного
+       заказа после перезагрузки восстановить нечем, и открывается список.
+       Пусть адрес говорит правду — иначе следующая перезагрузка снова обещала
+       бы карточку. Подписка сработает второй раз, но шторка уже есть и просто
+       сверит раздел. */
+    const real = ME_SECTIONS[me.section()].overlay;
+    if (router.overlayName() !== real) router.overlay(real, { replace: true });
+  });
+
   profileBtn = makeProfileButton(app.openProfile);
   paintProfileButton();
 
-  // Язык меняется на лету: заголовок вкладки, разметка и текущий экран.
+  /* Язык меняется на лету: заголовок вкладки, разметка и текущий экран.
+     Шторку гасим и проявляем обратно — мгновенная подмена всех надписей
+     читается как сбой, а короткое растворение показывает, что сработало
+     именно то, на что человек нажал. */
   onLangChange(() => {
     paintLang();
-    applyTo(document);
     paintProfileButton();
     if (cfg.service && cfg.service.name) {
       document.title = cfg.service.name + ' — ' + t('order.title');
     }
-    if (screen && typeof screen.relang === 'function') screen.relang();
+    applyTo(document);
+    fadeSwap(panel.slot, () => {
+      if (screen && typeof screen.relang === 'function') screen.relang();
+      panel.refresh();
+    });
   });
 
   langBtn.addEventListener('click', () => {
