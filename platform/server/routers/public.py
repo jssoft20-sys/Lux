@@ -326,8 +326,12 @@ def price_quote(ctx):
         too_many(say('geo.too_often', _lang(ctx)))
     tariff = pricing.load_tariff(ctx.json.get('tariff_id') or ctx.json.get('tariff'))
     limit = max(2, settings.get_int('order.max_points', 5))
-    raw = [p for p in (ctx.field('points', list) or []) if isinstance(p, dict)][:limit]
-    pts = geo.clean_points(raw)[:limit]
+    sent = ctx.field('points', list) or []
+    # Координаты принимаем в обоих видах: объектами с адресом и голыми парами
+    # чисел. Отбросить пары значило бы посчитать маршрут нулевым и показать
+    # человеку цену без километров — а в заказе он увидел бы настоящую.
+    pts = geo.clean_points(sent)[:limit]
+    raw = [p for p in sent if isinstance(p, dict)][:limit]
     return _quote_from(ctx, tariff, pts, raw)
 
 

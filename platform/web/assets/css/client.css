@@ -337,104 +337,6 @@ body,
   touch-action: none;
 }
 
-/* ══════════════════════════════════════════════════════════ адреса */
-
-.sg-points {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  border-radius: var(--r-lg);
-  background: var(--surface-2);
-  overflow: hidden;
-}
-
-.sg-point {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  width: 100%;
-  min-height: 56px;
-  padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-4);
-}
-
-.sg-point + .sg-point { border-top: 1px solid var(--surface-3); }
-
-.sg-point__main {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  min-height: 48px;
-  padding: 0;
-  border-radius: var(--r-sm);
-  text-align: left;
-  transition: opacity var(--dur-1) var(--ease);
-}
-.sg-point__main:active { opacity: .6; }
-
-.sg-point__dot {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  border-radius: var(--r-full);
-  background: var(--muted-2);
-}
-
-.sg-point__dot--a { background: var(--accent); }
-.sg-point__dot--b { border-radius: 3px; background: var(--text); }
-
-.sg-point__text {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-size: var(--fs-body);
-}
-
-.sg-point__text--empty { color: var(--muted-2); }
-
-.sg-point__note {
-  display: block;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--muted);
-  font-size: var(--fs-xs);
-  line-height: 1.3;
-}
-
-.sg-point__act {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--r-full);
-  color: var(--muted);
-  transition: color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
-}
-.sg-point__act:active { background: var(--surface-3); color: var(--text); }
-.sg-point__act > svg { width: 20px; height: 20px; }
-.sg-point__act.is-set { color: var(--accent); }
-
-.sg-add {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-height: 44px;
-  margin-top: var(--sp-2);
-  padding: 0 var(--sp-3) 0 var(--sp-2);
-  border-radius: var(--r-full);
-  color: var(--muted);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  transition: color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
-}
-.sg-add:active { background: var(--surface-2); color: var(--text); }
-.sg-add > svg { width: 20px; height: 20px; }
-
 /* Сжатая строка маршрута на шаге выбора машины: откуда и куда одной кнопкой. */
 .sg-route {
   display: flex;
@@ -486,94 +388,223 @@ body,
   white-space: nowrap;
 }
 
-/* ══════════════════════════════════════════════════════════ тарифы */
+/* ══════════════════════════════════════════════════════════ машина в SVG
 
-.sg-tariffs {
-  display: flex;
-  gap: var(--sp-2);
-  margin: 0 calc(var(--sp-4) * -1);
-  padding: var(--sp-1) var(--sp-4) var(--sp-3);
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
+   Пикап, спринтер и два грузовика с тентом рисует order.js. Три цвета на всю
+   машину: жёлтый кузов, тёмное стекло с резиной и светлый груз внутри. */
+
+.sgv { display: block; width: 100%; height: auto; }
+
+.sgv__body { fill: var(--accent); }
+.sgv__deck { fill: var(--accent); opacity: .58; }
+.sgv__hub { fill: var(--accent); }
+.sgv__glass { fill: rgba(16, 15, 10, .55); }
+.sgv__tyre { fill: rgba(14, 13, 9, .92); }
+.sgv__cargo { fill: var(--bg-soft); }
+.sgv__line {
+  fill: none;
+  stroke: rgba(16, 15, 10, .3);
+  stroke-width: 1.2;
+  stroke-linecap: round;
 }
-.sg-tariffs::-webkit-scrollbar { display: none; }
+.sgv__shade { fill: rgba(0, 0, 0, .16); }
 
-.sg-tariff {
-  flex: none;
-  scroll-snap-align: center;
+/* ══════════════════════════════════════════════════════════ карточка машины */
+
+/* Крупная картинка вместо строчки в списке: человек выбирает не тариф, а машину,
+   которая приедет к нему во двор. Под ней двумя спокойными строками — для чего
+   она годится и сколько увезёт. */
+.sg-car {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  width: 132px;
-  padding: var(--sp-3) var(--sp-3) var(--sp-3);
-  border: 1.5px solid transparent;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-4) var(--sp-5);
   border-radius: var(--r-lg);
   background: var(--surface-2);
-  text-align: left;
-  transition: transform var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
-              background-color var(--dur-1) var(--ease);
-}
-.sg-tariff:active { transform: scale(.97); }
-
-/* Машины выезжают в ряд по очереди — тем же каскадом, что и подсказки адресов. */
-.sg-tariff { animation: sg-rise var(--dur-2) var(--ease) backwards; }
-.sg-tariff:nth-child(1) { animation-delay: 0ms; }
-.sg-tariff:nth-child(2) { animation-delay: 34ms; }
-.sg-tariff:nth-child(3) { animation-delay: 68ms; }
-.sg-tariff:nth-child(4) { animation-delay: 102ms; }
-.sg-tariff:nth-child(n + 5) { animation-delay: 136ms; }
-
-.sg-tariff.is-on {
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
 }
 
-.sg-tariff__icon {
-  display: block;
-  height: 34px;
-  margin-bottom: 2px;
+.sg-car__art { width: 100%; max-width: 250px; }
+.sg-car__art .sgv { filter: drop-shadow(0 6px 10px rgba(34, 28, 12, .2)); }
+
+/* Машина сменилась — новая приезжает справа, а не подменяется втихую:
+   движение подтверждает, что нажатие сработало. */
+.sg-car__art.is-in { animation: sg-car-in var(--dur-3) var(--ease-spring) both; }
+
+@keyframes sg-car-in {
+  from { opacity: 0; transform: translateX(18px) scale(.94); }
+  to   { opacity: 1; transform: none; }
+}
+
+.sg-car__cap { text-align: center; }
+
+.sg-car__line {
   color: var(--muted);
-}
-.sg-tariff__icon > svg { width: 46px; height: 34px; }
-.sg-tariff.is-on .sg-tariff__icon { color: var(--accent); }
-
-.sg-tariff__name {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-family: var(--font-display);
   font-size: var(--fs-sm);
-  font-weight: 700;
+  line-height: 1.45;
+}
+/* Описания у тарифа может не быть — пустая строка не должна занимать место. */
+.sg-car__line:empty { display: none; }
+
+/* ══════════════════════════════════════════════════════════ секции заказа */
+
+/* Экран заказа собран из трёх блоков: машина, опции, маршрут. Зазор задаём
+   только им — .sg-body общий, и на других экранах он ничего не двигает. */
+.sg-body--gap > * + * { margin-top: var(--sp-3); }
+
+.sg-sect__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-1);
 }
 
-.sg-tariff__sub {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+.sg-sect__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -.01em;
+}
+
+/* Расстояние, время и одно слово о том, почему дольше. Обещать двадцать минут
+   в шесть вечера — враньё, за которое перед человеком отвечает курьер. */
+.sg-trip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--muted);
   font-size: var(--fs-xs);
+  white-space: nowrap;
 }
 
-.sg-tariff__price {
-  margin-top: 2px;
-  font-family: var(--font-display);
-  font-size: var(--fs-h3);
+.sg-trip__km {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.sg-trip__time { font-variant-numeric: tabular-nums; }
+
+.sg-trip__jam {
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-weight: 600;
+}
+.sg-trip__jam.is-free { background: var(--ok-soft); color: var(--ok); }
+
+/* ══════════════════════════════════════════════════════════ строки в карточке */
+
+/* Строка, которую order.js собирает сам, — переключатель «от двери до двери».
+   Занимает всю ширину строки группы: нажимать можно где угодно, а не только
+   по самому тумблеру в 44 px. */
+.sg-row {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  cursor: pointer;
+}
+
+/* Надбавка стоит рядом с тумблером и загорается вместе с ним: человек видит
+   цену до того, как включит, а не в чеке. */
+.sg-plus {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--fs-sm);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  transition: color var(--dur-2) var(--ease), opacity var(--dur-2) var(--ease);
+}
+.sg-plus.is-on { color: var(--accent-text); }
+.sg-plus.is-stale { opacity: .45; }
+
+/* Чипы с пояснениями и кнопка «Адрес +» стоят внутри карточки отдельной
+   строкой, поэтому им нужна вся её ширина. */
+.rowgroup__row > .chips,
+.rowgroup__row > .sg-addmore { flex: 1 1 auto; min-width: 0; }
+.rowgroup__row > .sg-addmore { display: flex; }
+
+/* Под палец: базовые 40 px в клиенте малы. */
+.sg-panel .chip,
+.sheet .chip,
+.sg-panel .segmented__i,
+.sheet .segmented__i { min-height: 44px; }
+
+.sg-addr.is-empty .rowgroup__label { color: var(--muted-2); }
+
+/* Строка опции с перечислением под названием: список выбранных услуг бывает
+   длинным, а строка в карточке одна — лишнее уводим в многоточие. */
+.sg-optrow .rowgroup__sub {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.sg-tariff__price.is-wait {
-  width: 64px;
-  height: 16px;
-  margin-top: 6px;
-  border-radius: var(--r-sm);
-  background: var(--surface-3);
-  color: transparent;
-  animation: sg-pulse 1.5s ease-in-out infinite;
+.sg-det--x { padding: 0 var(--sp-3); }
+.sg-det--x > svg { width: 18px; height: 18px; }
+
+/* Совет про этаж без лифта: мягкая плашка под карточкой опций. */
+.sg-tipline {
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
 }
+
+/* Подъезд, квартира, этаж и домофон — попарно: так шторка деталей помещается
+   на экран целиком и не выглядит анкетой. */
+.sg-dgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+}
+
+.sg-lift { padding: 2px; }
+
+/* Машин больше шести — сегменты не читаются, и выбор уходит в шторку списком. */
+.sg-cars .rowgroup__ico {
+  width: 58px;
+  height: 34px;
+  border-radius: var(--r-xs);
+  background: none;
+}
+.sg-cars .rowgroup__ico > svg { width: 58px; height: 30px; }
+.sg-cars .rowgroup__row.is-on { background: var(--accent-soft); }
+
+/* ══════════════════════════════════════════════════════════ пояснительные экраны */
+
+/* Картинки к «О грузчиках», «Об ожидании» и прочим рисует order.js: контур
+   плюс жёлтое пятно. Один стиль на все, поэтому цвета живут здесь. */
+.sga { width: 100%; height: auto; }
+.sga__blob { fill: var(--text); opacity: .07; }
+.sga__fill { fill: var(--accent); }
+.sga__ink {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sga__dash {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-dasharray: 2 10;
+  opacity: .45;
+}
+
+/* Машина на своём пояснительном экране занимает всю ширину картинки. */
+.sheet--car .story__art .sgv { width: 100%; }
 
 /* ══════════════════════════════════════════════════════════ строки-опции */
 
@@ -650,11 +681,14 @@ body,
   background: var(--accent);
   color: var(--on-accent);
   font-family: var(--font-display);
+  /* Мягкое жёлтое свечение под кнопкой: она главная на экране, и это видно
+     раньше, чем человек прочитает надпись. */
+  box-shadow: var(--shadow-accent);
   transition: transform var(--dur-1) var(--ease), opacity var(--dur-1) var(--ease),
               box-shadow var(--dur-1) var(--ease);
 }
-.sg-cta:active:not(:disabled) { transform: scale(.98); }
-.sg-cta:disabled { opacity: .45; }
+.sg-cta:active:not(:disabled) { transform: scale(.98); box-shadow: var(--shadow-1); }
+.sg-cta:disabled { opacity: .45; box-shadow: none; }
 
 .sg-cta__label {
   font-size: var(--fs-h3);
@@ -680,6 +714,15 @@ body,
   color: transparent;
   animation: sg-pulse 1.5s ease-in-out infinite;
 }
+
+/* Пустое место на кнопке читается как поломка, поэтому на время пересчёта
+   прежняя цифра не исчезает, а просто гаснет. */
+.sg-cta__price,
+.sg-total__val {
+  transition: opacity var(--dur-2) var(--ease);
+}
+.sg-cta__price.is-stale,
+.sg-total__val.is-stale { opacity: .45; }
 
 .sg-note {
   color: var(--muted-2);
@@ -727,6 +770,10 @@ body,
 }
 .sg-find__clear:active { background: var(--surface-3); }
 .sg-find__clear > svg { width: 18px; height: 18px; }
+
+/* «Карта» живёт в самой строке поиска: когда подсказки не нашли нужного,
+   до конца списка за этой кнопкой уже никто не докручивает. */
+.sg-find__map { flex: none; margin-right: 2px; }
 
 .sg-list { display: flex; flex-direction: column; }
 
@@ -795,6 +842,31 @@ body,
   font-size: var(--fs-xs);
   line-height: 1.35;
 }
+
+/* Часть строки, которую человек набрал сам. Синий, а не жёлтый: жёлтым у нас
+   помечено то, что можно нажать, а здесь нажимается вся строка целиком. */
+.sg-hit { color: var(--match); font-weight: 600; }
+
+/* Сколько до адреса отсюда. В Бишкеке одинаковых названий много, и расстояние
+   отличает соседний двор от того же адреса в Новопавловке. */
+.sg-item__dist {
+  flex: none;
+  align-self: center;
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Дом и работа отдельной карточкой над списком: два адреса, которыми человек
+   пользуется чаще всех остальных вместе взятых. */
+.sg-places {
+  margin-bottom: var(--sp-2);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+.sg-places .sg-item:active { background: var(--surface-3); }
 
 .sg-group {
   padding: var(--sp-3) 0 var(--sp-1);
@@ -1163,9 +1235,15 @@ body,
   display: flex;
   align-items: center;
   gap: var(--sp-3);
+  min-height: 56px;
   padding: var(--sp-3) 0;
 }
 .sg-extra + .sg-extra { border-top: 1px solid var(--line-soft); }
+
+/* Разовую услугу включают тапом по всей строке, а не по тумблеру в 48×28:
+   в такой пятачок попадают не с первого раза, и человек думает, что сломалось. */
+.sg-extra--tap { cursor: pointer; }
+.sg-extra--tap:active { background: var(--surface-2); }
 
 .sg-rate {
   display: flex;
@@ -1195,8 +1273,6 @@ body,
 /* На совсем узких экранах ужимаем отступы, но не высоту кнопок. */
 @media (max-width: 359px) {
   .sg-head, .sg-body, .sg-foot { padding-left: var(--sp-3); padding-right: var(--sp-3); }
-  .sg-tariffs { margin: 0 calc(var(--sp-3) * -1); padding-left: var(--sp-3); padding-right: var(--sp-3); }
-  .sg-tariff { width: 124px; }
   .sg-brand__name { display: none; }
 }
 
@@ -1206,7 +1282,7 @@ body,
    строки появлялись бы мгновенно, зато по очереди — рывками. */
 @media (prefers-reduced-motion: reduce) {
   .sg-list > *,
-  .sg-tariff {
+  .sg-car__art.is-in {
     animation: none;
   }
   .sg-step,

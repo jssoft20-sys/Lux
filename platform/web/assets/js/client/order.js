@@ -1,19 +1,22 @@
-/* Оформление заказа: адреса, детали подъездов, машина, грузчики и контакты.
+/* Оформление заказа: адреса, машина, грузчики, подъём к двери и контакты.
 
-   Экран собран из четырёх шагов внутри одной шторки:
-   адреса → детали адресов → машина → контакты.
-   Шаги не перерисовываются целиком на каждое событие: пока шаг тот же, меняются
-   только те узлы, где действительно новые данные. Иначе на каждом пересчёте цены
-   у человека дёргалась бы карусель и слетал фокус из поля.
+   Три шага в одной шторке: адреса → заказ → контакты. Отдельной анкеты про
+   подъезды больше нет: подъезд, квартиру, этаж и домофон человек уточняет
+   кнопкой «Детали» прямо у своей строки адреса, и только если ему есть что
+   уточнить. Заполненное тут же встаёт серой строкой под адресом, так что видно
+   без открывания, что курьер уже знает.
 
-   Детали адресов вынесены в отдельный шаг не для красоты: спрятанные под
-   карандашик подъезд и этаж не заполняет никто, а потом курьер кружит по двору
-   и звонит. Там же у каждой точки стоит «от двери до двери» — с надбавкой,
-   которую считает сервер, чтобы цифра в конце никого не удивила.
+   «От двери до двери» — один переключатель на весь заказ, а не по одному у
+   каждой точки: подниматься к двери на погрузке и не подниматься на разгрузке
+   не просит никто, зато два одинаковых тумблера подряд раздражают всех. Сервер
+   берёт надбавку за каждую точку, поэтому включённый переключатель уходит к
+   нему строкой {code:'door_to_door', qty:<сколько точек в маршруте>} и флажком
+   у каждой точки — курьеру важно знать, что подниматься надо везде.
 
-   Машины на карточках нарисованы здесь же, в SVG: пикап, спринтер и два грузовика
-   с тентом. Человек выбирает не строчку в списке, а машину, которую увидит во дворе,
-   поэтому под названием стоят вместимость и размеры кузова.
+   Машины нарисованы здесь же, в SVG: пикап, спринтер и два грузовика с тентом.
+   Человек выбирает не строчку в списке, а машину, которую увидит во дворе.
+   Размер кузова переключается сегментами S M L XL — так все варианты видно
+   сразу, без выпадающего списка и лишнего экрана.
 
    Цену считает сервер. Здесь она только показывается: перед созданием заказа
    бэкенд пересчитает всё заново по своим тарифам.
@@ -22,333 +25,157 @@
 import { api } from '../core/api.js';
 import { t, tp, getLang, extend } from '../core/i18n.js';
 import { createStore } from '../core/store.js';
-import { el, toast, sheet, haptic } from '../core/ui.js';
+import {
+  el, toast, sheet, haptic, chip, segmented, rowGroup, infoStory, pressable,
+} from '../core/ui.js';
 import { pin } from '../core/map.js';
 import { money, num, duration, NBSP } from '../core/fmt.js';
 import { icon, iconBtn, errText, nameOf, dur } from './app.js';
-import { pickAddress, rememberPoint, detailsLine } from './address.js';
+import { pickAddress, rememberPoint, detailsLine, noteMyPlace } from './address.js';
 
-/* Свои строки держим при себе: общий словарь правят соседние модули. */
+/* Свои строки держим при себе: общий словарь правят соседние модули.
+   Кыргызский — живой бишкекский, а не подстрочник с русского. */
 extend({
   ru: {
-    'car.cap_kg': 'до {v} кг',
-    'car.cap_t': 'до {v} т',
-    'car.body': 'кузов {v} м',
+    'car.kg': '{v} кг',
+    'car.t': '{v} т',
+    'car.cap': 'Максимум {v}',
+    'car.body': 'Кузов {v} м',
+    'car.size': 'Кузов',
+
+    'trip.title': 'Маршрут',
     'trip.jam': 'с пробками',
     'trip.free': 'дорога свободна',
     'trip.free_time': 'без пробок {v}',
 
-    'pts.title': 'Детали адресов',
-    'pts.sub': 'Пара строчек — и курьер найдёт вас быстрее',
-    'pts.skip': 'Заполнять не обязательно, но так курьер найдёт вас быстрее',
-    'pts.fill': 'Подъезд, квартира, этаж, домофон',
+    'pts.details': 'Детали',
+    'pts.fill': 'Подъезд, квартира, этаж — если нужно',
     'pts.no_addr': 'Выберите адрес',
+    'pts.add': 'Адрес',
+
+    'load.none': 'Нет',
+    // Коротко: рядом стоит переключатель, и длинная подпись обрывается на
+    // многоточии — строка выглядит сломанной, хотя всё работает.
+    'load.zero': 'Помощь не нужна',
 
     'd2d.title': 'От двери до двери',
-    'd2d.on': 'Курьер поднимется к двери',
-    'd2d.off': 'Курьер ждёт у подъезда, так дешевле',
-    'd2d.plus': '+{price}',
-    'd2d.sum': 'Подъём к двери',
-    'd2d.lift_hint': 'На {v} этаже без лифта проще с подъёмом к двери',
+    'd2d.on_two': 'Курьер поднимется к двери на обоих адресах',
+    'd2d.on_many': 'Курьер поднимется к двери на всех адресах',
+    'd2d.off': 'Курьер ждёт у машины, так дешевле',
+    'd2d.lift': 'На {v} этаже без лифта так намного проще',
+
+    'info.delivery': 'О доставке',
+    'info.loaders': 'О грузчиках',
+    'info.body': 'О кузове {v}',
+    'info.wait': 'Об ожидании',
+    'info.door': 'О подъёме к двери',
+
+    'st.delivery_t': 'Как проходит доставка',
+    'st.delivery_1': 'Курьер приезжает на выбранной машине к первому адресу и звонит вам. '
+      + 'Дальше — по тем адресам, которые вы поставили в заказе, в том же порядке.',
+    'st.delivery_2': 'Цена на жёлтой кнопке окончательная: подача, километры и время в ней '
+      + 'уже посчитаны. Вырасти она может, только если вы сами добавите адрес, грузчика '
+      + 'или ожидание сверх бесплатного.',
+    'st.delivery_3': 'Машину видно на карте с той секунды, как её взял курьер.',
+
+    'st.loaders_t': 'Грузчики',
+    'st.loaders_1': 'Без грузчиков водитель только везёт: выносить и заносить вещи придётся самим.',
+    'st.loaders_2': 'Один грузчик — это сам водитель: он поможет погрузить и выгрузить. '
+      + 'Двое и больше — с водителем приедут ещё люди.',
+    'st.loaders_free': 'У этой машины {n} уже в цене, платить за них отдельно не нужно.',
+    'st.loaders_paid': 'Каждый грузчик сверх включённых — {price} в час.',
+
+    'st.body_t': 'Кузов {v}',
+    'st.body_size': 'Внутри {d} м в длину, {w} м в ширину и {h} м в высоту.',
+    'st.body_cap': 'Выдерживает до {v}.',
+    'st.body_tip': 'Смотрите не на вес, а на длину: диван 2,2 метра в полутораметровый '
+      + 'кузов не войдёт, каким бы лёгким он ни был.',
+
+    'st.wait_t': 'Ожидание',
+    'st.wait_free': 'В цену входит {n} минут бесплатного ожидания на каждом адресе.',
+    'st.wait_paid': 'Дальше каждая минута — {price}. Счётчик включает курьер, и вы видите '
+      + 'его прямо в заказе, а не узнаёте о нём в конце.',
+    'st.wait_tip': 'Пока курьер ждёт, он никуда не уедет: заказ остаётся вашим.',
+
+    'st.d2d_t': 'От двери до двери',
+    'st.d2d_1': 'Обычно курьер ждёт у машины, а вещи до подъезда вы подносите сами. '
+      + 'Так дешевле всего.',
+    'st.d2d_2': 'С этим переключателем курьер поднимается к самой двери на каждом адресе '
+      + 'маршрута. Это отдельная работа, поэтому надбавка берётся за каждый адрес.',
   },
   ky: {
-    'car.cap_kg': '{v} кг чейин',
-    'car.cap_t': '{v} тоннага чейин',
-    'car.body': 'кузов {v} м',
+    'car.kg': '{v} кг',
+    'car.t': '{v} тонна',
+    'car.cap': 'Эң көбү {v}',
+    'car.body': 'Кузов {v} м',
+    'car.size': 'Кузов',
+
+    'trip.title': 'Маршрут',
     'trip.jam': 'тыгын менен',
     'trip.free': 'жол бош',
     'trip.free_time': 'тыгынсыз {v}',
 
-    'pts.title': 'Даректерди тактайлы',
-    'pts.sub': 'Бир-эки сөз — курьер сизди тезирээк табат',
-    'pts.skip': 'Милдеттүү эмес, бирок курьер сизди тезирээк табат',
-    'pts.fill': 'Подъезд, батир, кабат, домофон',
+    'pts.details': 'Толугураак',
+    'pts.fill': 'Подъезд, батир, кабат — керек болсо',
     'pts.no_addr': 'Дарек тандаңыз',
+    'pts.add': 'Дарек',
+
+    'load.none': 'Жок',
+    'load.zero': 'Жардам керек эмес',
 
     'd2d.title': 'Эшиктен эшикке',
-    'd2d.on': 'Курьер эшигиңизге чейин көтөрөт',
-    'd2d.off': 'Курьер подъезддин алдында күтөт, арзаныраак',
-    'd2d.plus': '+{price}',
-    'd2d.sum': 'Эшикке чейин көтөрүү',
-    'd2d.lift_hint': '{v}-кабат, лифт жок — эшикке чейин көтөргөн жеңилирээк',
+    // Кыргызчада ээни түшүрүп койсо да түшүнүктүү: катар эки сапка батат.
+    'd2d.on_two': 'Эки даректе тең эшигиңизге чейин көтөрөт',
+    'd2d.on_many': 'Бардык даректе эшигиңизге чейин көтөрөт',
+    'd2d.off': 'Курьер унаанын жанында күтөт, арзаныраак',
+    'd2d.lift': '{v}-кабат, лифт жок — мындай бир топ жеңил',
+
+    'info.delivery': 'Жеткирүү жөнүндө',
+    'info.loaders': 'Жүкчүлөр жөнүндө',
+    'info.body': 'Кузов {v} жөнүндө',
+    'info.wait': 'Күтүү жөнүндө',
+    'info.door': 'Көтөрүү жөнүндө',
+
+    'st.delivery_t': 'Жеткирүү кантип өтөт',
+    'st.delivery_1': 'Курьер тандалган унаа менен биринчи даректе болот жана сизге чалат. '
+      + 'Андан ары — заказда койгон даректер боюнча, ошол эле ирет менен.',
+    'st.delivery_2': 'Сары баскычтагы баа акыркы баа: унаа чакыруу, километр жана убакыт '
+      + 'ошонун ичинде. Ал дарек, жүкчү же кошумча күтүү кошсоңуз гана өзгөрөт.',
+    'st.delivery_3': 'Курьер заказды алганда эле унаа картадан көрүнөт.',
+
+    'st.loaders_t': 'Жүкчүлөр',
+    'st.loaders_1': 'Жүкчүсүз айдооч жүктү ташыйт гана: буюмдарды өзүңүз чыгарып, өзүңүз киргизесиз.',
+    'st.loaders_2': 'Бир жүкчү — бул айдоочунун өзү: жүктөөгө, түшүрүүгө жардам берет. '
+      + 'Эки же андан көп болсо, айдооч менен дагы киши келет.',
+    'st.loaders_free': 'Бул унаада {n} баанын ичинде, өзүнчө төлөнбөйт.',
+    'st.loaders_paid': 'Кошумча ар бир жүкчү — саатына {price}.',
+
+    'st.body_t': 'Кузов {v}',
+    'st.body_size': 'Ичи {d} м узун, {w} м кең, {h} м бийик.',
+    'st.body_cap': 'Көтөрүмдүүлүгү — {v}.',
+    'st.body_tip': 'Салмакка эмес, узундукка караңыз: 2,2 метр диван бир жарым метрлик '
+      + 'кузовго батпайт, канчалык жеңил болсо да.',
+
+    'st.wait_t': 'Күтүү',
+    'st.wait_free': 'Ар бир даректе {n} мүнөт бекер күтүү баанын ичинде.',
+    'st.wait_paid': 'Андан кийин ар бир мүнөт — {price}. Эсепти курьер өзү күйгүзөт, сиз аны '
+      + 'заказдан көрүп турасыз, аягында билбейсиз.',
+    'st.wait_tip': 'Курьер күтүп турганда эч жакка кетпейт: заказ сиздики бойдон калат.',
+
+    'st.d2d_t': 'Эшиктен эшикке',
+    'st.d2d_1': 'Адатта курьер унаанын жанында күтөт, буюмду подъездге чейин өзүңүз '
+      + 'жеткиресиз. Эң арзаны ушул.',
+    'st.d2d_2': 'Бул которгуч менен курьер маршруттагы ар бир даректе эшигиңизге чейин '
+      + 'көтөрөт. Бул өзүнчө жумуш, ошондуктан кошумча акы ар бир дарекке эсептелет.',
   },
 });
 
 const QUOTE_PAUSE = 320;       // пауза перед пересчётом цены, чтобы не дёргать сервер
 const MAX_LOADERS = 8;
+const LOADER_SEGS = 2;         // «Нет 1 2» — грузчиков сверх двух берут в допуслугах
+const SEG_LIMIT = 6;           // больше шести сегментов на 360 px не читаются
 const JAM_STEP = 60;           // разницу меньше минуты человек не заметит, и врать про неё незачем
 const DOOR_CODE = 'door_to_door';   // так подъём к двери называется в расчёте на сервере
-
-/* ─────────────────────────────────────────────────────── свои стили */
-
-/* Карточки машин и строка маршрута живут только в этом экране, поэтому их стили
-   приезжают вместе с ним. В client.css их класть нельзя: файл общий, его правят
-   параллельно. Всё построено на токенах, так что тема переключается сама. */
-const CSS = `
-.sg-tariffs--live { padding: 10px var(--sp-4) 18px; }
-
-.sg-tariff--live {
-  width: 150px;
-  gap: 0;
-  padding: var(--sp-3);
-  transition: transform var(--dur-2) var(--ease), border-color var(--dur-1) var(--ease),
-              background-color var(--dur-1) var(--ease), box-shadow var(--dur-2) var(--ease);
-}
-
-/* Выбранная машина приподнимается над соседями и подсвечивается: видно даже
-   краем глаза, на чём человек остановился. */
-.sg-tariff--live.is-on {
-  transform: translateY(-4px);
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-  box-shadow: var(--shadow-2);
-}
-.sg-tariff--live:active { transform: scale(.97); }
-.sg-tariff--live.is-on:active { transform: translateY(-4px) scale(.97); }
-
-.sgv-art { display: block; width: 84px; height: 44px; margin-bottom: 4px; }
-.sgv-art > svg {
-  display: block;
-  width: 84px;
-  height: 44px;
-  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .26));
-}
-
-/* Три цвета на всю машину: кузов, тёмное стекло с резиной и светлый груз.
-   Кузов и ступицы загораются вместе с выбором. */
-.sgv__body { fill: var(--muted); transition: fill var(--dur-2) var(--ease); }
-.sgv__deck { fill: var(--muted); opacity: .5; transition: fill var(--dur-2) var(--ease); }
-.sgv__hub  { fill: var(--muted); transition: fill var(--dur-2) var(--ease); }
-.sgv__glass { fill: rgba(12, 12, 16, .55); }
-.sgv__tyre { fill: rgba(12, 12, 16, .92); }
-.sgv__cargo { fill: var(--text); opacity: .16; }
-.sgv__line { fill: none; stroke: rgba(12, 12, 16, .3); stroke-width: 1.2; stroke-linecap: round; }
-.sgv__shade { fill: rgba(0, 0, 0, .18); }
-
-.sg-tariff--live.is-on .sgv__body,
-.sg-tariff--live.is-on .sgv__deck,
-.sg-tariff--live.is-on .sgv__hub { fill: var(--accent); }
-
-.sgv-cap {
-  display: block;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  margin-top: 1px;
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-.sgv-dim {
-  display: block;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--muted-2);
-  font-size: var(--fs-xs);
-  line-height: 1.4;
-}
-
-/* Пока считается новая цена, старая остаётся на месте и просто гаснет:
-   пустое место на кнопке читается как поломка. */
-.sg-tariff__price, .sg-cta__price, .sg-total__val, .sgd-sum__val {
-  transition: opacity var(--dur-2) var(--ease);
-}
-.sg-tariff__price.is-stale, .sg-cta__price.is-stale,
-.sg-total__val.is-stale, .sgd-sum__val.is-stale { opacity: .45; }
-
-/* ── шаг «детали адресов» ────────────────────────────────────────────────── */
-
-.sgd-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-3);
-  padding-bottom: var(--sp-2);
-}
-
-.sgd-card {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid transparent;
-  border-radius: var(--r-lg);
-  background: var(--surface-2);
-  overflow: hidden;
-  transition: border-color var(--dur-2) var(--ease);
-}
-.sgd-card.is-door { border-color: var(--accent-line); }
-
-/* Адрес с деталями — одна большая цель для пальца: тап открывает форму. */
-.sgd-main {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  width: 100%;
-  min-height: 60px;
-  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4);
-  text-align: left;
-  transition: background-color var(--dur-1) var(--ease);
-}
-.sgd-main:active { background: var(--surface-3); }
-
-.sgd-dot {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  border-radius: var(--r-full);
-  background: var(--muted-2);
-}
-.sgd-dot--a { background: var(--accent); }
-.sgd-dot--b { border-radius: 3px; background: var(--text); }
-
-.sgd-text { flex: 1 1 auto; min-width: 0; }
-
-.sgd-kind {
-  display: block;
-  color: var(--muted-2);
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-
-.sgd-addr {
-  display: block;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  margin-top: 1px;
-  font-size: var(--fs-body);
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-/* Детали одной строкой: «подъезд 2, кв. 14, 5 этаж, без лифта, до двери». */
-.sgd-note {
-  display: block;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: var(--fs-xs);
-  line-height: 1.35;
-}
-.sgd-note.is-empty { color: var(--muted-2); }
-
-.sgd-go {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  color: var(--muted-2);
-}
-.sgd-go > svg { width: 20px; height: 20px; }
-
-/* Переключатель занимает всю строку: попасть по нему пальцем можно где угодно,
-   а не только по самому тумблеру в 28 px. Высоту держим с запасом на две строки
-   пояснения — иначе строка прыгала бы туда-сюда на каждое нажатие. */
-.sgd-door {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  min-height: 68px;
-  padding: var(--sp-2) var(--sp-4);
-  border-top: 1px solid var(--line-soft);
-  cursor: pointer;
-}
-.sgd-door__text { flex: 1 1 auto; min-width: 0; }
-.sgd-door__title {
-  display: block;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  line-height: 1.3;
-}
-.sgd-door__sub {
-  display: block;
-  color: var(--muted);
-  font-size: var(--fs-xs);
-  line-height: 1.35;
-}
-
-/* Надбавка стоит рядом с тумблером и загорается вместе с ним: человек видит
-   цену до того, как включит, а не в чеке. */
-.sgd-door__price {
-  flex: none;
-  color: var(--muted);
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  transition: color var(--dur-2) var(--ease);
-}
-.sgd-card.is-door .sgd-door__price { color: var(--accent); }
-
-.sgd-tip {
-  margin: 0 var(--sp-3) var(--sp-3);
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--r-md);
-  background: var(--accent-soft);
-  color: var(--text);
-  font-size: var(--fs-xs);
-  line-height: 1.35;
-}
-
-/* Чипы «есть лифт» / «без лифта» в форме деталей: базовые 36 px под палец малы. */
-.sgd-lift { padding: 2px 2px var(--sp-1); }
-.sgd-lift .chip { min-height: 44px; }
-
-/* Надбавка за все точки сразу — под кнопкой шага. */
-.sgd-sum {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  padding: 0 var(--sp-1);
-  font-size: var(--fs-sm);
-}
-.sgd-sum__name { color: var(--muted); }
-.sgd-sum__val {
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-/* Расстояние, время с пробками и слово, объясняющее, почему дольше. */
-.sgv-trip {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  line-height: 1.2;
-}
-.sgv-trip__km {
-  color: var(--text);
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-.sgv-trip__time { color: var(--muted); font-variant-numeric: tabular-nums; }
-.sgv-trip__jam {
-  padding: 1px 7px;
-  border-radius: var(--r-full);
-  background: var(--warn-soft);
-  color: var(--warn);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-}
-.sgv-trip__jam.is-free { background: var(--ok-soft); color: var(--ok); }
-`;
-
-const STYLE_ID = 'sg-order-style';
-
-function installStyles() {
-  if (document.getElementById(STYLE_ID)) return;
-  document.head.appendChild(el('style', { id: STYLE_ID, text: CSS }));
-}
 
 /* ─────────────────────────────────────────────────────── машины в SVG */
 
@@ -427,11 +254,71 @@ function vehicleKind(tf) {
 }
 
 function vehicleArt(tf) {
-  return '<svg class="sgv" viewBox="0 0 84 44" width="84" height="44" ' +
-    'aria-hidden="true" focusable="false">' +
+  return '<svg class="sgv" viewBox="0 0 84 44" aria-hidden="true" focusable="false">' +
     '<ellipse class="sgv__shade" cx="42" cy="39.2" rx="31" ry="2.2"/>' +
     ART[vehicleKind(tf)]() + '</svg>';
 }
+
+/* ─────────────────────────────────────────────────────── значки и картинки */
+
+/* Коробка у точки отправления и флажок у точки назначения: концы маршрута
+   должны отличаться не только словом, но и формой — список читают в спешке. */
+const ART_FROM =
+  '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+  '<path d="M12 3.1 20.2 7.4v9.2L12 20.9 3.8 16.6V7.4z" fill="none" stroke="currentColor" ' +
+  'stroke-width="1.7" stroke-linejoin="round"/>' +
+  '<path d="M3.8 7.4 12 11.7l8.2-4.3M12 11.7v9.2" fill="none" stroke="currentColor" ' +
+  'stroke-width="1.7" stroke-linejoin="round"/></svg>';
+
+const ART_TO =
+  '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+  '<path d="M6.4 20.4V4.2" fill="none" stroke="currentColor" stroke-width="1.9" ' +
+  'stroke-linecap="round"/>' +
+  '<path d="M6.4 5h11.2l-2.6 4 2.6 4H6.4z" fill="currentColor"/></svg>';
+
+/* Картинки пояснительных экранов рисуем сами: у Яндекса берём язык формы,
+   а не его имущество. Один стиль на все четыре — контур плюс жёлтое пятно. */
+function storyArt(body) {
+  return '<svg class="sga" viewBox="0 0 200 140" aria-hidden="true" focusable="false">' + body + '</svg>';
+}
+
+const STORY_ART = {
+  // Путь от коробки к флажку: две точки и пунктир между ними.
+  delivery: () => storyArt(
+    '<circle class="sga__blob" cx="100" cy="76" r="54"/>' +
+    '<path class="sga__dash" d="M44 96c26 8 36-20 58-24s30 22 54 10"/>' +
+    '<rect class="sga__fill" x="28" y="76" width="32" height="26" rx="4"/>' +
+    '<path class="sga__ink" d="M28 84h32M44 76v26"/>' +
+    '<path class="sga__ink" d="M156 106V44"/>' +
+    '<path class="sga__fill" d="M156 46h32l-8 11 8 11h-32z"/>'),
+
+  // Двое несут диван: головы, руки к сиденью и по две ноги. Ноги важны: с одной
+  // человечек читается как сломанный значок, а не как грузчик.
+  loaders: () => storyArt(
+    '<circle class="sga__blob" cx="100" cy="72" r="54"/>' +
+    '<rect class="sga__fill" x="66" y="64" width="68" height="34" rx="6"/>' +
+    '<path class="sga__ink" d="M66 78h68"/>' +
+    '<circle class="sga__ink" cx="36" cy="46" r="11"/>' +
+    '<path class="sga__ink" d="M36 57v26M36 64l30 8M36 83l-9 26M36 83l9 26"/>' +
+    '<circle class="sga__ink" cx="164" cy="46" r="11"/>' +
+    '<path class="sga__ink" d="M164 57v26M164 64l-30 8M164 83l9 26M164 83l-9 26"/>'),
+
+  // Часы: жёлтый круг, стрелки и риски по кругу.
+  wait: () => storyArt(
+    '<circle class="sga__fill" cx="100" cy="70" r="52"/>' +
+    '<circle class="sga__ink" cx="100" cy="70" r="52"/>' +
+    '<path class="sga__ink" d="M100 36v8M100 96v8M66 70h8M126 70h8"/>' +
+    '<path class="sga__ink" d="M100 70V44M100 70l22 13"/>'),
+
+  // Подъём к двери: дверь, ступени и коробка, которую вносят.
+  door: () => storyArt(
+    '<circle class="sga__blob" cx="104" cy="72" r="54"/>' +
+    '<path class="sga__ink" d="M28 120h34v-16h34V88h34V72h34"/>' +
+    '<rect class="sga__ink" x="130" y="24" width="44" height="48" rx="4"/>' +
+    '<circle class="sga__ink" cx="138" cy="50" r="3"/>' +
+    '<rect class="sga__fill" x="56" y="70" width="30" height="26" rx="4"/>' +
+    '<path class="sga__ink" d="M56 78h30M71 70v26"/>'),
+};
 
 /* ─────────────────────────────────────────────────────── мелочи */
 
@@ -447,23 +334,58 @@ function distText(m) {
   return (v / 1000).toFixed(1).replace('.', ',') + NBSP + 'км';
 }
 
-/* Сколько увезёт: «до 3 т», «до 300 кг». */
-function capText(tf) {
-  const kg = Math.round(Number(tf && tf.capacity_kg) || 0);
-  if (kg <= 0) return nameOf(tf, 'desc');
-  if (kg >= 1000) {
-    const tons = Math.round(kg / 100) / 10;
-    return t('car.cap_t', { v: String(tons).replace('.', ',') });
-  }
-  return t('car.cap_kg', { v: num(kg) });
+/** Число в метрах из сантиметров базы: «3,0». Человек прикидывает диван в метрах. */
+function metres(cm) {
+  return (Math.max(0, Number(cm) || 0) / 100).toFixed(1).replace('.', ',');
 }
 
-/* Размеры кузова в метрах: длина × ширина × высота. В базе они в сантиметрах,
-   но человек прикидывает диван в метрах, а не в сантиметрах. */
+/* Сколько увезёт голой цифрой: «300 кг», «3 т». Отдельно от «Максимум …»:
+   в пояснительном экране та же величина стоит в другой фразе. */
+function capPlain(tf) {
+  const kg = Math.round(Number(tf && tf.capacity_kg) || 0);
+  if (kg <= 0) return '';
+  if (kg >= 1000) {
+    const tons = Math.round(kg / 100) / 10;
+    return t('car.t', { v: String(tons).replace('.', ',') });
+  }
+  return t('car.kg', { v: num(kg) });
+}
+
+/* То же самое строкой под картинкой машины: «Максимум 300 кг». */
+function capText(tf) {
+  const v = capPlain(tf);
+  return v ? t('car.cap', { v }) : '';
+}
+
+/* Размеры кузова: длина × ширина × высота в метрах. */
 function dimText(tf) {
   const raw = [tf && tf.body_d, tf && tf.body_w, tf && tf.body_h].map((v) => Number(v) || 0);
   if (raw.some((v) => v <= 0)) return '';
-  return t('car.body', { v: raw.map((v) => (v / 100).toFixed(1).replace('.', ',')).join('×') });
+  return t('car.body', { v: raw.map(metres).join('×') });
+}
+
+/* Ярлык размера кузова для сегментов. Считаем по грузоподъёмности: админ волен
+   назвать тариф как угодно, а S M L XL человек читает одинаково везде. */
+const SIZE_STEPS = [[500, 'S'], [1500, 'M'], [3000, 'L'], [5000, 'XL']];
+
+function sizeLabel(tf) {
+  const kg = Number(tf && tf.capacity_kg) || 0;
+  for (const [limit, label] of SIZE_STEPS) {
+    if (kg <= limit) return label;
+  }
+  return 'XXL';
+}
+
+/** Ярлыки для всего списка машин. Две машины одного веса разводим цифрой,
+    иначе в сегментах стояли бы две неотличимые буквы «M». */
+function sizeLabels(list) {
+  const used = new Map();
+  return list.map((tf) => {
+    const base = sizeLabel(tf);
+    const n = (used.get(base) || 0) + 1;
+    used.set(base, n);
+    return n === 1 ? base : base + n;
+  });
 }
 
 /** Подпись точки: первая — откуда, последняя — куда, между ними промежуточные. */
@@ -473,15 +395,8 @@ function pointLabel(i, total) {
   return t('order.point', { n: i + 1 });
 }
 
-function pointHint(i, total) {
+function pointHint(i) {
   return i === 0 ? t('order.from_ph') : t('order.to_ph');
-}
-
-/** Приписка под адресом в списке точек. Пока деталей нет, показываем район
-    из подсказки геокодера — пустая строка выглядит как потерянный адрес. */
-function pointNote(p) {
-  if (!p) return '';
-  return detailsLine(p) || p.subtitle || '';
 }
 
 /* Этаж числом. «5а» и «5 этаж» считаем пятым этажом, пустое и «цоколь» — нулём:
@@ -577,12 +492,22 @@ function field(label, value, opts = {}) {
   return { node, input, get value() { return input.value.trim(); } };
 }
 
+/** Кнопка шага: жёлтая, во всю ширину, проседает под пальцем. */
+function ctaButton(label, onClick, priceNode) {
+  return pressable(el('button', { type: 'button', className: 'sg-cta', onClick },
+    el('span', { className: 'sg-cta__label' }, label),
+    priceNode || null), { scale: .98 });
+}
+
 /* ─────────────────────────────────────────────────────── экран */
 
 export function mountOrder(app) {
-  installStyles();
-
   const tariffs = app.tariffs.filter((x) => x && x.id);
+  const sizes = sizeLabels(tariffs);
+  const sizeOf = (id) => {
+    const i = tariffs.findIndex((x) => x.id === id);
+    return i < 0 ? '' : sizes[i];
+  };
 
   /* «Повторить заказ» из истории приносит готовую заготовку: те же адреса с
      подъездами, та же машина. Забираем её один раз — второй вызов вернёт null. */
@@ -593,12 +518,21 @@ export function mountOrder(app) {
   const draftPoints = draftList.length >= 2 ? draftList : null;
   const draftTariff = draft && tariffs.some((x) => x.id === draft.tariffId) ? draft.tariffId : 0;
 
+  /* Подъём к двери в прошлом заказе лежал среди допуслуг. Достаём его оттуда и
+     убираем из набора: иначе он ушёл бы на сервер дважды — и строкой услуги,
+     и своей позицией, а надбавка выросла бы на ровном месте. */
+  const draftExtras = draft && draft.extras ? Object.assign({}, draft.extras) : {};
+  const draftDoor = !!draftExtras[DOOR_CODE] ||
+    draftList.some((p) => p && p.door_to_door);
+  delete draftExtras[DOOR_CODE];
+
   const store = createStore({
-    step: draftPoints ? 'details' : 'addr',
+    step: draftPoints ? 'tariff' : 'addr',
     points: draftPoints || [null, null],
     tariffId: draftTariff || (tariffs.length ? tariffs[0].id : 0),
     loaders: draft ? Math.max(0, Math.min(MAX_LOADERS, Number(draft.loaders) || 0)) : 0,
-    extras: draft && draft.extras ? Object.assign({}, draft.extras) : {},   // код услуги → количество
+    door: draftDoor,            // один переключатель на весь заказ
+    extras: draftExtras,        // код услуги → количество
     route: null,
     prices: {},                 // id тарифа → итог в тыйынах
     quotes: {},                 // id тарифа → полный расчёт сервера
@@ -645,8 +579,12 @@ export function mountOrder(app) {
 
   const tariffById = (id) => tariffs.find((x) => x.id === id) || tariffs[0] || null;
 
+  function filled(state) {
+    return state.points.filter((p) => p && p.lat != null);
+  }
+
   function coords(state) {
-    return state.points.filter((p) => p && p.lat != null).map((p) => [p.lat, p.lng]);
+    return filled(state).map((p) => [p.lat, p.lng]);
   }
 
   function ready(state) {
@@ -661,9 +599,9 @@ export function mountOrder(app) {
       .filter((x) => x.qty > 0);
   }
 
-  /** Сколько точек с подъёмом к двери: сервер берёт надбавку за каждую. */
+  /** Сколько точек оплачивается подъёмом к двери: включено — значит все. */
   function doorCount(state) {
-    return state.points.filter((p) => p && p.lat != null && p.door).length;
+    return state.door ? filled(state).length : 0;
   }
 
   /* Что уходит в поле extras запроса: выбранное из каталога плюс подъём к двери
@@ -674,6 +612,17 @@ export function mountOrder(app) {
     const doors = doorCount(state);
     if (doors > 0) list.push({ code: DOOR_CODE, qty: doors });
     return list;
+  }
+
+  /* Точки для расчёта — объектами, а не парами чисел. Сервер берёт километры
+     только из объектов, пару [lat, lng] он до расчёта не пускает вовсе: на
+     сорока километрах это триста сомов на кнопке против полутора тысяч в чеке.
+     Флажок подъёма ставим у каждой точки, как и в самом заказе, — цену должны
+     считать по одним и тем же данным, а не по двум разным. */
+  function quotePoints(state) {
+    return filled(state).map((p) => ({
+      lat: p.lat, lng: p.lng, door_to_door: !!state.door,
+    }));
   }
 
   function total(state) {
@@ -721,7 +670,7 @@ export function mountOrder(app) {
 
   /* ── цена ────────────────────────────────────────────────────────────── */
 
-  /* Пересчёт с задержкой: пока палец жмёт плюсик на грузчиках, сервер не трогаем.
+  /* Пересчёт с задержкой: пока палец жмёт сегменты грузчиков, сервер не трогаем.
      Начатый запрос сразу отменяем — его ответ уже про старые условия и, придя
      последним, показал бы неверную цену. */
   function schedulePrice() {
@@ -747,7 +696,7 @@ export function mountOrder(app) {
     const state = store.get();
     const pts = coords(state);
     const body = {
-      points: pts,
+      points: quotePoints(state),
       loaders: state.loaders,
       extras: quoteExtras(state),
       lang: getLang(),
@@ -801,7 +750,7 @@ export function mountOrder(app) {
     });
   }
 
-  /* Смена тарифа ничего не пересчитывает: цены всех машин приходят одним заходом,
+  /* Смена машины ничего не пересчитывает: цены всех машин приходят одним заходом,
      поэтому новая цифра стоит на экране в тот же кадр. Сервер зовём, только если
      этой машины в ответе не было. */
   function pickTariff(id) {
@@ -818,7 +767,7 @@ export function mountOrder(app) {
     const state = store.get();
     const point = await pickAddress(app, {
       title: pointLabel(i, state.points.length),
-      placeholder: pointHint(i, state.points.length),
+      placeholder: pointHint(i),
       value: state.points[i],
       near: app.map.getCenter(),
     });
@@ -831,22 +780,20 @@ export function mountOrder(app) {
     }
     const pts = store.get().points.slice();
     // Точка уехала в другое место — подъезд и квартира от прошлого дома там уже
-    // ничего не значат, и курьер по ним только заплутает. Кого встречать и
-    // подъём к двери оставляем: это про человека и про груз, а не про дом.
+    // ничего не значат, и курьер по ним только заплутает. Кого встречать
+    // оставляем: это про человека, а не про дом.
     const was = pts[i];
     const here = was && was.lat != null &&
       Math.abs(was.lat - point.lat) < 3e-4 && Math.abs(was.lng - point.lng) < 3e-4;
     pts[i] = here
       ? Object.assign({}, was, point)
       : Object.assign({}, point, {
-        door: !!(was && was.door),
         name: (was && was.name) || '', phone: (was && was.phone) || '',
       });
-    // Оба конца маршрута известны — сразу ведём уточнять подъезды: там же стоит
-    // «от двери до двери», а после машины возвращаться за этим уже никто не станет.
+    // Оба конца маршрута известны — дальше собирать нечего, идём к машине.
     const full = ready({ points: pts });
     const step = store.get().step;
-    store.set({ points: pts, step: full && step === 'addr' ? 'details' : step });
+    store.set({ points: pts, step: full && step === 'addr' ? 'tariff' : step });
     schedulePrice();
   }
 
@@ -857,7 +804,6 @@ export function mountOrder(app) {
       return;
     }
     pts.push(null);
-    haptic();
     store.set({ points: pts });
     choose(pts.length - 1);
   }
@@ -870,8 +816,9 @@ export function mountOrder(app) {
     schedulePrice();
   }
 
-  /* Детали адреса: подъезд, этаж, лифт, домофон и кто встретит. Сервер принимает
-     их в самой точке, поэтому храним прямо в ней. */
+  /* Детали адреса: подъезд, этаж, лифт, домофон и кто встретит. Ничего из этого
+     не обязательно — шторка так и подписана. Сервер принимает их в самой точке,
+     поэтому храним прямо в ней. */
   function openDetails(i) {
     const state = store.get();
     const p = state.points[i] || {};
@@ -888,42 +835,23 @@ export function mountOrder(app) {
     /* Лифт — два чипа, а не переключатель: выключенный переключатель нельзя
        отличить от «не спрашивали», а по «без лифта» мы советуем подъём к двери. */
     let lift = p.lift === true ? true : (p.lift === false ? false : null);
-    const tip = el('div', { className: 'sgd-tip', hidden: true });
-    const liftYes = el('button', { type: 'button', className: 'chip' }, t('order.has_lift'));
-    const liftNo = el('button', { type: 'button', className: 'chip' }, t('order.no_lift'));
+    const liftYes = chip(t('order.has_lift'), { on: lift === true, size: 'lg' });
+    const liftNo = chip(t('order.no_lift'), { on: lift === false, size: 'lg' });
 
     function paintLift() {
-      liftYes.classList.toggle('chip--on', lift === true);
-      liftYes.setAttribute('aria-pressed', lift === true ? 'true' : 'false');
-      liftNo.classList.toggle('chip--on', lift === false);
-      liftNo.setAttribute('aria-pressed', lift === false ? 'true' : 'false');
-      // Пятый этаж пешком — это другая работа. Говорим об этом здесь же,
-      // пока человек думает про этаж, а не когда курьер уже во дворе.
-      const n = floorNum(floor.input.value);
-      const show = lift === false && n > 1 && !(store.get().points[i] || {}).door;
-      tip.hidden = !show;
-      if (show) tip.textContent = t('d2d.lift_hint', { v: n });
+      liftYes.setOn(lift === true);
+      liftNo.setOn(lift === false);
     }
-
     const setLift = (v) => {
       lift = lift === v ? null : v;      // повторный тап снимает выбор
-      haptic();
       paintLift();
     };
     liftYes.addEventListener('click', () => setLift(true));
     liftNo.addEventListener('click', () => setLift(false));
-    floor.input.addEventListener('input', paintLift);
-    paintLift();
 
     const rows = el('div', { className: 'sg-fields' },
-      el('div', { className: 'row gap-3' },
-        el('div', { className: 'grow' }, entrance.node),
-        el('div', { className: 'grow' }, flat.node)),
-      el('div', { className: 'row gap-3' },
-        el('div', { className: 'grow' }, floor.node),
-        el('div', { className: 'grow' }, intercom.node)),
-      el('div', { className: 'chips sgd-lift' }, liftYes, liftNo),
-      tip,
+      el('div', { className: 'sg-dgrid' }, entrance.node, flat.node, floor.node, intercom.node),
+      el('div', { className: 'chips sg-lift' }, liftYes, liftNo),
       comment.node,
       el('div', { className: 'sg-group' }, t('order.contact')),
       cname.node,
@@ -933,6 +861,7 @@ export function mountOrder(app) {
     const actions = [{
       label: t('common.save'),
       kind: 'primary',
+      className: 'btn--lg btn--block',
       onClick: () => {
         const pts = store.get().points.slice();
         pts[i] = Object.assign({}, pts[i] || {}, {
@@ -941,7 +870,7 @@ export function mountOrder(app) {
           name: cname.value, phone: cphone.value,
         });
         store.set({ points: pts });
-        haptic();
+        haptic(18);
       },
     }];
     if (store.get().points.length > 2) {
@@ -952,7 +881,117 @@ export function mountOrder(app) {
       });
     }
 
-    sheet({ title: t('order.details'), content: rows, actions });
+    sheet({
+      title: t('order.details'),
+      content: el('div', null,
+        el('p', { className: 'sheet__text' }, p.addr || t('pts.no_addr')),
+        rows),
+      actions,
+    });
+  }
+
+  /* ── пояснительные экраны ────────────────────────────────────────────── */
+
+  /* Четыре вопроса, которые человек задаёт диспетчеру по телефону каждый раз.
+     Отвечаем на них здесь, цифрами из текущего тарифа, а не общими словами. */
+  function tellDelivery() {
+    infoStory({
+      title: t('st.delivery_t'),
+      text: [t('st.delivery_1'), t('st.delivery_2'), t('st.delivery_3')],
+      art: STORY_ART.delivery(),
+      tone: 'cream',
+    });
+  }
+
+  function tellLoaders() {
+    const tf = tariffById(store.get().tariffId);
+    const free = tf ? Number(tf.loaders_included) || 0 : 0;
+    const hour = tf ? Number(tf.loader_hour_price) || 0 : 0;
+    infoStory({
+      title: t('st.loaders_t'),
+      text: [
+        t('st.loaders_1'),
+        t('st.loaders_2'),
+        free > 0 ? t('st.loaders_free', { n: tp(free, 'common.n_loader') }) : null,
+        hour > 0 ? t('st.loaders_paid', { price: money(hour) }) : null,
+      ].filter(Boolean),
+      art: STORY_ART.loaders(),
+      tone: 'mint',
+    });
+  }
+
+  function tellBody() {
+    const tf = tariffById(store.get().tariffId);
+    if (!tf) return;
+    const size = sizeOf(tf.id);
+    const cap = capPlain(tf);
+    const dims = [tf.body_d, tf.body_w, tf.body_h].map((v) => Number(v) || 0);
+    infoStory({
+      title: t('st.body_t', { v: size }),
+      text: [
+        nameOf(tf, 'desc'),
+        dims.every((v) => v > 0)
+          ? t('st.body_size', { d: metres(dims[0]), w: metres(dims[1]), h: metres(dims[2]) })
+          : null,
+        cap ? t('st.body_cap', { v: cap }) : null,
+        t('st.body_tip'),
+      ].filter(Boolean),
+      art: vehicleArt(tf),
+      className: 'sheet--car',
+      tone: 'sky',
+    });
+  }
+
+  function tellWaiting() {
+    const tf = tariffById(store.get().tariffId);
+    const free = tf ? Number(tf.waiting_free_min) || 0 : 0;
+    const perMin = tf ? Number(tf.waiting_per_min) || 0 : 0;
+    infoStory({
+      title: t('st.wait_t'),
+      text: [
+        free > 0 ? t('st.wait_free', { n: free }) : null,
+        perMin > 0 ? t('st.wait_paid', { price: money(perMin) }) : null,
+        t('st.wait_tip'),
+      ].filter(Boolean),
+      art: STORY_ART.wait(),
+      tone: 'peach',
+    });
+  }
+
+  function tellDoor() {
+    infoStory({
+      title: t('st.d2d_t'),
+      text: [t('st.d2d_1'), t('st.d2d_2')],
+      art: STORY_ART.door(),
+      tone: 'lilac',
+    });
+  }
+
+  /* ── выбор машины списком ────────────────────────────────────────────── */
+
+  /* Запасной путь для админа, который завёл больше шести тарифов: сегменты на
+     360 px превратились бы в нечитаемые кружки, поэтому машины уходят в шторку
+     полным списком — с названием, вместимостью и ценой. */
+  function openCars() {
+    const state = store.get();
+    let box = null;
+    const rows = tariffs.map((tf, i) => ({
+      icon: vehicleArt(tf),
+      hint: sizes[i],
+      label: nameOf(tf),
+      sub: capText(tf),
+      value: typeof state.prices[tf.id] === 'number' ? money(state.prices[tf.id]) : '',
+      className: tf.id === state.tariffId ? 'is-on' : '',
+      onClick: () => {
+        pickTariff(tf.id);
+        if (box) box.close();
+      },
+    }));
+    box = sheet({
+      title: t('order.tariff_choose'),
+      content: rowGroup(rows, { flat: true, className: 'sg-cars' }),
+      actions: [{ label: t('common.close'), kind: 'ghost' }],
+    });
   }
 
   /* Допуслуги: количественные со счётчиком, разовые переключателем.
@@ -971,12 +1010,9 @@ export function mountOrder(app) {
     for (const ex of items) {
       const unit = getLang() === 'ky' ? (ex.unit_ky || '') : (ex.unit_ru || '');
       const price = money(ex.price) + (unit ? ' / ' + unit : '');
-      const right = el('div', { className: 'none' });
-      const row = el('div', { className: 'sg-extra' },
-        el('div', { className: 'grow' },
-          el('div', { className: 'sg-opt__title' }, nameOf(ex)),
-          el('div', { className: 'sg-opt__sub' }, price)),
-        right);
+      const text = el('div', { className: 'grow' },
+        el('div', { className: 'sg-opt__title' }, nameOf(ex)),
+        el('div', { className: 'sg-opt__sub' }, price));
 
       if (ex.kind === 'fixed') {
         const box = el('input', { type: 'checkbox', checked: !!store.get().extras[ex.code] });
@@ -988,13 +1024,17 @@ export function mountOrder(app) {
           schedulePrice();
           haptic();
         });
-        right.appendChild(el('label', { className: 'switch' }, box,
-          el('span', { className: 'switch__track' })));
+        /* Вся строка — метка тумблера. Сам тумблер 48×28, и попасть в него
+           пальцем с первого раза удаётся не всем; строка целиком даёт те же
+           56 px, что и у любой другой кнопки в сервисе. */
+        const row = el('label', { className: 'sg-extra sg-extra--tap' }, text,
+          el('span', { className: 'switch' }, box, el('span', { className: 'switch__track' })));
+        list.appendChild(pressable(row, { scale: .995 }));
       } else {
         const step = Number(ex.step) > 0 ? Number(ex.step) : 1;
         const low = Number(ex.min_qty) > 0 ? Number(ex.min_qty) : 1;
         const high = Number(ex.max_qty) > 0 ? Number(ex.max_qty) : 20;
-        right.appendChild(stepper({
+        const count = stepper({
           value: store.get().extras[ex.code] || 0,
           min: 0, max: high, step, lowest: low,
           onChange: (v) => {
@@ -1004,9 +1044,10 @@ export function mountOrder(app) {
             store.set({ extras: next });
             schedulePrice();
           },
-        }).node);
+        });
+        list.appendChild(el('div', { className: 'sg-extra' }, text,
+          el('div', { className: 'none' }, count.node)));
       }
-      list.appendChild(row);
     }
 
     // Итог держим в подвале шторки: цена меняется на лету, и её должно быть видно,
@@ -1074,15 +1115,16 @@ export function mountOrder(app) {
         // Сколько списать бонусами. Сервер всё равно пересчитает по своему
         // потолку — здесь только просьба, а не решение.
         bonus_spend: bonusBox ? bonusBox.value() : 0,
-        // Подъём к двери шлём и строкой в extras, и флажком у точки: по строке
-        // сервер считает надбавку, по флажку курьер видит, куда именно подняться.
-        points: state.points.filter((p) => p && p.lat != null).map((p) => ({
+        // Подъём к двери шлём и строкой в extras, и флажком у каждой точки:
+        // по строке сервер считает надбавку, по флажку курьер видит, что
+        // подниматься надо везде, а не угадывает.
+        points: filled(state).map((p) => ({
           addr: p.addr || p.subtitle || '',
           lat: p.lat, lng: p.lng,
           entrance: p.entrance || '', flat: p.flat || '', floor: p.floor || '',
           intercom: p.intercom || '', comment: p.comment || '',
           name: p.name || '', phone: p.phone || '',
-          door_to_door: !!p.door,
+          door_to_door: !!state.door,
         })),
       };
       const res = await api.post('/orders', body);
@@ -1145,55 +1187,93 @@ export function mountOrder(app) {
     return { node, set, value: () => value };
   }
 
+  /* ── карточка адресов ────────────────────────────────────────────────── */
+
+  /** Крестик «убрать адрес»: значок без подписи, поэтому имя даём руками —
+      иначе скринридер прочитает пустую кнопку. */
+  function dropChip(i) {
+    const node = chip('', {
+      icon: icon('trash'), title: t('order.remove_point'),
+      className: 'sg-det sg-det--x',
+      onClick: (e) => { e.stopPropagation(); removePoint(i); },
+    });
+    node.setAttribute('aria-label', t('order.remove_point'));
+    return node;
+  }
+
+  /* Список адресов одной карточкой с разделителями: у каждой строки справа
+     «Детали», под адресом — то, что человек там уже уточнил. Пересобираем её
+     только когда в ней правда что-то поменялось: иначе карточка моргала бы
+     на каждый кадр пересчёта цены. */
+  function addressCard() {
+    const box = el('div', { className: 'sg-sect' });
+    let key = '';
+
+    function build(state) {
+      const pts = state.points;
+      const rows = pts.map((p, i) => {
+        const has = !!(p && p.lat != null);
+        const line = has ? detailsLine(p) : '';
+        const tail = has
+          ? chip(t('pts.details'), {
+            className: 'sg-det' + (line ? ' chip--on' : ''),
+            onClick: (e) => {
+              e.stopPropagation();      // «Детали» открывают форму, а не поиск адреса
+              openDetails(i);
+            },
+          })
+          : (pts.length > 2 ? dropChip(i) : null);
+        return {
+          icon: i === 0 ? ART_FROM : ART_TO,
+          hint: pointLabel(i, pts.length),
+          label: has ? (p.addr || t('order.on_map')) : t('pts.no_addr'),
+          sub: has ? (line || t('pts.fill')) : pointHint(i),
+          className: 'sg-addr' + (has ? '' : ' is-empty'),
+          onClick: () => choose(i),
+          end: tail,
+          // Пустой строке уголок нужен: он и говорит, что по ней нажимают.
+          chevron: !tail,
+        };
+      });
+      if (pts.length < app.maxPoints) {
+        rows.push(el('div', { className: 'sg-addmore' },
+          chip(t('pts.add'), { icon: icon('plus'), onClick: addPoint })));
+      }
+      box.replaceChildren(rowGroup(rows));
+    }
+
+    return {
+      node: box,
+      update(state) {
+        const pts = state.points;
+        const next = getLang() + '|' + pts.length + '|' + pts.map((p) => (p && p.lat != null
+          ? p.lat.toFixed(5) + ',' + p.lng.toFixed(5) + '|' + (p.addr || '') + '|' + detailsLine(p)
+          : '-')).join(';');
+        if (next === key) return;
+        key = next;
+        build(state);
+      },
+    };
+  }
+
   /* ── шаг «адреса» ────────────────────────────────────────────────────── */
 
   function stepAddr() {
-    const box = el('div', { className: 'sg-points' });
-    const body = el('div', { className: 'sg-body' }, box);
-    const add = el('button', { type: 'button', className: 'sg-add', onClick: addPoint },
-      el('span', { html: icon('plus') }), t('order.add_point'));
-
-    // Адреса уже вписаны, человек просто вернулся посмотреть — дайте ему уйти вперёд.
-    const next = el('button', {
-      type: 'button', className: 'sg-cta', hidden: true,
-      onClick: () => store.set({ step: 'details' }),
-    }, el('span', { className: 'sg-cta__label' }, t('common.continue')));
+    const card = addressCard();
+    const next = ctaButton(t('common.continue'), () => store.set({ step: 'tariff' }));
+    next.hidden = true;
 
     const node = el('div', { className: 'sg-step' },
       el('div', { className: 'sg-head' },
         el('div', { className: 'sg-head__text' },
           el('div', { className: 'sg-head__title' }, t('order.title')),
           el('div', { className: 'sg-head__sub' }, t('order.subtitle')))),
-      body,
-      el('div', { className: 'sg-foot' }, add, next),
+      el('div', { className: 'sg-body' }, card.node),
+      el('div', { className: 'sg-foot' }, next),
     );
 
     function update(state) {
-      const pts = state.points;
-      const rows = pts.map((p, i) => {
-        const has = !!(p && p.lat != null);
-        const note = has ? pointNote(p) : '';
-        return el('div', { className: 'sg-point' },
-          el('button', {
-            type: 'button', className: 'sg-point__main',
-            'aria-label': pointLabel(i, pts.length),
-            onClick: () => choose(i),
-          },
-            el('span', { className: 'sg-point__dot ' + (i === 0 ? 'sg-point__dot--a' : 'sg-point__dot--b') }),
-            el('span', { className: 'grow' },
-              el('span', {
-                className: 'sg-point__text' + (has ? '' : ' sg-point__text--empty'),
-              }, has ? (p.addr || t('order.on_map')) : pointHint(i, pts.length)),
-              note ? el('span', { className: 'sg-point__note' }, note) : null)),
-          has
-            ? iconBtn('note', 'sg-point__act is-set', t('order.details'), () => openDetails(i))
-            : (pts.length > 2
-              ? iconBtn('close', 'sg-point__act', t('order.remove_point'), () => removePoint(i))
-              : null),
-        );
-      });
-      box.replaceChildren(...rows);
-      add.hidden = pts.length >= app.maxPoints;
+      card.update(state);
       next.hidden = !ready(state);
       app.panel.refresh();
     }
@@ -1201,148 +1281,88 @@ export function mountOrder(app) {
     return { name: 'addr', node, update };
   }
 
-  /* ── шаг «детали адресов» ────────────────────────────────────────────── */
-
-  /* Список точек: адрес, под ним одной строкой всё уточнённое, тап открывает
-     форму. Ничего заполнять не обязательно — кнопка «дальше» активна всегда.
-     Карточки собираем заново только когда меняется сам набор адресов: иначе
-     переключатель пересоздавался бы на каждый тап и тумблер прыгал бы без
-     анимации. */
-  function stepDetails() {
-    const list = el('div', { className: 'sgd-list' });
-    const note = el('div', { className: 'sg-note' }, t('pts.skip'));
-    const sumVal = el('span', { className: 'sgd-sum__val' });
-    const sumBox = newMoneyBox(sumVal);
-    const sumRow = el('div', { className: 'sgd-sum', hidden: true },
-      el('span', { className: 'sgd-sum__name' }, t('d2d.sum')), sumVal);
-    const cta = el('button', {
-      type: 'button', className: 'sg-cta',
-      onClick: () => { haptic(); store.set({ step: 'tariff' }); },
-    }, el('span', { className: 'sg-cta__label' }, t('common.continue')));
-
-    const node = el('div', { className: 'sg-step' },
-      el('div', { className: 'sg-head' },
-        iconBtn('back', 'sg-back', t('common.back'), () => store.set({ step: 'addr' })),
-        el('div', { className: 'sg-head__text' },
-          el('div', { className: 'sg-head__title' }, t('pts.title')),
-          el('div', { className: 'sg-head__sub' }, t('pts.sub')))),
-      el('div', { className: 'sg-body' }, list),
-      el('div', { className: 'sg-foot' }, sumRow, note, cta),
-    );
-
-    /* Включили подъём к двери — цена меняется, значит идём считать. Точку
-       переписываем копией: store сравнивает значения по ссылке. */
-    function toggleDoor(i, on) {
-      const pts = store.get().points.slice();
-      if (!pts[i] || pts[i].lat == null) return;
-      pts[i] = Object.assign({}, pts[i], { door: !!on });
-      haptic();
-      store.set({ points: pts });
-      schedulePrice();
-    }
-
-    function buildRow(i, count) {
-      const addr = el('span', { className: 'sgd-addr' });
-      const line = el('span', { className: 'sgd-note' });
-      const main = el('button', {
-        type: 'button', className: 'sgd-main',
-        onClick: () => {
-          const p = store.get().points[i];
-          // Адрес мог остаться пустым (человек передумал на середине) — тогда
-          // сначала спрашиваем его, а не детали несуществующего подъезда.
-          if (p && p.lat != null) openDetails(i);
-          else choose(i);
-        },
-      },
-        el('span', { className: 'sgd-dot ' + (i === 0 ? 'sgd-dot--a' : 'sgd-dot--b') }),
-        // «Откуда» и «Куда» подписаны словом, а не только цветом точки: список
-        // читают сверху вниз и в спешке, и путать концы маршрута тут нельзя.
-        el('span', { className: 'sgd-text' },
-          el('span', { className: 'sgd-kind' }, pointLabel(i, count)), addr, line),
-        el('span', { className: 'sgd-go', html: icon('note') }));
-
-      const sub = el('span', { className: 'sgd-door__sub' });
-      const price = el('span', { className: 'sgd-door__price' });
-      const box = el('input', { type: 'checkbox', 'aria-label': t('d2d.title') });
-      box.addEventListener('change', () => toggleDoor(i, box.checked));
-      // Тумблер внутри метки: нажать можно всю строку целиком, а не 28 px тумблера.
-      const door = el('label', { className: 'sgd-door' },
-        el('span', { className: 'sgd-door__text' },
-          el('span', { className: 'sgd-door__title' }, t('d2d.title')), sub),
-        price,
-        el('span', { className: 'switch' }, box, el('span', { className: 'switch__track' })));
-
-      const tip = el('div', { className: 'sgd-tip', hidden: true });
-      const card = el('div', { className: 'sgd-card' }, main, door, tip);
-      return { i, card, addr, line, sub, price, box, tip };
-    }
-
-    let rows = [];
-    let builtFor = '';
-
-    function update(state) {
-      const pts = state.points;
-      const key = getLang() + '|' + pts.length + '|' +
-        pts.map((p) => (p && p.lat != null ? p.lat.toFixed(5) + ',' + p.lng.toFixed(5) : '-')).join(';');
-      if (key !== builtFor) {
-        builtFor = key;
-        rows = pts.map((p, i) => buildRow(i, pts.length));
-        list.replaceChildren(...rows.map((r) => r.card));
-      }
-
-      const unit = Math.max(0, Number(state.doorPrice) || 0);
-      for (const r of rows) {
-        const p = pts[r.i];
-        const has = !!(p && p.lat != null);
-        const on = !!(has && p.door);
-        addrText(r, p, has);
-        r.box.checked = on;
-        r.box.disabled = !has;
-        r.card.classList.toggle('is-door', on);
-        r.sub.textContent = on ? t('d2d.on') : t('d2d.off');
-        r.price.textContent = unit > 0 ? t('d2d.plus', { price: money(unit) }) : '';
-        const lvl = has ? floorNum(p.floor) : 0;
-        const advise = !on && lvl > 1 && p.lift === false;
-        r.tip.hidden = !advise;
-        if (advise) r.tip.textContent = t('d2d.lift_hint', { v: lvl });
-      }
-
-      // Надбавка за все точки сразу. Цифру берём из ответа сервера, но только
-      // пока он считал ровно те же точки: его прошлый ответ был про другой выбор,
-      // и показывать его вместо нового — врать. Пока считается новый, число
-      // гаснет, но остаётся на месте: исчезнувшая цифра читается как поломка.
-      const doors = doorCount(state);
-      const q = state.quote;
-      const shown = q && typeof q.door_to_door === 'number' && q.door_points === doors
-        ? q.door_to_door : unit * doors;
-      sumRow.hidden = doors === 0;
-      if (doors === 0) sumBox.clear('');
-      else sumBox.set(shown);
-      sumVal.classList.toggle('is-stale', doors > 0 && state.priceState === 'wait');
-      note.hidden = doors > 0;
-      app.panel.refresh();
-    }
-
-    function addrText(r, p, has) {
-      r.addr.textContent = has ? (p.addr || t('order.on_map')) : t('pts.no_addr');
-      // Про подъём к двери строке говорить нечего: его переключатель стоит
-      // прямо под ней, а место лучше отдать подсказке, чего ещё не хватает.
-      const line = has ? detailsLine(p, { door: false }) : '';
-      r.line.textContent = line || t('pts.fill');
-      r.line.classList.toggle('is-empty', !line);
-    }
-
-    return { name: 'details', node, update };
-  }
-
-  /* ── шаг «машина» ────────────────────────────────────────────────────── */
+  /* ── шаг «заказ»: машина, грузчики, подъём к двери, адреса ───────────── */
 
   function stepTariff() {
-    const routeRow = el('button', { type: 'button', className: 'sg-route',
-                                    onClick: () => store.set({ step: 'addr' }) });
-    const cards = el('div', { className: 'sg-tariffs sg-tariffs--live' });
-    const loadersSub = el('div', { className: 'sg-opt__sub' });
-    const extrasSub = el('div', { className: 'sg-opt__sub' });
+    const headTitle = el('div', { className: 'sg-head__title' });
+    const headSub = el('div', { className: 'sg-head__sub' });
+
+    // ── карточка машины: картинка и две спокойные строки под ней
+    const art = el('div', { className: 'sg-car__art', 'aria-hidden': 'true' });
+    const capLine = el('div', { className: 'sg-car__line' });
+    const dimLine = el('div', { className: 'sg-car__line' });
+    const carCard = el('div', { className: 'sg-car' }, art,
+      el('div', { className: 'sg-car__cap' }, capLine, dimLine));
+
+    // ── кузов: сегменты, пока машин не больше шести, иначе строка со списком
+    const bySheet = tariffs.length > SEG_LIMIT;
+    const sizeSeg = bySheet ? null : segmented(
+      tariffs.map((tf, i) => ({ value: tf.id, label: sizes[i] })),
+      { value: store.get().tariffId, label: t('car.size'), onChange: pickTariff });
+    const carValue = el('span');
+
+    // ── грузчики
+    const loadersSub = el('span');
+    const loadSeg = segmented(loaderItems(store.get().loaders), {
+      value: store.get().loaders,
+      label: t('order.loaders'),
+      onChange: (v) => { store.set({ loaders: v }); schedulePrice(); },
+    });
+
+    // ── от двери до двери: один переключатель на весь заказ
+    const doorSub = el('span');
+    const doorPlus = el('span', { className: 'sg-plus' });
+    const doorInput = el('input', { type: 'checkbox', 'aria-label': t('d2d.title') });
+    doorInput.addEventListener('change', () => {
+      store.set({ door: doorInput.checked });
+      schedulePrice();
+      haptic(16);
+    });
+    // Тумблер внутри метки: нажать можно всю строку, а не 44 px самого тумблера.
+    const doorRow = el('label', { className: 'sg-row' },
+      el('span', { className: 'rowgroup__main' },
+        el('span', { className: 'rowgroup__label' }, t('d2d.title')),
+        el('span', { className: 'rowgroup__sub' }, doorSub)),
+      doorPlus,
+      el('span', { className: 'switch' }, doorInput, el('span', { className: 'switch__track' })));
+    pressable(doorRow, { scale: .995 });
+
+    // Подсказка про этаж без лифта стоит под карточкой, а не строкой внутри неё:
+    // спрятанная строка группы всё равно занимала бы свои шестьдесят пикселей.
+    const doorTip = el('div', { className: 'sg-tipline', hidden: true });
+
+    // ── чипы с пояснениями
+    const bodyLabel = el('span');
+    const chips = el('div', { className: 'chips' },
+      chip(t('info.delivery'), { info: true, onClick: tellDelivery }),
+      chip(t('info.loaders'), { info: true, onClick: tellLoaders }),
+      chip(bodyLabel, { info: true, onClick: tellBody }),
+      chip(t('d2d.title'), { info: true, onClick: tellDoor }),
+      chip(t('info.wait'), { info: true, onClick: tellWaiting }));
+
+    const extrasVal = el('span');
+    const options = rowGroup([
+      bySheet
+        ? { label: t('car.size'), value: carValue, onClick: openCars }
+        : { label: t('car.size'), end: sizeSeg },
+      { label: t('order.loaders'), sub: loadersSub, end: loadSeg },
+      doorRow,
+      /* Выбранные услуги перечисляем под названием, а не справа от него: на
+         360 px «Дополнительные услуги» и перечисление делят одну строку так,
+         что не помещается ни то ни другое. */
+      { label: t('order.extras'), sub: extrasVal, onClick: openExtras, className: 'sg-optrow' },
+      chips,
+    ]);
+
+    // ── маршрут: заголовок с расстоянием и временем, под ним карточка адресов
+    const tripMeta = el('div', { className: 'sg-trip' });
+    const card = addressCard();
+    const trip = el('div', { className: 'sg-sect' },
+      el('div', { className: 'sg-sect__head' },
+        el('div', { className: 'sg-sect__title' }, t('trip.title')), tripMeta),
+      card.node);
+
+    // ── подвал
     const note = el('div', { className: 'sg-note' }, t('order.price_note'));
     const retry = el('button', {
       type: 'button', className: 'btn btn--ghost btn--block', hidden: true,
@@ -1350,37 +1370,23 @@ export function mountOrder(app) {
     }, t('common.retry'));
     const priceBox = el('span', { className: 'sg-cta__price' }, '—');
     const priceMoney = newMoneyBox(priceBox);
-    const cta = el('button', { type: 'button', className: 'sg-cta', onClick: () => go() },
-      el('span', { className: 'sg-cta__label' }, t('order.submit')), priceBox);
-
-    const loadersStep = stepper({
-      value: store.get().loaders, min: 0, max: MAX_LOADERS, step: 1, lowest: 1,
-      onChange: (v) => { store.set({ loaders: v }); schedulePrice(); },
-    });
-
-    const body = el('div', { className: 'sg-body' },
-      routeRow,
-      cards,
-      el('div', { className: 'sg-opt' },
-        el('div', { className: 'sg-opt__text' },
-          el('div', { className: 'sg-opt__title' }, t('order.loaders')),
-          loadersSub),
-        loadersStep.node),
-      el('button', { type: 'button', className: 'sg-opt', onClick: openExtras },
-        el('span', { className: 'sg-opt__text' },
-          el('span', { className: 'sg-opt__title' }, t('order.extras')),
-          extrasSub),
-        el('span', { className: 'sg-opt__go', html: icon('go') })),
-    );
+    const cta = ctaButton(t('order.submit'), () => go(), priceBox);
 
     const node = el('div', { className: 'sg-step' },
       el('div', { className: 'sg-head' },
-        iconBtn('back', 'sg-back', t('common.back'), () => store.set({ step: 'details' })),
-        el('div', { className: 'sg-head__text' },
-          el('div', { className: 'sg-head__title' }, t('order.tariff_choose')))),
-      body,
+        pressable(iconBtn('back', 'sg-back', t('common.back'),
+                          () => store.set({ step: 'addr' })), { scale: .9 }),
+        el('div', { className: 'sg-head__text' }, headTitle, headSub)),
+      el('div', { className: 'sg-body sg-body--gap' }, carCard, options, doorTip, trip),
       el('div', { className: 'sg-foot' }, retry, note, cta),
     );
+
+    /* Шаг приезжает со сжатием, и бегунок переключателя, померенный в этот
+       момент, встал бы мимо кнопки. Меряем ещё раз, когда шаг доехал. */
+    setTimeout(() => {
+      if (sizeSeg) sizeSeg.sync();
+      loadSeg.sync();
+    }, dur('--dur-2', 240) + 60);
 
     /* Телефон уже знаем — заказываем сразу, иначе уходим на шаг с контактами. */
     function go() {
@@ -1388,134 +1394,126 @@ export function mountOrder(app) {
       else store.set({ step: 'confirm' });
     }
 
-    let builtFor = '';
-    let cardList = [];
+    let carKey = '';
     let routeKey = '';
 
-    function buildCard(tf) {
-      const priceNode = el('span', { className: 'sg-tariff__price' }, '—');
-      const cap = capText(tf);
-      const dims = dimText(tf);
-      const card = el('button', {
-        type: 'button', className: 'sg-tariff sg-tariff--live',
-        dataset: { id: String(tf.id) },
-        title: nameOf(tf, 'desc') || [cap, dims].filter(Boolean).join(', '),
-        onClick: () => {
-          if (store.get().tariffId === tf.id) return;
-          haptic();
-          pickTariff(tf.id);
-          card.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-        },
-      },
-        el('span', { className: 'sgv-art', html: vehicleArt(tf) }),
-        el('span', { className: 'sg-tariff__name' }, nameOf(tf)),
-        cap ? el('span', { className: 'sgv-cap' }, cap) : null,
-        dims ? el('span', { className: 'sgv-dim' }, dims) : null,
-        priceNode);
-      return { id: tf.id, node: card, priceNode, box: newMoneyBox(priceNode) };
+    /* Машина сменилась — картинка приезжает заново, а не подменяется втихую:
+       движение подтверждает, что нажатие сработало. */
+    function paintCar(state) {
+      const tf = tariffById(state.tariffId);
+      if (!tf) return;
+      const key = tf.id + '|' + getLang();
+      if (key === carKey) return;
+      carKey = key;
+
+      art.innerHTML = vehicleArt(tf);
+      art.classList.remove('is-in');
+      void art.offsetWidth;              // фиксируем кадр, иначе анимация не перезапустится
+      art.classList.add('is-in');
+
+      headTitle.textContent = nameOf(tf);
+      headSub.textContent = dimText(tf) || capText(tf);
+      capLine.textContent = nameOf(tf, 'desc');
+      dimLine.textContent = capText(tf);
+      bodyLabel.textContent = t('info.body', { v: sizeOf(tf.id) });
+      carValue.textContent = nameOf(tf) + ' · ' + sizeOf(tf.id);
+      if (sizeSeg) sizeSeg.set(tf.id);
     }
 
-    function paintCards(state) {
-      const key = tariffs.map((x) => x.id).join(',') + '|' + getLang();
-      if (key !== builtFor) {
-        builtFor = key;
-        for (const c of cardList) {
-          c.box.stop();
-          runningBoxes.delete(c.box);
-        }
-        cardList = tariffs.map(buildCard);
-        cards.replaceChildren(...cardList.map((c) => c.node));
-      }
-      const waiting = state.priceState === 'wait' || state.priceState === 'idle';
-      for (const c of cardList) {
-        const on = c.id === state.tariffId;
-        c.node.classList.toggle('is-on', on);
-        c.node.setAttribute('aria-pressed', on ? 'true' : 'false');
-        const v = state.prices[c.id];
-        const known = typeof v === 'number';
-        if (known) c.box.set(v);
-        else c.box.clear(waiting ? '—' : t('common.error'));
-        c.priceNode.classList.toggle('is-wait', !known && waiting);
-        c.priceNode.classList.toggle('is-stale', known && state.priceState === 'wait');
-      }
-    }
-
-    /* Строка маршрута: адреса, расстояние и честное время. Пересобираем её,
-       только когда в ней правда что-то поменялось — иначе она мигала бы на
-       каждый кадр пересчёта цены. */
-    function paintRoute(state) {
-      const pts = state.points.filter(Boolean);
-      const first = pts[0];
-      const last = pts[pts.length - 1];
+    /* Расстояние, время с пробками и слово, объясняющее, почему дольше.
+       Обещать двадцать минут в шесть вечера — враньё, за которое перед
+       человеком отвечает курьер. */
+    function paintTrip(state) {
       const r = state.route;
-      const key = [
-        (first && first.addr) || '', (last && last.addr) || '',
-        r ? r.distance_m : '', r ? r.duration_s : '', r ? r.duration_traffic_s : '',
-      ].join('|');
+      const key = r ? [r.distance_m, r.duration_s, r.duration_traffic_s].join('|') : '';
       if (key === routeKey) return;
       routeKey = key;
-
-      routeRow.replaceChildren(
-        el('span', { className: 'sg-route__line' },
-          el('i', null), el('b', null), el('i', null)),
-        el('span', { className: 'sg-route__text' },
-          el('span', { className: 'sg-route__row' }, (first && first.addr) || t('order.from')),
-          el('span', { className: 'sg-route__row' }, (last && last.addr) || t('order.to'))),
-        r ? tripMeta(r) : el('span', { className: 'sg-opt__go', html: icon('go') }),
-      );
-    }
-
-    /* Время показываем то, за которое реально доедут сейчас, и подписываем словом,
-       почему оно больше свободного. Обещать двадцать минут в шесть вечера — враньё,
-       за которое перед человеком отвечает курьер. */
-    function tripMeta(r) {
+      if (!r) {
+        tripMeta.replaceChildren();
+        return;
+      }
       const free = Math.max(0, Number(r.duration_s) || 0);
       const jam = Math.max(free, Number(r.duration_traffic_s) || 0);
       const slower = jam - free >= JAM_STEP;
-      return el('span', {
-        className: 'sg-route__meta sgv-trip',
-        title: slower ? t('trip.free_time', { v: duration(free) }) : null,
-      },
-        el('span', { className: 'sgv-trip__km' }, distText(r.distance_m)),
-        el('span', { className: 'sgv-trip__time' }, duration(jam)),
-        el('span', { className: 'sgv-trip__jam' + (slower ? '' : ' is-free') },
-          slower ? t('trip.jam') : t('trip.free')));
+      if (slower) tripMeta.title = t('trip.free_time', { v: duration(free) });
+      else tripMeta.removeAttribute('title');
+      tripMeta.replaceChildren(
+        el('span', { className: 'sg-trip__km' }, distText(r.distance_m)),
+        el('span', { className: 'sg-trip__time' }, duration(jam)),
+        el('span', { className: 'sg-trip__jam' + (slower ? '' : ' is-free') },
+           slower ? t('trip.jam') : t('trip.free')));
     }
 
     function update(state) {
-      paintRoute(state);
-      paintCards(state);
+      paintCar(state);
+      paintTrip(state);
+      card.update(state);
 
       // Часть грузчиков у тарифа уже в цене — про них честно говорим отдельно.
       const tf = tariffById(state.tariffId);
       const free = tf ? Number(tf.loaders_included) || 0 : 0;
-      if (state.loaders === 0) loadersSub.textContent = t('order.loaders_none');
+      if (state.loaders === 0) loadersSub.textContent = t('load.zero');
       else if (free >= state.loaders) loadersSub.textContent = t('order.loaders_included', { n: state.loaders });
       else loadersSub.textContent = tp(state.loaders, 'common.n_loader');
+      loadSeg.set(state.loaders);
+
+      // Подъём к двери: цифра рядом с тумблером — за все точки сразу, чтобы
+      // человек видел настоящую надбавку, а не цену за один подъезд.
+      const pts = Math.max(2, filled(state).length);
+      const unit = Math.max(0, Number(state.doorPrice) || 0);
+      const q = state.quote;
+      // Включено — берём цифру из ответа сервера, но только пока он считал ровно
+      // столько же точек: его прошлый ответ был про другой маршрут. Выключено —
+      // показываем, во что подъём обойдётся, чтобы решать до нажатия, а не в чеке.
+      const sum = state.door && q && typeof q.door_to_door === 'number' &&
+        q.door_points === doorCount(state) ? q.door_to_door : unit * pts;
+      doorInput.checked = state.door;
+      doorSub.textContent = state.door
+        ? (pts > 2 ? t('d2d.on_many') : t('d2d.on_two'))
+        : t('d2d.off');
+      doorPlus.textContent = sum > 0 ? '+' + money(sum) : '';
+      doorPlus.classList.toggle('is-on', state.door);
+      doorPlus.classList.toggle('is-stale', state.door && state.priceState === 'wait');
+
+      // Пятый этаж пешком — это другая работа. Говорим об этом там, где человек
+      // ещё может передумать, а не когда курьер уже во дворе.
+      const walk = state.points.find((p) => p && p.lift === false && floorNum(p.floor) > 1);
+      const advise = !state.door && !!walk;
+      doorTip.hidden = !advise;
+      if (advise) doorTip.textContent = t('d2d.lift', { v: floorNum(walk.floor) });
 
       const chosen = extrasList(state);
-      extrasSub.textContent = chosen.length
+      extrasVal.textContent = chosen.length
         ? chosen.map((x) => {
           const ex = app.extras.find((e) => e.code === x.code);
           return ex ? nameOf(ex) : x.code;
         }).join(', ')
-        : t('order.extras_hint');
+        : t('order.extras_none');
 
-      const sum = total(state);
+      const money0 = total(state);
       const wait = state.priceState === 'wait';
       const bad = state.priceState === 'err';
-      if (sum === null) priceMoney.clear(wait ? '' : '—');
-      else priceMoney.set(sum);
-      priceBox.classList.toggle('is-wait', sum === null && wait);
-      priceBox.classList.toggle('is-stale', sum !== null && wait);
+      if (money0 === null) priceMoney.clear(wait ? '' : '—');
+      else priceMoney.set(money0);
+      priceBox.classList.toggle('is-wait', money0 === null && wait);
+      priceBox.classList.toggle('is-stale', money0 !== null && wait);
       note.textContent = bad ? errText(state.priceError) : t('order.price_note');
       note.classList.toggle('t-err', bad);
       retry.hidden = !bad;
-      cta.disabled = sum === null || state.busy;
+      cta.disabled = money0 === null || state.busy;
       app.panel.refresh();
     }
 
     return { name: 'tariff', node, update };
+  }
+
+  /** Сегменты грузчиков: «Нет 1 2 3». Заготовка из истории могла привезти
+      больше — тогда её значение тоже попадает в ряд, иначе оно молча пропало бы. */
+  function loaderItems(current) {
+    const top = Math.max(LOADER_SEGS, Math.min(MAX_LOADERS, Number(current) || 0));
+    const out = [{ value: 0, label: t('load.none') }];
+    for (let n = 1; n <= top; n++) out.push({ value: n, label: String(n) });
+    return out;
   }
 
   /* ── шаг «контакты» ──────────────────────────────────────────────────── */
@@ -1536,7 +1534,7 @@ export function mountOrder(app) {
     name.input.addEventListener('input', () => { contacts.name = name.input.value; });
     comment.input.addEventListener('input', () => { contacts.comment = comment.input.value; });
 
-    const agree = el('button', {
+    const agree = pressable(el('button', {
       type: 'button', className: 'sg-agree' + (contacts.agree ? ' is-on' : ''),
       'aria-pressed': contacts.agree ? 'true' : 'false',
       onClick: () => {
@@ -1548,12 +1546,11 @@ export function mountOrder(app) {
       },
     },
       el('span', { className: 'sg-agree__box', html: icon('check') }),
-      el('span', { className: 'grow' }, t('order.confirm_hint')));
+      el('span', { className: 'grow' }, t('order.confirm_hint'))), { scale: .99 });
 
     const priceBox = el('span', { className: 'sg-cta__price' }, '—');
     const priceMoney = newMoneyBox(priceBox);
-    const cta = el('button', { type: 'button', className: 'sg-cta', onClick: () => submit(cta) },
-      el('span', { className: 'sg-cta__label' }, t('order.confirm')), priceBox);
+    const cta = ctaButton(t('order.confirm'), () => submit(cta), priceBox);
 
     // Списание бонусов. Виджет живёт в профиле и сам ходит на сервер за тем,
     // сколько можно списать по этой сумме: доверять цифре с экрана нельзя.
@@ -1563,7 +1560,8 @@ export function mountOrder(app) {
 
     const node = el('div', { className: 'sg-step' },
       el('div', { className: 'sg-head' },
-        iconBtn('back', 'sg-back', t('common.back'), () => store.set({ step: 'tariff' })),
+        pressable(iconBtn('back', 'sg-back', t('common.back'),
+                          () => store.set({ step: 'tariff' })), { scale: .9 }),
         el('div', { className: 'sg-head__text' },
           el('div', { className: 'sg-head__title' }, t('order.confirm')))),
       el('div', { className: 'sg-body' },
@@ -1596,10 +1594,8 @@ export function mountOrder(app) {
 
   /* ── сборка ──────────────────────────────────────────────────────────── */
 
-  const BUILD = {
-    addr: stepAddr, details: stepDetails, tariff: stepTariff, confirm: stepConfirm,
-  };
-  const ORDER = ['addr', 'details', 'tariff', 'confirm'];
+  const BUILD = { addr: stepAddr, tariff: stepTariff, confirm: stepConfirm };
+  const ORDER = ['addr', 'tariff', 'confirm'];
 
   function render(state, back) {
     if (!view || view.name !== state.step) {
@@ -1629,8 +1625,10 @@ export function mountOrder(app) {
     navigator.geolocation.getCurrentPosition(async (pos) => {
       if (dead) return;
       const state = store.get();
-      if (state.points[0]) return;             // человек успел ввести адрес сам
       const ll = [pos.coords.latitude, pos.coords.longitude];
+      // Поиск адреса считает от этой точки расстояние до каждой подсказки.
+      noteMyPlace(ll);
+      if (state.points[0]) return;             // человек успел ввести адрес сам
       app.map.setView(ll, 16, { animate: true });
       try {
         const r = await api.post('/geo/reverse', { lat: ll[0], lng: ll[1] });
@@ -1645,9 +1643,10 @@ export function mountOrder(app) {
   }
 
   render(store.get(), false);
-  // Заготовка из истории уже с адресами: считаем цену сразу, геолокацию не трогаем.
+  // Заготовка из истории уже с адресами: считаем цену сразу, но где человек,
+  // всё равно спрашиваем — без этого в поиске адреса не будет расстояний.
   if (draftPoints) schedulePrice();
-  else guessOrigin();
+  guessOrigin();
 
   return {
     relang() {

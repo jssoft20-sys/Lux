@@ -507,6 +507,36 @@ def main():
             check('сводка по бонусам в админке', code == 200 and isinstance(ab, dict),
                   str(ab)[:160])
 
+        # Цена на кнопке обязана совпасть с ценой в заказе. Расхождение здесь —
+        # это человек, который согласился на 683 сома и получил счёт на 1461:
+        # он больше не вернётся, и правильно сделает.
+        # Оба адреса внутри зоны работы: заказ должен не только посчитаться,
+        # но и создаться, иначе сравнивать будет нечего.
+        far = [{'addr': 'Чуй 100', 'lat': 42.8746, 'lng': 74.5698},
+               {'addr': 'Восточный автовокзал', 'lat': 42.8200, 'lng': 74.7500}]
+        # Считаем ровно то же, что потом закажем: те же грузчики и допуслуги.
+        # Иначе сравнивали бы разные заказы и радовались бы совпадению зря.
+        same = {'tariff_id': tid, 'loaders': order_body['loaders'],
+                'extras': order_body['extras']}
+        code, q_obj = req('POST', '/price/quote', dict(same, points=far))
+        code, q_pair = req('POST', '/price/quote',
+                           dict(same, points=[[p['lat'], p['lng']] for p in far]))
+        check('расчёт понимает и объекты, и голые пары координат',
+              (q_obj or {}).get('total') == (q_pair or {}).get('total')
+              and (q_obj or {}).get('total', 0) > 0,
+              f"объектами {(q_obj or {}).get('total')}, парами {(q_pair or {}).get('total')}")
+        check('на дальнем маршруте километры посчитаны, а не отброшены',
+              (q_obj or {}).get('distance_m', 0) > 8000,
+              f"расстояние {(q_obj or {}).get('distance_m')} м")
+
+        code, far_order = req('POST', '/orders',
+                              dict(order_body, phone='0700112244', points=far))
+        made = ((far_order or {}).get('price') or {}).get('total')
+        check('цена с экрана совпала с ценой в заказе',
+              made is not None and made == (q_obj or {}).get('total'),
+              f"на экране {(q_obj or {}).get('total')}, в заказе {made}; "
+              f"ответ {str(far_order)[:160]}")
+
         # ── 9б. ссылка «поделиться»: смотреть можно, отменять нельзя ─────────
         print('\n\033[1m9б. Ссылка, которой делятся\033[0m')
         code, shared = req('POST', '/orders', dict(order_body, phone='0700554433'))
