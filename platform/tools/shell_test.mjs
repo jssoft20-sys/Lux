@@ -140,6 +140,56 @@ async function main() {
        !!m && m[1] !== 'v1' && m[1].length >= 8, m ? m[1] : '(не нашли)');
   }
 
+  console.log('\n\x1b[1m4в. Потянуть сверху — обновить\x1b[0m');
+  {
+    const { ctx, page } = await phone(browser, { errors });
+    let asked = 0;
+    await page.route(/\/api\/v1\/config/, r => { asked++; return r.continue(); });
+    await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(3200);
+    const hello = page.locator('button:has-text("Понятно"), button:has-text("Пропустить")').first();
+    if (await hello.count()) { await hello.click({ force: true }).catch(() => {}); await page.waitForTimeout(700); }
+    await page.waitForTimeout(1200);
+    const before = asked;
+
+    /* Тянем ПАЛЬЦЕМ. Мышью этот жест намеренно не работает: на большом экране
+       есть кнопки, а случайное протаскивание мышью перезагружало бы страницу.
+       Поэтому шлём настоящие касания через отладочный протокол браузера —
+       обычный page.mouse даёт указатель типа «мышь», и движок его не примет. */
+    const cdp = await ctx.newCDPSession(page);
+    const swipe = async (x, y, steps) => {
+      await cdp.send('Input.dispatchTouchEvent',
+        { type: 'touchStart', touchPoints: [{ x, y }] });
+      for (let i = 1; i <= steps; i++) {
+        await cdp.send('Input.dispatchTouchEvent',
+          { type: 'touchMove', touchPoints: [{ x, y: y + i * 10 }] });
+        await page.waitForTimeout(16);
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    };
+
+    const box = await page.locator('.sg-panel__slot').first().boundingBox();
+    if (box) {
+      await swipe(box.x + box.width / 2, box.y + 12, 12);
+      await page.waitForTimeout(2500);
+      ok('жест сверху вниз обновляет содержимое', asked > before,
+         `запросов было ${before}, стало ${asked}`);
+    } else {
+      ok('шторка нашлась', false, 'нет .sg-panel__slot');
+    }
+
+    // А на карте тот же жест обновление НЕ вызывает: там он двигает карту.
+    const mid = asked;
+    const mapBox = await page.locator('.map').first().boundingBox();
+    if (mapBox) {
+      await swipe(mapBox.x + mapBox.width / 2, mapBox.y + 60, 12);
+      await page.waitForTimeout(2000);
+      ok('на карте тот же жест обновление не вызывает', asked === mid,
+         `запросов было ${mid}, стало ${asked}`);
+    }
+    await ctx.close();
+  }
+
   console.log('\n\x1b[1m5. Память места\x1b[0m');
   {
     const { ctx, page } = await phone(browser, { errors });

@@ -20,7 +20,7 @@ import {
 import { createMap, pin } from '../core/map.js';
 import {
   el, toast, sheet, confirm, haptic, skeleton, mountStars, copyText,
-  pressable, rowGroup, segmented,
+  pressable, rowGroup, segmented, pullToRefresh,
 } from '../core/ui.js';
 import { createRouter } from '../core/router.js';
 import {
@@ -3121,6 +3121,21 @@ async function boot() {
   }, mapTiles(mapCfg)));
   // Тему меняют и в профиле, и в настройках телефона — карта следует за обеими.
   onThemeChange((light) => map.setTheme(light ? 'light' : 'dark'));
+
+  /* Потянуть шторку сверху — обновить. В установленном приложении адресной
+     строки нет, и перезагрузить экран человеку больше нечем. Тянем именно
+     содержимое шторки: на карте этот жест означает другое, и pullToRefresh
+     туда не лезет. */
+  pullToRefresh(panel.slot, async () => {
+    try {
+      const fresh = await api.get('/config');
+      if (fresh) Object.assign(cfg, fresh);
+      window.dispatchEvent(new CustomEvent('sg-refresh'));
+      panel.refresh();
+    } catch (e) {
+      toast(t('common.offline'), { type: 'err' });
+    }
+  });
 
   // Пока карту тянут, метка выбора точки приподнимается — как настоящая булавка.
   const shell = document.querySelector('.sg-app');

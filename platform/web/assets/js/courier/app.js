@@ -17,7 +17,7 @@ import { api, ApiError } from '../core/api.js';
 import { t, setLang, onLangChange, applyTo } from '../core/i18n.js';
 import { createStore } from '../core/store.js';
 import { createRouter } from '../core/router.js';
-import { el, toast, haptic } from '../core/ui.js';
+import { el, toast, haptic, pullToRefresh } from '../core/ui.js';
 import { setTimeZone } from '../core/fmt.js';
 
 import {
@@ -50,6 +50,18 @@ const store = createStore({
 const root = document.getElementById('app');
 const top = document.getElementById('app-top');
 const main = document.getElementById('app-main');
+
+/* Потянуть сверху — обновить. Водитель держит приложение открытым часами, и
+   когда связь моргнула, самый естественный жест — потянуть экран вниз. В
+   установленном приложении иначе и нечем: адресной строки нет. Во время заказа
+   жест не мешает: на карте он не срабатывает, это разбирает сам pullToRefresh. */
+pullToRefresh(main, async () => {
+  try {
+    await pullState();
+  } catch (e) {
+    toast(t('common.offline'), { type: 'err' });
+  }
+});
 const dock = document.getElementById('dock');
 const offerBox = document.getElementById('offer');
 

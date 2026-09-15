@@ -9,7 +9,7 @@
 import { api, ApiError } from '../core/api.js';
 import { setLang, getLang, applyTo, onLangChange } from '../core/i18n.js';
 import { createRouter } from '../core/router.js';
-import { el, toast, sheet, haptic, segmented, pressable } from '../core/ui.js';
+import { el, toast, sheet, haptic, segmented, pressable, pullToRefresh } from '../core/ui.js';
 import { setTimeZone } from '../core/fmt.js';
 
 import { t, guardLeave, errText } from './forms.js';
@@ -353,6 +353,15 @@ function render(route) {
   void main.offsetWidth;
   main.classList.add('is-in');
 }
+
+/* Потянуть сверху — обновить. В установленном приложении перезагрузить
+   страницу больше нечем: адресной строки нет, а данные на экране устаревают.
+   Жест намеренно глухой, когда открыта карточка или список уже прокручен, —
+   иначе он срабатывал бы посреди листания. Это разбирает сам pullToRefresh. */
+pullToRefresh(main, async () => {
+  await new Promise((done) => setTimeout(done, 60));   // даём кадр на отрисовку значка
+  redraw();
+});
 
 /** Перерисовать то, что открыто сейчас: после смены темы или языка. */
 function redraw() {
