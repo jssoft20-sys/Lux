@@ -62,10 +62,28 @@ final class Prefs {
     sp.edit().putString(K_TOKEN, scramble(token)).apply();
   }
 
-  /** Адрес сервиса. Меняется только из самого веб-приложения, руками его не трогают. */
+  /** Адрес сервиса. Его задаёт сам водитель при первом запуске, а дальше веб
+      подтверждает его собой — так один и тот же файл APK работает на любом домене. */
   String base() {
     String b = sp.getString(K_BASE, DEFAULT_BASE);
     return b.endsWith("/") ? b.substring(0, b.length() - 1) : b;
+  }
+
+  /** Адрес уже выбран? На первом запуске — нет, и мы спрашиваем его у человека. */
+  boolean hasBase() {
+    String b = sp.getString(K_BASE, null);
+    return b != null && b.startsWith("https://");
+  }
+
+  /** Домен сервиса. По нему отличаем свои ссылки от чужих: свои открываем
+      внутри, чужие (звонок, навигатор, ватсап) отдаём телефону. */
+  String host() {
+    try {
+      String h = android.net.Uri.parse(base()).getHost();
+      return h == null ? "" : h;
+    } catch (Exception e) {
+      return "";
+    }
   }
 
   void setBase(String base) {

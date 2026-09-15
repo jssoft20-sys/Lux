@@ -19,6 +19,7 @@ import { createStore } from '../core/store.js';
 import { createRouter } from '../core/router.js';
 import { el, toast, haptic, pullToRefresh } from '../core/ui.js';
 import { setTimeZone } from '../core/fmt.js';
+import native from '../core/native.js';
 
 import {
   initGate, showGate, hideGate, showStatusNotice,
@@ -499,6 +500,17 @@ async function boot() {
   applyTheme(getTheme());
   bindDock();
   initGate({ onAuthed: (user) => start(user) });
+
+  // Приложению на Android нужно знать две вещи: куда ходить и за кого. Адрес
+  // оно узнаёт от страницы — так один и тот же файл APK работает на любом
+  // домене. Токен при обычном входе оно получает само (см. core/api.js), но
+  // после перезапуска токен берётся из памяти телефона и setToken не зовётся,
+  // поэтому повторяем его здесь.
+  native.announceBase();
+  if (api.token()) native.setToken(api.token());
+  // Служба могла пережить закрытое окно: смена идёт, а экран об этом не знает.
+  // Спрашиваем сервер, вместо того чтобы верить телефону на слово.
+  native.onAppShift(() => { if (api.token()) pullState().catch(() => {}); });
 
   // Конфиг нужен и до входа (классы машин в анкете), и после (карта, допуслуги).
   api.get('/config', null, { auth: false })

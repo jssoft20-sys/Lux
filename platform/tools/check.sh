@@ -57,6 +57,7 @@ else
   run "карта: серые дыры"     env TEST_PORT=$UIPORT SG_DATA="$UIDATA" node tools/map_test.mjs
   run "сценарий: заказ вживую" env TEST_PORT=$UIPORT SG_DATA="$UIDATA" node tools/flow_test.mjs
   run "ссылка: живая карта"    env TEST_PORT=$UIPORT SG_DATA="$UIDATA" node tools/watch_test.mjs
+  run "мостик в приложение"    env TEST_PORT=$UIPORT SG_DATA="$UIDATA" node tools/app_test.mjs
 
   kill "$srv" 2>/dev/null
   wait "$srv" 2>/dev/null

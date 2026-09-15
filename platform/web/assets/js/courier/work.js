@@ -32,6 +32,7 @@ import { money, moneyShort, distance, duration, time, date, phone as fmtPhone,
 import { el, toast, sheet, confirm as ask, haptic, spinner, mountStars,
   copyText } from '../core/ui.js';
 import { createMap, pin, distanceM } from '../core/map.js';
+import native from '../core/native.js';
 
 /* ─────────────────────────────────────────────────────── свои строки
 
@@ -1741,6 +1742,10 @@ export function renderShift(root, ctx) {
       if (res.message) toast(res.message, { type: 'warn', ms: 4500 });
       if (next) ctx.tracker.start();
       else ctx.tracker.stop();
+      // В приложении смену ведёт служба телефона: она шлёт координаты и держит
+      // связь, когда экран погас. Говорим ей о смене здесь, по ответу сервера,
+      // а не по нажатию, — иначе служба поднялась бы и на отказ сервера.
+      native.setShift(!!res.online);
     } catch (e) {
       toast((e && e.message) || t('err.unknown'), { type: 'err' });
     } finally {

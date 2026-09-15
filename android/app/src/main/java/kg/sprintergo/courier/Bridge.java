@@ -18,6 +18,8 @@ final class Bridge {
 
   interface Host {
     void onShiftChanged(boolean on);
+
+    void onAddressTyped(String typed);
   }
 
   private final Context ctx;
@@ -45,10 +47,18 @@ final class Bridge {
     host.onShiftChanged(false);
   }
 
-  /** Адрес сервиса. Нужен, если однажды переедем на другой домен. */
+  /** Адрес сервиса. Страница подтверждает им саму себя: раз веб отвечает,
+      значит адрес верный, и служба пойдёт туда же. Нужен и при переезде. */
   @JavascriptInterface
   public void setBase(String base) {
     prefs.setBase(base);
+  }
+
+  /** Адрес, который водитель ввёл на первом запуске. Проверяем его и открываем.
+      Отвечает страница-настройка, а не сайт: до сайта мы ещё не дошли. */
+  @JavascriptInterface
+  public void useAddress(String typed) {
+    host.onAddressTyped(typed);
   }
 
   /** Главное: курьер вышел на линию или ушёл с неё. */
