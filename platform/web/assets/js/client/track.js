@@ -1,29 +1,39 @@
-/* Отслеживание заказа: поиск машины, курьер на карте, чат, статусы и оценка.
+/* Отслеживание заказа: поиск машины, курьер на карте, чат, детали и оценка.
 
    Экран живёт на потоке событий: сервер сам присылает смену статуса, координаты
    машины и сообщения от курьера, поэтому опроса здесь нет вовсе. Если связь
    оборвалась, core/api.js переподключится сам, а мы честно показываем полоску
    «нет связи».
 
-   Три вещи здесь сделаны нарочно не так, как обычно:
+   Четыре вещи здесь сделаны нарочно и требуют объяснения:
 
-   1. Пока ищется машина, поверх карты живёт маленькая игра — коробки падают,
-      кузов ловит их пальцем. Ожидание в пять минут без единого движения на
-      экране злит сильнее, чем само ожидание. Игра появляется только когда
-      панель свёрнута, гаснет в фоне вкладки и исчезает в ту же секунду, как
-      нашёлся курьер.
-   2. Оценка спрашивается с эмоцией: до трёх звёзд мы извиняемся и обязательно
-      выясняем, что случилось; четыре и пять — радуемся вместе с человеком.
-   3. Чат с курьером — свой экран поверх всего, с пузырями и отметками
-      прочтения. Чужой текст попадает на страницу только через textContent:
-      innerHTML для сообщений не используется нигде.
+   1. Всё, что открывается поверх карты — чат, детали заказа, оценка и игра, —
+      живёт в адресе через router.overlay(). Перезагрузил страницу с открытым
+      чатом — вернулся в чат, нажал системную «назад» — закрыл чат, а не ушёл
+      с сервиса.
+   2. Чат дорисовывает сообщения по одному и никогда не пересобирает список
+      целиком: полная перерисовка сбрасывала прокрутку в начало, и человек
+      терял место, где читал. Своё сообщение появляется мгновенно, ещё до
+      ответа сервера, и не задваивается — пузырь ищется среди неподтверждённых
+      по тексту, а дальше сверка идёт только по идентификатору.
+   3. Игра запускается ровно одной кнопкой «Поиграть» и закрывается крестиком.
+      Сама она не появляется никогда: свёрнутая панель — это просто свёрнутая
+      панель, а не приглашение ловить коробки.
+   4. Пока машина едет, карта ведёт её сама (map.follow): вид подтягивается за
+      фургоном, время подачи тикает раз в секунду, пройденный кусок маршрута
+      гаснет позади машины. Взялся за карту пальцем — слежение отпускает руль
+      и возвращается через несколько секунд.
+
+   Чужой текст попадает на страницу только через textContent: innerHTML для
+   сообщений и адресов не используется нигде.
 */
 
 import { api } from '../core/api.js';
-import { t, has, extend, getLang } from '../core/i18n.js';
+import { t, tp, has, extend, getLang } from '../core/i18n.js';
 import { createStore } from '../core/store.js';
 import {
   el, toast, sheet, haptic, mountStars, copyText, photoViewer,
+  chip, rowGroup, pressable,
 } from '../core/ui.js';
 import { pin, distanceM } from '../core/map.js';
 import { createPayStep } from './pay.js';
@@ -32,26 +42,27 @@ import {
   plate as fmtPlate, initials,
 } from '../core/fmt.js';
 import {
-  icon, iconBtn, errText, readJson, writeJson, onThemeChange, siteUrl,
+  icon, iconBtn, errText, readJson, writeJson, onThemeChange, siteUrl, nameOf,
 } from './app.js';
 
 /* Свои строки модуль приносит сам: общий словарь правят соседние экраны.
-   Префиксы нарочно редкие (game./talk./mood.) — так строки клиента не столкнутся
-   с чатом курьера, который пишется параллельно.
+   Префиксы нарочно редкие (game./talk./mood./det.) — так строки клиента не
+   столкнутся с чатом курьера, который пишется параллельно.
    Кыргызский — как говорят в Бишкеке: «унаа», «жүк», «заказ», «кузов». */
 extend({
   ru: {
     'game.title': 'Ловите коробки',
     'game.hint': 'Ведите пальцем — кузов едет за вами',
-    'game.best': 'Рекорд',
     'game.again': 'Ещё раз',
     'game.over': 'Коробки закончились',
     'game.caught': 'Поймано: {n}',
     'game.new_best': 'Новый рекорд!',
-    'game.close': 'Убрать игру',
+    'game.close': 'Закрыть игру',
     'game.play': 'Поиграть, пока ищем',
-    'game.play_hint': 'Свернём панель — и ловите коробки в кузов',
+    'game.play_hint': 'Маленькая игра на время ожидания',
     'game.play_best': 'Ваш рекорд: {n}',
+    'game.wait': 'Машину ищем дальше — как найдём, сразу покажем',
+    'game.found': 'Машина нашлась, игру закрыли',
 
     'talk.title': 'Чат с курьером',
     'talk.open': 'Чат',
@@ -62,6 +73,10 @@ extend({
     'talk.wa_hello': 'Здравствуйте! Я по заказу {id}.',
     'talk.read': 'Прочитано',
     'talk.sent': 'Отправлено',
+    'talk.sending': 'Отправляется',
+    'talk.fail': 'Не ушло. Нажмите на сообщение, чтобы отправить ещё раз',
+    'talk.fail_tick': 'Не отправлено',
+    'talk.jump': 'Новые сообщения',
     'talk.closed': 'Переписка по этому заказу закрыта',
     'talk.plate_copied': 'Номер машины скопирован',
     'talk.new': 'Новое сообщение от курьера',
@@ -69,6 +84,8 @@ extend({
     'talk.photo': 'Фото курьера',
     'talk.unread': 'Непрочитанных сообщений: {n}',
 
+    'mood.open': 'Оценить поездку',
+    'mood.tap': 'Нажмите на звёзды — это займёт полминуты',
     'mood.bad_title': 'Нам очень жаль',
     'mood.bad_text': 'Расскажите, что пошло не так, — разберёмся с курьером и вернёмся к вам.',
     'mood.good_title': 'Спасибо, мы рады!',
@@ -90,10 +107,27 @@ extend({
 
     'live.almost': 'Почти на месте',
 
+    'det.points': 'Куда едем',
+    'det.order': 'О заказе',
+    'det.price': 'Расчёт цены',
+    'det.number': 'Номер заказа',
+    'det.created': 'Заказ оформлен',
+    'det.car': 'Машина',
+    'det.loaders': 'Грузчики',
+    'det.extras': 'Дополнительно',
+    'det.comment': 'Комментарий курьеру',
+    'det.payment': 'Оплата',
+    'det.contact': 'Кто встретит',
+    'det.map': 'Показать на карте',
+    'det.copied': 'Номер заказа скопирован',
+    'det.open': 'Детали заказа',
+    'det.none': 'Ничего не добавляли',
+
     'give.what': 'Отследите мой заказ: видно статус и время в пути.',
     'give.copied': 'Ссылка скопирована — по ней видно только статус и время',
     'give.note': 'По ссылке видно статус и примерное время. '
       + 'Телефон, квартиру и точный адрес не показываем.',
+    'give.guest': 'Вы смотрите заказ по ссылке: видно машину и статус, не больше',
 
     'gift.title': 'Бонусы',
     'gift.after_ride': 'Кэшбек за эту поездку уже на счету',
@@ -102,15 +136,16 @@ extend({
   ky: {
     'game.title': 'Кутуларды кармаңыз',
     'game.hint': 'Манжаңыз менен жылдырыңыз — кузов артыңыздан жүрөт',
-    'game.best': 'Рекорд',
     'game.again': 'Дагы бир жолу',
     'game.over': 'Кутулар түгөндү',
     'game.caught': 'Кармалды: {n}',
     'game.new_best': 'Жаңы рекорд!',
     'game.close': 'Оюнду жабуу',
     'game.play': 'Издеп жатканда оюн ойноңуз',
-    'game.play_hint': 'Панелди түшүрөбүз — кутуларды кузовго кармаңыз',
+    'game.play_hint': 'Күтүп турганга кичинекей оюн',
     'game.play_best': 'Сиздин рекорд: {n}',
+    'game.wait': 'Унааны издей беребиз — тапканыбызда дароо көрсөтөбүз',
+    'game.found': 'Унаа табылды, оюнду жаптык',
 
     'talk.title': 'Курьер менен чат',
     'talk.open': 'Чат',
@@ -121,6 +156,10 @@ extend({
     'talk.wa_hello': 'Саламатсызбы! {id} заказы боюнча жазып жатам.',
     'talk.read': 'Окулду',
     'talk.sent': 'Жөнөтүлдү',
+    'talk.sending': 'Жөнөтүлүп жатат',
+    'talk.fail': 'Кетпей калды. Кайра жөнөтүү үчүн билдирүүнү басыңыз',
+    'talk.fail_tick': 'Жөнөтүлгөн жок',
+    'talk.jump': 'Жаңы билдирүүлөр',
     'talk.closed': 'Бул заказ боюнча жазышуу жабылды',
     'talk.plate_copied': 'Унаанын номери көчүрүлдү',
     'talk.new': 'Курьерден жаңы билдирүү',
@@ -128,6 +167,8 @@ extend({
     'talk.photo': 'Курьердин сүрөтү',
     'talk.unread': 'Окулбаган билдирүү: {n}',
 
+    'mood.open': 'Сапарга баа бериңиз',
+    'mood.tap': 'Жылдызчаларды басыңыз — жарым мүнөт иш',
     'mood.bad_title': 'Абдан өкүнөбүз',
     'mood.bad_text': 'Эмне туура болбогонун жазыңыз — курьер менен сүйлөшүп, сизге кабар беребиз.',
     'mood.good_title': 'Рахмат, абдан кубанычтабыз!',
@@ -149,10 +190,27 @@ extend({
 
     'live.almost': 'Дээрлик жетти',
 
+    'det.points': 'Кайда баратабыз',
+    'det.order': 'Заказ жөнүндө',
+    'det.price': 'Баанын эсеби',
+    'det.number': 'Заказдын номери',
+    'det.created': 'Заказ берилди',
+    'det.car': 'Унаа',
+    'det.loaders': 'Жүкчүлөр',
+    'det.extras': 'Кошумча',
+    'det.comment': 'Курьерге эскертүү',
+    'det.payment': 'Төлөм',
+    'det.contact': 'Ким тосуп алат',
+    'det.map': 'Картадан көрсөтүү',
+    'det.copied': 'Заказдын номери көчүрүлдү',
+    'det.open': 'Заказдын деталдары',
+    'det.none': 'Эч нерсе кошулган жок',
+
     'give.what': 'Заказымды карап туруңуз: абалы жана жолдогу убакыты көрүнөт.',
     'give.copied': 'Шилтеме көчүрүлдү — анда заказдын абалы менен убактысы гана көрүнөт',
     'give.note': 'Шилтемеден заказдын абалы жана болжолдуу убакыт көрүнөт. '
       + 'Телефон, батир жана так дарек көрсөтүлбөйт.',
+    'give.guest': 'Сиз заказды шилтеме аркылуу көрүп жатасыз: унаа менен абалы гана көрүнөт',
 
     'gift.title': 'Бонустар',
     'gift.after_ride': 'Бул сапардын кэшбеги эсепке түштү',
@@ -163,8 +221,12 @@ extend({
 /* Статусы, после которых заказ больше не меняется. */
 const CLOSED = ['done', 'cancelled', 'expired'];
 
-/* Сколько едет машина между двумя точками от сервера: координаты приходят раз
-   в несколько секунд, и такая длительность выглядит как непрерывное движение. */
+/* Статусы, на которых машина едет и карта имеет право вести её за собой. */
+const DRIVING = ['assigned', 'to_pickup', 'in_transit'];
+
+/* Сколько едет машина между двумя точками от сервера, когда карта её не ведёт:
+   координаты приходят раз в несколько секунд, и такая длительность выглядит
+   как непрерывное движение, а не как прыжок. */
 const CAR_MOVE_MS = 1400;
 
 /* Живое время подачи. Сервер присылает только координаты, поэтому время до
@@ -182,10 +244,18 @@ const ETA_MIN_S = 40;
 const ETA_MAX_S = 7200;
 const ETA_SMOOTH_S = 70;      // расхождение меньше этого сглаживаем, а не рвём
 
+/* Насколько близко к маршруту должна быть машина, чтобы верить, что она едет
+   именно по нему: дальше этого гасить пройденное — значит врать. */
+const ON_ROUTE_M = 400;
+
 /* Ключи в localStorage: рекорд в игре и избранные курьеры. */
 const KEY_BEST = 'sg_catch_best';
 const KEY_FAV = 'sg_fav_couriers';
 const FAV_MAX = 20;
+
+/* Наложения этого экрана. Всё, что открывается поверх карты, живёт в адресе:
+   #/order/AB12CD/~chat?t=… — перезагрузка возвращает человека туда же. */
+const OVERLAYS = ['chat', 'details', 'rate', 'game'];
 
 /* Готовые ответы на «что пошло не так». Код уходит в комментарий словами:
    диспетчеру важнее прочитать фразу, чем расшифровывать код. */
@@ -217,78 +287,109 @@ const SEND_SVG =
   '<path d="M4.2 11.3 19.4 4.6c.7-.3 1.4.4 1.1 1.1l-6.7 15.2c-.3.7-1.3.7-1.5-.1' +
   'l-1.7-5.3-5.3-1.7c-.8-.2-.8-1.2-.1-1.5z" fill="currentColor"/></svg>';
 
+/* Флажок точки назначения: в общем наборе значков его нет, а «куда» без флажка
+   читается как ещё одна промежуточная точка. */
+const FLAG_SVG =
+  '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+  '<path d="M6.4 3.4v17.2" fill="none" stroke="currentColor" stroke-width="1.9" ' +
+  'stroke-linecap="round"/><path d="M6.4 4.6h10.9l-2.3 3.6 2.3 3.6H6.4z" ' +
+  'fill="currentColor"/></svg>';
+
+const DOWN_SVG =
+  '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+  '<path d="M12 5v13m0 0 5.5-5.5M12 18l-5.5-5.5" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
 /* ─────────────────────────────────────────────────────── свои стили
 
-   Игра, чат и экран оценки живут только на этом экране, поэтому и правила они
-   везут с собой: в client.css их пришлось бы искать через файл, который правят
-   соседние модули. Цвета — только из токенов, чтобы обе темы работали сами. */
+   Игра, чат, детали и экран оценки живут только на этом экране, поэтому и
+   правила они везут с собой: в client.css их пришлось бы искать через файл,
+   который правят соседние модули. Цвета — только из токенов, тогда светлая и
+   тёмная темы работают сами, без второго набора правил. */
 const OWN_CSS = `
-/* ── игра «поймай коробку» ─────────────────────────────────────────────── */
+/* ── игра «поймай коробку»: открывается кнопкой, закрывается крестиком ──── */
 
-.sg-game {
-  position: absolute;
-  left: var(--sp-3);
-  /* справа оставляем колонку кнопок карты: игра не должна их закрывать */
-  right: calc(var(--sp-3) + 56px);
-  bottom: calc(max(0px, var(--sg-panel-h, 240px) - var(--sg-panel-off, 0px)) + var(--sp-3));
-  z-index: 15;
+.sg-play {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
   display: flex;
   flex-direction: column;
-  height: min(38dvh, 280px);
-  min-height: 176px;
-  border-radius: var(--r-lg);
-  background: var(--surface);
-  box-shadow: var(--shadow-2);
-  overflow: hidden;
+  background: var(--bg);
   opacity: 0;
-  transform: translateY(12px) scale(.98);
+  transform: translateY(14px);
+  /* Пока экран уезжает, он не должен ловить нажатия вместо карты под ним. */
+  pointer-events: none;
   transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease);
 }
-.sg-game--in { opacity: 1; transform: none; }
-.sg-game.is-hit { animation: sg-game-hit var(--dur-2) var(--ease); }
+.sg-play--in { opacity: 1; transform: none; pointer-events: auto; }
+.sg-play.is-hit { animation: sg-play-hit var(--dur-2) var(--ease); }
 
-@keyframes sg-game-hit {
+@keyframes sg-play-hit {
   0%, 100% { transform: none; }
-  30% { transform: translateX(-5px); }
-  70% { transform: translateX(5px); }
+  30% { transform: translateX(-6px); }
+  70% { transform: translateX(6px); }
 }
 
-.sg-game__head {
+.sg-play__head {
   flex: none;
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  padding-left: var(--sp-3);
+  padding: calc(var(--safe-t) + var(--sp-2)) var(--sp-3) var(--sp-2) var(--sp-4);
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface);
+}
+
+.sg-play__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+
+.sg-play__hearts { display: flex; gap: 3px; color: var(--err); font-size: 14px; }
+.sg-play__hearts i.is-off { color: var(--surface-3); }
+
+.sg-play__score {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px var(--sp-3);
+  border-radius: var(--r-full);
+  background: var(--accent-soft);
   font-size: var(--fs-sm);
 }
-
-.sg-game__hearts { display: flex; gap: 2px; color: var(--err); font-size: 13px; }
-.sg-game__hearts i.is-off { color: var(--surface-3); }
-
-.sg-game__score { display: flex; align-items: center; gap: 4px; }
-.sg-game__score b { font-family: var(--font-display); font-size: var(--fs-h3); font-weight: 800; }
-
-.sg-game__best {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: var(--fs-xs);
-  white-space: nowrap;
+.sg-play__score b {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 
-.sg-game__x {
+.sg-play__x {
   flex: none;
   display: grid;
   place-items: center;
   width: 44px;
   height: 44px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
   color: var(--muted);
 }
-.sg-game__x:active { color: var(--text); transform: scale(.92); }
-.sg-game__x > svg { width: 18px; height: 18px; }
+.sg-play__x:active { transform: scale(.92); color: var(--text); }
+.sg-play__x > svg { width: 20px; height: 20px; }
 
-.sg-game__stage { position: relative; flex: 1 1 auto; min-height: 0; }
+.sg-play__stage { position: relative; flex: 1 1 auto; min-height: 0; }
 
-.sg-game__cv {
+.sg-play__cv {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -296,37 +397,63 @@ const OWN_CSS = `
   touch-action: none;
   cursor: grab;
 }
-.sg-game__cv:active { cursor: grabbing; }
+.sg-play__cv:active { cursor: grabbing; }
 
-.sg-game__hint {
+.sg-play__hint {
   position: absolute;
-  left: var(--sp-3);
-  right: var(--sp-3);
-  top: var(--sp-2);
+  left: var(--sp-4);
+  right: var(--sp-4);
+  top: var(--sp-4);
   color: var(--muted);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   text-align: center;
   pointer-events: none;
 }
 
-.sg-game__over {
+.sg-play__over {
   position: absolute;
   inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-2);
-  padding: var(--sp-3);
-  background: var(--surface);
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--bg);
   text-align: center;
 }
 
-.sg-game__over-title { font-family: var(--font-display); font-weight: 700; }
-.sg-game__over-sub { color: var(--muted); font-size: var(--fs-sm); }
+.sg-play__over-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: 800;
+  letter-spacing: -.02em;
+}
+.sg-play__over-sub { color: var(--muted); font-size: var(--fs-body); }
 
-/* ── строка «поиграть, пока ищем» в шторке ─────────────────────────────── */
+.sg-play__foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4) calc(var(--sp-3) + var(--safe-b));
+  border-top: 1px solid var(--line-soft);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+.sg-play__foot .progress { flex: none; width: 64px; }
 
+.sg-play__best {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Строка «Поиграть» в шторке: значок в жёлтом кружке, как у остальных строк. */
 .sg-play__ico { font-size: 20px; line-height: 1; }
 
 /* ── чат с курьером ────────────────────────────────────────────────────── */
@@ -342,7 +469,6 @@ const OWN_CSS = `
   background: var(--bg);
   opacity: 0;
   transform: translateY(14px);
-  /* Пока экран уезжает, он не должен ловить нажатия вместо карты под ним. */
   pointer-events: none;
   transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease);
 }
@@ -390,6 +516,8 @@ const OWN_CSS = `
 .sg-chat__wa:active { transform: scale(.92); }
 .sg-chat__wa > svg { width: 22px; height: 22px; }
 
+.sg-chat__wrap { position: relative; flex: 1 1 auto; min-height: 0; display: flex; }
+
 .sg-chat__list {
   flex: 1 1 auto;
   min-height: 0;
@@ -404,7 +532,7 @@ const OWN_CSS = `
 
 .sg-chat__day {
   align-self: center;
-  padding: 2px var(--sp-3);
+  padding: 3px var(--sp-3);
   border-radius: var(--r-full);
   background: var(--surface-2);
   color: var(--muted);
@@ -420,19 +548,51 @@ const OWN_CSS = `
   text-align: center;
 }
 
+/* Кнопка «новые сообщения»: появляется, только если человек читает старое.
+   Прокрутку под ним мы не трогаем — он сам решит, когда спуститься вниз. */
+.sg-jump {
+  position: absolute;
+  left: 50%;
+  bottom: var(--sp-3);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 44px;
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--shadow-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  transform: translate(-50%, 8px);
+  opacity: 0;
+  transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease);
+}
+.sg-jump--in { opacity: 1; transform: translate(-50%, 0); }
+.sg-jump:active { transform: translate(-50%, 0) scale(.95); }
+.sg-jump > svg { width: 16px; height: 16px; }
+
 .sg-msg {
   max-width: 84%;
   align-self: flex-start;
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-md) var(--r-md) var(--r-md) var(--r-xs);
-  background: var(--surface-2);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
   animation: sg-msg-in var(--dur-2) var(--ease) both;
 }
 .sg-msg--mine {
   align-self: flex-end;
   border-radius: var(--r-md) var(--r-md) var(--r-xs) var(--r-md);
+  border-color: transparent;
   background: var(--accent-soft);
 }
+/* Пузыри, которые уже были на экране, при пересборке списка не мигают. */
+.sg-msg--quiet { animation: none; }
+.sg-msg--wait { opacity: .62; }
+.sg-msg--fail { border-color: var(--err); cursor: pointer; }
+.sg-msg--fail:active { transform: scale(.98); }
 
 @keyframes sg-msg-in {
   from { opacity: 0; transform: translateY(6px); }
@@ -459,7 +619,9 @@ const OWN_CSS = `
 }
 
 .sg-msg__tick { letter-spacing: -3px; color: var(--muted-2); }
-.sg-msg__tick.is-read { color: var(--info); }
+.sg-msg__tick.is-read { color: var(--info); letter-spacing: -3px; }
+.sg-msg__tick.is-fail { color: var(--err); letter-spacing: 0; }
+.sg-msg__tick.is-wait { letter-spacing: 0; }
 
 .sg-chat__note {
   flex: none;
@@ -486,7 +648,7 @@ const OWN_CSS = `
   min-width: 0;
   min-height: 44px;
   max-height: 122px;
-  padding: 11px var(--sp-3);
+  padding: 11px var(--sp-4);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   background: var(--surface-2);
@@ -503,14 +665,15 @@ const OWN_CSS = `
   flex: none;
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   border-radius: var(--r-full);
   background: var(--accent);
   color: var(--on-accent);
+  box-shadow: var(--shadow-accent);
   transition: transform var(--dur-1) var(--ease), opacity var(--dur-1) var(--ease);
 }
-.sg-chat__send:disabled { opacity: .4; }
+.sg-chat__send:disabled { opacity: .4; box-shadow: none; }
 .sg-chat__send:active:not(:disabled) { transform: scale(.92); }
 .sg-chat__send > svg { width: 20px; height: 20px; }
 
@@ -551,6 +714,42 @@ const OWN_CSS = `
    прямых потомков — размер задаём сами, иначе svg схлопывается в ноль. */
 .sg-acts .btn > span { display: inline-flex; }
 .sg-acts .btn > span > svg { flex: none; width: 20px; height: 20px; }
+
+/* ── детали заказа во весь экран ───────────────────────────────────────── */
+
+.sg-det .sheet__body > * + * { margin-top: var(--sp-4); }
+
+/* Чипы быстрых действий идут одной строкой и уезжают вбок: перенос столбиком
+   съедает пол-экрана и превращает второстепенное в главное. */
+.sg-det__chips > .chip { flex: none; }
+
+/* В расчёте цены важна сумма, а не слово: подпись спокойная, цифра чёрная. */
+.sg-det__sum .rowgroup__label { font-weight: 500; }
+.sg-det__sum .rowgroup__val {
+  color: var(--text);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.sg-det__note {
+  padding: 0 var(--sp-1);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+/* Итоговая строка в группе цены крупнее остальных: глаз должен цепляться
+   за неё первой, а не пересчитывать столбик сам. */
+.sg-det__total .rowgroup__label {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 800;
+}
+.sg-det__total .rowgroup__val {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 800;
+}
 
 /* ── оценка с эмоцией ──────────────────────────────────────────────────── */
 
@@ -614,6 +813,7 @@ const OWN_CSS = `
   font-family: var(--font-display);
   font-size: var(--fs-h2);
   font-weight: 700;
+  letter-spacing: -.01em;
   text-align: center;
 }
 
@@ -630,6 +830,19 @@ const OWN_CSS = `
   font-size: var(--fs-xs);
   text-align: center;
 }
+
+/* Экран оценки: одна колонка по центру, кнопка внизу во всю ширину. */
+.sg-mood-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.sg-mood-screen > * { width: 100%; }
+/* Звёзды тянуть во всю ширину нельзя: закрашенная половина у них лежит
+   абсолютом и считается от ширины всей коробки — растянутая коробка рисует
+   второй ряд звёзд поверх первого. */
+.sg-mood-screen > .stars { width: max-content; margin-inline: auto; }
 
 /* Конфетти: восемнадцать бумажек, один проход и узел сам себя убирает. */
 .sg-conf {
@@ -663,7 +876,9 @@ const OWN_CSS = `
   gap: var(--sp-3);
   width: 100%;
   min-height: 56px;
-  padding: var(--sp-2) 0;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
   cursor: pointer;
 }
 .sg-fav__ico { font-size: 22px; line-height: 1; }
@@ -672,20 +887,31 @@ const OWN_CSS = `
    предложение целиком — пусть переносится, обрезанное слово читается хуже. */
 .sg-fav__text .sg-item__title { white-space: normal; overflow: visible; }
 
-@media (max-width: 380px) {
-  .sg-game { right: calc(var(--sp-3) + 52px); }
+/* Оценка прямо в шторке: крупные звёзды и одна строка приглашения. */
+.sg-stars-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
 }
-
-/* На широком экране шторка стоит слева, игре хватает места рядом с ней. */
-@media (min-width: 620px) {
-  .sg-game { left: var(--sp-4); right: auto; width: 420px; }
+.sg-stars-box__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  letter-spacing: -.01em;
+  text-align: center;
 }
+.sg-stars-box__sub { color: var(--muted); font-size: var(--fs-sm); text-align: center; }
 
 @media (prefers-reduced-motion: reduce) {
   .sg-mood--sad .sg-mood__face,
   .sg-mood--glad .sg-mood__face i,
   .sg-mood__tear { animation: none; }
   .sg-mood__tear { opacity: .9; }
+  .sg-msg { animation: none; }
 }
 `;
 
@@ -746,62 +972,72 @@ function setFav(c, on) {
 /* Коробки падают сверху, кузов ездит за пальцем. Правил нет: поймал — очко,
    промахнулся — минус попытка, рекорд остаётся на устройстве.
 
-   Всё рисуется руками на canvas: на слабом телефоне это дешевле десятка
-   движущихся узлов, а кадры идут только пока карточка видна и вкладка на
-   переднем плане — в фоне цикл останавливается совсем и батарею не ест. */
+   Игра открывается только кнопкой и занимает весь экран: маленькая карточка
+   поверх карты мешала и карте, и игре. Всё рисуется руками на canvas — на
+   слабом телефоне это дешевле десятка движущихся узлов, а кадры идут только
+   пока вкладка на переднем плане: в фоне цикл останавливается совсем. */
 function createCatchGame(onClose) {
   const state = {
     w: 0, h: 0, dpr: 1,
     points: 0, lives: 3, best: readBest(),
-    over: false, visible: false, dead: false,
+    over: false, live: false, dead: false,
     spawnIn: 600, raf: 0, last: 0, rect: null,
   };
-  const truck = { x: 0, to: 0, w: 88, h: 26 };
+  const truck = { x: 0, to: 0, w: 96, h: 30 };
   let boxes = [];
   let pops = [];
 
   const scoreOut = el('b', null, '0');
-  const bestOut = el('span', { className: 'sg-game__best' });
-  const hearts = el('span', { className: 'sg-game__hearts' });
-  const closeBtn = iconBtn('close', 'sg-game__x', t('game.close'), () => {
+  const bestOut = el('span', { className: 'sg-play__best' });
+  const hearts = el('span', { className: 'sg-play__hearts' });
+  const closeBtn = iconBtn('close', 'sg-play__x', t('game.close'), () => {
     haptic();
     if (onClose) onClose();
   });
-  const head = el('div', { className: 'sg-game__head' },
+  const head = el('div', { className: 'sg-play__head' },
+    el('div', { className: 'sg-play__title' }, t('game.title')),
     hearts,
-    el('span', { className: 'sg-game__score' }, '📦', scoreOut),
-    bestOut,
+    el('span', { className: 'sg-play__score' }, '📦', scoreOut),
     closeBtn);
 
-  const cv = el('canvas', { className: 'sg-game__cv' });
-  const hint = el('div', { className: 'sg-game__hint' }, t('game.hint'));
-  const over = el('div', { className: 'sg-game__over', hidden: true });
-  const stage = el('div', { className: 'sg-game__stage' }, cv, hint, over);
+  const cv = el('canvas', { className: 'sg-play__cv' });
+  const hint = el('div', { className: 'sg-play__hint' }, t('game.hint'));
+  const over = el('div', { className: 'sg-play__over', hidden: true });
+  const stage = el('div', { className: 'sg-play__stage' }, cv, hint, over);
+  const waitText = el('span', { className: 'grow' }, t('game.wait'));
+  const foot = el('div', { className: 'sg-play__foot' },
+    el('div', { className: 'progress progress--wait' }, el('div', { className: 'progress__bar' })),
+    waitText,
+    bestOut);
   const node = el('div', {
-    className: 'sg-game', hidden: true, role: 'group', 'aria-label': t('game.title'),
-  }, head, stage);
+    className: 'sg-play', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('game.title'),
+  }, head, stage, foot);
 
   const ctx = cv.getContext('2d');
   // Кузов и дорога рисуются цветами темы. Читаем их один раз при показе и на
   // смене темы: спрашивать getComputedStyle в каждом кадре — лишняя работа.
-  let colors = { accent: '#FFDF00', line: '#2E2E36' };
+  let colors = { accent: '#FFDF00', line: '#E2DFD6', muted: '#9A978E' };
 
   function readColors() {
     const cs = getComputedStyle(node);
     const one = (name, fallback) => (cs.getPropertyValue(name) || '').trim() || fallback;
-    colors = { accent: one('--accent', '#FFDF00'), line: one('--line', '#2E2E36') };
+    colors = {
+      accent: one('--accent', '#FFDF00'),
+      line: one('--line', '#E2DFD6'),
+      muted: one('--muted-2', '#9A978E'),
+    };
   }
 
   const offTheme = onThemeChange(() => {
     readColors();
-    if (state.visible) draw();
+    if (state.live) draw();
   });
 
   /* ── размеры ───────────────────────────────────────────────────────────── */
 
   function fit() {
-    const w = Math.max(120, Math.round(stage.clientWidth));
-    const h = Math.max(100, Math.round(stage.clientHeight));
+    const w = Math.max(160, Math.round(stage.clientWidth));
+    const h = Math.max(160, Math.round(stage.clientHeight));
     if (w === state.w && h === state.h) return;
     const kx = state.w ? w / state.w : 1;
     state.w = w;
@@ -811,7 +1047,8 @@ function createCatchGame(onClose) {
     cv.height = Math.round(h * state.dpr);
     ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
     state.rect = null;
-    truck.w = Math.round(Math.max(64, Math.min(112, w * 0.3)));
+    truck.w = Math.round(clamp(w * 0.26, 76, 140));
+    truck.h = Math.round(truck.w * 0.32);
     truck.x = truck.x ? truck.x * kx : w / 2;
     truck.to = truck.to ? truck.to * kx : w / 2;
     for (const b of boxes) b.x *= kx;
@@ -829,7 +1066,7 @@ function createCatchGame(onClose) {
   function aimAt(clientX) {
     if (!state.rect) state.rect = cv.getBoundingClientRect();
     const x = clientX - state.rect.left;
-    truck.to = Math.max(truck.w / 2, Math.min(state.w - truck.w / 2, x));
+    truck.to = clamp(x, truck.w / 2, Math.max(truck.w / 2, state.w - truck.w / 2));
   }
 
   cv.addEventListener('pointerdown', (e) => {
@@ -848,13 +1085,18 @@ function createCatchGame(onClose) {
 
   /* ── ход игры ──────────────────────────────────────────────────────────── */
 
+  /* Скорость считаем от высоты поля, а не в пикселях: на большом экране
+     коробка с постоянной скоростью летит вниз секунд восемь, и это уже не игра,
+     а ожидание внутри ожидания. */
   function spawn() {
-    const size = 18 + Math.round(Math.random() * 10);
+    const size = 20 + Math.round(Math.random() * 12);
+    const step = Math.max(160, state.h);
     boxes.push({
       x: size + Math.random() * Math.max(1, state.w - size * 2),
       y: -size,
       size,
-      v: 86 + Math.min(150, state.points * 5) + Math.random() * 34,
+      v: Math.min(step * 0.9, step * 0.32 + state.points * step * 0.012)
+         + Math.random() * step * 0.07,
       a: (Math.random() - 0.5) * 0.6,
       s: (Math.random() - 0.5) * 1.6,
     });
@@ -883,11 +1125,11 @@ function createCatchGame(onClose) {
     saveBest(state.best);
     paintHead();
     over.replaceChildren(
-      el('div', { className: 'sg-game__over-title' },
+      el('div', { className: 'sg-play__over-title' },
          state.points >= state.best && state.points > 0 ? t('game.new_best') : t('game.over')),
-      el('div', { className: 'sg-game__over-sub' }, t('game.caught', { n: state.points })),
+      el('div', { className: 'sg-play__over-sub' }, t('game.caught', { n: state.points })),
       el('button', {
-        type: 'button', className: 'btn btn--primary', onClick: restart,
+        type: 'button', className: 'btn btn--primary btn--lg', onClick: restart,
       }, t('game.again')));
     over.hidden = false;
   }
@@ -911,11 +1153,11 @@ function createCatchGame(onClose) {
 
     state.spawnIn -= dt * 1000;
     if (state.spawnIn <= 0) {
-      if (boxes.length < 6) spawn();
-      state.spawnIn = Math.max(430, 950 - state.points * 16);
+      if (boxes.length < 7) spawn();
+      state.spawnIn = Math.max(420, 950 - state.points * 16);
     }
 
-    const groundY = state.h - 12;
+    const groundY = state.h - 18;
     const top = groundY - truck.h;
     const keep = [];
     for (const b of boxes) {
@@ -970,7 +1212,7 @@ function createCatchGame(onClose) {
     ctx.translate(b.x, b.y);
     ctx.rotate(b.a);
     ctx.fillStyle = '#D9A25F';
-    rr(-s / 2, -s / 2, s, s, 3);
+    rr(-s / 2, -s / 2, s, s, 4);
     ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,.26)';
     ctx.lineWidth = 2;
@@ -987,7 +1229,7 @@ function createCatchGame(onClose) {
     const left = truck.x - w / 2;
     const top = baseY - h;
     ctx.fillStyle = colors.accent;
-    rr(left, top, w * 0.6, h, 4);
+    rr(left, top, w * 0.6, h, 5);
     ctx.fill();
     ctx.beginPath();                        // кабина
     ctx.moveTo(left + w * 0.6, top + h * 0.3);
@@ -1003,33 +1245,33 @@ function createCatchGame(onClose) {
     ctx.fillStyle = 'rgba(0,0,0,.55)';      // колёса
     for (const k of [0.2, 0.82]) {
       ctx.beginPath();
-      ctx.arc(left + w * k, baseY + 1, 5, 0, Math.PI * 2);
+      ctx.arc(left + w * k, baseY + 1, 6, 0, Math.PI * 2);
       ctx.fill();
     }
   }
 
   function draw() {
     if (!state.w) return;
-    const groundY = state.h - 12;
+    const groundY = state.h - 18;
     ctx.clearRect(0, 0, state.w, state.h);
 
     ctx.strokeStyle = colors.line;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(0, groundY + 7);
-    ctx.lineTo(state.w, groundY + 7);
+    ctx.moveTo(0, groundY + 8);
+    ctx.lineTo(state.w, groundY + 8);
     ctx.stroke();
 
     for (const b of boxes) drawBox(b);
     drawTruck(groundY);
 
     if (pops.length) {
-      ctx.font = '700 13px ' + 'system-ui, sans-serif';
+      ctx.font = '700 15px system-ui, sans-serif';
       ctx.textAlign = 'center';
       for (const p of pops) {
         ctx.globalAlpha = Math.max(0, 1 - p.life / 0.7);
         ctx.fillStyle = colors.accent;
-        ctx.fillText('+1', p.x, p.y - 8 - p.life * 34);
+        ctx.fillText('+1', p.x, p.y - 10 - p.life * 34);
       }
       ctx.globalAlpha = 1;
     }
@@ -1039,7 +1281,7 @@ function createCatchGame(onClose) {
 
   function frame(now) {
     state.raf = 0;
-    if (state.dead || !state.visible || state.over) return;
+    if (state.dead || !state.live || state.over) return;
     const dt = Math.min(0.05, (now - (state.last || now)) / 1000);
     state.last = now;
     step(dt);
@@ -1048,7 +1290,7 @@ function createCatchGame(onClose) {
   }
 
   function run() {
-    if (state.dead || state.raf || !state.visible || state.over) return;
+    if (state.dead || state.raf || !state.live || state.over) return;
     if (document.visibilityState === 'hidden') return;
     state.last = 0;
     state.raf = requestAnimationFrame(frame);
@@ -1073,37 +1315,30 @@ function createCatchGame(onClose) {
   return {
     node,
 
-    /** Показать или спрятать карточку. Спрятанная игра не считает кадры. */
-    show(on) {
-      if (state.dead || state.visible === !!on) return;
-      state.visible = !!on;
-      if (state.visible) {
-        node.hidden = false;
-        readColors();                // до вставки в страницу цвета темы не спросить
-        fit();
-        requestAnimationFrame(() => {
-          if (!state.dead && state.visible) node.classList.add('sg-game--in');
-        });
-        run();
-      } else {
-        halt();
-        node.classList.remove('sg-game--in');
-        node.hidden = true;
-      }
+    /** Игра встала на экран — считаем кадры. */
+    start() {
+      if (state.dead || state.live) return;
+      state.live = true;
+      readColors();                  // до вставки в страницу цвета темы не спросить
+      fit();
+      run();
     },
 
     /** Сменился язык — переписываем подписи, не сбрасывая счёт. */
     relang() {
       hint.textContent = t('game.hint');
+      waitText.textContent = t('game.wait');
       closeBtn.setAttribute('aria-label', t('game.close'));
       closeBtn.title = t('game.close');
       node.setAttribute('aria-label', t('game.title'));
+      head.firstChild.textContent = t('game.title');
       paintHead();
       if (state.over) finish();
     },
 
     destroy() {
       state.dead = true;
+      state.live = false;
       halt();
       clearTimeout(hintTimer);
       document.removeEventListener('visibilitychange', onVis);
@@ -1133,12 +1368,28 @@ export function mountTrack(app, pid, token) {
   let stream = null;
   let dead = false;
   let markers = [];
-  let line = null;
+  let line = null;          // маршрут от точки А до точки Б
+  let lead = null;          // пунктир от машины до точки подачи
   let radar = null;
   let car = null;
   let mapKey = '';
 
   const base = '/orders/' + encodeURIComponent(pid);
+  const map = app.map || null;
+  const canFollow = !!(map && typeof map.follow === 'function');
+
+  /* Наблюдатель за наложениями отписывается в destroy: без этого закрытый
+     экран продолжал бы открывать чужой чат. */
+  let offOverlay = null;
+  let overlayNow = '';        // какое наложение показываем прямо сейчас
+  let overlayWanted = '';     // адрес просит наложение, а заказ ещё не загружен
+  let overlaySheet = null;    // шторка наложения, если она сейчас открыта
+  let byRouter = false;       // закрывает роутер, а не человек
+  let rateStart = 0;          // с какой звезды открыли экран оценки
+
+  function guest(order) {
+    return !!(order && order.readonly);
+  }
 
   /* ── карта ───────────────────────────────────────────────────────────── */
 
@@ -1147,10 +1398,16 @@ export function mountTrack(app, pid, token) {
       .filter((p) => p && p.lat != null);
   }
 
+  function routeOf(order) {
+    return Array.isArray(order && order.route) && order.route.length > 1 ? order.route : null;
+  }
+
   function syncMap(order) {
     if (!order) return;
     const pts = points(order);
-    const key = order.status + '|' + pts.map((p) => p.lat.toFixed(5) + p.lng.toFixed(5)).join(';');
+    const path = routeOf(order);
+    const key = order.status + '|' + pts.map((p) => p.lat.toFixed(5) + p.lng.toFixed(5)).join(';')
+      + '|' + (path ? path.length : 0);
     if (key !== mapKey) {
       mapKey = key;
       for (const m of markers) m.remove();
@@ -1161,37 +1418,36 @@ export function mountTrack(app, pid, token) {
         zIndex: 10 + i,
       }));
 
-      const path = Array.isArray(order.route) && order.route.length > 1 ? order.route : null;
       if (path) {
         if (line) line.setCoords(path);
         else line = app.route(path, { width: 6 });
+        measureRoute(path);
+      } else if (line) {
+        line.remove();
+        line = null;
+        routeMeta = null;
       }
 
       // Пока ищем машину, вокруг точки подачи расходятся круги — видно, что работа идёт.
       const searching = isSearching(order);
       if (searching && pts.length && !radar) {
-        radar = app.marker({ at: [pts[0].lat, pts[0].lng], html: '<span class="sg-radar"></span>', zIndex: 30 });
+        radar = app.marker({
+          at: [pts[0].lat, pts[0].lng], html: '<span class="sg-radar"></span>', zIndex: 30,
+        });
       }
       if (!searching && radar) { radar.remove(); radar = null; }
 
       fitAll(order);
     }
 
-    const at = order.courier && order.courier.at;
-    if (at && at[0] != null) {
-      if (!car) {
-        car = app.marker({ at, html: pin('car'), rotate: true, zIndex: 40 });
-        fitAll(order);
-      } else {
-        car.moveTo(at, { duration: CAR_MOVE_MS, heading: order.courier.heading });
-      }
-    } else if (car) {
-      car.remove();
-      car = null;
-    }
+    syncCar(order);
+    syncLive(order);
   }
 
-  function fitAll(order) {
+  function fitAll(order, force) {
+    // Пока карта сама ведёт машину, подгонять вид нельзя: два хозяина у одного
+    // вида — это дёрганье на каждой посылке координат.
+    if (following && !force) return;
     const pts = points(order).map((p) => [p.lat, p.lng]);
     const at = order.courier && order.courier.at && order.courier.at[0] != null
       ? [order.courier.at] : [];
@@ -1204,8 +1460,174 @@ export function mountTrack(app, pid, token) {
       app.fit(set.length ? set : pts);
       return;
     }
-    const path = Array.isArray(order.route) && order.route.length > 1 ? order.route : pts;
+    const path = routeOf(order) || pts;
     app.fit(at.concat(path));
+  }
+
+  /* ── живая карта подачи ──────────────────────────────────────────────── */
+
+  let following = false;
+  let followZoomNow = 0;      // какой зум сейчас просили у слежения
+  let followAnchorNow = 0;    // и на какой высоте держим машину
+  let followHold = 0;         // до этого времени слежение молчит: человек смотрит маршрут
+
+  /* Человек попросил показать весь маршрут — слежение уступает место на
+     полминуты. Без паузы карта вернулась бы к машине через пару секунд, и
+     маршрут человек так и не увидел бы. */
+  function showWholeRoute() {
+    const order = store.get().order;
+    if (!order) return;
+    followHold = Date.now() + 30000;
+    if (following && canFollow) { map.unfollow(); following = false; followZoomNow = 0; }
+    fitAll(order, true);
+  }
+
+  /* Свободная часть карты — та, которую не закрывает шторка. Из неё берём и
+     место для машины (иначе фургон прячется под панелью ровно тогда, когда на
+     него смотрят), и радиус кадра, в который обязана влезть цель. */
+  function freeBox() {
+    const box = map && map.el ? map.el : null;
+    const tall = (box ? box.clientHeight : 0) || window.innerHeight || 640;
+    const wide = (box ? box.clientWidth : 0) || window.innerWidth || 390;
+    let panel = 0;
+    try {
+      const sheetBox = app.panel && app.panel.el
+        ? app.panel.el.querySelector('.sg-panel__box') : null;
+      const off = parseFloat(getComputedStyle(document.documentElement)
+        .getPropertyValue('--sg-panel-off')) || 0;
+      if (sheetBox) panel = Math.max(0, sheetBox.getBoundingClientRect().height - off);
+    } catch (e) {
+      panel = 0;                      // размеры спросить не вышло — берём середину экрана
+    }
+    const free = Math.max(160, tall - panel);
+    return {
+      anchor: clamp((free / 2) / tall, 0.22, 0.6),
+      radius: Math.max(80, Math.min(wide, free) / 2 - 28),
+    };
+  }
+
+  /* Метров на пиксель у веб-меркатора на широте Бишкека: 156543·cos(42,9°).
+     По нему считаем зум, при котором и машина, и цель влезают в свободный кадр:
+     «вплотную» человек видит двор, но не видит, что фургон ещё в трёх
+     километрах. Ступень в ползума — иначе карта ползала бы на каждой посылке. */
+  const MPP_ZERO = 114800;
+
+  function followZoom(gap, radius) {
+    const need = Math.max(150, gap * 1.15) / Math.max(60, radius);
+    return clamp(Math.round(Math.log2(MPP_ZERO / need) * 2) / 2, 12.5, 16.5);
+  }
+
+  function syncCar(order) {
+    const at = order.courier && order.courier.at;
+    if (!at || at[0] == null) {
+      if (following && canFollow) { map.unfollow(); following = false; }
+      if (car) { car.remove(); car = null; }
+      if (lead) { lead.remove(); lead = null; }
+      return;
+    }
+    const fresh = !car;
+    if (fresh) {
+      car = app.marker({ at, html: pin('car'), rotate: true, zIndex: 40 });
+    }
+
+    const goal = etaGoal(order);
+    const drive = DRIVING.indexOf(order.status) >= 0;
+    const gap = goal ? distanceM(at, goal.ll) : 0;
+
+    if (canFollow && drive && Date.now() >= followHold) {
+      const box = freeBox();
+      const zoom = followZoom(gap, box.radius);
+      const anchor = box.anchor;
+      const opts = { marker: car, resume: 6000 };
+      if (zoom !== followZoomNow) { opts.zoom = zoom; followZoomNow = zoom; }
+      if (Math.abs(anchor - followAnchorNow) > 0.02) {
+        opts.anchor = anchor;
+        followAnchorNow = anchor;
+      }
+      map.follow({
+        lat: at[0], lng: at[1],
+        heading: order.courier.heading,
+        speed: order.courier.speed,
+      }, opts);
+      following = true;
+    } else {
+      if (following && canFollow) { map.unfollow(); following = false; followZoomNow = 0; }
+      car.moveTo(at, { duration: CAR_MOVE_MS, heading: order.courier.heading });
+      if (fresh) fitAll(order);
+    }
+
+    // Пунктир «машина — точка подачи»: пока фургон едет к человеку, видно,
+    // сколько ему осталось. После погрузки поводок не нужен — есть маршрут.
+    const toPickup = goal && goal.goal === 'pick';
+    if (toPickup) {
+      const coords = [at.slice(), goal.ll.slice()];
+      if (lead) lead.setCoords(coords);
+      else lead = app.route(coords, { width: 3, dashed: true, color: 'var(--muted-2)' });
+      leadGoal = goal.ll.slice();
+    } else if (lead) {
+      lead.remove();
+      lead = null;
+      leadGoal = null;
+    }
+  }
+
+  /* Пройденный кусок маршрута гаснет позади машины. Долю считаем по длине, а
+     не по числу точек: на прямом проспекте точек мало, а метров много. */
+  let routeMeta = null;       // {pts, acc, total}
+  let progressNow = 0;
+  let leadGoal = null;        // куда тянется пунктир от машины
+
+  function measureRoute(path) {
+    const pts = path.map((p) => [Number(p[0]), Number(p[1])]);
+    const acc = [0];
+    let total = 0;
+    for (let i = 1; i < pts.length; i++) {
+      total += distanceM(pts[i - 1], pts[i]);
+      acc.push(total);
+    }
+    routeMeta = { pts, acc, total };
+    progressNow = 0;
+    if (line) line.setProgress(0);
+  }
+
+  /* Где машина на маршруте, 0…1. Вернём -1, если она далеко от линии: гасить
+     маршрут по машине, которая едет в объезд, — значит показывать неправду. */
+  function routeShare(ll) {
+    const meta = routeMeta;
+    if (!meta || meta.total <= 0) return -1;
+    let best = 0;
+    let bestGap = Infinity;
+    for (let i = 0; i < meta.pts.length; i++) {
+      const d = distanceM(meta.pts[i], ll);
+      if (d < bestGap) { bestGap = d; best = i; }
+    }
+    if (bestGap > ON_ROUTE_M) return -1;
+    return meta.acc[best] / meta.total;
+  }
+
+  /* Живое на карте, что нужно обновлять чаще посылок координат: пунктир до
+     точки подачи и гаснущий позади машины маршрут. Позицию берём у самого
+     маркера — он едет между посылками, и линии живут вместе с ним, а не
+     дёргаются раз в несколько секунд. */
+  function syncLive(order) {
+    const at = car ? car.at() : (order && order.courier && order.courier.at);
+    if (lead && leadGoal && at && at[0] != null) {
+      lead.setCoords([at, leadGoal]);
+    }
+    if (!line || !order) return;
+    if (order.status === 'done') {
+      progressNow = 1;
+      line.setProgress(1);
+      return;
+    }
+    if (order.status !== 'in_transit' && order.status !== 'at_dropoff') return;
+    if (!at || at[0] == null) return;
+    const share = routeShare(at);
+    if (share < 0) return;
+    // Назад маршрут не «зажигаем»: дрожание GPS иначе моргало бы линией.
+    if (share <= progressNow + 0.0008) return;
+    progressNow = share;
+    line.setProgress(share);
   }
 
   /* Машину ищем — значит, экрану нечего показывать, кроме бегущей полоски.
@@ -1257,17 +1679,17 @@ export function mountTrack(app, pid, token) {
      по десять раз в секунду незачем. */
   function etaFeed(order) {
     const target = etaGoal(order);
-    const car = order && order.courier && order.courier.at;
-    if (!target || !car || car[0] == null) {
+    const at = order && order.courier && order.courier.at;
+    if (!target || !at || at[0] == null) {
       if (eta.at) etaReset();
       return;
     }
-    const key = Number(car[0]).toFixed(5) + ',' + Number(car[1]).toFixed(5);
+    const key = Number(at[0]).toFixed(5) + ',' + Number(at[1]).toFixed(5);
     if (key === eta.pos && target.goal === eta.goal) return;
 
     const now = Date.now();
     if (eta.seen && target.goal === eta.goal) {
-      const moved = distanceM(eta.seen.ll, car);
+      const moved = distanceM(eta.seen.ll, at);
       const dt = (now - eta.seen.ms) / 1000;
       // Скорость берём у самой машины, но только на заметных отрезках: на
       // светофоре и на стоянке вышло бы «едет со скоростью пешехода».
@@ -1278,13 +1700,13 @@ export function mountTrack(app, pid, token) {
     } else {
       eta.speed = SPEED_START;
     }
-    eta.seen = { ll: car.slice(), ms: now };
+    eta.seen = { ll: at.slice(), ms: now };
     eta.pos = key;
 
-    eta.gap = Math.round(distanceM(car, target.ll) * ROAD_FACTOR);
+    eta.gap = Math.round(distanceM(at, target.ll) * ROAD_FACTOR);
     const left = eta.gap / Math.max(SPEED_MIN, eta.speed);
     const stamp = Math.floor(now / 1000)
-      + Math.round(Math.min(ETA_MAX_S, Math.max(ETA_MIN_S, left)));
+      + Math.round(clamp(left, ETA_MIN_S, ETA_MAX_S));
     // Цель прежняя и расхождение небольшое — усредняем, а не переписываем:
     // иначе «5 минут» скакало бы туда-сюда на каждой посылке координат.
     if (eta.at && target.goal === eta.goal && Math.abs(stamp - eta.at) < ETA_SMOOTH_S) {
@@ -1316,55 +1738,137 @@ export function mountTrack(app, pid, token) {
     return '';
   }
 
+  /* ── наложения: чат, детали, оценка и игра живут в адресе ────────────── */
+
+  /** Открыть наложение. Адрес меняет роутер, а он позовёт нас обратно. */
+  function openMy(name) {
+    haptic();
+    if (app.router) app.router.overlay(name);
+    else applyOverlay(name);
+  }
+
+  /** Закрыть наложение так, как это сделал бы человек: через адрес. */
+  function closeMy() {
+    if (app.router && OVERLAYS.indexOf(app.router.overlayName()) >= 0) {
+      app.router.closeOverlay();
+      return;
+    }
+    applyOverlay('');
+  }
+
+  /* Адрес обещает наложение, которого быть не может: чат без курьера, оценка
+     уже поставленного заказа. Чиним молча заменой записи — лишний шаг истории
+     человеку ни к чему. */
+  function dropAddress() {
+    if (app.router && OVERLAYS.indexOf(app.router.overlayName()) >= 0) {
+      app.router.closeOverlay({ replace: true });
+    }
+  }
+
+  function canOpen(name) {
+    const order = store.get().order;
+    if (!order) return false;
+    if (name === 'chat') return !guest(order) && !!order.courier;
+    if (name === 'details') return true;
+    if (name === 'rate') {
+      return !guest(order) && order.status === 'done' && !store.get().rated;
+    }
+    if (name === 'game') return isSearching(order);
+    return false;
+  }
+
+  function shutOverlay() {
+    const gone = overlayNow;
+    if (!gone) return;
+    overlayNow = '';
+    byRouter = true;
+    try {
+      if (gone === 'chat') closeChat();
+      else if (gone === 'game') closeGame();
+      else if (overlaySheet) {
+        const ui = overlaySheet;
+        overlaySheet = null;
+        ui.close();
+      }
+    } finally {
+      byRouter = false;
+    }
+  }
+
+  /** Привести экран в соответствие с адресом. Зовёт роутер, зовём и мы сами. */
+  function applyOverlay(name) {
+    if (dead) return;
+    const want = OVERLAYS.indexOf(name) >= 0 ? name : '';
+    if (want === overlayNow) return;
+    shutOverlay();
+    if (!want) return;
+    // Заказ ещё грузится — придержим просьбу до первых данных, иначе после
+    // перезагрузки с открытым чатом адрес просто потерял бы наложение.
+    if (store.get().loading) {
+      overlayWanted = want;
+      return;
+    }
+    if (!canOpen(want)) {
+      dropAddress();
+      return;
+    }
+    overlayNow = want;
+    if (want === 'chat') openChat();
+    else if (want === 'game') openGame();
+    else if (want === 'details') overlaySheet = buildDetails();
+    else if (want === 'rate') overlaySheet = buildRate();
+  }
+
+  /* Шторку закрыли крестиком, смахиванием или Esc — адрес обязан догнать,
+     иначе перезагрузка снова откроет её поверх карты. */
+  function sheetGone() {
+    overlaySheet = null;
+    if (byRouter) return;
+    overlayNow = '';
+    if (app.router) app.router.closeOverlay();
+  }
+
+  if (app.router && typeof app.router.onOverlay === 'function') {
+    offOverlay = app.router.onOverlay((name) => applyOverlay(name));
+  }
+
   /* ── игра, пока ищется машина ────────────────────────────────────────── */
 
   let game = null;
-  let gameOff = false;        // человек закрыл игру сам — больше не навязываемся
 
-  function dropGame() {
+  function openGame() {
+    if (dead || game) return;
+    const made = createCatchGame(() => closeMy());
+    game = made;
+    (document.querySelector('.sg-app') || document.body).appendChild(made.node);
+    requestAnimationFrame(() => {
+      if (game !== made) return;           // успели закрыть, пока ждали кадр
+      made.node.classList.add('sg-play--in');
+      made.start();
+    });
+  }
+
+  /* Игра уезжает с тем же растворением, с каким приехала. now — когда экран
+     уже уходит целиком и ждать анимацию не для кого. */
+  function closeGame(now) {
     if (!game) return;
-    game.destroy();
+    const gone = game;
     game = null;
-  }
-
-  /* Игра появляется только когда панель опущена: развёрнутая шторка занимает
-     пол-экрана, и лишняя карточка поверх карты там ни к чему. */
-  function syncGame() {
-    if (dead) return;
-    if (!isSearching(store.get().order) || gameOff) {
-      dropGame();
-      return;
-    }
-    if (!game) {
-      game = createCatchGame(() => {
-        gameOff = true;
-        dropGame();
-      });
-      (document.querySelector('.sg-app') || document.body).appendChild(game.node);
-    }
-    game.show((app.panel.el.dataset.pos || 'full') !== 'full');
-  }
-
-  function onSheetMove() {
-    syncGame();
-  }
-  app.panel.el.addEventListener('sheetmove', onSheetMove);
-
-  /* Кнопка «Поиграть»: сворачиваем шторку тем же способом, что и палец — тапом
-     по грипу, чтобы панель встала ровно в своё нижнее положение. */
-  function playNow() {
-    haptic();
-    gameOff = false;
-    const grip = app.panel.el.querySelector('.sg-panel__grip');
-    if (grip && (app.panel.el.dataset.pos || 'full') === 'full') grip.click();
-    syncGame();
+    gone.node.classList.remove('sg-play--in');
+    if (now) gone.destroy();
+    else setTimeout(() => gone.destroy(), 300);
   }
 
   /* ── чат с курьером ──────────────────────────────────────────────────── */
 
+  /* Сообщения держим одним списком. У каждого — свой неизменный ключ: у
+     пришедшего с сервера это его id, у своего неподтверждённого — временный.
+     Ключ не меняется даже когда сервер подтвердит сообщение: по нему на экране
+     находится узел, а сменить ключ значило бы нарисовать пузырь заново. */
   const chat = {
     items: [],
-    ids: new Set(),
+    byId: new Map(),
+    pending: [],
     unread: 0,
     loaded: false,
     loading: false,
@@ -1373,32 +1877,83 @@ export function mountTrack(app, pid, token) {
     note: '',
     maxText: 1000,
     error: null,
+    seq: 0,
   };
   let chatUi = null;
   let unreadBadge = null;
   let readTimer = 0;
 
-  /* Сообщение в наш вид. Повтор из потока не задваивается: id уже известен. */
+  /* Текст для сверки: сервер подчищает пробелы и переносы, поэтому сравнивать
+     буква в букву нельзя — иначе своё же сообщение вернётся вторым пузырём. */
+  function sameText(a, b) {
+    return String(a || '').replace(/\s+/g, ' ').trim()
+      === String(b || '').replace(/\s+/g, ' ').trim();
+  }
+
+  /* Сообщение с сервера в наш список. Возвращает {item, fresh} или null, если
+     это повтор. Задвоения нет по построению: сначала ищем по идентификатору,
+     потом — свой неподтверждённый пузырь с тем же текстом. */
   function pushMsg(raw) {
     if (!raw || raw.id === undefined || raw.id === null) return null;
     const id = Number(raw.id);
-    if (chat.ids.has(id)) {
-      const was = chat.items.find((x) => x.id === id);
-      if (was && raw.read_at && !was.read_at) was.read_at = raw.read_at;
+    if (!isFinite(id)) return null;
+    const known = chat.byId.get(id);
+    if (known) {
+      if (raw.read_at && !known.read_at) known.read_at = Number(raw.read_at) || known.read_at;
       return null;
     }
+    const mine = raw.mine === undefined ? raw.sender === 'client' : !!raw.mine;
+    const text = String(raw.text || '');
+    if (mine) {
+      const own = chat.pending.find((m) => !m.id && sameText(m.text, text));
+      if (own) {                       // это наш же пузырь вернулся из потока
+        own.id = id;
+        own.at = Number(raw.at) || own.at;
+        own.read_at = raw.read_at || null;
+        own.pending = false;
+        own.failed = false;
+        chat.byId.set(id, own);
+        chat.pending = chat.pending.filter((m) => m !== own);
+        return { item: own, fresh: false };
+      }
+    }
     const msg = {
+      key: 'm' + id,
       id,
-      mine: raw.mine === undefined ? raw.sender === 'client' : !!raw.mine,
-      text: String(raw.text || ''),
-      at: Number(raw.at) || 0,
+      mine,
+      text,
+      at: Number(raw.at) || Math.floor(Date.now() / 1000),
       read_at: raw.read_at || null,
+      pending: false,
+      failed: false,
     };
-    chat.ids.add(id);
+    chat.byId.set(id, msg);
     chat.items.push(msg);
-    const n = chat.items.length;
-    if (n > 1 && chat.items[n - 2].id > id) chat.items.sort((a, b) => a.id - b.id);
+    return { item: msg, fresh: true };
+  }
+
+  /* Свой пузырь до ответа сервера: человек видит своё сообщение сразу, а не
+     через полсекунды сетевого молчания. */
+  function addPending(text) {
+    chat.seq += 1;
+    const msg = {
+      key: 'p' + chat.seq,
+      id: 0,
+      mine: true,
+      text,
+      at: Math.floor(Date.now() / 1000),
+      read_at: null,
+      pending: true,
+      failed: false,
+    };
+    chat.items.push(msg);
+    chat.pending.push(msg);
     return msg;
+  }
+
+  function dropMsg(msg) {
+    chat.items = chat.items.filter((m) => m !== msg);
+    chat.pending = chat.pending.filter((m) => m !== msg);
   }
 
   function paintUnread() {
@@ -1419,13 +1974,21 @@ export function mountTrack(app, pid, token) {
     chat.loading = true;
     chat.tried = true;
     chat.error = null;
-    if (chatUi) chatUi.paint();
+    if (chatUi) chatUi.sync();
     try {
       const res = await api.get(base + '/messages', { t: token, lang: getLang() });
       if (dead) return;
+      // Неотправленные пузыри переживают перезагрузку списка: человек их
+      // написал, и терять его текст из-за обновления истории нельзя.
+      const keep = chat.pending.filter((m) => !m.id);
       chat.items = [];
-      chat.ids = new Set();
+      chat.byId = new Map();
+      chat.pending = [];
       for (const m of (Array.isArray(res.items) ? res.items : [])) pushMsg(m);
+      for (const m of keep) {
+        chat.items.push(m);
+        chat.pending.push(m);
+      }
       chat.unread = Math.max(0, Number(res.unread) || 0);
       chat.canSend = res.can_send !== false;
       chat.note = res.message || '';
@@ -1439,7 +2002,7 @@ export function mountTrack(app, pid, token) {
     if (dead) return;
     paintUnread();
     if (chatUi) {
-      chatUi.paint();
+      chatUi.sync(true);
       markRead();
     }
   }
@@ -1462,19 +2025,19 @@ export function mountTrack(app, pid, token) {
       for (const m of chat.items) if (!m.mine && !m.read_at) m.read_at = now;
       chat.unread = 0;
       paintUnread();
-      if (chatUi) chatUi.paint();
+      if (chatUi) chatUi.sync();
     }, 400);
   }
 
   function onChatMessage(data) {
-    const msg = pushMsg(data && data.message);
-    if (!msg) return;
+    const got = pushMsg(data && data.message);
+    if (!got) return;
     if (chatUi) {
-      chatUi.add(msg);
+      chatUi.sync();
       markRead();
       return;
     }
-    if (msg.mine) return;
+    if (got.item.mine) return;
     chat.unread += 1;
     paintUnread();
     haptic(14);
@@ -1487,12 +2050,12 @@ export function mountTrack(app, pid, token) {
     const at = Number(data.at) || Math.floor(Date.now() / 1000);
     let changed = false;
     for (const m of chat.items) {
-      if (m.mine && ids.has(m.id) && !m.read_at) {
+      if (m.mine && m.id && ids.has(m.id) && !m.read_at) {
         m.read_at = at;
         changed = true;
       }
     }
-    if (changed && chatUi) chatUi.paint();
+    if (changed && chatUi) chatUi.sync();
   }
 
   function waLink(c, text) {
@@ -1516,18 +2079,32 @@ export function mountTrack(app, pid, token) {
     return face;
   }
 
+  /* Разделитель дня. «Сегодня» и «Вчера» читаются быстрее даты, а дальше уже
+     нужна сама дата — иначе непонятно, когда это было. */
+  function dayLabel(at) {
+    const now = Math.floor(Date.now() / 1000);
+    const key = day(at);
+    if (key === day(now)) return t('common.today');
+    if (key === day(now - 86400)) return t('common.yesterday');
+    return key;
+  }
+
   /* Экран чата: свой слой поверх всего, а не шторка. Так поле ввода можно
      держать над клавиатурой, а список — на всю оставшуюся высоту. */
   function openChat() {
     if (dead || chatUi) return;
-    haptic();
     const order = store.get().order || {};
     const c = order.courier || {};
     const car2 = c.car || {};
     const avatar = courierFace(c, false);
     // В WhatsApp уводим с готовым началом письма: номер заказа искать не придётся.
     const wa = waLink(c, t('talk.wa_hello', { id: pid }));
+
     const list = el('div', { className: 'sg-chat__list' });
+    const jump = el('button', {
+      type: 'button', className: 'sg-jump', hidden: true, 'aria-label': t('talk.jump'),
+    }, el('span', { html: DOWN_SVG }), t('talk.jump'));
+    const wrap = el('div', { className: 'sg-chat__wrap' }, list, jump);
     const note = el('div', { className: 'sg-chat__note', hidden: true });
 
     const input = el('textarea', {
@@ -1544,7 +2121,7 @@ export function mountTrack(app, pid, token) {
     const form = el('form', { className: 'sg-chat__form' }, input, sendBtn);
 
     const head = el('div', { className: 'sg-chat__head' },
-      iconBtn('back', 'sg-back', t('common.back'), () => closeChat()),
+      iconBtn('back', 'sg-back', t('common.back'), () => { haptic(); closeMy(); }),
       avatar,
       el('div', { className: 'sg-chat__who' },
         el('span', { className: 'sg-chat__name' }, c.name || t('track.courier')),
@@ -1558,73 +2135,181 @@ export function mountTrack(app, pid, token) {
 
     const root = el('div', {
       className: 'sg-chat', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('talk.title'),
-    }, head, list, note, form);
+    }, head, wrap, note, form);
 
     document.body.appendChild(root);
     requestAnimationFrame(() => root.classList.add('sg-chat--in'));
 
     /* ── список ──────────────────────────────────────────────────────────── */
 
-    function nearBottom() {
+    /* Что уже нарисовано. Ключи лежат в том же порядке, что и узлы: по ним
+       видно, можно ли дорисовать снизу или список пора собрать заново. */
+    const nodes = new Map();
+    let drawn = [];
+    let lastDay = '';
+    let empty = null;
+    let unseen = 0;
+
+    function atBottom() {
       return list.scrollHeight - list.scrollTop - list.clientHeight < 90;
     }
 
-    function toBottom() {
+    function toBottom(smooth) {
+      if (smooth && typeof list.scrollTo === 'function') {
+        try {
+          list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
+          return;
+        } catch (e) { /* старый браузер — уедем без плавности */ }
+      }
       list.scrollTop = list.scrollHeight;
+    }
+
+    function tickMark(m) {
+      if (m.failed) return { text: '!', cls: ' is-fail', title: t('talk.fail_tick') };
+      if (m.pending) return { text: '⋯', cls: ' is-wait', title: t('talk.sending') };
+      if (m.read_at) return { text: '✓✓', cls: ' is-read', title: t('talk.read') };
+      return { text: '✓', cls: '', title: t('talk.sent') };
     }
 
     /* Чужой текст только через textContent: el() кладёт строки узлом текста,
        а html здесь не используется ни для одного сообщения. */
-    function bubble(m) {
-      const tick = m.mine
-        ? el('span', {
-          className: 'sg-msg__tick' + (m.read_at ? ' is-read' : ''),
-          title: m.read_at ? t('talk.read') : t('talk.sent'),
-        }, m.read_at ? '✓✓' : '✓')
-        : null;
-      return el('div', { className: 'sg-msg' + (m.mine ? ' sg-msg--mine' : '') },
+    function bubble(m, quiet) {
+      const tick = m.mine ? el('span', { className: 'sg-msg__tick' }) : null;
+      const row = el('div', { className: 'sg-msg' + (m.mine ? ' sg-msg--mine' : '') },
         el('span', { className: 'sg-msg__text' }, m.text),
         el('span', { className: 'sg-msg__meta' }, clock(m.at), tick));
+      if (quiet) row.classList.add('sg-msg--quiet');
+      // Не ушло — тап по пузырю отправляет ещё раз. Текст при этом остаётся
+      // на месте: заставлять человека набирать всё заново — прямое неуважение.
+      row.addEventListener('click', () => {
+        if (!m.failed) return;
+        haptic();
+        resend(m);
+      });
+      const made = { row, tick, m };
+      paintTick(made);
+      return made;
     }
 
-    function paint() {
-      // Перерисовка не должна утаскивать вниз того, кто листает переписку вверх.
-      const stick = nearBottom();
-      const kids = [];
-      let lastDay = '';
-      for (const m of chat.items) {
-        const key = day(m.at);
-        if (key !== lastDay) {
-          lastDay = key;
-          kids.push(el('div', { className: 'sg-chat__day' }, key));
+    function paintTick(made) {
+      const m = made.m;
+      made.row.classList.toggle('sg-msg--wait', !!m.pending);
+      made.row.classList.toggle('sg-msg--fail', !!m.failed);
+      // Что делать с неушедшим сообщением, должно быть написано словами, а не
+      // угадываться по красной рамке.
+      if (m.failed) made.row.title = t('talk.fail');
+      else made.row.removeAttribute('title');
+      if (!made.tick) return;
+      const mark = tickMark(m);
+      made.tick.className = 'sg-msg__tick' + mark.cls;
+      made.tick.textContent = mark.text;
+      made.tick.title = mark.title;
+    }
+
+    function showEmpty() {
+      const text = chat.loading ? t('common.loading')
+        : (chat.error ? t('talk.load_fail') + '. ' + errText(chat.error) : t('talk.empty'));
+      if (!empty) {
+        empty = el('div', { className: 'sg-chat__empty' }, text);
+        list.appendChild(empty);
+      } else {
+        empty.textContent = text;
+      }
+    }
+
+    function append(m, quiet) {
+      const label = dayLabel(m.at);
+      if (label !== lastDay) {
+        lastDay = label;
+        list.appendChild(el('div', { className: 'sg-chat__day' }, label));
+      }
+      const made = bubble(m, quiet);
+      nodes.set(m.key, made);
+      drawn.push(m.key);
+      list.appendChild(made.row);
+    }
+
+    /* Полная пересборка — редкий путь: первая загрузка, смена языка, исчезнувший
+       пузырь. Держим расстояние до низа, чтобы человек остался там же, где читал. */
+    function rebuild() {
+      const fromBottom = list.scrollHeight - list.scrollTop;
+      nodes.clear();
+      drawn = [];
+      lastDay = '';
+      empty = null;
+      list.replaceChildren();
+      for (const m of chat.items) append(m, true);
+      if (!chat.items.length) showEmpty();
+      list.scrollTop = Math.max(0, list.scrollHeight - fromBottom);
+    }
+
+    /* Порядок нарисованного обязан совпадать с началом списка: иначе пришло
+       что-то в середину, и дорисовкой снизу это уже не исправить. */
+    function sameHead() {
+      if (drawn.length > chat.items.length) return false;
+      for (let i = 0; i < drawn.length; i++) {
+        if (!chat.items[i] || chat.items[i].key !== drawn[i]) return false;
+      }
+      return true;
+    }
+
+    /** Догнать список: дорисовать новое снизу, поправить галочки у старого. */
+    function sync(reload) {
+      if (reload || !sameHead()) {
+        rebuild();
+      } else {
+        const stick = atBottom();
+        let mine = false;
+        let came = 0;
+        for (const m of chat.items) {
+          const made = nodes.get(m.key);
+          if (made) { paintTick(made); continue; }
+          if (empty) { empty.remove(); empty = null; }
+          append(m, false);
+          if (m.mine) mine = true;
+          else came += 1;
         }
-        kids.push(bubble(m));
+        // Догоняем низ мгновенно, без плавности: плавная прокрутка идёт
+        // кадрами, и пока она едет, список «не внизу» — следующее сообщение
+        // подряд решило бы, что человек читает старое, и цепочка рвалась бы.
+        if (mine || (came && stick)) toBottom();
+        else if (came) bumpJump(came);
+        if (!chat.items.length) showEmpty();
       }
-      if (!kids.length) {
-        kids.push(el('div', { className: 'sg-chat__empty' },
-          chat.loading ? t('common.loading')
-            : (chat.error ? errText(chat.error) : t('talk.empty'))));
-      }
-      list.replaceChildren(...kids);
       note.textContent = chat.canSend ? (chat.note || '') : (chat.note || t('talk.closed'));
       note.hidden = !note.textContent;
       input.disabled = !chat.canSend;
       input.maxLength = chat.maxText;
       sendBtn.disabled = !chat.canSend || !input.value.trim();
-      if (stick) toBottom();
     }
 
-    function add(m) {
-      const stick = nearBottom() || m.mine;
-      const empty = list.querySelector('.sg-chat__empty');
-      if (empty) empty.remove();
-      const key = day(m.at);
-      const days = list.querySelectorAll('.sg-chat__day');
-      const lastDay = days.length ? days[days.length - 1].textContent : '';
-      if (lastDay !== key) list.appendChild(el('div', { className: 'sg-chat__day' }, key));
-      list.appendChild(bubble(m));
-      if (stick) toBottom();
+    /* Пришло новое, а человек читает старое — прокрутку не трогаем, только
+       показываем кнопку «вниз». Это и есть «чат не прогоняет». */
+    function bumpJump(n) {
+      unseen += n;
+      jump.hidden = false;
+      requestAnimationFrame(() => jump.classList.add('sg-jump--in'));
     }
+
+    function hideJump() {
+      if (jump.hidden) return;
+      unseen = 0;
+      jump.classList.remove('sg-jump--in');
+      setTimeout(() => { if (!unseen) jump.hidden = true; }, 260);
+    }
+
+    jump.addEventListener('click', () => {
+      haptic();
+      hideJump();
+      toBottom(true);
+    });
+
+    list.addEventListener('scroll', () => {
+      if (atBottom()) {
+        hideJump();
+        markRead();
+      }
+    }, { passive: true });
 
     /* ── ввод ────────────────────────────────────────────────────────────── */
 
@@ -1635,30 +2320,54 @@ export function mountTrack(app, pid, token) {
     }
     input.addEventListener('input', grow);
 
-    let sending = false;
-    async function send() {
-      const text = input.value.trim();
-      if (!text || sending || !chat.canSend) return;
-      sending = true;
-      sendBtn.disabled = true;
-      input.value = '';
-      grow();
+    async function deliver(msg) {
       try {
         const res = await api.post(base + '/messages',
-                                   { text, t: token, lang: getLang() });
+                                   { text: msg.text, t: token, lang: getLang() });
         if (dead) return;
-        const msg = pushMsg(res && res.message);
-        if (msg && chatUi) add(msg);
+        const got = res && res.message;
+        const id = got && got.id !== undefined && got.id !== null ? Number(got.id) : 0;
+        if (id && chat.byId.get(id) && chat.byId.get(id) !== msg) {
+          // Поток успел раньше и нарисовал это сообщение сам — свой черновик
+          // убираем, иначе на экране будет два одинаковых пузыря.
+          dropMsg(msg);
+        } else if (id) {
+          msg.id = id;
+          msg.at = Number(got.at) || msg.at;
+          msg.read_at = got.read_at || null;
+          chat.byId.set(id, msg);
+        }
+        msg.pending = false;
+        msg.failed = false;
+        chat.pending = chat.pending.filter((m) => m !== msg);
         haptic();
       } catch (e) {
-        if (!dead) {
-          input.value = text;               // текст возвращаем: набирать заново обидно
-          grow();
-          toast(errText(e), { type: 'err' });
-        }
+        if (dead) return;
+        msg.pending = false;
+        msg.failed = true;
+        toast(errText(e), { type: 'err' });
       }
-      sending = false;
-      if (!dead) sendBtn.disabled = !input.value.trim();
+      if (chatUi) chatUi.sync();
+    }
+
+    function resend(msg) {
+      if (!chat.canSend || msg.pending) return;
+      msg.failed = false;
+      msg.pending = true;
+      if (chat.pending.indexOf(msg) < 0) chat.pending.push(msg);
+      sync();
+      deliver(msg);
+    }
+
+    function send() {
+      const text = input.value.trim();
+      if (!text || !chat.canSend) return;
+      const msg = addPending(text);
+      input.value = '';
+      grow();
+      sync();
+      toBottom();
+      deliver(msg);
     }
 
     form.addEventListener('submit', (e) => {
@@ -1683,26 +2392,25 @@ export function mountTrack(app, pid, token) {
       if (!vv) return;
       const gap = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
       root.style.setProperty('--sg-kb', gap + 'px');
-      toBottom();
+      if (atBottom()) toBottom();
     }
     if (vv) {
       vv.addEventListener('resize', fitKeyboard);
       vv.addEventListener('scroll', fitKeyboard);
     }
-    input.addEventListener('focus', () => setTimeout(toBottom, 120));
+    input.addEventListener('focus', () => setTimeout(() => toBottom(), 120));
 
     function onKey(e) {
       if (e.key !== 'Escape') return;
       e.preventDefault();
       e.stopPropagation();
-      closeChat();
+      closeMy();
     }
     document.addEventListener('keydown', onKey, true);
 
     chatUi = {
       root,
-      paint,
-      add,
+      sync,
       teardown() {
         document.removeEventListener('keydown', onKey, true);
         if (vv) {
@@ -1712,7 +2420,8 @@ export function mountTrack(app, pid, token) {
       },
     };
 
-    paint();
+    sync(true);
+    toBottom();
     if (!chat.loaded) loadChat(true);
     else markRead();
   }
@@ -1739,7 +2448,7 @@ export function mountTrack(app, pid, token) {
       if (dead) return;
       store.set({ order, loading: false, rated: !!order.rating });
       if (CLOSED.indexOf(order.status) >= 0) app.forgetOrder();
-      else app.saveOrder(pid, token);
+      else if (!guest(order)) app.saveOrder(pid, token);
       listen();
     } catch (e) {
       if (dead) return;
@@ -1793,7 +2502,7 @@ export function mountTrack(app, pid, token) {
           const order = store.get().order;
           if (!order || !order.courier) return;
           const courier = Object.assign({}, order.courier, {
-            at: data.at, heading: data.heading, geo_at: data.geo_at,
+            at: data.at, heading: data.heading, speed: data.speed, geo_at: data.geo_at,
           });
           store.set({ order: Object.assign({}, order, { courier }) });
           return;
@@ -1846,13 +2555,14 @@ export function mountTrack(app, pid, token) {
 
     const chips = el('div', { className: 'sg-chips' });
     for (const key of reasons) {
-      const chip = el('button', { type: 'button', className: 'chip' }, t(key));
-      chip.addEventListener('click', () => {
-        chosen = t(key);
-        for (const other of chips.children) other.classList.toggle('chip--on', other === chip);
-        haptic();
+      const one = chip(t(key), {
+        size: 'lg',
+        onClick: () => {
+          chosen = t(key);
+          for (const other of chips.children) other.classList.toggle('chip--on', other === one);
+        },
       });
-      chips.appendChild(chip);
+      chips.appendChild(one);
     }
     const more = el('textarea', {
       className: 'field__input', placeholder: ' ', maxLength: 300,
@@ -1891,40 +2601,330 @@ export function mountTrack(app, pid, token) {
     });
   }
 
-  /* Из чего сложилась цена: те же строки, что видит бухгалтерия в заказе. */
-  function openDetails() {
+  /* ── детали заказа во весь экран ─────────────────────────────────────── */
+
+  /* Что человек уточнял про адрес: подъезд, квартиру, этаж, домофон. Пустое не
+     показываем вовсе — строка «Этаж: —» не говорит ничего. */
+  function pointDetails(p) {
+    const parts = [];
+    if (p.entrance) parts.push(t('order.entrance') + ' ' + p.entrance);
+    if (p.flat) parts.push(t('order.flat') + ' ' + p.flat);
+    if (p.floor) parts.push(t('order.floor') + ' ' + p.floor);
+    if (p.intercom) parts.push(t('order.intercom') + ' ' + p.intercom);
+    if (p.lift === false) parts.push(t('order.no_lift'));
+    return parts.join(' · ');
+  }
+
+  function extraName(item) {
+    const list = Array.isArray(app.extras) ? app.extras : [];
+    const found = list.find((x) => x && x.code === item.code);
+    const name = found ? nameOf(found) : item.code;
+    const qty = Number(item.qty) || 0;
+    return qty > 1 ? name + ' × ' + qty : name;
+  }
+
+  function buildDetails() {
     const order = store.get().order || {};
+    const pts = points(order);
     const p = order.price || {};
-    const rows = el('div', null);
+    const guestNow = guest(order);
+
+    /* Быстрые действия чипами: показать маршрут, поделиться, позвонить.
+       Это второстепенное, поэтому таблетки, а не кнопки во всю ширину. */
+    const chips = el('div', { className: 'chips sg-det__chips' },
+      chip(t('det.map'), {
+        size: 'lg',
+        icon: icon('map'),
+        onClick: () => { closeMy(); showWholeRoute(); },
+      }),
+      guestNow ? null : chip(t('track.share'), {
+        size: 'lg', icon: icon('share'), onClick: shareLink,
+      }),
+      order.courier && order.courier.phone ? chip(t('track.call'), {
+        size: 'lg',
+        icon: icon('phone'),
+        onClick: () => {
+          const tel = 'tel:' + String(order.courier.phone).replace(/[^\d+]/g, '');
+          window.location.href = tel;
+        },
+      }) : null);
+
+    /* Адреса: одна карточка со строками и разделителями — так видно весь путь
+       целиком, а не десять карточек с зазорами. */
+    const addrRows = [];
+    pts.forEach((pt, i) => {
+      const last = i === pts.length - 1;
+      const hint = i === 0 ? t('order.from') : (last ? t('order.to') : t('order.point', { n: i + 1 }));
+      addrRows.push({
+        icon: last ? FLAG_SVG : icon('pin'),
+        hint,
+        label: pt.addr || hint,
+        sub: pointDetails(pt),
+      });
+      if (pt.comment) addrRows.push({ hint: t('order.point_comment'), label: pt.comment });
+      if (pt.name || pt.phone) {
+        addrRows.push({
+          hint: t('det.contact'),
+          label: [pt.name, pt.phone].filter(Boolean).join(', '),
+          href: pt.phone ? 'tel:' + String(pt.phone).replace(/[^\d+]/g, '') : null,
+        });
+      }
+    });
+
+    /* О заказе: номер, время, машина, грузчики, допуслуги, комментарий. */
+    const info = [];
+    info.push({
+      hint: t('det.number'),
+      label: pid,
+      end: chip(t('common.copy'), {
+        size: 'lg', onClick: () => copyText(pid, t('det.copied')),
+      }),
+    });
+    if (order.created_at) {
+      info.push({ hint: t('det.created'), label: clock(order.created_at) + ', ' + day(order.created_at) });
+    }
+    if (order.tariff) info.push({ hint: t('det.car'), label: nameOf(order.tariff) || t('track.car') });
+    info.push({
+      hint: t('det.loaders'),
+      label: order.loaders > 0 ? tp(order.loaders, 'common.n_loader') : t('order.loaders_none'),
+    });
+    const extras = Array.isArray(order.extras) ? order.extras.filter(Boolean) : [];
+    info.push({
+      hint: t('det.extras'),
+      label: extras.length ? extras.map(extraName).join(', ') : t('det.none'),
+    });
+    if (order.comment) info.push({ hint: t('det.comment'), label: order.comment });
+    if (has('status.pay_' + (order.payment_status || 'none'))) {
+      info.push({
+        hint: t('det.payment'),
+        label: t('status.pay_' + (order.payment_status || 'none')),
+        value: order.paid_amount ? money(order.paid_amount) : null,
+      });
+    }
+
+    /* Расчёт цены — те же строки, что видит бухгалтерия в заказе. */
+    const sums = [];
+    sums.push({ label: t('order.distance'), value: distance(order.distance_m || 0) });
+    sums.push({ label: t('order.duration'), value: duration(order.duration_s || 0) });
     const add = (key, value) => {
       if (!value) return;
-      rows.appendChild(el('div', { className: 'sg-sum' },
-        el('span', { className: 'sg-sum__name' }, t(key)),
-        el('span', { className: 'sg-sum__val' }, money(value))));
+      sums.push({ label: t(key), value: money(value) });
     };
-    rows.appendChild(el('div', { className: 'sg-sum' },
-      el('span', { className: 'sg-sum__name' }, t('order.distance')),
-      el('span', { className: 'sg-sum__val' }, distance(order.distance_m || 0))));
-    rows.appendChild(el('div', { className: 'sg-sum' },
-      el('span', { className: 'sg-sum__name' }, t('order.duration')),
-      el('span', { className: 'sg-sum__val' }, duration(order.duration_s || 0))));
     add('order.price_base', p.base);
     add('order.price_distance', p.distance);
     add('order.price_time', p.time);
     add('order.price_loaders', p.loaders);
     add('order.price_extras', p.extras);
     add('order.price_waiting', p.waiting);
-    rows.appendChild(el('div', { className: 'sg-sum sg-sum--total' },
-      el('span', { className: 'sg-sum__name' }, t('order.price_total')),
-      el('span', { className: 'sg-sum__val' }, money(p.total || order.price_total || 0))));
-
-    sheet({
-      title: t('track.details'),
-      content: el('div', null, rows,
-        el('p', { className: 'sheet__text', style: { paddingTop: 'var(--sp-3)' } },
-           t('order.price_note'))),
-      actions: [{ label: t('common.close'), kind: 'ghost' }],
+    sums.push({
+      className: 'sg-det__total',
+      label: t('order.price_total'),
+      value: money(p.total || order.price_total || 0),
     });
+
+    const body = el('div', null,
+      chips,
+      rowGroup(addrRows, { flat: true, title: t('det.points') }),
+      rowGroup(info, { flat: true, title: t('det.order') }),
+      rowGroup(sums, { flat: true, title: t('det.price'), className: 'sg-det__sum' }),
+      el('div', { className: 'sg-det__note' }, t('order.price_note')),
+      guestNow ? el('div', { className: 'sg-det__note' }, t('give.guest')) : null);
+
+    return sheet({
+      full: true,
+      className: 'sg-det',
+      title: t('track.details'),
+      content: body,
+      actions: [{ label: t('common.done'), kind: 'primary', className: 'btn--lg btn--block' }],
+      onClose: sheetGone,
+    });
+  }
+
+  /* ── экран оценки ────────────────────────────────────────────────────── */
+
+  /* Лицо, заголовок и пояснение под звёздами. Одна и та же коробка на все три
+     настроения: пока звёзд нет — просто машина, дальше грусть или радость. */
+  function moodBlock(value) {
+    if (value >= 1 && value <= 3) {
+      return el('div', { className: 'sg-mood sg-mood--sad' },
+        el('div', { className: 'sg-mood__face' }, '😔',
+          el('span', { className: 'sg-mood__tear' }),
+          el('span', { className: 'sg-mood__tear sg-mood__tear--b' })),
+        el('div', { className: 'sg-mood__title' }, t('mood.bad_title')),
+        el('div', { className: 'sg-mood__text' }, t('mood.bad_text')));
+    }
+    if (value >= 4) {
+      return el('div', { className: 'sg-mood sg-mood--glad' },
+        el('div', { className: 'sg-mood__face' },
+          el('i', null, '🎉'), el('i', null, '😄'), el('i', null, '👍')),
+        el('div', { className: 'sg-mood__title' }, t('mood.good_title')),
+        el('div', { className: 'sg-mood__text' }, t('mood.good_text')));
+    }
+    return el('div', { className: 'sg-mood' },
+      el('div', { className: 'sg-mood__face' }, '🚚'),
+      el('div', { className: 'sg-mood__title' }, t('track.rate_title')),
+      el('div', { className: 'sg-mood__text' }, t('mood.tap')));
+  }
+
+  /* Конфетти: восемнадцать бумажек падают один раз и узел сам себя убирает —
+     вечная анимация на экране благодарности только грела бы телефон. */
+  function confetti(host) {
+    const tones = ['var(--accent)', 'var(--ok)', 'var(--info)', 'var(--warn)'];
+    const box = el('div', { className: 'sg-conf', 'aria-hidden': 'true' });
+    for (let i = 0; i < 18; i++) {
+      box.appendChild(el('i', {
+        style: {
+          '--x': Math.round(Math.random() * 96) + '%',
+          '--c': tones[i % tones.length],
+          '--d': Math.round(Math.random() * 420) + 'ms',
+          '--r': Math.round(180 + Math.random() * 540) + 'deg',
+          '--fall': Math.round(150 + Math.random() * 90) + 'px',
+        },
+      }));
+    }
+    host.appendChild(box);
+    setTimeout(() => box.remove(), 2200);
+  }
+
+  /* Оценка во весь экран: звёзды, настроение, причина и пара слов. В шторке
+     панели ей было тесно — комментарий приходилось набирать вслепую. */
+  function buildRate() {
+    const order = store.get().order || {};
+    const c = order.courier;
+    let value = clamp(Math.round(rateStart) || 0, 0, 5);
+    let reason = '';
+    let wasGlad = false;
+    rateStart = 0;
+
+    const wrap = el('div', { className: 'sg-mood-wrap' }, moodBlock(value));
+    const stars = el('div');
+    const chips = el('div', { className: 'sg-chips', hidden: true });
+    const need = el('div', { className: 'sg-mood__need', hidden: true });
+
+    const comment = el('textarea', { className: 'field__input', placeholder: ' ', maxLength: 500 });
+    const commentLabel = el('span', { className: 'field__label' }, t('common.comment'));
+    const commentHint = el('span', { className: 'field__hint' }, t('track.rate_comment_ph'));
+    const field = el('label', { className: 'field' }, comment, commentLabel, commentHint);
+
+    const favInput = el('input', { type: 'checkbox' });
+    favInput.checked = isFav(c);
+    const favRow = el('label', { className: 'sg-fav', hidden: true },
+      el('span', { className: 'sg-fav__ico' }, '⭐'),
+      el('span', { className: 'sg-fav__text' },
+        el('span', { className: 'sg-item__title' }, t('mood.fav')),
+        el('span', { className: 'sg-item__sub' }, t('mood.fav_hint'))),
+      el('span', { className: 'switch' }, favInput,
+        el('span', { className: 'switch__track' })));
+    favInput.addEventListener('change', () => {
+      setFav(c, favInput.checked);
+      haptic();
+      toast(favInput.checked ? t('mood.fav_done') : t('mood.fav_off'), { type: 'ok' });
+    });
+
+    const send = el('button', {
+      type: 'button', className: 'btn btn--primary btn--lg btn--block', disabled: true,
+    }, t('track.rate_send'));
+
+    /* Низкая оценка без объяснения бесполезна и нам, и человеку: пока причина
+       не выбрана (а для «другого» — не написана), отправлять нечего. */
+    function ready() {
+      if (value < 1) return false;
+      if (value > 3) return true;
+      if (!reason) return false;
+      return reason !== 'other' || comment.value.trim().length >= 3;
+    }
+
+    function paintNeed() {
+      const sad = value >= 1 && value <= 3;
+      need.hidden = !sad || ready();
+      if (!need.hidden) {
+        need.textContent = reason ? t('mood.need_text') : t('mood.need_reason');
+      }
+      send.disabled = !ready();
+    }
+
+    function paint() {
+      const sad = value >= 1 && value <= 3;
+      const glad = value >= 4;
+      wrap.replaceChildren(moodBlock(value));
+      if (glad && !wasGlad) confetti(wrap);
+      wasGlad = glad;
+      chips.hidden = !sad;
+      favRow.hidden = !glad || !c;
+      commentLabel.textContent = sad ? t('mood.comment_bad') : t('mood.comment_good');
+      commentHint.textContent = sad ? t('mood.need_text') : t('track.rate_comment_ph');
+      paintNeed();
+    }
+
+    for (const [code, key] of BAD_REASONS) {
+      const one = chip(t(key), {
+        size: 'lg',
+        onClick: () => {
+          reason = code;
+          for (const other of chips.children) other.classList.toggle('chip--on', other === one);
+          paintNeed();
+          if (code === 'other') comment.focus();
+        },
+      });
+      chips.appendChild(one);
+    }
+
+    comment.addEventListener('input', paintNeed);
+
+    send.addEventListener('click', async () => {
+      if (!ready() || send.disabled) return;
+      send.disabled = true;
+      const parts = [];
+      if (value <= 3 && reason && reason !== 'other') {
+        const found = BAD_REASONS.find((r) => r[0] === reason);
+        if (found) parts.push(t(found[1]));
+      }
+      const own = comment.value.trim();
+      if (own) parts.push(own);
+      try {
+        const res = await api.post(base + '/rate', {
+          rating: value,
+          comment: parts.join('. ').slice(0, 500),
+          t: token,
+          lang: getLang(),
+        });
+        if (dead) return;
+        haptic(20);
+        // За оценку начисляют бонусы — говорим об этом сразу и цифрой,
+        // иначе человек узнает о подарке только в профиле и не свяжет одно
+        // с другим.
+        const gift = Math.max(0, Number(res && res.bonus) || 0);
+        if (gift > 0 && app.bonus && typeof app.bonus.forget === 'function') app.bonus.forget();
+        toast(gift > 0
+          ? t('gift.rated', { sum: money(gift) })
+          : (res.message || t('track.rate_thanks')), { type: 'ok' });
+        store.set({ rated: true });
+        closeMy();
+      } catch (e) {
+        toast(errText(e), { type: 'err' });
+        send.disabled = false;
+      }
+    });
+
+    const body = el('div', { className: 'sg-mood-screen' },
+      wrap, stars, chips, need, field, favRow);
+
+    const ui = sheet({
+      full: true,
+      className: 'sg-rate-sheet',
+      title: t('track.rate_title'),
+      content: body,
+      actions: [send],
+      onClose: sheetGone,
+    });
+
+    mountStars(stars, {
+      value,
+      size: 'lg',
+      onChange: (v) => { value = v; haptic(); paint(); },
+    });
+    paint();
+    return ui;
   }
 
   /* ── куски интерфейса ────────────────────────────────────────────────── */
@@ -1959,13 +2959,15 @@ export function mountTrack(app, pid, token) {
     const pts = points(order);
     const first = pts[0] || {};
     const last = pts[pts.length - 1] || {};
-    return el('button', { type: 'button', className: 'sg-route', onClick: openDetails },
+    return pressable(el('button', {
+      type: 'button', className: 'sg-route', onClick: () => openMy('details'),
+    },
       el('span', { className: 'sg-route__line' },
         el('i', null), el('b', null), el('i', null)),
       el('span', { className: 'sg-route__text' },
         el('span', { className: 'sg-route__row' }, first.addr || t('order.from')),
         el('span', { className: 'sg-route__row' }, last.addr || t('order.to'))),
-      el('span', { className: 'sg-route__meta' }, distance(order.distance_m || 0)));
+      el('span', { className: 'sg-route__meta' }, distance(order.distance_m || 0))));
   }
 
   function priceRow(order) {
@@ -1973,13 +2975,15 @@ export function mountTrack(app, pid, token) {
     const badge = order.payment_status && order.payment_status !== 'none' && has(payKey)
       ? el('span', { className: 'badge' }, t(payKey))
       : null;
-    return el('button', { type: 'button', className: 'sg-opt', onClick: openDetails },
+    return pressable(el('button', {
+      type: 'button', className: 'sg-opt', onClick: () => openMy('details'),
+    },
       el('span', { className: 'sg-opt__text' },
         el('span', { className: 'sg-opt__title' }, t('track.price')),
-        el('span', { className: 'sg-opt__sub' }, t('order.price_details'))),
+        el('span', { className: 'sg-opt__sub' }, t('det.open'))),
       badge,
       el('span', { className: 'sg-opt__total' }, money(order.price_total || 0)),
-      el('span', { className: 'sg-opt__go', html: icon('go') }));
+      el('span', { className: 'sg-opt__go', html: icon('go') })));
   }
 
   /* Карточка курьера: по номеру тапнули — он в буфере, по фото — оно во весь
@@ -2020,16 +3024,19 @@ export function mountTrack(app, pid, token) {
     mountStars(stars, { value: c.rating || 5, readonly: true });
 
     const acts = el('div', { className: 'sg-acts' });
+    let badge = null;
     if (c.phone) {
       acts.appendChild(el('a', {
         className: 'btn btn--primary grow', href: 'tel:' + c.phone.replace(/[^\d+]/g, ''),
       }, el('span', { html: icon('phone') }), t('track.call')));
     }
-    const badge = el('span', { className: 'sg-unread', hidden: true }, '0');
-    acts.appendChild(el('button', {
-      type: 'button', className: 'btn btn--ghost grow', onClick: openChat,
-      'aria-label': t('talk.title'),
-    }, el('span', { html: icon('chat') }), t('talk.open'), badge));
+    if (!guest(order)) {
+      badge = el('span', { className: 'sg-unread', hidden: true }, '0');
+      acts.appendChild(el('button', {
+        type: 'button', className: 'btn btn--ghost grow', onClick: () => openMy('chat'),
+        'aria-label': t('talk.title'),
+      }, el('span', { html: icon('chat') }), t('talk.open'), badge));
+    }
 
     const box = el('div', null, card, acts);
 
@@ -2089,28 +3096,34 @@ export function mountTrack(app, pid, token) {
 
   function stepSearch(order) {
     const best = readBest();
-    const line2 = el('div', { className: 'sg-search-line' },
+    const wait = el('div', { className: 'sg-search-line' },
       el('div', { className: 'progress progress--wait' }, el('div', { className: 'progress__bar' })));
-    const play = el('button', { type: 'button', className: 'sg-item', onClick: playNow },
-      el('span', { className: 'sg-item__icon sg-item__icon--accent sg-play__ico' }, '📦'),
-      el('span', { className: 'sg-item__text' },
-        el('span', { className: 'sg-item__title' }, t('game.play')),
-        el('span', { className: 'sg-item__sub' },
-           best ? t('game.play_best', { n: best }) : t('game.play_hint'))),
-      el('span', { className: 'sg-opt__go', html: icon('go') }));
+
+    /* Одна скромная строка «Поиграть» — и всё. Сама игра поверх карты больше
+       не выскакивает: свёрнутая панель это просто свёрнутая панель. */
+    const rows = [{
+      icon: el('span', { className: 'sg-play__ico' }, '📦'),
+      label: t('game.play'),
+      sub: best ? t('game.play_best', { n: best }) : t('game.play_hint'),
+      onClick: () => openMy('game'),
+    }];
 
     const node = el('div', { className: 'sg-step' },
       headBox(order.status, order).node,
-      el('div', { className: 'sg-body' }, line2, play, routeRow(order), priceRow(order)),
+      el('div', { className: 'sg-body' },
+        wait,
+        rowGroup(rows, { flat: true }),
+        routeRow(order),
+        priceRow(order)),
       el('div', { className: 'sg-foot' },
-        el('button', {
+        guest(order) ? el('div', { className: 'sg-note' }, t('give.guest')) : el('button', {
           type: 'button', className: 'btn btn--danger btn--lg btn--block', onClick: askCancel,
         }, t('track.cancel'))));
     return { name: 'search', node, update() {} };
   }
 
   function stepLive(order) {
-    const canCancel = !!order.can_cancel;
+    const canCancel = !!order.can_cancel && !guest(order);
     const card = courierCard(order);
     const head = headBox(order.status, order);
 
@@ -2120,24 +3133,30 @@ export function mountTrack(app, pid, token) {
     }
     paintEta();
 
+    const foot = el('div', { className: 'sg-foot' });
+    if (guest(order)) {
+      foot.appendChild(el('div', { className: 'sg-note' }, t('give.guest')));
+    } else {
+      foot.appendChild(el('div', { className: 'row gap-2' },
+        el('button', {
+          type: 'button', className: 'btn btn--ghost grow', onClick: shareLink,
+        }, t('track.share')),
+        canCancel ? el('button', {
+          type: 'button', className: 'btn btn--danger grow', onClick: askCancel,
+        }, t('track.cancel')) : null));
+      // Одной строкой объясняем, что уходит по ссылке: человек должен понимать,
+      // что он отправляет, до того, как нажмёт «Поделиться».
+      foot.appendChild(el('div', { className: 'sg-note' }, t('give.note')));
+    }
+
     const node = el('div', { className: 'sg-step' },
       head.node,
       el('div', { className: 'sg-body' },
         card ? card.node : null, routeRow(order), priceRow(order)),
-      el('div', { className: 'sg-foot' },
-        el('div', { className: 'row gap-2' },
-          el('button', {
-            type: 'button', className: 'btn btn--ghost grow', onClick: shareLink,
-          }, t('track.share')),
-          canCancel ? el('button', {
-            type: 'button', className: 'btn btn--danger grow', onClick: askCancel,
-          }, t('track.cancel')) : null),
-        // Одной строкой объясняем, что уходит по ссылке: человек должен понимать,
-        // что он отправляет, до того, как нажмёт «Поделиться».
-        el('div', { className: 'sg-note' }, t('give.note'))));
+      foot);
 
     return {
-      name: 'live:' + order.status,
+      name: 'live:' + order.status + (guest(order) ? ':g' : ''),
       node,
       /* Шаг встал на экран: счётчик непрочитанных теперь живёт на этой кнопке. */
       mount() {
@@ -2153,53 +3172,8 @@ export function mountTrack(app, pid, token) {
     };
   }
 
-  /* ── экран оценки ────────────────────────────────────────────────────── */
-
-  /* Лицо, заголовок и пояснение под звёздами. Одна и та же коробка на все три
-     настроения: пока звёзд нет — просто машина, дальше грусть или радость. */
-  function moodBlock(value) {
-    if (value >= 1 && value <= 3) {
-      return el('div', { className: 'sg-mood sg-mood--sad' },
-        el('div', { className: 'sg-mood__face' }, '😔',
-          el('span', { className: 'sg-mood__tear' }),
-          el('span', { className: 'sg-mood__tear sg-mood__tear--b' })),
-        el('div', { className: 'sg-mood__title' }, t('mood.bad_title')),
-        el('div', { className: 'sg-mood__text' }, t('mood.bad_text')));
-    }
-    if (value >= 4) {
-      return el('div', { className: 'sg-mood sg-mood--glad' },
-        el('div', { className: 'sg-mood__face' },
-          el('i', null, '🎉'), el('i', null, '😄'), el('i', null, '👍')),
-        el('div', { className: 'sg-mood__title' }, t('mood.good_title')),
-        el('div', { className: 'sg-mood__text' }, t('mood.good_text')));
-    }
-    return el('div', { className: 'sg-mood' },
-      el('div', { className: 'sg-mood__face' }, '🚚'),
-      el('div', { className: 'sg-mood__title' }, t('track.rate_title')));
-  }
-
-  /* Конфетти: восемнадцать бумажек падают один раз и узел сам себя убирает —
-     вечная анимация на экране благодарности только грела бы телефон. */
-  function confetti(host) {
-    const tones = ['var(--accent)', 'var(--ok)', 'var(--info)', 'var(--warn)'];
-    const box = el('div', { className: 'sg-conf', 'aria-hidden': 'true' });
-    for (let i = 0; i < 18; i++) {
-      box.appendChild(el('i', {
-        style: {
-          '--x': Math.round(Math.random() * 96) + '%',
-          '--c': tones[i % tones.length],
-          '--d': Math.round(Math.random() * 420) + 'ms',
-          '--r': Math.round(180 + Math.random() * 540) + 'deg',
-          '--fall': Math.round(150 + Math.random() * 90) + 'px',
-        },
-      }));
-    }
-    host.appendChild(box);
-    setTimeout(() => box.remove(), 2200);
-  }
-
   function stepDone(order) {
-    const body = el('div', { className: 'sg-body' }, routeRow(order), priceRow(order));
+    const body = el('div', { className: 'sg-body' });
     const foot = el('div', { className: 'sg-foot' });
 
     if (store.get().rated) {
@@ -2207,137 +3181,32 @@ export function mountTrack(app, pid, token) {
         el('div', { className: 'sg-mood sg-mood--glad' },
           el('div', { className: 'sg-mood__face' }, el('i', null, '🙏')),
           el('div', { className: 'sg-mood__title' }, t('track.rate_thanks')))));
-    } else {
-      const c = order.courier;
-      let value = 0;
-      let reason = '';
-      let wasGlad = false;
-
-      const wrap = el('div', { className: 'sg-mood-wrap' }, moodBlock(0));
+    } else if (!guest(order)) {
+      /* Звёзды прямо в шторке, а всё остальное — на своём экране: человеку
+         достаточно одного касания, чтобы сказать главное. */
       const stars = el('div');
-      const chips = el('div', { className: 'sg-chips', hidden: true });
-      const need = el('div', { className: 'sg-mood__need', hidden: true });
-
-      const comment = el('textarea', { className: 'field__input', placeholder: ' ', maxLength: 500 });
-      const commentLabel = el('span', { className: 'field__label' }, t('common.comment'));
-      const commentHint = el('span', { className: 'field__hint' }, t('track.rate_comment_ph'));
-      const field = el('label', { className: 'field', style: { width: '100%' } },
-        comment, commentLabel, commentHint);
-
-      const favInput = el('input', { type: 'checkbox' });
-      favInput.checked = isFav(c);
-      const favRow = el('label', { className: 'sg-fav', hidden: true },
-        el('span', { className: 'sg-fav__ico' }, '⭐'),
-        el('span', { className: 'sg-fav__text' },
-          el('span', { className: 'sg-item__title' }, t('mood.fav')),
-          el('span', { className: 'sg-item__sub' }, t('mood.fav_hint'))),
-        el('span', { className: 'switch' }, favInput,
-          el('span', { className: 'switch__track' })));
-      favInput.addEventListener('change', () => {
-        setFav(c, favInput.checked);
-        haptic();
-        toast(favInput.checked ? t('mood.fav_done') : t('mood.fav_off'), { type: 'ok' });
-      });
-
-      const send = el('button', { type: 'button', className: 'sg-cta', disabled: true },
-        el('span', { className: 'sg-cta__label' }, t('track.rate_send')));
-
-      /* Низкая оценка без объяснения бесполезна и нам, и человеку: пока причина
-         не выбрана (а для «другого» — не написана), отправлять нечего. */
-      function ready() {
-        if (value < 1) return false;
-        if (value > 3) return true;
-        if (!reason) return false;
-        return reason !== 'other' || comment.value.trim().length >= 3;
-      }
-
-      function paintNeed() {
-        const sad = value >= 1 && value <= 3;
-        need.hidden = !sad || ready();
-        if (!need.hidden) {
-          need.textContent = reason ? t('mood.need_text') : t('mood.need_reason');
-        }
-        send.disabled = !ready();
-      }
-
-      function paint() {
-        const sad = value >= 1 && value <= 3;
-        const glad = value >= 4;
-        wrap.replaceChildren(moodBlock(value));
-        if (glad && !wasGlad) confetti(wrap);
-        wasGlad = glad;
-        chips.hidden = !sad;
-        favRow.hidden = !glad || !c;
-        commentLabel.textContent = sad ? t('mood.comment_bad') : t('mood.comment_good');
-        commentHint.textContent = sad ? t('mood.need_text') : t('track.rate_comment_ph');
-        paintNeed();
-        app.panel.refresh();
-      }
-
-      for (const [code, key] of BAD_REASONS) {
-        const chip = el('button', { type: 'button', className: 'chip' }, t(key));
-        chip.addEventListener('click', () => {
-          reason = code;
-          for (const other of chips.children) other.classList.toggle('chip--on', other === chip);
-          haptic();
-          paintNeed();
-          if (code === 'other') comment.focus();
-        });
-        chips.appendChild(chip);
-      }
-
-      comment.addEventListener('input', paintNeed);
-
-      send.addEventListener('click', async () => {
-        if (!ready()) return;
-        send.disabled = true;
-        const parts = [];
-        if (value <= 3 && reason && reason !== 'other') {
-          const found = BAD_REASONS.find((r) => r[0] === reason);
-          if (found) parts.push(t(found[1]));
-        }
-        const own = comment.value.trim();
-        if (own) parts.push(own);
-        try {
-          const res = await api.post(base + '/rate', {
-            rating: value,
-            comment: parts.join('. ').slice(0, 500),
-            t: token,
-            lang: getLang(),
-          });
-          if (dead) return;
-          haptic(20);
-          // За оценку начисляют бонусы — говорим об этом сразу и цифрой,
-          // иначе человек узнает о подарке только в профиле и не свяжет одно
-          // с другим.
-          const gift = Math.max(0, Number(res && res.bonus) || 0);
-          if (gift > 0 && app.bonus && typeof app.bonus.forget === 'function') app.bonus.forget();
-          toast(gift > 0
-            ? t('gift.rated', { sum: money(gift) })
-            : (res.message || t('track.rate_thanks')), { type: 'ok' });
-          store.set({ rated: true });
-        } catch (e) {
-          toast(errText(e), { type: 'err' });
-          send.disabled = false;
-        }
-      });
-
-      body.appendChild(el('div', { className: 'sg-rate' },
-        wrap, stars, chips, need, field, favRow));
-
+      body.appendChild(el('div', { className: 'sg-stars-box' },
+        el('div', { className: 'sg-stars-box__title' }, t('track.rate_title')),
+        stars,
+        el('div', { className: 'sg-stars-box__sub' }, t('mood.tap'))));
       mountStars(stars, {
         value: 0,
         size: 'lg',
-        onChange: (v) => { value = v; paint(); },
+        onChange: (v) => { rateStart = v; openMy('rate'); },
       });
-      foot.appendChild(send);
+      foot.appendChild(el('button', {
+        type: 'button', className: 'btn btn--primary btn--lg btn--block',
+        onClick: () => openMy('rate'),
+      }, t('mood.open')));
     }
 
+    body.appendChild(routeRow(order));
+    body.appendChild(priceRow(order));
+
     /* Кэшбек за закрытый заказ сервер начисляет сам. Строка ведёт туда, где его
-       видно: без неё человек узнаёт о своих бонусах случайно и через месяц.
-       Ставим её под оценкой: сначала главное дело экрана, потом приятное. */
-    if (app.bonus && typeof app.bonus.on === 'function' && app.bonus.on()) {
-      body.appendChild(el('button', {
+       видно: без неё человек узнаёт о своих бонусах случайно и через месяц. */
+    if (!guest(order) && app.bonus && typeof app.bonus.on === 'function' && app.bonus.on()) {
+      body.appendChild(pressable(el('button', {
         type: 'button', className: 'sg-item',
         onClick: () => { haptic(); app.bonus.open(); },
       },
@@ -2345,7 +3214,7 @@ export function mountTrack(app, pid, token) {
         el('span', { className: 'sg-item__text' },
           el('span', { className: 'sg-item__title' }, t('gift.title')),
           el('span', { className: 'sg-item__sub' }, t('gift.after_ride'))),
-        el('span', { className: 'sg-opt__go', html: icon('go') })));
+        el('span', { className: 'sg-opt__go', html: icon('go') }))));
     }
 
     foot.appendChild(el('button', {
@@ -2411,10 +3280,21 @@ export function mountTrack(app, pid, token) {
 
   /* Полоска «нет связи» появляется поверх шага и уходит сама, когда поток ожил. */
   const offline = el('div', { className: 'sg-offline', hidden: true }, t('common.offline'));
-  app.panel.el.querySelector('.sg-panel__box').prepend(offline);
+  const panelBox = app.panel.el.querySelector('.sg-panel__box');
+  if (panelBox) panelBox.prepend(offline);
 
-  /* Секундный ход для времени подачи. Заводим его, только если шагу есть что
-     обновлять, и молчим в фоне вкладки: батарея дороже красивой цифры. */
+  /* Панель подвинули — машина обязана остаться на виду: слежение держит её в
+     середине свободной части экрана, а свободная часть только что изменилась. */
+  function onPanelMove() {
+    if (!following || !canFollow) return;
+    const order = store.get().order;
+    if (order) syncCar(order);
+  }
+  app.panel.el.addEventListener('sheetmove', onPanelMove);
+
+  /* Секундный ход. Тикает время подачи и гаснет маршрут позади машины: сама
+     машина едет кадрами карты, а эти две вещи достаточно обновлять раз в
+     секунду. В фоне вкладки не считаем ничего — батарея дороже. */
   let beat = 0;
 
   function startBeat() {
@@ -2422,6 +3302,8 @@ export function mountTrack(app, pid, token) {
     beat = setInterval(() => {
       if (dead || document.visibilityState === 'hidden') return;
       if (view && typeof view.tick === 'function') view.tick();
+      const order = store.get().order;
+      if (order) syncLive(order);
     }, 1000);
   }
 
@@ -2429,6 +3311,16 @@ export function mountTrack(app, pid, token) {
     if (!beat) return;
     clearInterval(beat);
     beat = 0;
+  }
+
+  /* Машину нашли, пока человек играл — игру закрываем сами: держать её поверх
+     найденного курьера бессмысленно, а бросать без объяснения невежливо. */
+  function gameGuard(state) {
+    if (overlayNow !== 'game') return;
+    if (isSearching(state.order)) return;
+    closeMy();
+    toast(t('game.found'), { type: 'ok' });
+    haptic(20);
   }
 
   function render(state) {
@@ -2447,9 +3339,16 @@ export function mountTrack(app, pid, token) {
     else stopBeat();
     offline.hidden = state.online;
     if (state.order) syncMap(state.order);
-    syncGame();
+    gameGuard(state);
     // Курьер появился — забираем переписку, чтобы счётчик непрочитанных был честным.
-    if (state.order && state.order.courier && !chat.loaded && !chat.tried) loadChat();
+    if (state.order && state.order.courier && !guest(state.order)
+        && !chat.loaded && !chat.tried) loadChat();
+    // Адрес просил наложение, пока заказ грузился, — самое время его открыть.
+    if (overlayWanted && !state.loading) {
+      const want = overlayWanted;
+      overlayWanted = '';
+      applyOverlay(want);
+    }
   }
 
   store.on((state) => { if (!dead) render(state); });
@@ -2462,9 +3361,14 @@ export function mountTrack(app, pid, token) {
       offline.textContent = t('common.offline');
       if (game) game.relang();
       render(store.get());
-      if (chatUi) {
-        closeChat(true);
-        openChat();
+      // Наложение переодеваем на месте: адрес не трогаем, иначе системная
+      // «назад» получила бы лишний шаг только из-за смены языка.
+      const open = overlayNow;
+      if (open && open !== 'game') {
+        byRouter = true;
+        shutOverlay();
+        byRouter = false;
+        applyOverlay(open);
       }
     },
     destroy() {
@@ -2473,10 +3377,20 @@ export function mountTrack(app, pid, token) {
       clearTimeout(offTimer);
       clearTimeout(readTimer);
       readTimer = 0;
-      app.panel.el.removeEventListener('sheetmove', onSheetMove);
-      dropGame();
+      if (offOverlay) offOverlay();
+      offOverlay = null;
+      app.panel.el.removeEventListener('sheetmove', onPanelMove);
+      byRouter = true;                // экран уходит: адрес меняет не он
+      shutOverlay();
+      byRouter = false;
       closeChat(true);
+      closeGame(true);
+      if (payStep) {
+        try { payStep.destroy && payStep.destroy(); } catch (e) { /* уже ушёл */ }
+        payStep = null;
+      }
       unreadBadge = null;
+      if (following && canFollow) { map.unfollow(); following = false; }
       if (stream) stream.close();
       stream = null;
       offline.remove();

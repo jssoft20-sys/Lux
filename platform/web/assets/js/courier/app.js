@@ -27,7 +27,7 @@ import {
 import {
   renderShift, renderJob, renderHistory,
   showOffer, createGeoTracker, stopAlert, unlockAudio,
-  getTheme, applyTheme, markShift, takeServerShift,
+  getTheme, applyTheme, markShift, takeServerShift, handleStreamEvent,
 } from './work.js';
 
 /* ─────────────────────────────────────────────────────── состояние */
@@ -361,10 +361,22 @@ function applyOrder(card) {
   if (path !== '/order' && !showing) ctx.go('/order');
 }
 
+/* Диспетчер нашего аккаунта закрыл или, наоборот, открыл: узнать об этом
+   надо сразу, а не при следующем запросе, который молча вернёт 403. */
+function applyAccount(data) {
+  const status = data && data.status;
+  if (!status || status === 'active') return;
+  teardown();
+  api.setToken(null);
+  showStatusNotice(status);
+}
+
 function connect() {
   if (source) source.close();
   source = api.stream('/courier/stream', {
-    events: ['state', 'verify'],
+    // 'message' и 'message_read' нужны чату: без них переписка жила бы одним
+    // опросом раз в полминуты, а клиент ждёт ответа сейчас.
+    events: ['state', 'verify', 'message', 'message_read'],
     onOpen: () => store.set({ connected: true }),
     onError: () => store.set({ connected: false }),
     onEvent(name, data) {
@@ -374,9 +386,13 @@ function connect() {
         case 'offer': enqueue(data); break;
         case 'offer_cancelled': drop(data && data.offer_id); break;
         case 'verify': setVerify(data && { ...data, ok: data.status === 'approved' }); break;
+        case 'status': applyAccount(data); break;
         case 'ping': store.set({ connected: true }); break;
         default: break;
       }
+      // Поток один на всё приложение, а слушают его и экраны: чат на экране
+      // заказа ждёт отсюда свои 'message'. Мост разбирает лишнее сам.
+      handleStreamEvent(name, data);
     },
   });
 }

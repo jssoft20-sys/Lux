@@ -3,7 +3,31 @@
 
    Экран водителя живёт особняком от клиентского: телефон стоит в держателе,
    человек за рулём, и всё важное должно попадаться пальцу без прицеливания.
-   Отсюда крупные кнопки, высокий контраст и минимум мелкого текста. */
+   Отсюда крупные кнопки (на экране заказа — от 56 px), высокий контраст
+   и минимум мелкого текста.
+
+   Светлая тема основная. Жёлтый здесь — заливка, а не буквы: на белом жёлтый
+   текст не читается, поэтому везде, где акцент это надпись или значок, берём
+   --accent-text, а сам --accent оставляем фону. */
+
+/* Чернила фиолетовых зон спроса. Живут здесь, а не в tokens.css: зоны рисует
+   только карта курьера, и общей дизайн-системе этот цвет не нужен. */
+:root {
+  --zone-ink: #7C46DC;
+  --zone-soft: rgba(124, 70, 220, .16);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --zone-ink: #AE8DF3;
+    --zone-soft: rgba(174, 141, 243, .18);
+  }
+}
+
+:root[data-theme='dark'] {
+  --zone-ink: #AE8DF3;
+  --zone-soft: rgba(174, 141, 243, .18);
+}
 
 /* ══════════════════════════════════════════════════════ переключение экранов */
 
@@ -136,7 +160,7 @@ body,
 
 .gate__tabs { width: 100%; }
 
-/* Базовый сегмент рассчитан на 34 px — за рулём в него не попасть.
+/* Базовый сегмент рассчитан на 40 px — за рулём в него не попасть.
    Везде, где переключатель нажимают пальцем, поднимаем до нормальной кнопки. */
 .gate__tabs .segmented__i,
 .seg-wrap .segmented__i { min-height: 44px; }
@@ -250,9 +274,9 @@ body,
   border-radius: 50%;
   background: currentColor;
 }
-.field__eye.is-on { color: var(--accent); }
+.field__eye.is-on { color: var(--accent-text); }
 .field__eye.is-on::after { box-shadow: 0 0 0 4px var(--surface-2); }
-.field__eye:active { transform: scale(.92); }
+.field__eye:active { transform: scale(var(--press)); }
 
 /* Экран «заявка принята»: занимает всё, дальше идти некуда. */
 .gate__done {
@@ -270,8 +294,8 @@ body,
   width: 76px;
   height: 76px;
   border-radius: var(--r-full);
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 .gate__done-mark > svg { width: 36px; height: 36px; }
 
@@ -374,7 +398,8 @@ body,
   color: var(--muted-2);
   font-size: var(--fs-xs);
   font-weight: 600;
-  transition: color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+  transition: color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease),
+              transform var(--dur-1) var(--ease);
 }
 
 /* Иконку кладут и голым svg, и в обёртке .dock__ico — ловим оба случая. */
@@ -386,7 +411,7 @@ body,
   width: 52px;
   height: 30px;
   border-radius: var(--r-full);
-  transition: background-color var(--dur-2) var(--ease);
+  transition: background-color var(--dur-2) var(--ease), transform var(--dur-2) var(--ease-spring);
 }
 
 /* Подпись раздела: на 360 px «Заработок» ровно влезает, но запас нужен. */
@@ -398,35 +423,23 @@ body,
   line-height: 1.2;
 }
 
-.dock__i:active { background: var(--surface-2); }
+.dock__i:active { transform: scale(var(--press)); }
 
-/* Активный раздел жёлтый: и подпись, и иконка, и мягкая подложка под ней. */
-.dock__i.is-on { color: var(--accent); }
-.dock__i.is-on .dock__ico { background: var(--accent-soft); }
-
-/* Полоска сверху — чтобы раздел читался и без цвета, боковым зрением. */
-.dock__i.is-on::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 22px;
-  height: 3px;
-  margin-left: -11px;
-  border-radius: 0 0 3px 3px;
-  background: var(--accent);
-}
+/* Активный раздел: значок в жёлтой таблетке, подпись тёмно-золотая —
+   чистый жёлтый буквами на белом не читается. */
+.dock__i.is-on { color: var(--accent-text); }
+.dock__i.is-on .dock__ico { background: var(--accent); color: var(--on-accent); }
 
 /* Точка на разделе «Заказы», когда заказ в работе. */
 .dock__mark {
   position: absolute;
   top: 8px;
   left: 50%;
-  margin-left: 10px;
+  margin-left: 12px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--err);
   box-shadow: 0 0 0 2px var(--bg);
 }
 
@@ -438,6 +451,19 @@ body,
   gap: var(--sp-4);
 }
 
+/* Главное на экране — одна карточка: кнопка смены, причина её нажать и
+   предупреждение о геолокации. Раздельными карточками они разъезжались бы
+   по экрану, а связь между ними как раз в том, что они рядом. */
+.shift__head {
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-2);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-1);
+}
+
 /* Главный переключатель смены. Это единственная кнопка, которую ищут
    на бегу, поэтому она крупная и меняет цвет целиком. */
 .shift__toggle {
@@ -445,21 +471,19 @@ body,
   align-items: center;
   gap: var(--sp-4);
   width: 100%;
-  padding: var(--sp-4) var(--sp-5);
-  border: 1px solid var(--line);
-  border-radius: var(--r-xl);
-  background: var(--surface);
+  padding: var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
   text-align: left;
   transition: background-color var(--dur-2) var(--ease),
-              border-color var(--dur-2) var(--ease),
               transform var(--dur-1) var(--ease);
 }
-.shift__toggle:active { transform: scale(.99); }
+.shift__toggle:active { transform: scale(var(--press)); }
 
 .shift__toggle.is-on {
   background: var(--accent);
-  border-color: var(--accent);
   color: var(--on-accent);
+  box-shadow: var(--shadow-accent);
 }
 
 .shift__state {
@@ -521,19 +545,67 @@ body,
   100% { opacity: 0; }
 }
 
-.shift__map {
-  position: relative;
-  height: clamp(220px, 38dvh, 340px);
+/* Строка спроса под кнопкой: «Рядом с вами сейчас 12 заказов». Это и есть
+   причина выйти на линию, поэтому она стоит вплотную к кнопке, а фиолетовая
+   точка повторяет цвет пятен на карте — связь видна без объяснений. */
+.shift__near {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 52px;
+  margin-top: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-4);
   border-radius: var(--r-lg);
+  background: var(--zone-soft);
+  color: var(--text);
+  text-align: left;
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+.shift__near:active { transform: scale(var(--press)); }
+
+.shift__near-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--zone-ink);
+  box-shadow: 0 0 0 0 var(--zone-soft);
+  animation: sg-zone-beat 2.4s var(--ease) infinite;
 }
 
-/* Плашка «включите геолокацию» поверх карты. */
+@keyframes sg-zone-beat {
+  0% { box-shadow: 0 0 0 0 var(--zone-soft); }
+  70% { box-shadow: 0 0 0 9px rgba(124, 70, 220, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(124, 70, 220, 0); }
+}
+
+.shift__near-t {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.shift__near-go {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: var(--zone-ink);
+}
+.shift__near-go > svg { width: 18px; height: 18px; }
+
+/* Плашка «включите геолокацию». Живёт в той же карточке, что и кнопка. */
 .shift__geo {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--r-md);
+  margin-top: var(--sp-1);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4);
+  border-radius: var(--r-lg);
   background: var(--warn-soft);
   color: var(--warn);
   font-size: var(--fs-sm);
@@ -541,40 +613,90 @@ body,
 }
 .shift__geo .btn { flex: none; }
 
-/* ── плитки статистики ──────────────────────────────────────────────────── */
-
-.tiles {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--sp-3);
+.shift__map {
+  position: relative;
+  height: clamp(220px, 38dvh, 340px);
+  border-radius: var(--r-xl);
+  overflow: hidden;
 }
 
-.tile {
+.shift__sound {
   padding: var(--sp-4);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-xl);
   background: var(--surface);
   border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-1);
 }
 
-.tile__k {
-  color: var(--muted);
-  font-size: var(--fs-xs);
-  text-transform: uppercase;
-  letter-spacing: .05em;
+/* ── деньги за сегодня ────────────────────────────────────────────────────
+
+   Одна карточка на все цифры дня: сумма, три факта, неделя с месяцем и цель.
+   Строки разделены линиями, а не зазорами, — так это читается как один
+   отчёт, а не как пять разных сообщений. */
+
+.earn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-5) var(--sp-4) var(--sp-4);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-1);
 }
 
-.tile__v {
-  margin-top: 4px;
+.earn__top { padding-inline: var(--sp-1); }
+
+.earn__k { color: var(--muted); font-size: var(--fs-sm); }
+
+/* Сумма чёрным, а не жёлтым: жёлтые цифры на белом не прочитать,
+   а это самое крупное число на экране. */
+.earn__v {
   font-family: var(--font-display);
-  font-size: var(--fs-h2);
+  font-size: var(--fs-display);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -.02em;
+  letter-spacing: -.03em;
+  line-height: 1.05;
 }
 
-.tile--accent { background: var(--accent-soft); border-color: var(--accent-line); }
-.tile--accent .tile__v { color: var(--accent); }
-.tile--wide { grid-column: 1 / -1; }
+.earn__facts,
+.earn__past {
+  display: grid;
+  gap: var(--sp-2);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line-soft);
+}
+
+.earn__facts { grid-template-columns: 1fr 1fr 1fr; }
+.earn__past { grid-template-columns: 1fr 1fr; }
+
+.fact {
+  min-width: 0;
+  padding-inline: var(--sp-1);
+  text-align: left;
+  color: inherit;
+}
+
+.fact b {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  /* «5 ч 20 мин» и «12 400 сом» не должны переноситься посередине. */
+  white-space: nowrap;
+}
+
+.fact span { color: var(--muted); font-size: var(--fs-xs); }
+
+/* Неделя и месяц ведут в раздел денег, поэтому это кнопки. */
+.fact--tap {
+  min-height: 52px;
+  border-radius: var(--r-md);
+  transition: background-color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
+}
+.fact--tap:active { background: var(--surface-2); transform: scale(var(--press)); }
 
 /* ══════════════════════════════════════════════════════ предложение заказа */
 
@@ -617,31 +739,31 @@ body,
 
 .offer__pay {
   padding: var(--sp-4) var(--sp-5);
-  border-radius: var(--r-lg);
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-line);
+  border-radius: var(--r-xl);
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--shadow-accent);
   text-align: center;
 }
 
 .offer__pay-k {
-  color: var(--accent);
   font-size: var(--fs-sm);
   font-weight: 600;
+  opacity: .72;
 }
 
 .offer__pay-v {
   font-family: var(--font-display);
   font-size: var(--fs-display);
   font-weight: 800;
-  color: var(--accent);
   line-height: 1.05;
   letter-spacing: -.02em;
 }
 
 .offer__pay-note {
   margin-top: 2px;
-  color: var(--muted);
   font-size: var(--fs-xs);
+  opacity: .72;
 }
 
 .offer__rows {
@@ -744,15 +866,16 @@ body,
 
 .offer__skip {
   flex: 1 1 auto;
-  min-height: 54px;
-  border-radius: var(--r-lg);
+  min-height: 56px;
+  border-radius: var(--r-full);
   background: var(--surface-2);
   color: var(--muted);
   font-family: var(--font-display);
   font-size: var(--fs-h3);
   font-weight: 600;
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
 }
-.offer__skip:active { transform: scale(.97); }
+.offer__skip:active { transform: scale(var(--press)); background: var(--surface-3); }
 
 /* Кнопка «Принять» в кольце обратного отсчёта. */
 .ring {
@@ -771,8 +894,10 @@ body,
 
 .ring__track { stroke: var(--surface-3); }
 
+/* Дуга отсчёта тёмная, а не жёлтая: жёлтая дуга вокруг жёлтой кнопки сливается
+   с ней, и понять, сколько осталось секунд, можно только по цифрам. */
 .ring__bar {
-  stroke: var(--accent);
+  stroke: var(--ink);
   stroke-linecap: round;
   transition: stroke var(--dur-2) var(--ease);
 }
@@ -806,7 +931,25 @@ body,
   opacity: .72;
 }
 
-/* ══════════════════════════════════════════════════════ активный заказ */
+/* ══════════════════════════════════════════════════════ заказ в работе
+
+   Экран заказа — это навигатор: карта во весь экран, сверху карточка манёвра,
+   снизу одна строка с временем в пути и главная кнопка. Всё остальное —
+   адреса, телефоны, деньги — открывается полноэкранной шторкой «Детали».
+
+   Разметка (её собирает courier/work.js):
+     <div class="job job--full">
+       <div class="job__map"></div>
+       <div class="job__top">   назад · карточка манёвра · навигатор </div>
+       <button class="job__round job__round--eye"></button>
+       <div class="job__panel">
+         <div class="job__row"> время в пути · позвонить · чат </div>
+         <div class="wait"></div>
+         <div class="act"> главная кнопка </div>
+       </div>
+     </div>
+   Высоту панели скрипт кладёт в --job-panel: от неё считаются кнопка карты
+   и подпись об источнике плиток, чтобы они не спрятались под панелью. */
 
 .job {
   display: flex;
@@ -817,73 +960,248 @@ body,
 .job__map {
   position: relative;
   height: clamp(200px, 34dvh, 320px);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-xl);
+  overflow: hidden;
 }
 
-.job__status {
+.job--full {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-sheet);
+  gap: 0;
+  background: var(--bg);
+  --job-panel: 150px;
+}
+
+.job--full .job__map {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 30dvh;
+  border-radius: 0;
+  /* Панель карту не перекрывает — карта просто кончается над ней. Подпись об
+     источнике плиток поднимаем только над круглой кнопкой ведения. */
+  --map-ui-bottom: calc(56px + var(--sp-4));
+}
+
+/* ── верх экрана: куда едем прямо сейчас ──────────────────────────────── */
+
+.job__top {
+  position: absolute;
+  left: var(--sp-3);
+  right: var(--sp-3);
+  top: calc(var(--safe-t) + var(--sp-3));
+  z-index: 2;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: var(--sp-2);
+  pointer-events: none;
 }
+.job__top > * { pointer-events: auto; }
 
-.job__client {
+/* Карточка манёвра: сверху расстояние и слово «забрать», под ними адрес
+   во всю ширину. Читается вполглаза, как дорожный знак. Адресу нужна вся
+   строка: «микрорайон Асанбай, 32/1» короче не становится. */
+.job__next {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  min-height: 64px;
+  padding: var(--sp-2) var(--sp-4);
   border-radius: var(--r-lg);
   background: var(--surface);
-  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-2);
+  text-align: left;
+  /* Долгое нажатие открывает навигатор, поэтому системное выделение текста
+     и всплывающее меню здесь только мешают. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+.job__next:active { transform: scale(.985); background: var(--surface-2); }
+
+.job__next-k {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
 }
 
-.job__client-name {
-  font-weight: 600;
+.job__next-d {
+  flex: none;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.job__next-w {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.job__next-a {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
   line-height: 1.25;
 }
 
-.job__money {
+/* ── круглые кнопки поверх карты ──────────────────────────────────────── */
+
+.job__round {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-2);
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+.job__round:active { transform: scale(.92); }
+.job__round > svg { width: 24px; height: 24px; }
+
+/* В верхней строке карточка манёвра выше кнопок — держим их по центру,
+   иначе кружки прилипают к её верхнему краю. */
+.job__top .job__round { align-self: center; }
+
+/* Чужой навигатор остаётся, но маленькой кнопкой сбоку: своей карты хватает. */
+.job__round--sm {
+  align-self: center;
+  width: 44px;
+  height: 44px;
+}
+.job__round--sm > svg { width: 20px; height: 20px; }
+
+/* Переключатель «вести по маршруту» ↔ «показать весь маршрут». Стоит слева
+   внизу, над панелью: правая сторона отдана подписи карты и большому пальцу. */
+.job__round--eye {
+  position: absolute;
+  left: var(--sp-3);
+  bottom: calc(var(--job-panel) + var(--sp-3));
+  z-index: 2;
+}
+
+.job__round--call { background: var(--ok); color: #FFFFFF; }
+.job__round--act { background: var(--surface-2); }
+
+/* ── панель снизу: одна строка и главная кнопка ───────────────────────── */
+
+.job__panel {
+  position: relative;
+  z-index: 1;
+  flex: none;
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-  padding: var(--sp-4);
-  border-radius: var(--r-lg);
+  padding: var(--sp-3) var(--sp-3) 0;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
   background: var(--surface);
-  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-sheet);
 }
 
-.job__money-row {
+.job__row { display: flex; align-items: center; gap: var(--sp-2); }
+
+/* Время в пути и кнопка «Детали» — это один элемент: вся строка открывает
+   полноэкранные детали. Отдельной надписи «Детали» нет нарочно, её место
+   занимают цифры, ради которых сюда и смотрят. */
+.job__info {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  font-size: var(--fs-sm);
-  color: var(--muted);
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 56px;
+  padding: 0 var(--sp-2) 0 var(--sp-3);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  text-align: left;
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
 }
+.job__info:active { transform: scale(.985); background: var(--surface-3); }
 
-.job__money-row b {
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
+.job__eta { flex: 1 1 auto; min-width: 0; }
 
-.job__money-row--big { font-size: var(--fs-body); }
-.job__money-row--big b {
+.job__eta-v {
+  display: block;
   font-family: var(--font-display);
-  font-size: var(--fs-h2);
-  color: var(--accent);
+  font-size: 19px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
   letter-spacing: -.02em;
+  line-height: 1.15;
 }
+
+.job__eta-s {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.3;
+}
+
+.job__info-go {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--muted-2);
+}
+.job__info-go > svg { width: 20px; height: 20px; }
+
+/* Внутри панели кнопка действия уже никуда не всплывает: она и так внизу. */
+.job--full .act {
+  position: static;
+  max-width: none;
+  transform: none;
+  padding: 0 0 calc(var(--sp-3) + var(--safe-b));
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-top: 0;
+}
+
+/* За рулём палец не целится, поэтому на экране заказа нет ничего мельче 56 px. */
+.job--full .act .btn,
+.job--full .wait .btn { min-height: 56px; }
 
 /* Счётчик ожидания. Пока идёт — подсвечен. */
 .wait {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
+  padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-lg);
   background: var(--surface-2);
   border: 1px solid transparent;
 }
-.wait.is-on { background: var(--warn-soft); border-color: rgba(255, 167, 38, .32); }
+.wait.is-on {
+  background: var(--warn-soft);
+  border-color: color-mix(in srgb, var(--warn) 34%, transparent);
+}
 
 .wait__body { flex: 1 1 auto; min-width: 0; }
 
@@ -901,7 +1219,22 @@ body,
   line-height: 1.35;
 }
 
-/* ── нижняя панель с главным действием ──────────────────────────────────── */
+.act__step {
+  display: block;
+  margin-bottom: var(--sp-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  text-align: center;
+}
+
+/* Пока открыт заказ, навигация под ним не нужна и мешала бы.
+   Правило с :has() срабатывает само; атрибут на <html> оставлен для
+   браузеров постарше и для случая, когда экран рисуют вне .app. */
+.app--job .dock { display: none; }
+html[data-job='full'] .dock { display: none; }
+body:has(.job--full) .dock { display: none; }
+
+/* ── панель действий вне полноэкранного заказа ──────────────────────────── */
 
 .act {
   position: fixed;
@@ -918,125 +1251,75 @@ body,
   border-top: 1px solid var(--line-soft);
 }
 
-.act__step {
-  display: block;
-  margin-bottom: var(--sp-2);
-  color: var(--muted);
-  font-size: var(--fs-xs);
-  text-align: center;
-}
+/* ── полноэкранные детали заказа ────────────────────────────────────────── */
 
-/* Пока открыт заказ, панель действий заменяет нижнее меню. */
-.app--job .dock { display: none; }
-.app--job .app__main { padding-bottom: calc(120px + var(--safe-b)); }
-
-/* ── заказ во весь экран ──────────────────────────────────────────────────
-
-   Второй вид того же экрана: карта сверху во всю ширину, панель с адресами
-   и кнопкой снизу. Нужен, когда человек уже поехал и смотрит только в карту.
-
-   Разметка:
-     <div class="job job--full">
-       <div class="job__map"></div>
-       <button class="job__close"></button>      — необязательная, поверх карты
-       <div class="job__panel">
-         <button class="job__grip"></button>     — за неё тянут панель
-         <div class="job__scroll"> … </div>
-         <div class="act"> … </div>
-       </div>
-     </div>
-   Включает и выключает этот вид другой модуль: он вешает класс job--full
-   и ставит на <html> атрибут data-job="full", чтобы спряталась навигация. */
-
-.job--full {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-sheet);
-  gap: 0;
-  background: var(--bg);
-}
-
-.job--full .job__map {
-  flex: 1 1 auto;
-  height: auto;
-  min-height: 30dvh;
-  border-radius: 0;
-}
-
-/* Нижняя панель заказа. Ограничена по высоте, чтобы карта не схлопнулась
-   в полоску: длинные адреса и допуслуги прокручиваются внутри. */
-.job__panel {
-  position: relative;
-  z-index: 1;
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  max-height: 62dvh;
-  border-radius: var(--r-xl) var(--r-xl) 0 0;
-  background: var(--surface);
-  box-shadow: var(--shadow-sheet);
-}
-
-.job__grip {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 26px;
-  border-radius: var(--r-xl) var(--r-xl) 0 0;
-}
-.job__grip::before {
-  content: '';
-  width: 40px;
-  height: 4px;
-  border-radius: var(--r-full);
-  background: var(--surface-3);
-}
-
-.job__scroll {
-  flex: 1 1 auto;
-  min-height: 0;
+.job__details {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-  padding: var(--sp-1) var(--sp-4) var(--sp-3);
 }
 
-/* Внутри панели кнопка действия уже никуда не всплывает: она и так внизу. */
-.job--full .act {
-  position: static;
-  max-width: none;
-  transform: none;
-  background: var(--surface);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+/* Заголовок группы: не карточка, а подпись над ней — так группы читаются
+   как разделы одного документа, а не как отдельные сообщения. */
+.job__sect {
+  margin-top: var(--sp-2);
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
 }
 
-/* Круглая кнопка поверх карты: «назад», «моё место», «позвонить». */
-.job__close {
-  position: absolute;
-  top: calc(var(--safe-t) + var(--sp-3));
-  left: var(--sp-3);
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--r-full);
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: var(--shadow-2);
+.job__who {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
 }
-.job__close:active { transform: scale(.94); }
 
-/* Заказ занял весь экран — навигация под ним не нужна и мешала бы.
-   Правило с :has() срабатывает само; атрибут на <html> оставлен для
-   браузеров постарше и для случая, когда экран рисуют вне .app. */
-html[data-job='full'] .dock { display: none; }
-body:has(.job--full) .dock { display: none; }
+.job__who-name {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.job__who-acts { display: flex; gap: var(--sp-2); }
+.job__who-acts .btn { flex: 1 1 0; min-width: 0; min-height: 56px; }
+
+.job__kv-v {
+  flex: 0 1 auto;
+  min-width: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* Заработок с заказа — единственная цифра в деталях, которую ищут глазами. */
+.job__payout {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  border-radius: var(--r-lg);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.job__payout-k { font-size: var(--fs-sm); font-weight: 600; opacity: .72; }
+
+.job__payout-v {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+  white-space: nowrap;
+}
 
 /* ── свайп «завершить» ──────────────────────────────────────────────────── */
 
@@ -1044,8 +1327,8 @@ body:has(.job--full) .dock { display: none; }
    закрывать заказ и списывать деньги. */
 .swipe {
   position: relative;
-  height: 60px;
-  border-radius: var(--r-lg);
+  height: 64px;
+  border-radius: var(--r-full);
   background: var(--surface-2);
   overflow: hidden;
   touch-action: pan-y;
@@ -1068,7 +1351,7 @@ body:has(.job--full) .dock { display: none; }
   display: flex;
   align-items: center;
   justify-content: center;
-  padding-left: 40px;
+  padding-left: 44px;
   color: var(--muted);
   font-family: var(--font-display);
   font-size: var(--fs-h3);
@@ -1082,11 +1365,11 @@ body:has(.job--full) .dock { display: none; }
   left: 5px;
   display: grid;
   place-items: center;
-  width: 50px;
-  height: 50px;
-  border-radius: var(--r-md);
+  width: 54px;
+  height: 54px;
+  border-radius: var(--r-full);
   background: var(--ok);
-  color: #07120C;
+  color: #FFFFFF;
   transition: transform var(--dur-2) var(--ease);
 }
 .swipe.is-drag .swipe__knob { transition: none; }
@@ -1101,51 +1384,6 @@ body:has(.job--full) .dock { display: none; }
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
-}
-
-.hist__sum {
-  padding: var(--sp-5);
-  border-radius: var(--r-xl);
-  background: var(--surface);
-  border: 1px solid var(--line-soft);
-  text-align: center;
-}
-
-.hist__sum-k {
-  color: var(--muted);
-  font-size: var(--fs-sm);
-}
-
-.hist__sum-v {
-  margin-top: 2px;
-  font-family: var(--font-display);
-  font-size: var(--fs-display);
-  font-weight: 800;
-  letter-spacing: -.03em;
-  line-height: 1.05;
-}
-
-.hist__sum-row {
-  display: flex;
-  justify-content: center;
-  gap: var(--sp-5);
-  margin-top: var(--sp-4);
-  padding-top: var(--sp-4);
-  border-top: 1px solid var(--line-soft);
-}
-
-.hist__sum-cell { text-align: center; }
-
-.hist__sum-cell b {
-  display: block;
-  font-family: var(--font-display);
-  font-size: var(--fs-h3);
-  font-variant-numeric: tabular-nums;
-}
-
-.hist__sum-cell span {
-  color: var(--muted);
-  font-size: var(--fs-xs);
 }
 
 .hist__row {
@@ -1237,6 +1475,7 @@ body:has(.job--full) .dock { display: none; }
   border-radius: var(--r-xl);
   background: var(--surface);
   border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-1);
 }
 
 .me__ava {
@@ -1313,7 +1552,7 @@ body:has(.job--full) .dock { display: none; }
 }
 .me__ico .ico { width: 21px; height: 21px; }
 
-.me__ico--accent { background: var(--accent-soft); color: var(--accent); }
+.me__ico--accent { background: var(--accent); color: var(--on-accent); }
 .me__ico--ok { background: var(--ok-soft); color: var(--ok); }
 .me__ico--warn { background: var(--warn-soft); color: var(--warn); }
 .me__ico--info { background: var(--info-soft); color: var(--info); }
@@ -1409,7 +1648,7 @@ body:has(.job--full) .dock { display: none; }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 28px;
+  min-height: 30px;
   padding: 0 var(--sp-3);
   border-radius: var(--r-full);
   background: var(--surface-2);
@@ -1421,9 +1660,3 @@ body:has(.job--full) .dock { display: none; }
 .pill > svg { width: 14px; height: 14px; }
 
 .seg-wrap { padding: 2px 0; }
-
-@media (min-width: 640px) {
-  .tiles { grid-template-columns: repeat(4, 1fr); }
-  .tile--wide { grid-column: span 2; }
-}
-
