@@ -80,6 +80,41 @@ async function prepareCourier() {
 
 const shot = (p, name) => p.screenshot({ path: `${SHOT}/flow-${name}.png` }).catch(() => {});
 
+/* Подсказки адресов сервис берёт у OpenStreetMap, а тот умеет ответить «слишком
+   часто» (429) — на общем адресе, за NAT, в CI это обычное дело. Прогон не про
+   OSM: сперва спрашиваем сам сервис, живые ли подсказки. Отвечает — идём
+   настоящим путём и проверяем заодно геокодер. Молчит — говорим об этом вслух
+   и подставляем свои подсказки, чтобы дальше проверять экраны, а не чужую сеть. */
+const FAKE_SUGGEST = [
+  { title: 'Токтогула', subtitle: 'Бишкек', lat: 42.8760, lng: 74.5990, kind: 'street' },
+  { title: 'Ахматбека Суюмбаева', subtitle: 'Бишкек', lat: 42.8380, lng: 74.6100, kind: 'street' },
+  { title: 'Киевская', subtitle: 'Бишкек', lat: 42.8746, lng: 74.5698, kind: 'street' },
+];
+
+async function geocoderAlive() {
+  const r = await api('POST', '/geo/suggest', { q: 'Токтогула' });
+  return Array.isArray(r.body) && r.body.length > 0;
+}
+
+async function stubSuggest(page) {
+  await page.route('**/api/v1/geo/suggest', async route => {
+    let q = '';
+    try { q = String((JSON.parse(route.request().postData() || '{}') || {}).q || ''); } catch { /* пусто */ }
+    // Ищем по словам, а не по началу строки: человек пишет «Суюмбаева Ахматбека»,
+    // а улица называется наоборот, и подмена не должна подсовывать не тот адрес —
+    // иначе обе точки совпадут, путь выйдет нулевой и прогон упрётся не туда.
+    const words = q.trim().toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    const hit = FAKE_SUGGEST.filter(i => {
+      const t = i.title.toLowerCase();
+      return words.some(w => t.includes(w.slice(0, Math.max(4, w.length - 2))));
+    });
+    return route.fulfill({
+      status: 200, contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(hit.length ? hit : FAKE_SUGGEST),
+    });
+  });
+}
+
 /** Настоящий тап пальцем: приложение мобильное, мышиный клик мимо кассы. */
 async function tap(page, loc) {
   const b = await loc.first().boundingBox();
@@ -104,6 +139,15 @@ async function run() {
   const errors = [];
   page.on('pageerror', e => errors.push(String(e).slice(0, 200)));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text().slice(0, 200)); });
+
+  const live = await geocoderAlive();
+  if (live) {
+    console.log('  подсказки адресов настоящие');
+  } else {
+    console.log('  \x1b[33mOpenStreetMap не отвечает подсказками (лимит запросов) —'
+      + ' подставляем свои, проверяем экраны\x1b[0m');
+    await stubSuggest(page);
+  }
 
   await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2200);
