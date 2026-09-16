@@ -161,7 +161,12 @@ export function skeleton(node, rows = 3) {
    на iOS он приходит с опозданием, а стоит пальцу поехать, не приходит вовсе. */
 
 const PRESS_SEL = '.btn, .chip, .card--tap, .list__row--tap, .rowgroup__row--tap,' +
-  '.segmented__i, .stepper__btn, .sheet__x, [data-press]';
+  '.segmented__i, .stepper__btn, .sheet__x,' +
+  /* Эти четверо держались на :active и потому отзывались через раз — а это
+     самые заметные нажатия на экране: переключатель языка, тумблер, кнопки
+     масштаба на карте и номер машины, по которому звонят. */
+  ' .sg-lang__i, .switch__track, .map__btn, .sg-plate-btn,' +
+  ' [data-press]';
 
 const popTimers = new WeakMap();
 
@@ -1448,7 +1453,7 @@ function ensureCss() {
 
 const CLOSE_SVG =
   '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
-  '<path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+  '<path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
 
 /* ─────────────────────────────────────────────────────── просмотр фото */
 

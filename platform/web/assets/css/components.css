@@ -78,11 +78,14 @@
   --btn-press: var(--surface-2);
 }
 
+/* Отмена и удаление. Красный по розовому читался плохо и выглядел заливкой без
+   формы, поэтому даём кнопке рамку своего же цвета: и контраст, и край. */
 .btn--danger {
   --btn-bg: var(--err-soft);
   --btn-fg: var(--err);
   --btn-hover: var(--err-soft);
   --btn-press: var(--err-soft);
+  border-color: var(--err);
 }
 
 /* Чёрная кнопка-таблетка с пояснительных экранов: главное действие, когда
@@ -212,6 +215,9 @@ select.field__input {
 
 .field__input::placeholder { color: transparent; }
 .field__input:focus { border-color: var(--accent-line); }
+/* Поле само показывает фокус рамкой, и общее кольцо рисовать поверх незачем:
+   два разных обвода вокруг одного поля выглядят как ошибка вёрстки. */
+.field__input:focus-visible { outline: none; }
 .field__input:disabled { opacity: .5; cursor: not-allowed; }
 
 .field__label {
@@ -757,7 +763,9 @@ select.field__input {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: var(--muted);
+  /* Ручка белая в обоих положениях. Тёмно-серая на светло-сером выглядела не
+     «выключено», а «сломано»: у выключателя не должно быть третьего вида. */
+  background: var(--surface);
   box-shadow: var(--shadow-1);
   transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
 }

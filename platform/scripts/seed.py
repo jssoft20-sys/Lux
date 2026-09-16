@@ -185,6 +185,10 @@ def make_couriers():
             'lat': c['at'][0], 'lng': c['at'][1],
             'heading': random.randint(0, 359), 'speed': 0, 'geo_at': now,
             'balance': 0, 'note': 'Демонстрационный курьер, создан скриптом seed.py',
+            # Без пройденной проверки документов диспетчер заказы не шлёт, и на
+            # демо-стенде было не понять, почему всё «не работает»: водители
+            # стоят на линии, а предложений нет.
+            'verify_status': 'approved', 'verified_at': now,
         })
         ids[c['email']] = uid
         created += 1

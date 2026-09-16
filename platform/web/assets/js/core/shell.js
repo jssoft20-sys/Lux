@@ -291,8 +291,31 @@ function barTexts() {
   bar.querySelector('.sg-install__x').setAttribute('aria-label', t('shell.install_hide'));
 }
 
+/* Открыта ли поверх экрана шторка. Полоса установки лежит ниже них — так и
+   задумано, окно важнее, — но значит, поверх открытого окна её просто не
+   видно. Человек в этот момент занят другим, и предлагать ему второе дело
+   всё равно не стоит. */
+function sheetOpen() {
+  return !!document.querySelector('.sheet, .sg-chat, .sg-photo');
+}
+
+let barWait = 0;
+
 function showBar() {
   if (bar || !canInstall() || snoozed()) return;
+  if (sheetOpen()) {
+    // Дождёмся, пока человек закончит с окном, и предложим тогда.
+    if (!barWait) {
+      barWait = window.setInterval(() => {
+        if (sheetOpen()) return;
+        window.clearInterval(barWait);
+        barWait = 0;
+        showBar();
+      }, 1200);
+    }
+    return;
+  }
+  if (barWait) { window.clearInterval(barWait); barWait = 0; }
 
   bar = document.createElement('div');
   bar.className = 'sg-install';
@@ -440,6 +463,12 @@ const openedBare = (() => {
   return !raw || raw === '/';
 })();
 
+/* Запомненное место снимаем тем же кадром, что и адрес. Приложение через
+   мгновение уйдёт на свой домашний экран, а домашний экран запоминать незачем —
+   и роутер честно сотрёт ключ. Спросив память позже, мы находили бы пусто и
+   никогда ничего не предлагали. */
+const placeAtStart = openedBare ? lastPlace() : null;
+
 /* Приложение само увело человека в дело — например, к едущему заказу.
    Тогда подсказка «вернуться» только мешает. */
 function busyNow() {
@@ -470,7 +499,7 @@ function restoreTop() {
 
 function offerRestore() {
   if (!openedBare || busyNow()) return;
-  const place = lastPlace();
+  const place = placeAtStart;
   if (!place) return;
   if (place.hash === String(location.hash || '').slice(1)) return;
 

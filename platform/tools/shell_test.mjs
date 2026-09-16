@@ -128,7 +128,17 @@ async function main() {
         + '(KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
     });
     await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(3500);
+    await page.waitForTimeout(3000);
+    /* Первый заход встречает подсказкой «как это работает». Пока она открыта,
+       полосу установки не показываем нарочно: она лежит ниже шторки и её всё
+       равно не видно, а два предложения разом — это суета. Закрываем подсказку,
+       как закрыл бы человек, и ждём полосу. */
+    const hello = page.locator('button:has-text("Понятно"), button:has-text("Пропустить")').first();
+    if (await hello.count()) {
+      await hello.click({ force: true }).catch(() => {});
+      await page.waitForTimeout(800);
+    }
+    await page.waitForTimeout(3000);
     const txt = (await page.locator('body').innerText()).replace(/\n+/g, ' | ');
     ok('на айфоне предлагают поставить на экран «Домой»',
        /установ|домой|приложени/i.test(txt), txt.slice(0, 200));

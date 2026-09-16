@@ -417,7 +417,11 @@
 .map__ctrl {
   position: absolute;
   right: var(--sp-4);
-  bottom: calc(var(--map-ui-bottom) + 52px);
+  /* Кнопки масштаба стоят над шторкой, но не выше экрана. Без ограничителя
+     высокая шторка (например, выбор машины) выталкивала их за верхний край, и
+     на экране оставались половинки кнопок. */
+  bottom: min(calc(var(--map-ui-bottom) + 52px),
+              calc(100% - 104px - var(--header-h, 0px) - var(--safe-t, 0px)));
   z-index: var(--z-ui);
   display: flex;
   flex-direction: column;

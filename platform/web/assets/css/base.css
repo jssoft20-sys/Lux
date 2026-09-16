@@ -111,7 +111,10 @@ textarea, select {
   appearance: none;
 }
 
-textarea { resize: vertical; }
+/* Системный уголок растягивания в углу поля — это деталь чужого интерфейса на
+   нашем экране, и на телефоне им всё равно никто не пользуется. Высоту полей
+   наращивают сами экраны, по содержимому. */
+textarea { resize: none; }
 select { cursor: pointer; }
 
 input::placeholder, textarea::placeholder { color: var(--muted-2); opacity: 1; }

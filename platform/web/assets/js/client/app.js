@@ -562,21 +562,24 @@ function statusBadge(item) {
 
 /* ─────────────────────────────────────────────────────── иконки */
 
+/* Один набор — одна толщина линии. Раньше их было пять (1.6, 1.7, 1.8, 2, 2.4),
+   и рядом друг с другом иконки выглядели надёрганными из разных мест. 1.8 —
+   та, которой и так было больше всего. */
 const ICONS = {
-  back: '<path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
-  go: '<path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
-  plus: '<path d="M12 5.5v13M5.5 12h13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
-  minus: '<path d="M5.5 12h13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
-  close: '<path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
-  check: '<path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>',
+  back: '<path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+  go: '<path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+  plus: '<path d="M12 5.5v13M5.5 12h13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+  minus: '<path d="M5.5 12h13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
   pin: '<path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="10" r="2.6" fill="currentColor"/>',
   clock: '<circle cx="12" cy="12" r="8.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7.4V12l3.2 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
-  locate: '<circle cx="12" cy="12" r="3.2" fill="currentColor"/><circle cx="12" cy="12" r="6.8" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 1.8v3.2M12 19v3.2M1.8 12H5M19 12h3.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
-  map: '<path d="M9 4.5L3.8 6.6v13L9 17.4l6 2.1 5.2-2.1v-13L15 6.6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 4.5v12.9M15 6.6v12.9" fill="none" stroke="currentColor" stroke-width="1.7"/>',
-  note: '<path d="M4.5 19.5l.9-3.6L15.7 5.6a2 2 0 0 1 2.8 0l.9.9a2 2 0 0 1 0 2.8L9 19.9z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>',
+  locate: '<circle cx="12" cy="12" r="3.2" fill="currentColor"/><circle cx="12" cy="12" r="6.8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 1.8v3.2M12 19v3.2M1.8 12H5M19 12h3.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+  map: '<path d="M9 4.5L3.8 6.6v13L9 17.4l6 2.1 5.2-2.1v-13L15 6.6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 4.5v12.9M15 6.6v12.9" fill="none" stroke="currentColor" stroke-width="1.8"/>',
+  note: '<path d="M4.5 19.5l.9-3.6L15.7 5.6a2 2 0 0 1 2.8 0l.9.9a2 2 0 0 1 0 2.8L9 19.9z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
   phone: '<path d="M6.4 3.8h3l1.5 3.8-2 1.4a11 11 0 0 0 5.1 5.1l1.4-2 3.8 1.5v3a1.6 1.6 0 0 1-1.8 1.6C10.6 17.5 6.5 13.4 4.8 5.6a1.6 1.6 0 0 1 1.6-1.8z" fill="currentColor"/>',
   chat: '<path d="M4.5 6.6c0-1.2 1-2.1 2.1-2.1h10.8c1.2 0 2.1.9 2.1 2.1v7.2c0 1.2-.9 2.1-2.1 2.1H10l-4.2 3.4-.1-3.4h-.2A1.4 1.4 0 0 1 4.5 14z" fill="currentColor"/>',
-  alert: '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7.4v5.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16.3" r="1.2" fill="currentColor"/>',
+  alert: '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7.4v5.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="16.3" r="1.2" fill="currentColor"/>',
   car: '<path d="M3.5 15.5v-3.2l2.1-4.1a2.4 2.4 0 0 1 2.1-1.3h8.6a2.4 2.4 0 0 1 2.1 1.3l2.1 4.1v3.2a1 1 0 0 1-1 1h-1.3v-1.4H5.8v1.4H4.5a1 1 0 0 1-1-1z" fill="currentColor"/><circle cx="7.4" cy="16.4" r="1.9" fill="currentColor"/><circle cx="16.6" cy="16.4" r="1.9" fill="currentColor"/>',
   van: '<path d="M2.6 7.2h10.6v9.1H2.6z" fill="currentColor"/><path d="M13.2 9.6h3.6l3.4 4v2.7h-7z" fill="currentColor"/><circle cx="7" cy="17" r="2" fill="currentColor"/><circle cx="17" cy="17" r="2" fill="currentColor"/>',
   truck: '<path d="M2 6.4h11.4v9.9H2z" fill="currentColor"/><path d="M13.4 9.2h3.9l3.7 4.3v2.8h-7.6z" fill="currentColor"/><circle cx="6.6" cy="17.2" r="2.1" fill="currentColor"/><circle cx="17.4" cy="17.2" r="2.1" fill="currentColor"/>',
@@ -586,12 +589,12 @@ const ICONS = {
   star: '<path d="M12 17.1l-5.3 3.1 1.4-6L3.4 10l6.1-.5L12 3.9l2.5 5.6 6.1.5-4.7 4.2 1.4 6z" fill="currentColor"/>',
   wa: '<path d="M12 3.4a8.5 8.5 0 0 0-7.3 12.8L3.4 20.6l4.5-1.2A8.5 8.5 0 1 0 12 3.4zm4.7 11.9c-.2.6-1.2 1.1-1.7 1.2-.4.1-1 .1-1.6-.1a12 12 0 0 1-5.2-4.5c-.4-.6-.7-1.3-.7-2 0-.7.4-1.2.6-1.4.2-.2.4-.3.6-.3h.4c.2 0 .3 0 .5.4l.7 1.6c.1.2 0 .4-.1.5l-.3.4c-.1.1-.2.3-.1.5.3.5.7 1.1 1.2 1.6.6.5 1.1.8 1.6 1 .2.1.4 0 .5-.1l.5-.6c.1-.2.3-.2.5-.1l1.5.8c.2.1.3.2.3.3 0 .1 0 .5-.2.8z" fill="currentColor"/>',
   trash: '<path d="M5.6 7.2h12.8M9.4 7.2V5.6c0-.6.5-1.1 1.1-1.1h3c.6 0 1.1.5 1.1 1.1v1.6M7.2 7.2l.8 11.2c0 .6.5 1.1 1.1 1.1h5.8c.6 0 1.1-.5 1.1-1.1l.8-11.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
-  gift: '<path d="M4.4 10.6h15.2v8.3a1.1 1.1 0 0 1-1.1 1.1H5.5a1.1 1.1 0 0 1-1.1-1.1z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M3.4 7.3h17.2v3.3H3.4z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 7.3V20" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 7.3S10.8 3.6 8.6 3.6a2 2 0 0 0 0 3.7zM12 7.3s1.2-3.7 3.4-3.7a2 2 0 0 1 0 3.7z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>',
-  home: '<path d="M4.2 10.8 12 4.4l7.8 6.4V19a1.1 1.1 0 0 1-1.1 1.1h-3.6v-5.3H8.9v5.3H5.3A1.1 1.1 0 0 1 4.2 19z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>',
-  work: '<path d="M3.6 8.4h16.8v10a1.1 1.1 0 0 1-1.1 1.1H4.7a1.1 1.1 0 0 1-1.1-1.1z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 8.4V6.2c0-.6.5-1.1 1.1-1.1h3.8c.6 0 1.1.5 1.1 1.1v2.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M3.6 13.2h16.8" fill="none" stroke="currentColor" stroke-width="1.7"/>',
+  gift: '<path d="M4.4 10.6h15.2v8.3a1.1 1.1 0 0 1-1.1 1.1H5.5a1.1 1.1 0 0 1-1.1-1.1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3.4 7.3h17.2v3.3H3.4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 7.3V20" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7.3S10.8 3.6 8.6 3.6a2 2 0 0 0 0 3.7zM12 7.3s1.2-3.7 3.4-3.7a2 2 0 0 1 0 3.7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
+  home: '<path d="M4.2 10.8 12 4.4l7.8 6.4V19a1.1 1.1 0 0 1-1.1 1.1h-3.6v-5.3H8.9v5.3H5.3A1.1 1.1 0 0 1 4.2 19z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
+  work: '<path d="M3.6 8.4h16.8v10a1.1 1.1 0 0 1-1.1 1.1H4.7a1.1 1.1 0 0 1-1.1-1.1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 8.4V6.2c0-.6.5-1.1 1.1-1.1h3.8c.6 0 1.1.5 1.1 1.1v2.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3.6 13.2h16.8" fill="none" stroke="currentColor" stroke-width="1.8"/>',
   repeat: '<path d="M5 9.4a7 7 0 0 1 11.6-2.6l2 1.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M19 14.6a7 7 0 0 1-11.6 2.6l-2-1.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M18.9 4.6v4.3h-4.3M5.1 19.4v-4.3h4.3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
-  gear: '<circle cx="12" cy="12" r="3.1" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 14.2a1.5 1.5 0 0 0 .3 1.7l.1.1a1.8 1.8 0 1 1-2.6 2.6l-.1-.1a1.5 1.5 0 0 0-2.6 1.1v.3a1.8 1.8 0 1 1-3.6 0v-.2a1.5 1.5 0 0 0-2.6-1.1l-.1.1a1.8 1.8 0 1 1-2.6-2.6l.1-.1a1.5 1.5 0 0 0-1.1-2.6h-.3a1.8 1.8 0 1 1 0-3.6h.2a1.5 1.5 0 0 0 1.1-2.6l-.1-.1a1.8 1.8 0 1 1 2.6-2.6l.1.1a1.5 1.5 0 0 0 1.7.3h.1a1.5 1.5 0 0 0 .9-1.4v-.3a1.8 1.8 0 1 1 3.6 0v.2a1.5 1.5 0 0 0 2.6 1.1l.1-.1a1.8 1.8 0 1 1 2.6 2.6l-.1.1a1.5 1.5 0 0 0 1.1 2.6h.3a1.8 1.8 0 1 1 0 3.6h-.2a1.5 1.5 0 0 0-1.4.9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>',
-  share: '<circle cx="17.6" cy="6.2" r="2.6" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="6.4" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="17.6" cy="17.8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8.8 10.8 15.2 7.4M8.8 13.2l6.4 3.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+  gear: '<circle cx="12" cy="12" r="3.1" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 14.2a1.5 1.5 0 0 0 .3 1.7l.1.1a1.8 1.8 0 1 1-2.6 2.6l-.1-.1a1.5 1.5 0 0 0-2.6 1.1v.3a1.8 1.8 0 1 1-3.6 0v-.2a1.5 1.5 0 0 0-2.6-1.1l-.1.1a1.8 1.8 0 1 1-2.6-2.6l.1-.1a1.5 1.5 0 0 0-1.1-2.6h-.3a1.8 1.8 0 1 1 0-3.6h.2a1.5 1.5 0 0 0 1.1-2.6l-.1-.1a1.8 1.8 0 1 1 2.6-2.6l.1.1a1.5 1.5 0 0 0 1.7.3h.1a1.5 1.5 0 0 0 .9-1.4v-.3a1.8 1.8 0 1 1 3.6 0v.2a1.5 1.5 0 0 0 2.6 1.1l.1-.1a1.8 1.8 0 1 1 2.6 2.6l-.1.1a1.5 1.5 0 0 0 1.1 2.6h.3a1.8 1.8 0 1 1 0 3.6h-.2a1.5 1.5 0 0 0-1.4.9z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
+  share: '<circle cx="17.6" cy="6.2" r="2.6" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="6.4" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="17.6" cy="17.8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.8 10.8 15.2 7.4M8.8 13.2l6.4 3.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
 };
 
 /** Разметка иконки для вставки через html. Незнакомое имя рисуем кружком:
@@ -833,7 +836,18 @@ const OWN_CSS = `
   gap: var(--sp-3);
   padding: var(--sp-2) 0;
 }
-.sg-tip__ico { flex: none; width: 30px; font-size: 22px; line-height: 1.3; text-align: center; }
+.sg-tip__ico {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.sg-tip__ico > svg { width: 20px; height: 20px; }
 .sg-tip__text { flex: 1 1 auto; min-width: 0; font-size: var(--fs-sm); line-height: 1.45; }
 
 /* ── отметки «дом» и «работа» в карточке заказа ────────────────────────── */
@@ -1785,6 +1799,22 @@ function createStage(scroller) {
   return { node, show, swap, current: () => current };
 }
 
+/* Пустой раздел — это тоже экран, а не забытая строка. Одна серая фраза на
+   белом листе читается как «здесь ничего не загрузилось»; значок с заголовком
+   и пояснением — как «здесь пока пусто, и это нормально». */
+function emptyBox(iconName, title, text, action) {
+  const box = el('div', { className: 'empty' },
+    el('div', { className: 'empty__icon', html: icon(iconName) }),
+    el('div', { className: 'empty__title' }, title));
+  if (text) box.appendChild(el('div', { className: 'empty__text' }, text));
+  if (action) {
+    box.appendChild(el('button', {
+      type: 'button', className: 'btn btn--primary btn--lg', onClick: action.onClick,
+    }, action.label));
+  }
+  return box;
+}
+
 /* ─────────────────────────────────────────────────────── шторка профиля */
 
 /* Разделы профиля. overlay — то, что видно в адресе (#/~profile:bonus), по нему
@@ -2659,7 +2689,7 @@ function openProfileSheet(app, startWith, onGone) {
     const moves = Array.isArray(b.history) ? b.history : [];
     node.appendChild(group(t('bn.history')));
     if (!moves.length) {
-      node.appendChild(el('p', { className: 'sheet__text' }, t('bn.history_empty')));
+      node.appendChild(emptyBox('gift', t('bn.empty'), t('bn.history_empty')));
     } else {
       const rows = el('div', { className: 'sg-me__rows' });
       moves.slice(0, 3).forEach((one, i) => {
@@ -2731,7 +2761,9 @@ function openProfileSheet(app, startWith, onGone) {
       .filter((p) => !samePlace(home, p) && !samePlace(work, p));
     node.appendChild(group(t('me.recent')));
     if (!recent.length) {
-      node.appendChild(el('p', { className: 'sheet__text' }, t('me.recent_empty')));
+      node.appendChild(emptyBox('pin', t('me.recent'), t('me.recent_empty'), {
+        label: t('order.submit'), onClick: () => leave('/'),
+      }));
     } else {
       const rows = el('div', { className: 'sg-me__rows' });
       recent.slice(0, 6).forEach((p, i) => {
@@ -2903,7 +2935,7 @@ function openBonusMoves(list, onGone) {
     className: 'sg-me',
     title: t('bn.history'),
     content: el('div', { className: 'sg-me__wrap' },
-      list && list.length ? rows : el('p', { className: 'sheet__text' }, t('bn.history_empty'))),
+      list && list.length ? rows : emptyBox('gift', t('bn.empty'), t('bn.history_empty'))),
     onClose: onGone,
   });
 }
@@ -2993,8 +3025,11 @@ function showFirstTip(app) {
     ? t('tip.three', { percent: rate(percent) })
     : t('tip.three_plain');
 
-  const line = (ico, text) => el('div', { className: 'sg-tip' },
-    el('span', { className: 'sg-tip__ico', 'aria-hidden': 'true' }, ico),
+  /* Значки берём из своего набора, а не системные эмодзи: у эмодзи свой цвет и
+     свой рисунок на каждом телефоне, и рядом с нашими линейными иконками они
+     выглядят вставкой из чужого приложения. */
+  const line = (name, text) => el('div', { className: 'sg-tip' },
+    el('span', { className: 'sg-tip__ico', 'aria-hidden': 'true', html: icon(name) }),
     el('span', { className: 'sg-tip__text' }, text));
 
   // Закрыли любым способом — считаем, что подсказку видели. Второй раз
@@ -3004,9 +3039,9 @@ function showFirstTip(app) {
   sheet({
     title: t('tip.title'),
     content: el('div', null,
-      line('📍', t('tip.one')),
-      line('🚚', t('tip.two')),
-      line('🎁', third)),
+      line('pin', t('tip.one')),
+      line('truck', t('tip.two')),
+      line('gift', third)),
     actions: [
       { label: t('tip.skip'), kind: 'ghost' },
       { label: t('tip.ok'), kind: 'primary' },

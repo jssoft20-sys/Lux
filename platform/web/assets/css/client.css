@@ -329,12 +329,28 @@ body,
 
 /* Подвал с главной кнопкой — тоже ручка панели: тянуть за него удобнее всего. */
 .sg-foot {
+  position: relative;
   flex: none;
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
   padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  background: var(--surface);
   touch-action: none;
+}
+
+/* Список уходит под подвал плавно, а не обрывается по линейке: резаный край
+   читается как «карточку обрезали», затухание — как «дальше есть ещё».
+   Когда листать нечего, градиент ложится на тот же фон и его не видно. */
+.sg-foot::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 20px;
+  pointer-events: none;
+  background: linear-gradient(to top, var(--surface), rgba(0, 0, 0, 0));
 }
 
 /* Сжатая строка маршрута на шаге выбора машины: откуда и куда одной кнопкой. */
@@ -537,7 +553,10 @@ body,
 .sg-panel .segmented__i,
 .sheet .segmented__i { min-height: 44px; }
 
-.sg-addr.is-empty .rowgroup__label { color: var(--muted-2); }
+/* Главная подсказка первого экрана — «Куда везём?». Самым бледным серым её
+   было не дочитать: --muted-2 годится для декоративных меток, но не для того,
+   ради чего человек открыл приложение. */
+.sg-addr.is-empty .rowgroup__label { color: var(--muted); }
 
 /* Строка опции с перечислением под названием: список выбранных услуг бывает
    длинным, а строка в карточке одна — лишнее уводим в многоточие. */
@@ -724,8 +743,11 @@ body,
 .sg-cta__price.is-stale,
 .sg-total__val.is-stale { opacity: .45; }
 
+/* Подпись под главной кнопкой: сколько платить сейчас, сколько курьеру. Её
+   читают ровно один раз и ровно в тот момент, когда решают платить, —
+   значит она должна читаться, а не угадываться. */
 .sg-note {
-  color: var(--muted-2);
+  color: var(--muted);
   font-size: var(--fs-xs);
   line-height: 1.35;
   text-align: center;

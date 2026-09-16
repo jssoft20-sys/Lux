@@ -881,7 +881,15 @@ const OWN_CSS = `
   background: var(--surface-2);
   cursor: pointer;
 }
-.sg-fav__ico { font-size: 22px; line-height: 1; }
+.sg-courier__color {
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.3;
+}
+
+.sg-fav__ico { display: flex; color: var(--warn); }
+.sg-fav__ico > svg { width: 22px; height: 22px; }
 .sg-fav__text { flex: 1 1 auto; min-width: 0; }
 /* Заголовок строки списка обычно в одну строку с многоточием, но здесь это
    предложение целиком — пусть переносится, обрезанное слово читается хуже. */
@@ -2890,7 +2898,9 @@ export function mountTrack(app, pid, token) {
     const favInput = el('input', { type: 'checkbox' });
     favInput.checked = isFav(c);
     const favRow = el('label', { className: 'sg-fav', hidden: true },
-      el('span', { className: 'sg-fav__ico' }, '⭐'),
+      // Звезда из своего набора: эмодзи рядом с линейными иконками выглядит
+      // вставкой из чужого приложения, да и цвет у него на каждом телефоне свой.
+      el('span', { className: 'sg-fav__ico', html: icon('star') }),
       el('span', { className: 'sg-fav__text' },
         el('span', { className: 'sg-item__title' }, t('mood.fav')),
         el('span', { className: 'sg-item__sub' }, t('mood.fav_hint'))),
@@ -3096,10 +3106,16 @@ export function mountTrack(app, pid, token) {
       avatar,
       el('div', { className: 'sg-courier__text' },
         el('div', { className: 'sg-courier__name' }, c.name || t('track.courier')),
+        /* Модель и номер — в одну строку, цвет машины — отдельной снизу.
+           Раньше всё это резалось многоточием на узком экране, и первым
+           терялся как раз цвет: а на улице человек ищет глазами белый бус,
+           а не «Mercedes Sprinte…». */
         el('div', { className: 'sg-courier__car' },
-          el('span', { className: 'truncate' },
-             [car2.model, car2.color].filter(Boolean).join(', ') || t('track.car')),
+          el('span', { className: 'truncate' }, car2.model || t('track.car')),
           plateNode),
+        car2.color
+          ? el('div', { className: 'sg-courier__color' }, car2.color)
+          : null,
         rate));
 
     mountStars(stars, { value: c.rating || 5, readonly: true });
@@ -3298,10 +3314,13 @@ export function mountTrack(app, pid, token) {
         el('span', { className: 'sg-opt__go', html: icon('go') }))));
     }
 
+    /* «Заказать ещё» — то же действие, что и на экране отменённого заказа, и
+       выглядеть оно должно так же. Раньше здесь была бледная кнопка-призрак,
+       а там — жёлтая: одно действие в двух видах читается как два разных. */
     foot.appendChild(el('button', {
-      type: 'button', className: 'btn btn--ghost btn--lg btn--block',
+      type: 'button', className: 'sg-cta',
       onClick: () => { app.forgetOrder(); app.go('/'); },
-    }, t('track.repeat')));
+    }, el('span', { className: 'sg-cta__label' }, t('track.repeat'))));
 
     const node = el('div', { className: 'sg-step' }, headBox('done', order).node, body, foot);
     return { name: 'done:' + (store.get().rated ? '1' : '0'), node, update() {} };
