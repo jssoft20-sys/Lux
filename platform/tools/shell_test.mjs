@@ -77,6 +77,28 @@ async function main() {
       return cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0;
     });
     ok('и она уходит сама, а не висит', gone);
+
+    // Владелец просил прямо: «главное чтоб постоянно не надоедало при
+    // перезагрузке сайта». Значит на повторном открытии её быть не должно
+    // вовсе — ни анимации, ни жёлтой вспышки на первом кадре.
+    let flashed = false;
+    const watch = setInterval(async () => {
+      try {
+        const seen = await page.evaluate(() => {
+          const s = document.querySelector('.sg-splash');
+          if (!s) return false;
+          const cs = getComputedStyle(s);
+          return cs.display !== 'none' && cs.visibility !== 'hidden' && Number(cs.opacity) > 0.1;
+        });
+        if (seen) flashed = true;
+      } catch (e) { /* страница как раз перезагружается */ }
+    }, 60);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2500);
+    clearInterval(watch);
+    const boot = await page.evaluate(() => document.documentElement.dataset.bootKind || '');
+    ok('при перезагрузке заставка больше не показывается', !flashed && boot === 'warm',
+       `запуск=${boot}, мелькала=${flashed}`);
     await ctx.close();
   }
 

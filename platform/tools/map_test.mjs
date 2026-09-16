@@ -622,6 +622,40 @@ async function main() {
      Math.abs(grab.away - grab.want) > 80 && Math.abs(grab.home - grab.want) < 14,
      `оттащили на ${grab.away}, вернулась на ${grab.home}, место машины ${grab.want}`);
 
+  /* На это водитель жаловался прямее всего: «по карте баг — когда отдаляешь и
+     двигаешься». Он отдалял карту, чтобы понять, где вообще едет, а следующая
+     же посылка координат возвращала масштаб вплотную к машине. Руль у человека —
+     значит и масштаб его, пока он сам не попросит вернуться. */
+  const zoomHold = await page.evaluate(async () => {
+    window.M.follow({ lat: 42.8796, lng: 74.5776, heading: 60, speed: 9 },
+      { marker: window.car, zoom: 17, resume: 60000 });
+    await new Promise(r => setTimeout(r, 500));
+    const near = window.M.getZoom();
+    await window.haul(0, -120, 6, 14);          // взялся за карту сам
+    window.M.setView(window.M.getCenter(), near - 3, { animate: false });
+    await new Promise(r => setTimeout(r, 200));
+    const wide = window.M.getZoom();
+    // Телефон продолжает слать координаты — каждая с «навигаторным» масштабом.
+    for (let i = 1; i <= 4; i++) {
+      window.M.follow({ lat: 42.8796 + 0.0012 * i, lng: 74.5776 + 0.0022 * i, heading: 60, speed: 9 },
+        { marker: window.car, zoom: 17, resume: 60000 });
+      await new Promise(r => setTimeout(r, 400));
+    }
+    const held = window.M.getZoom();
+    // А теперь человек сам просит вернуться к машине — вот тут масштаб обязан
+    // подтянуться обратно, иначе кнопка «к машине» ничего не делает.
+    window.M.follow({ lat: 42.8796, lng: 74.5776, heading: 60, speed: 9 },
+      { marker: window.car, zoom: 17, snap: true });
+    await new Promise(r => setTimeout(r, 900));
+    return { near, wide, held, after: window.M.getZoom() };
+  });
+  ok('отдалённая карта не прыгает обратно на каждой точке GPS',
+     Math.abs(zoomHold.held - zoomHold.wide) < 0.2,
+     `отдалили до ${zoomHold.wide}, после четырёх точек ${zoomHold.held}`);
+  ok('а «к машине» масштаб возвращает',
+     Math.abs(zoomHold.after - zoomHold.near) < 0.2,
+     `было ${zoomHold.near}, стало ${zoomHold.after}`);
+
   const back = await page.evaluate(async () => {
     window.M.setRouteProgress(1);
     const full = document.querySelector('.map__route-line').getAttribute('d') || '';

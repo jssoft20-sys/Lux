@@ -3660,7 +3660,11 @@ export function renderJob(root, ctx) {
     const me = [point.lat, point.lng];
     putCar(me, point.heading);
     if (following) {
-      map.follow(fixPos(point.lat, point.lng, point.heading, point.speed), followOpts());
+      // Масштаб отдаём только когда ведение включают заново (startFollow со
+      // snap). На каждой посылке координат его слать незачем: карта и так
+      // держит свой, а лишний zoom — это ещё один шанс дёрнуть вид под рукой.
+      map.follow(fixPos(point.lat, point.lng, point.heading, point.speed),
+                 followOpts({ zoom: 0 }));
     } else if (!backTimer && !firstTimer) {
       // Ведение не включилось на старте — значит, датчик тогда ещё молчал.
       // Первая же координата ставит машину на место, нажимать ничего не надо.

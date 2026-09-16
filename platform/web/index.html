@@ -85,6 +85,10 @@
     if (window.matchMedia && matchMedia('(display-mode: standalone)').matches) cold = true;
     if (navigator.standalone === true) cold = true;
     r.dataset.boot = cold ? 'cold' : 'warm';
+    // Тот же признак, но он не меняется по ходу загрузки: data-boot оболочка
+    // переводит в 'done', а правило «на тёплом старте заставки нет» должно
+    // держаться до конца, иначе она мигнёт на прощание.
+    r.dataset.bootKind = cold ? 'cold' : 'warm';
 
     var meta = document.querySelector('meta[name="theme-color"]');
     var accent = getComputedStyle(r).getPropertyValue('--accent').trim();

@@ -2086,7 +2086,13 @@ export function createMap(container, options = {}) {
     if (o.resume !== undefined) f.resume = Math.max(0, +o.resume || 0);
     // «вернись к машине сейчас» — после того, как человек её потерял из виду
     if (o.snap && f.hold) { f.hold = 0; f.chase = true; clearTimeout(followTimer); followTimer = 0; }
-    if (o.zoom) zoomTo(clamp(+o.zoom, opt.minZoom, opt.maxZoom), { x: w / 2, y: h * f.anchor });
+    // Масштаб трогаем только когда руль у слежения. Человек отдалил карту,
+    // чтобы посмотреть, где он вообще едет, — и каждая следующая посылка
+    // координат возвращала бы его вплотную к машине. Именно на это и жаловались:
+    // «отдаляешь и двигаешься по карте» — а она сама прыгает обратно.
+    // Пауза тут та же, что и у центра (holdFollow), и «вернись к машине»
+    // (o.snap) её снимает строкой выше, так что кнопка работает как и работала.
+    if (o.zoom && !f.hold) zoomTo(clamp(+o.zoom, opt.minZoom, opt.maxZoom), { x: w / 2, y: h * f.anchor });
 
     const gap = now - f.last;
     f.last = now;

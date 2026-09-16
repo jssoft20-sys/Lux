@@ -154,7 +154,7 @@ function watchTheme() {
 
 /* ─────────────────────────────────────────────────────── заставка */
 
-const splash = document.getElementById('sg-splash');
+let splash = document.getElementById('sg-splash');
 let splashUp = !!splash;
 let splashDone = null;
 
@@ -226,11 +226,22 @@ function runSplash() {
     paintBar();
     return;
   }
+  const cold = root.dataset.boot === 'cold';
+  if (!cold) {
+    // Тёплая перезагрузка — заставки нет вовсе. Она нужна, чтобы скрасить
+    // первое ожидание; когда всё уже в кэше, жёлтая вспышка на каждом
+    // обновлении страницы только надоедает, о чём и просил владелец.
+    // Разметку при этом не трогаем: следующий холодный запуск её найдёт.
+    splashDone = Promise.resolve();
+    splash.remove();          // без прощального затухания: её и не показывали
+    splash = null;
+    hideSplash();
+    return;
+  }
   // На заставке телефон красит верхнюю полосу в её же цвет — иначе над жёлтым
   // экраном висит светлая или тёмная плашка, и это выглядит как недогруз.
   paintBar(getComputedStyle(root).getPropertyValue('--accent').trim() || '#FFDF00');
 
-  const cold = root.dataset.boot === 'cold';
   splashDone = (async () => {
     await Promise.race([
       Promise.all([waitFonts(), waitScreen()]),
