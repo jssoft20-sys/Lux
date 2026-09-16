@@ -1,0 +1,1662 @@
+/* Приложение курьера: вход, смена, предложение заказа, работа, деньги, профиль.
+   Подключается последним — после tokens, base, components и map.
+
+   Экран водителя живёт особняком от клиентского: телефон стоит в держателе,
+   человек за рулём, и всё важное должно попадаться пальцу без прицеливания.
+   Отсюда крупные кнопки (на экране заказа — от 56 px), высокий контраст
+   и минимум мелкого текста.
+
+   Светлая тема основная. Жёлтый здесь — заливка, а не буквы: на белом жёлтый
+   текст не читается, поэтому везде, где акцент это надпись или значок, берём
+   --accent-text, а сам --accent оставляем фону. */
+
+/* Чернила фиолетовых зон спроса. Живут здесь, а не в tokens.css: зоны рисует
+   только карта курьера, и общей дизайн-системе этот цвет не нужен. */
+:root {
+  --zone-ink: #7C46DC;
+  --zone-soft: rgba(124, 70, 220, .16);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --zone-ink: #AE8DF3;
+    --zone-soft: rgba(174, 141, 243, .18);
+  }
+}
+
+:root[data-theme='dark'] {
+  --zone-ink: #AE8DF3;
+  --zone-soft: rgba(174, 141, 243, .18);
+}
+
+/* ══════════════════════════════════════════════════════ переключение экранов */
+
+/* Без атрибута data-screen показывается вход: если скрипт в шапке не отработал,
+   человек увидит форму, а не пустую страницу. */
+#gate { display: flex; }
+#app { display: none; }
+
+html[data-screen='app'] #gate { display: none; }
+html[data-screen='app'] #app { display: flex; }
+
+/* ══════════════════════════════════════════════════════ без зума страницы
+
+   Айфон приближает страницу, как только фокус попадает в поле мельче 16 px,
+   и мета-тегом это не выключается. Средство одно — не давать полям быть
+   мельче. Классы полей перечислены нарочно: у .field__input свой размер,
+   и без явного перебивания он победил бы. */
+
+input,
+select,
+textarea,
+.field__input,
+textarea.field__input,
+select.field__input {
+  font-size: 16px;
+}
+
+/* Двойной тап и щипок по интерфейсу не должны ничего масштабировать.
+   pan-x pan-y оставляет прокрутку, но убирает и щипок, и двойной тап.
+   Карту не трогаем вовсе: свой touch-action ей ставит map.css, а жесты
+   разбирает core/map.js — перебьём, и щипок по карте уедет в прокрутку. */
+body,
+.app,
+.gate,
+.offer,
+.dock,
+.job__panel,
+.toasts,
+.sheet {
+  touch-action: pan-x pan-y;
+}
+
+/* Кнопки, ссылки и поля — отдельно: у них не должно быть даже задержки 300 мс. */
+.app button,
+.app a,
+.app label,
+.app input,
+.app select,
+.app textarea,
+.gate button,
+.gate input,
+.gate select,
+.gate label,
+.offer button,
+.offer a,
+.sheet button,
+.sheet a,
+.sheet input,
+.sheet select,
+.sheet textarea {
+  touch-action: manipulation;
+}
+
+/* ══════════════════════════════════════════════════════ иконки
+
+   Лист символов лежит в разметке страницы и сам ничего не занимает.
+   Толщина линии, скругления и цвет заданы здесь, а не в каждой иконке:
+   так весь набор гарантированно выглядит как один набор. Заливка внутри
+   символа задаётся атрибутом на самой фигуре — селектор туда не достаёт. */
+
+.sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.ico {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ico--xs { width: 13px; height: 13px; stroke-width: 2.4; }
+.ico--sm { width: 18px; height: 18px; stroke-width: 2; }
+.ico--lg { width: 28px; height: 28px; stroke-width: 1.7; }
+
+/* ══════════════════════════════════════════════════════ вход и регистрация */
+
+.gate {
+  flex-direction: column;
+  gap: var(--sp-4);
+  width: 100%;
+  max-width: 460px;
+  margin-inline: auto;
+  padding: calc(var(--sp-6) + var(--safe-t)) var(--sp-4) calc(var(--sp-6) + var(--safe-b));
+}
+
+.gate__head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  text-align: center;
+  padding-bottom: var(--sp-2);
+}
+
+.gate__logo {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-md);
+}
+
+.gate__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: 800;
+  letter-spacing: -.02em;
+}
+
+.gate__sub {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.gate__tabs { width: 100%; }
+
+/* Базовый сегмент рассчитан на 40 px — за рулём в него не попасть.
+   Везде, где переключатель нажимают пальцем, поднимаем до нормальной кнопки. */
+.gate__tabs .segmented__i,
+.seg-wrap .segmented__i { min-height: 44px; }
+
+.gate__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.gate__hint {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.gate__group {
+  margin-top: var(--sp-2);
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.gate__pair,
+.gate__trio {
+  display: grid;
+  gap: var(--sp-3);
+  grid-template-columns: 1fr 1fr;
+}
+.gate__trio { grid-template-columns: repeat(3, 1fr); }
+
+/* На 360 px три поля кузова в ряд дают по 96 px — метка «Ширина» уже не влезает,
+   поэтому в самом узком случае они складываются в два ряда. */
+@media (max-width: 379px) {
+  .gate__trio { grid-template-columns: 1fr 1fr; }
+}
+
+.gate__err {
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--err-soft);
+  color: var(--err);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+.gate__link {
+  align-self: center;
+  min-height: 44px;
+  padding: 0 var(--sp-3);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.gate__link:active { color: var(--text); }
+
+.gate__foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  margin-top: auto;
+  padding-top: var(--sp-5);
+}
+
+.gate__lang {
+  min-height: 40px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-full);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.gate__lang.is-on { background: var(--surface-2); color: var(--text); }
+
+.gate__dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+/* Глаз у поля пароля. Поле само тянется на всю ширину, кнопка ложится поверх. */
+.field__eye {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: var(--r-sm);
+  color: var(--muted);
+}
+.field__eye::before {
+  content: '';
+  width: 20px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+}
+.field__eye::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.field__eye.is-on { color: var(--accent-text); }
+.field__eye.is-on::after { box-shadow: 0 0 0 4px var(--surface-2); }
+.field__eye:active { transform: scale(var(--press)); }
+
+/* Экран «заявка принята»: занимает всё, дальше идти некуда. */
+.gate__done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-7) var(--sp-4);
+  text-align: center;
+}
+
+.gate__done-mark {
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.gate__done-mark > svg { width: 36px; height: 36px; }
+
+/* ══════════════════════════════════════════════════════ каркас приложения */
+
+.app {
+  flex-direction: column;
+  min-height: 100dvh;
+  max-width: var(--page-max);
+  margin-inline: auto;
+}
+
+.app__top {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-ui);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--header-h);
+  padding: var(--safe-t) var(--sp-4) 0;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.app__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+}
+
+.app__sub {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.app__main {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--sp-4) var(--sp-4) calc(var(--dock-h) + var(--safe-b) + var(--sp-4));
+}
+
+.app__main--flush { padding-inline: 0; }
+
+/* Загрузочный кружок до первой отрисовки. */
+.boot {
+  display: grid;
+  place-items: center;
+  min-height: 50dvh;
+}
+.boot__ring {
+  width: 34px;
+  height: 34px;
+  border: 3px solid var(--surface-3);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: sg-spin 680ms linear infinite;
+}
+
+/* ── нижняя панель разделов ───────────────────────────────────────────────
+
+   Четыре раздела: смена, заказы, заработок, профиль. Панель прижата к низу
+   и добирает высоту на «подбородок» айфона через --safe-b, а .app__main
+   отступает ровно на её высоту — содержимое под неё не заезжает.
+   Высота считается так: 6 + 64 + 6 = 76 = --dock-h. Меняете одно — правьте
+   и токен, иначе последняя строка списка спрячется за панелью. */
+
+.dock {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  z-index: var(--z-ui);
+  display: flex;
+  gap: 2px;
+  width: 100%;
+  max-width: var(--page-max);
+  min-height: calc(var(--dock-h) + var(--safe-b));
+  transform: translateX(-50%);
+  padding: 6px var(--sp-2) calc(6px + var(--safe-b));
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--line-soft);
+}
+
+.dock__i {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 64px;
+  padding: 0 2px;
+  border-radius: var(--r-md);
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  transition: color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease),
+              transform var(--dur-1) var(--ease);
+}
+
+/* Иконку кладут и голым svg, и в обёртке .dock__ico — ловим оба случая. */
+.dock__i svg { width: 24px; height: 24px; }
+
+.dock__ico {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 30px;
+  border-radius: var(--r-full);
+  transition: background-color var(--dur-2) var(--ease), transform var(--dur-2) var(--ease-spring);
+}
+
+/* Подпись раздела: на 360 px «Заработок» ровно влезает, но запас нужен. */
+.dock__t {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.dock__i:active { transform: scale(var(--press)); }
+
+/* Активный раздел: значок в жёлтой таблетке, подпись тёмно-золотая —
+   чистый жёлтый буквами на белом не читается. */
+.dock__i.is-on { color: var(--accent-text); }
+.dock__i.is-on .dock__ico { background: var(--accent); color: var(--on-accent); }
+
+/* Точка на разделе «Заказы», когда заказ в работе. */
+.dock__mark {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  margin-left: 12px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--err);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+/* ══════════════════════════════════════════════════════ смена */
+
+.shift {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* Главное на экране — одна карточка: кнопка смены, причина её нажать и
+   предупреждение о геолокации. Раздельными карточками они разъезжались бы
+   по экрану, а связь между ними как раз в том, что они рядом. */
+.shift__head {
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-2);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-1);
+}
+
+/* Главный переключатель смены. Это единственная кнопка, которую ищут
+   на бегу, поэтому она крупная и меняет цвет целиком. */
+.shift__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  width: 100%;
+  padding: var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  text-align: left;
+  transition: background-color var(--dur-2) var(--ease),
+              transform var(--dur-1) var(--ease);
+}
+.shift__toggle:active { transform: scale(var(--press)); }
+
+.shift__toggle.is-on {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--shadow-accent);
+}
+
+.shift__state {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 800;
+  letter-spacing: -.01em;
+}
+
+.shift__note {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-family: var(--font-text);
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+.shift__toggle.is-on .shift__note { color: rgba(22, 21, 15, .72); }
+
+/* Кружок-лампа: гаснет и загорается вместе со сменой. */
+.shift__lamp {
+  position: relative;
+  flex: none;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  transition: background-color var(--dur-2) var(--ease);
+}
+.shift__lamp::after {
+  content: '';
+  position: absolute;
+  inset: 18px;
+  border-radius: 50%;
+  background: var(--muted-2);
+  transition: background-color var(--dur-2) var(--ease), transform var(--dur-2) var(--ease-spring);
+}
+.shift__toggle.is-on .shift__lamp { background: rgba(22, 21, 15, .16); }
+.shift__toggle.is-on .shift__lamp::after { background: var(--on-accent); transform: scale(1.28); }
+
+/* Пульсирующее кольцо, пока ждём заказ. */
+.shift__toggle.is-on .shift__lamp::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--on-accent);
+  opacity: 0;
+  animation: sg-pulse-ring 2.2s var(--ease) infinite;
+}
+
+@keyframes sg-pulse-ring {
+  0% { transform: scale(.7); opacity: .5; }
+  70% { transform: scale(1.25); opacity: 0; }
+  100% { opacity: 0; }
+}
+
+/* Строка спроса под кнопкой: «Рядом с вами сейчас 12 заказов». Это и есть
+   причина выйти на линию, поэтому она стоит вплотную к кнопке, а фиолетовая
+   точка повторяет цвет пятен на карте — связь видна без объяснений. */
+.shift__near {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 52px;
+  margin-top: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--zone-soft);
+  color: var(--text);
+  text-align: left;
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+.shift__near:active { transform: scale(var(--press)); }
+
+.shift__near-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--zone-ink);
+  box-shadow: 0 0 0 0 var(--zone-soft);
+  animation: sg-zone-beat 2.4s var(--ease) infinite;
+}
+
+@keyframes sg-zone-beat {
+  0% { box-shadow: 0 0 0 0 var(--zone-soft); }
+  70% { box-shadow: 0 0 0 9px rgba(124, 70, 220, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(124, 70, 220, 0); }
+}
+
+.shift__near-t {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.shift__near-go {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: var(--zone-ink);
+}
+.shift__near-go > svg { width: 18px; height: 18px; }
+
+/* Плашка «включите геолокацию». Живёт в той же карточке, что и кнопка. */
+.shift__geo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-1);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+.shift__geo .btn { flex: none; }
+
+.shift__map {
+  position: relative;
+  height: clamp(220px, 38dvh, 340px);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+}
+
+.shift__sound {
+  padding: var(--sp-4);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-1);
+}
+
+/* ── деньги за сегодня ────────────────────────────────────────────────────
+
+   Одна карточка на все цифры дня: сумма, три факта, неделя с месяцем и цель.
+   Строки разделены линиями, а не зазорами, — так это читается как один
+   отчёт, а не как пять разных сообщений. */
+
+.earn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-5) var(--sp-4) var(--sp-4);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-1);
+}
+
+.earn__top { padding-inline: var(--sp-1); }
+
+.earn__k { color: var(--muted); font-size: var(--fs-sm); }
+
+/* Сумма чёрным, а не жёлтым: жёлтые цифры на белом не прочитать,
+   а это самое крупное число на экране. */
+.earn__v {
+  font-family: var(--font-display);
+  font-size: var(--fs-display);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.03em;
+  line-height: 1.05;
+}
+
+.earn__facts,
+.earn__past {
+  display: grid;
+  gap: var(--sp-2);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line-soft);
+}
+
+.earn__facts { grid-template-columns: 1fr 1fr 1fr; }
+.earn__past { grid-template-columns: 1fr 1fr; }
+
+.fact {
+  min-width: 0;
+  padding-inline: var(--sp-1);
+  text-align: left;
+  color: inherit;
+}
+
+.fact b {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  /* «5 ч 20 мин» и «12 400 сом» не должны переноситься посередине. */
+  white-space: nowrap;
+}
+
+.fact span { color: var(--muted); font-size: var(--fs-xs); }
+
+/* Неделя и месяц ведут в раздел денег, поэтому это кнопки. */
+.fact--tap {
+  min-height: 52px;
+  border-radius: var(--r-md);
+  transition: background-color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
+}
+.fact--tap:active { background: var(--surface-2); transform: scale(var(--press)); }
+
+/* ══════════════════════════════════════════════════════ предложение заказа */
+
+.offer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  animation: sg-offer-in var(--dur-2) var(--ease) both;
+}
+
+@keyframes sg-offer-in {
+  from { opacity: 0; transform: translateY(16px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.offer__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: calc(var(--sp-5) + var(--safe-t)) var(--sp-4) var(--sp-4);
+}
+
+.offer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.offer__kind {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: 800;
+  letter-spacing: -.02em;
+}
+
+.offer__pay {
+  padding: var(--sp-4) var(--sp-5);
+  border-radius: var(--r-xl);
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--shadow-accent);
+  text-align: center;
+}
+
+.offer__pay-k {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  opacity: .72;
+}
+
+.offer__pay-v {
+  font-family: var(--font-display);
+  font-size: var(--fs-display);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -.02em;
+}
+
+.offer__pay-note {
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  opacity: .72;
+}
+
+.offer__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
+
+/* Адрес с точкой и ниткой между точками. */
+.point {
+  position: relative;
+  display: flex;
+  gap: var(--sp-3);
+  padding-left: 2px;
+}
+
+.point__mark {
+  flex: none;
+  position: relative;
+  width: 22px;
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
+}
+
+.point__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.point--to .point__dot {
+  border-radius: 3px;
+  background: var(--text);
+  box-shadow: 0 0 0 3px var(--surface-3);
+}
+
+/* Нитка тянется от точки вниз до следующей. */
+.point:not(:last-child) .point__mark::after {
+  content: '';
+  position: absolute;
+  top: 20px;
+  bottom: -14px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.point__body { flex: 1 1 auto; min-width: 0; }
+
+.point__addr {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.point__extra {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+.point__note {
+  margin-top: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+.point__acts {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+/* «Позвонить», «Навигатор», «Ожидание» нажимают на ходу и часто в перчатках —
+   мелкая кнопка из общей библиотеки здесь не годится. */
+.point__acts .btn,
+.wait .btn { min-height: 44px; padding-inline: var(--sp-4); }
+
+/* Нижняя часть предложения: «Пропустить» и кнопка с кольцом таймера. */
+.offer__foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  padding-bottom: calc(var(--sp-4) + var(--safe-b));
+  border-top: 1px solid var(--line-soft);
+  background: var(--surface);
+}
+
+.offer__skip {
+  flex: 1 1 auto;
+  min-height: 56px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 600;
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+.offer__skip:active { transform: scale(var(--press)); background: var(--surface-3); }
+
+/* Кнопка «Принять» в кольце обратного отсчёта. */
+.ring {
+  position: relative;
+  flex: none;
+  width: 116px;
+  height: 116px;
+}
+
+.ring__svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+  overflow: visible;
+}
+
+.ring__track { stroke: var(--surface-3); }
+
+/* Дуга отсчёта тёмная, а не жёлтая: жёлтая дуга вокруг жёлтой кнопки сливается
+   с ней, и понять, сколько осталось секунд, можно только по цифрам. */
+.ring__bar {
+  stroke: var(--ink);
+  stroke-linecap: round;
+  transition: stroke var(--dur-2) var(--ease);
+}
+.ring__bar.is-hot { stroke: var(--err); }
+
+.ring__btn {
+  position: absolute;
+  inset: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 800;
+  box-shadow: var(--shadow-accent);
+  transition: transform var(--dur-1) var(--ease);
+}
+.ring__btn:active { transform: scale(.94); }
+.ring__btn:disabled { opacity: .5; }
+
+.ring__left {
+  font-family: var(--font-text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  opacity: .72;
+}
+
+/* ══════════════════════════════════════════════════════ заказ в работе
+
+   Экран заказа — это навигатор: карта во весь экран, сверху карточка манёвра,
+   снизу одна строка с временем в пути и главная кнопка. Всё остальное —
+   адреса, телефоны, деньги — открывается полноэкранной шторкой «Детали».
+
+   Разметка (её собирает courier/work.js):
+     <div class="job job--full">
+       <div class="job__map"></div>
+       <div class="job__top">   назад · карточка манёвра · навигатор </div>
+       <button class="job__round job__round--eye"></button>
+       <div class="job__panel">
+         <div class="job__row"> время в пути · позвонить · чат </div>
+         <div class="wait"></div>
+         <div class="act"> главная кнопка </div>
+       </div>
+     </div>
+   Высоту панели скрипт кладёт в --job-panel: от неё считаются кнопка карты
+   и подпись об источнике плиток, чтобы они не спрятались под панелью. */
+
+.job {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.job__map {
+  position: relative;
+  height: clamp(200px, 34dvh, 320px);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+}
+
+.job--full {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-sheet);
+  gap: 0;
+  background: var(--bg);
+  --job-panel: 150px;
+}
+
+.job--full .job__map {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 30dvh;
+  border-radius: 0;
+  /* Панель карту не перекрывает — карта просто кончается над ней. Подпись об
+     источнике плиток поднимаем только над круглой кнопкой ведения. */
+  --map-ui-bottom: calc(56px + var(--sp-4));
+}
+
+/* ── верх экрана: куда едем прямо сейчас ──────────────────────────────── */
+
+.job__top {
+  position: absolute;
+  left: var(--sp-3);
+  right: var(--sp-3);
+  top: calc(var(--safe-t) + var(--sp-3));
+  z-index: 2;
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+  pointer-events: none;
+}
+.job__top > * { pointer-events: auto; }
+
+/* Карточка манёвра: сверху расстояние и слово «забрать», под ними адрес
+   во всю ширину. Читается вполглаза, как дорожный знак. Адресу нужна вся
+   строка: «микрорайон Асанбай, 32/1» короче не становится. */
+.job__next {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  min-height: 64px;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+  text-align: left;
+  /* Долгое нажатие открывает навигатор, поэтому системное выделение текста
+     и всплывающее меню здесь только мешают. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+.job__next:active { transform: scale(.985); background: var(--surface-2); }
+
+.job__next-k {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.job__next-d {
+  flex: none;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.job__next-w {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.job__next-a {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+/* ── круглые кнопки поверх карты ──────────────────────────────────────── */
+
+.job__round {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-2);
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+.job__round:active { transform: scale(.92); }
+.job__round > svg { width: 24px; height: 24px; }
+
+/* В верхней строке карточка манёвра выше кнопок — держим их по центру,
+   иначе кружки прилипают к её верхнему краю. */
+.job__top .job__round { align-self: center; }
+
+/* Чужой навигатор остаётся, но маленькой кнопкой сбоку: своей карты хватает. */
+.job__round--sm {
+  align-self: center;
+  width: 44px;
+  height: 44px;
+}
+.job__round--sm > svg { width: 20px; height: 20px; }
+
+/* Переключатель «вести по маршруту» ↔ «показать весь маршрут». Стоит слева
+   внизу, над панелью: правая сторона отдана подписи карты и большому пальцу. */
+.job__round--eye {
+  position: absolute;
+  left: var(--sp-3);
+  bottom: calc(var(--job-panel) + var(--sp-3));
+  z-index: 2;
+}
+
+.job__round--call { background: var(--ok); color: #FFFFFF; }
+.job__round--act { background: var(--surface-2); }
+
+/* ── панель снизу: одна строка и главная кнопка ───────────────────────── */
+
+.job__panel {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-3) 0;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-sheet);
+}
+
+.job__row { display: flex; align-items: center; gap: var(--sp-2); }
+
+/* Время в пути и кнопка «Детали» — это один элемент: вся строка открывает
+   полноэкранные детали. Отдельной надписи «Детали» нет нарочно, её место
+   занимают цифры, ради которых сюда и смотрят. */
+.job__info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 56px;
+  padding: 0 var(--sp-2) 0 var(--sp-3);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  text-align: left;
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+.job__info:active { transform: scale(.985); background: var(--surface-3); }
+
+.job__eta { flex: 1 1 auto; min-width: 0; }
+
+.job__eta-v {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+  line-height: 1.15;
+}
+
+.job__eta-s {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.3;
+}
+
+.job__info-go {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--muted-2);
+}
+.job__info-go > svg { width: 20px; height: 20px; }
+
+/* Внутри панели кнопка действия уже никуда не всплывает: она и так внизу. */
+.job--full .act {
+  position: static;
+  max-width: none;
+  transform: none;
+  padding: 0 0 calc(var(--sp-3) + var(--safe-b));
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-top: 0;
+}
+
+/* За рулём палец не целится, поэтому на экране заказа нет ничего мельче 56 px. */
+.job--full .act .btn,
+.job--full .wait .btn { min-height: 56px; }
+
+/* Счётчик ожидания. Пока идёт — подсвечен. */
+.wait {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  border: 1px solid transparent;
+}
+.wait.is-on {
+  background: var(--warn-soft);
+  border-color: color-mix(in srgb, var(--warn) 34%, transparent);
+}
+
+.wait__body { flex: 1 1 auto; min-width: 0; }
+
+.wait__t {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.wait.is-on .wait__t { color: var(--warn); }
+
+.wait__note {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+}
+
+.act__step {
+  display: block;
+  margin-bottom: var(--sp-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  text-align: center;
+}
+
+/* Пока открыт заказ, навигация под ним не нужна и мешала бы.
+   Правило с :has() срабатывает само; атрибут на <html> оставлен для
+   браузеров постарше и для случая, когда экран рисуют вне .app. */
+.app--job .dock { display: none; }
+html[data-job='full'] .dock { display: none; }
+body:has(.job--full) .dock { display: none; }
+
+/* ── панель действий вне полноэкранного заказа ──────────────────────────── */
+
+.act {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  z-index: var(--z-ui);
+  width: 100%;
+  max-width: var(--page-max);
+  transform: translateX(-50%);
+  padding: var(--sp-3) var(--sp-4) calc(var(--sp-3) + var(--safe-b));
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--line-soft);
+}
+
+/* ── полноэкранные детали заказа ────────────────────────────────────────── */
+
+.job__details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* Заголовок группы: не карточка, а подпись над ней — так группы читаются
+   как разделы одного документа, а не как отдельные сообщения. */
+.job__sect {
+  margin-top: var(--sp-2);
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.job__who {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+
+.job__who-name {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.job__who-acts { display: flex; gap: var(--sp-2); }
+.job__who-acts .btn { flex: 1 1 0; min-width: 0; min-height: 56px; }
+
+.job__kv-v {
+  flex: 0 1 auto;
+  min-width: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* Заработок с заказа — единственная цифра в деталях, которую ищут глазами. */
+.job__payout {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  border-radius: var(--r-lg);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.job__payout-k { font-size: var(--fs-sm); font-weight: 600; opacity: .72; }
+
+.job__payout-v {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+  white-space: nowrap;
+}
+
+/* ── свайп «завершить» ──────────────────────────────────────────────────── */
+
+/* Последний шаг подтверждается протяжкой: случайное касание не должно
+   закрывать заказ и списывать деньги. */
+.swipe {
+  position: relative;
+  height: 64px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  overflow: hidden;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.swipe__fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: var(--ok-soft);
+  transition: width var(--dur-2) var(--ease);
+}
+.swipe.is-drag .swipe__fill { transition: none; }
+
+.swipe__text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 44px;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.swipe__knob {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: var(--r-full);
+  background: var(--ok);
+  color: #FFFFFF;
+  transition: transform var(--dur-2) var(--ease);
+}
+.swipe.is-drag .swipe__knob { transition: none; }
+.swipe__knob > svg { width: 24px; height: 24px; }
+
+.swipe.is-done .swipe__fill { width: 100% !important; }
+.swipe.is-done .swipe__text { color: var(--ok); }
+
+/* ══════════════════════════════════════════════════════ история и деньги */
+
+.hist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.hist__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.hist__when {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  padding-top: 2px;
+}
+
+.hist__where { flex: 1 1 auto; min-width: 0; }
+
+.hist__addr {
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+.hist__addr + .hist__addr { color: var(--muted); }
+
+.hist__pay {
+  flex: none;
+  text-align: right;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hist__pay small {
+  display: block;
+  color: var(--muted);
+  font-family: var(--font-text);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+}
+
+/* ══════════════════════════════════════════════════════ профиль */
+
+.me {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.me__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+}
+
+.me__name {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.me__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+/* ── карточка водителя ────────────────────────────────────────────────────
+
+   Первое, что видно в профиле: фото, имя, звёзды, «на линии с такого-то»
+   и зелёный значок «Проверен». Значка нет вовсе, пока проверка не пройдена:
+   серая надпись «не проверен» рядом с именем читалась бы как обвинение. */
+
+.me__card {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-5) var(--sp-4);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-1);
+}
+
+.me__ava {
+  width: 72px;
+  height: 72px;
+  font-size: 26px;
+}
+
+.me__info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.me__rate {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: 6px;
+}
+
+.me__stars { display: inline-flex; }
+
+.me__score {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.me__orders {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.me__since {
+  margin-top: 4px;
+  color: var(--muted-2);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+.me__since:empty { display: none; }
+
+/* Значок проверки. Галочку рисует иконка #i-check, цвет даёт .badge--ok.
+   Стоит отдельной строкой, а не в углу карточки: в углу он на 360 px
+   наезжал бы на длинное имя, а имя важнее. */
+.me__ok {
+  margin-top: var(--sp-2);
+  min-height: 26px;
+  padding: 0 var(--sp-2) 0 6px;
+}
+
+/* ── строки профиля ───────────────────────────────────────────────────────
+
+   Каждая строка — кнопка целиком: попасть в неё пальцем можно откуда угодно,
+   а не только по названию. Слева иконка в мягком квадрате, справа стрелка. */
+
+.me__item {
+  width: 100%;
+  min-height: 60px;
+  text-align: left;
+  color: inherit;
+}
+
+.me__ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.me__ico .ico { width: 21px; height: 21px; }
+
+.me__ico--accent { background: var(--accent); color: var(--on-accent); }
+.me__ico--ok { background: var(--ok-soft); color: var(--ok); }
+.me__ico--warn { background: var(--warn-soft); color: var(--warn); }
+.me__ico--info { background: var(--info-soft); color: var(--info); }
+.me__ico--danger { background: var(--err-soft); color: var(--err); }
+
+.me__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.me__label {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+/* Подпись под названием: телефон, номер машины, «проверка идёт». */
+.me__note {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.me__note:empty { display: none; }
+
+/* Значение справа: язык, тема, рейтинг. Длинное — уступает названию. */
+.me__val {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.me__val:empty { display: none; }
+
+.me__go {
+  flex: none;
+  color: var(--muted-2);
+}
+
+.me__item--danger .me__label { color: var(--err); }
+.me__item--danger:active { background: var(--err-soft); }
+
+.me__kv {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  min-height: 52px;
+  padding: var(--sp-2) var(--sp-4);
+}
+
+.me__kv + .me__kv { border-top: 1px solid var(--line-soft); }
+
+.me__k { color: var(--muted); font-size: var(--fs-sm); }
+.me__v { text-align: right; font-weight: 600; }
+
+.me__sect {
+  margin: var(--sp-2) 0 calc(var(--sp-2) * -1);
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+/* ══════════════════════════════════════════════════════ мелочи */
+
+/* Плашка «нет связи» — приезжает сверху и не перекрывает ничего важного. */
+.link-lost {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 6px var(--sp-3);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pill > svg { width: 14px; height: 14px; }
+
+.seg-wrap { padding: 2px 0; }

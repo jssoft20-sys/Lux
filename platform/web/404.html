@@ -1,0 +1,40 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Страница не найдена — Sprinter Go</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/css/fonts.css">
+<link rel="stylesheet" href="/assets/css/tokens.css">
+<style>
+  html, body { height: 100%; }
+  body {
+    margin: 0; display: grid; place-items: center; padding: 24px;
+    background: var(--bg); color: var(--text);
+    font-family: var(--font-text); font-size: var(--fs-body);
+  }
+  .wrap { text-align: center; max-width: 380px; }
+  .mark { width: 84px; height: 84px; margin: 0 auto 20px; display: block; }
+  h1 { font-family: var(--font-display); font-size: var(--fs-h1); margin: 0 0 8px; letter-spacing: -.02em; }
+  p { color: var(--muted); margin: 0 0 24px; line-height: 1.55; }
+  a {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 48px; padding: 0 24px; border-radius: var(--r-full);
+    background: var(--accent); color: var(--on-accent); font-weight: 600;
+    text-decoration: none; transition: transform var(--dur-1) var(--ease);
+  }
+  a:active { transform: scale(.97); }
+</style>
+<div class="wrap">
+  <svg class="mark" viewBox="0 0 512 512" aria-hidden="true">
+    <rect width="512" height="512" rx="116" fill="#FFDF00"/>
+    <g fill="#16150F">
+      <path d="M96 196a24 24 0 0 1 24-24h150a24 24 0 0 1 24 24v130H96z"/>
+      <path d="M310 216h58a24 24 0 0 1 19.6 10.2l32 45.6A24 24 0 0 1 424 286v40h-114z"/>
+      <rect x="326" y="232" width="56" height="38" rx="8" fill="#FFDF00"/>
+      <circle cx="172" cy="352" r="40"/><circle cx="368" cy="352" r="40"/>
+    </g>
+    <g fill="#FFDF00"><circle cx="172" cy="352" r="15"/><circle cx="368" cy="352" r="15"/></g>
+  </svg>
+  <h1>Такой страницы нет</h1>
+  <p>Возможно, ссылка устарела или в адресе опечатка. Вернитесь на главную и оформите заказ заново.</p>
+  <a href="/">На главную</a>
+</div>

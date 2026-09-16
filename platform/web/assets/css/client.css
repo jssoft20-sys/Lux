@@ -1,0 +1,1295 @@
+/* Клиентское приложение: карта во весь экран и нижняя шторка поверх неё.
+   Подключается последним, поэтому здесь только то, чего нет в components.css.
+   Всё меряется от 360 px: на этой ширине ничего не обрезается и не переносится.
+
+   Правило одно: цвета и размеры — только переменные из tokens.css. */
+
+/* ══════════════════════════════════════════════════════════ каркас */
+
+/* Страница не прокручивается: прокрутка живёт внутри шторки, а карта тянется
+   жестами. Иначе на телефоне экран ездит вверх-вниз вместе с картой. */
+.sg-app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.sg-map {
+  position: absolute;
+  inset: 0;
+  /* Кнопки карты держим над шторкой. Высоту шторки проставляет app.js,
+     а --sg-panel-off — на сколько шторка сейчас уехала вниз (core/ui.js):
+     свернули шторку — кнопки опустились следом. */
+  --map-ui-bottom: calc(max(0px, var(--sg-panel-h, 240px) - var(--sg-panel-off, 0px)) + var(--sp-3));
+}
+
+/* ══════════════════════════════════════════════════════════ без зума страницы
+
+   Айфон приближает страницу, как только фокус попадает в поле мельче 16 px,
+   и никаким мета-тегом это не выключается. Единственное надёжное средство —
+   не давать полям быть мельче. Правило нарочно перечисляет и классы полей:
+   у .field__input свой размер, и без явного перебивания он победил бы. */
+
+input,
+select,
+textarea,
+.field__input,
+textarea.field__input,
+select.field__input,
+.sg-find__input {
+  font-size: 16px;
+}
+
+/* Двойной тап и щипок по интерфейсу масштабировать ничего не должны.
+   pan-x pan-y оставляет прокрутку и списки, но убирает и щипок, и двойной тап.
+   Карта из правила исключена: там жесты обрабатывает core/map.js. */
+body,
+.sg-app,
+.sg-top,
+.sg-panel,
+.toasts,
+.sheet {
+  touch-action: pan-x pan-y;
+}
+
+/* Карта сама ловит и щипок, и двойной тап (core/map.js), поэтому браузеру
+   на ней не оставляем ничего — иначе жесты уедут в прокрутку страницы. */
+.sg-map { touch-action: none; }
+
+/* Кнопки, ссылки и поля — отдельно: у них не должно быть даже задержки в 300 мс. */
+.sg-app button,
+.sg-app a,
+.sg-app label,
+.sg-app input,
+.sg-app select,
+.sg-app textarea,
+.sheet button,
+.sheet a,
+.sheet input,
+.sheet select,
+.sheet textarea {
+  touch-action: manipulation;
+}
+
+.sg-map button {
+  touch-action: manipulation;
+}
+
+/* ══════════════════════════════════════════════════════════ шапка */
+
+.sg-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--z-ui);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: calc(var(--safe-t) + var(--sp-2)) var(--sp-3) 0;
+  pointer-events: none;
+}
+
+.sg-top > * { pointer-events: auto; }
+
+.sg-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 44px;
+  padding: 0 var(--sp-3) 0 var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+}
+
+.sg-brand__logo {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-xs);
+}
+
+.sg-brand__name {
+  max-width: 40vw;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+
+.sg-lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: 0 5px;
+  border-radius: var(--r-full);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+}
+
+.sg-lang__i {
+  display: grid;
+  place-items: center;
+  min-width: 36px;
+  height: 34px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-full);
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.sg-lang__i.is-on {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ══════════════════════════════════════════════════════════ шторка */
+
+.sg-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.sg-panel__box {
+  position: relative;
+  width: 100%;
+  max-width: var(--sheet-max);
+  max-height: 86dvh;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: var(--safe-b);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-sheet);
+  pointer-events: auto;
+  /* Три положения панели двигает core/ui.js — он пишет сюда transform.
+     Пружинная кривая даёт лёгкий доводочный отскок, как в приложениях такси. */
+  transition: transform var(--dur-2) var(--ease-spring);
+  will-change: transform;
+}
+
+/* Пока панель в пальцах, анимация только мешает: она догоняет, а не ведёт. */
+.sg-panel--drag .sg-panel__box { transition: none; }
+
+/* Грип: за него тянут панель, тап по нему сворачивает и разворачивает.
+   Полоска маленькая, а нажимать надо во всю ширину и на полные 44 px —
+   поэтому кнопка высокая, а видна в ней только серая чёрточка. */
+.sg-panel__grip {
+  position: relative;
+  flex: none;
+  display: block;
+  width: 100%;
+  height: 44px;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  touch-action: none;
+  cursor: grab;
+}
+.sg-panel__grip:active { cursor: grabbing; }
+
+.sg-panel__grip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 16px;
+  width: 40px;
+  height: 4px;
+  margin-left: -20px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  transition: width var(--dur-2) var(--ease-spring), background-color var(--dur-1) var(--ease);
+}
+.sg-panel__grip:active::after { width: 54px; margin-left: -27px; background: var(--muted-2); }
+
+/* Панель опущена: список внутри больше не прокручивается, любой жест по нему
+   поднимает саму панель — иначе до неё было бы не дотянуться. */
+.sg-panel__box.is-down .sg-body {
+  overflow: hidden;
+  touch-action: none;
+}
+
+/* У свёрнутой панели виден только заголовок, поэтому и тень ей нужна плотнее:
+   она отделяет полоску панели от карты, которая под ней теперь почти вся. */
+.sg-panel[data-pos='peek'] .sg-panel__box { box-shadow: var(--shadow-3), var(--shadow-sheet); }
+
+/* Экран поиска адреса занимает почти весь экран — карта остаётся полоской сверху.
+   Высоту задаём самому шагу: тогда шторка доедет до неё плавно, как и все остальные. */
+.sg-step--tall { height: min(74dvh, 620px); }
+
+/* Слот меняет высоту вместе с шагом: app.js на время перехода задаёт её числом. */
+.sg-panel__slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  transition: height var(--dur-2) var(--ease);
+}
+
+.sg-step {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  opacity: 1;
+  transform: none;
+  /* Приход и уход шага: сдвиг с растворением, без мигания. Кривая пружинная —
+     содержимое доезжает мягко, как будто его подтолкнули, а не переключили. */
+  transition: opacity var(--dur-2) var(--ease),
+              transform var(--dur-2) var(--ease-spring);
+}
+
+/* Новый шаг приходит снизу, старый уходит вверх — движение читается как «дальше». */
+.sg-step--enter { opacity: 0; transform: translateY(16px) scale(.985); }
+
+.sg-step--out {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  opacity: 0;
+  transform: translateY(-12px) scale(.985);
+  pointer-events: none;
+  transition: opacity var(--dur-1) var(--ease-in),
+              transform var(--dur-2) var(--ease);
+}
+
+/* Шаг, который идёт назад, движется в обратную сторону. */
+.sg-step--back.sg-step--enter { transform: translateY(-16px) scale(.985); }
+.sg-step--out.sg-step--back-out { transform: translateY(12px) scale(.985); }
+
+/* Шапка шага — вторая ручка панели: за неё тянут так же, как за грип,
+   поэтому браузеру жесты здесь не отдаём. Сверху отступ меньше: над шапкой
+   теперь стоит грип и своё пустое место он уже дал. */
+.sg-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-4) var(--sp-2);
+  touch-action: none;
+}
+
+.sg-head__text { flex: 1 1 auto; min-width: 0; }
+
+.sg-head__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -.01em;
+}
+
+.sg-head__sub {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+
+.sg-back {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-left: -6px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--text);
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+}
+.sg-back:active { transform: scale(.92); background: var(--surface-3); }
+.sg-back > svg { width: 22px; height: 22px; }
+
+/* pan-y, а не auto: списку оставляем только вертикальную прокрутку. Дотянув её
+   до края, палец начинает тащить саму панель — этим занимается core/ui.js. */
+.sg-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding: 0 var(--sp-4);
+}
+
+/* Подвал с главной кнопкой — тоже ручка панели: тянуть за него удобнее всего. */
+.sg-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  touch-action: none;
+}
+
+/* Сжатая строка маршрута на шаге выбора машины: откуда и куда одной кнопкой. */
+.sg-route {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 52px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  text-align: left;
+  transition: background-color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
+}
+.sg-route:active { background: var(--surface-3); transform: scale(.985); }
+
+.sg-route__line {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.sg-route__line i {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+}
+.sg-route__line i:last-child { background: var(--text); border-radius: 2px; }
+.sg-route__line b { width: 2px; height: 10px; border-radius: 1px; background: var(--surface-3); }
+
+.sg-route__text { flex: 1 1 auto; min-width: 0; }
+
+.sg-route__row {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+.sg-route__row + .sg-route__row { color: var(--muted); }
+
+.sg-route__meta {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ══════════════════════════════════════════════════════════ машина в SVG
+
+   Пикап, спринтер и два грузовика с тентом рисует order.js. Три цвета на всю
+   машину: жёлтый кузов, тёмное стекло с резиной и светлый груз внутри. */
+
+.sgv { display: block; width: 100%; height: auto; }
+
+.sgv__body { fill: var(--accent); }
+.sgv__deck { fill: var(--accent); opacity: .58; }
+.sgv__hub { fill: var(--accent); }
+.sgv__glass { fill: rgba(16, 15, 10, .55); }
+.sgv__tyre { fill: rgba(14, 13, 9, .92); }
+.sgv__cargo { fill: var(--bg-soft); }
+.sgv__line {
+  fill: none;
+  stroke: rgba(16, 15, 10, .3);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+}
+.sgv__shade { fill: rgba(0, 0, 0, .16); }
+
+/* ══════════════════════════════════════════════════════════ карточка машины */
+
+/* Крупная картинка вместо строчки в списке: человек выбирает не тариф, а машину,
+   которая приедет к нему во двор. Под ней двумя спокойными строками — для чего
+   она годится и сколько увезёт. */
+.sg-car {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-4) var(--sp-5);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+
+.sg-car__art { width: 100%; max-width: 250px; }
+.sg-car__art .sgv { filter: drop-shadow(0 6px 10px rgba(34, 28, 12, .2)); }
+
+/* Машина сменилась — новая приезжает справа, а не подменяется втихую:
+   движение подтверждает, что нажатие сработало. */
+.sg-car__art.is-in { animation: sg-car-in var(--dur-3) var(--ease-spring) both; }
+
+@keyframes sg-car-in {
+  from { opacity: 0; transform: translateX(18px) scale(.94); }
+  to   { opacity: 1; transform: none; }
+}
+
+.sg-car__cap { text-align: center; }
+
+.sg-car__line {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+/* Описания у тарифа может не быть — пустая строка не должна занимать место. */
+.sg-car__line:empty { display: none; }
+
+/* ══════════════════════════════════════════════════════════ секции заказа */
+
+/* Экран заказа собран из трёх блоков: машина, опции, маршрут. Зазор задаём
+   только им — .sg-body общий, и на других экранах он ничего не двигает. */
+.sg-body--gap > * + * { margin-top: var(--sp-3); }
+
+.sg-sect__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-1);
+}
+
+.sg-sect__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -.01em;
+}
+
+/* Расстояние, время и одно слово о том, почему дольше. Обещать двадцать минут
+   в шесть вечера — враньё, за которое перед человеком отвечает курьер. */
+.sg-trip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.sg-trip__km {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.sg-trip__time { font-variant-numeric: tabular-nums; }
+
+.sg-trip__jam {
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-weight: 600;
+}
+.sg-trip__jam.is-free { background: var(--ok-soft); color: var(--ok); }
+
+/* ══════════════════════════════════════════════════════════ строки в карточке */
+
+/* Строка, которую order.js собирает сам, — переключатель «от двери до двери».
+   Занимает всю ширину строки группы: нажимать можно где угодно, а не только
+   по самому тумблеру в 44 px. */
+.sg-row {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  cursor: pointer;
+}
+
+/* Надбавка стоит рядом с тумблером и загорается вместе с ним: человек видит
+   цену до того, как включит, а не в чеке. */
+.sg-plus {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: color var(--dur-2) var(--ease), opacity var(--dur-2) var(--ease);
+}
+.sg-plus.is-on { color: var(--accent-text); }
+.sg-plus.is-stale { opacity: .45; }
+
+/* Чипы с пояснениями и кнопка «Адрес +» стоят внутри карточки отдельной
+   строкой, поэтому им нужна вся её ширина. */
+.rowgroup__row > .chips,
+.rowgroup__row > .sg-addmore { flex: 1 1 auto; min-width: 0; }
+.rowgroup__row > .sg-addmore { display: flex; }
+
+/* Под палец: базовые 40 px в клиенте малы. */
+.sg-panel .chip,
+.sheet .chip,
+.sg-panel .segmented__i,
+.sheet .segmented__i { min-height: 44px; }
+
+.sg-addr.is-empty .rowgroup__label { color: var(--muted-2); }
+
+/* Строка опции с перечислением под названием: список выбранных услуг бывает
+   длинным, а строка в карточке одна — лишнее уводим в многоточие. */
+.sg-optrow .rowgroup__sub {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sg-det--x { padding: 0 var(--sp-3); }
+.sg-det--x > svg { width: 18px; height: 18px; }
+
+/* Совет про этаж без лифта: мягкая плашка под карточкой опций. */
+.sg-tipline {
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+/* Подъезд, квартира, этаж и домофон — попарно: так шторка деталей помещается
+   на экран целиком и не выглядит анкетой. */
+.sg-dgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+}
+
+.sg-lift { padding: 2px; }
+
+/* Машин больше шести — сегменты не читаются, и выбор уходит в шторку списком. */
+.sg-cars .rowgroup__ico {
+  width: 58px;
+  height: 34px;
+  border-radius: var(--r-xs);
+  background: none;
+}
+.sg-cars .rowgroup__ico > svg { width: 58px; height: 30px; }
+.sg-cars .rowgroup__row.is-on { background: var(--accent-soft); }
+
+/* ══════════════════════════════════════════════════════════ пояснительные экраны */
+
+/* Картинки к «О грузчиках», «Об ожидании» и прочим рисует order.js: контур
+   плюс жёлтое пятно. Один стиль на все, поэтому цвета живут здесь. */
+.sga { width: 100%; height: auto; }
+.sga__blob { fill: var(--text); opacity: .07; }
+.sga__fill { fill: var(--accent); }
+.sga__ink {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sga__dash {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-dasharray: 2 10;
+  opacity: .45;
+}
+
+/* Машина на своём пояснительном экране занимает всю ширину картинки. */
+.sheet--car .story__art .sgv { width: 100%; }
+
+/* ══════════════════════════════════════════════════════════ строки-опции */
+
+.sg-opt {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--sp-2) 0;
+  text-align: left;
+}
+
+.sg-opt + .sg-opt { border-top: 1px solid var(--line-soft); }
+
+.sg-opt__text { flex: 1 1 auto; min-width: 0; }
+
+.sg-opt__title {
+  display: block;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.sg-opt__sub {
+  display: block;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+}
+
+.sg-opt__price {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sg-opt__total {
+  flex: none;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sg-opt__go {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--muted-2);
+}
+.sg-opt__go > svg { width: 20px; height: 20px; }
+
+/* Палец в 34 px попадает мимо, поэтому в клиенте счётчик крупнее базового. */
+.sg-panel .stepper__btn,
+.sheet .stepper__btn { width: 44px; height: 44px; }
+
+/* ══════════════════════════════════════════════════════════ главная кнопка */
+
+.sg-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 56px;
+  padding: 0 var(--sp-5);
+  border-radius: var(--r-lg);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-display);
+  /* Мягкое жёлтое свечение под кнопкой: она главная на экране, и это видно
+     раньше, чем человек прочитает надпись. */
+  box-shadow: var(--shadow-accent);
+  transition: transform var(--dur-1) var(--ease), opacity var(--dur-1) var(--ease),
+              box-shadow var(--dur-1) var(--ease);
+}
+.sg-cta:active:not(:disabled) { transform: scale(.98); box-shadow: var(--shadow-1); }
+.sg-cta:disabled { opacity: .45; box-shadow: none; }
+
+.sg-cta__label {
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  letter-spacing: .01em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sg-cta__price {
+  font-size: var(--fs-h3);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sg-cta__price.is-wait {
+  width: 72px;
+  height: 14px;
+  border-radius: var(--r-sm);
+  background: rgba(22, 21, 15, .22);
+  color: transparent;
+  animation: sg-pulse 1.5s ease-in-out infinite;
+}
+
+/* Пустое место на кнопке читается как поломка, поэтому на время пересчёта
+   прежняя цифра не исчезает, а просто гаснет. */
+.sg-cta__price,
+.sg-total__val {
+  transition: opacity var(--dur-2) var(--ease);
+}
+.sg-cta__price.is-stale,
+.sg-total__val.is-stale { opacity: .45; }
+
+.sg-note {
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+  text-align: center;
+}
+
+/* ══════════════════════════════════════════════════════════ поиск адреса */
+
+.sg-find {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 var(--sp-4) var(--sp-3);
+  padding: 0 var(--sp-2) 0 var(--sp-4);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  transition: border-color var(--dur-1) var(--ease);
+}
+.sg-find:focus-within { border-color: var(--accent-line); }
+
+.sg-find__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 52px;
+  background: none;
+  color: var(--text);
+  font-size: 16px;                 /* меньше нельзя: айфон приблизит страницу */
+}
+
+/* Рамку фокуса рисует сама коробка поиска, вторая внутри неё только мешает. */
+.sg-find__input:focus-visible { outline: none; }
+
+.sg-find__clear {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-full);
+  color: var(--muted);
+}
+.sg-find__clear:active { background: var(--surface-3); }
+.sg-find__clear > svg { width: 18px; height: 18px; }
+
+/* «Карта» живёт в самой строке поиска: когда подсказки не нашли нужного,
+   до конца списка за этой кнопкой уже никто не докручивает. */
+.sg-find__map { flex: none; margin-right: 2px; }
+
+.sg-list { display: flex; flex-direction: column; }
+
+/* Подсказки адресов появляются каскадом: строки набегают по очереди, и глаз
+   успевает понять, что список обновился, а не подменился целиком.
+   Задержки заданы вручную по номеру строки — считать их в коде незачем.
+   Заливка backwards, а не both: доиграв, строка отдаёт transform обратно
+   обычным правилам, иначе нажатие перестало бы её продавливать. */
+.sg-list > * { animation: sg-rise var(--dur-2) var(--ease) backwards; }
+.sg-list > *:nth-child(1) { animation-delay: 0ms; }
+.sg-list > *:nth-child(2) { animation-delay: 26ms; }
+.sg-list > *:nth-child(3) { animation-delay: 52ms; }
+.sg-list > *:nth-child(4) { animation-delay: 78ms; }
+.sg-list > *:nth-child(5) { animation-delay: 104ms; }
+.sg-list > *:nth-child(6) { animation-delay: 130ms; }
+.sg-list > *:nth-child(n + 7) { animation-delay: 156ms; }
+
+@keyframes sg-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.sg-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 58px;
+  padding: var(--sp-2) 0;
+  text-align: left;
+  transition: background-color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
+}
+.sg-item + .sg-item { border-top: 1px solid var(--line-soft); }
+.sg-item:active { background: var(--surface-2); transform: scale(.985); }
+
+.sg-item__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.sg-item__icon > svg { width: 20px; height: 20px; }
+.sg-item__icon--accent { background: var(--accent-soft); color: var(--accent); }
+
+.sg-item__text { flex: 1 1 auto; min-width: 0; }
+
+.sg-item__title {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-body);
+  line-height: 1.35;
+}
+
+.sg-item__sub {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+}
+
+/* Часть строки, которую человек набрал сам. Синий, а не жёлтый: жёлтым у нас
+   помечено то, что можно нажать, а здесь нажимается вся строка целиком. */
+.sg-hit { color: var(--match); font-weight: 600; }
+
+/* Сколько до адреса отсюда. В Бишкеке одинаковых названий много, и расстояние
+   отличает соседний двор от того же адреса в Новопавловке. */
+.sg-item__dist {
+  flex: none;
+  align-self: center;
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Дом и работа отдельной карточкой над списком: два адреса, которыми человек
+   пользуется чаще всех остальных вместе взятых. */
+.sg-places {
+  margin-bottom: var(--sp-2);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+.sg-places .sg-item:active { background: var(--surface-3); }
+
+.sg-group {
+  padding: var(--sp-3) 0 var(--sp-1);
+  color: var(--muted-2);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+/* Шторка заняла больше половины экрана (поиск адреса) — кнопки карты под ней
+   всё равно не нажать, поэтому убираем их, чтобы не лезли в шапку. */
+.sg-app.is-deep .map__ctrl,
+.sg-app.is-deep .map__btn--locate {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-2) var(--ease);
+}
+
+/* Но если ту же шторку опустили пальцем — карта снова открыта, и кнопки нужны.
+   Браузеры без :has() просто оставят их спрятанными: карта работает и жестами. */
+.sg-app.is-deep:has(.sg-panel[data-pos='half']) .map__ctrl,
+.sg-app.is-deep:has(.sg-panel[data-pos='half']) .map__btn--locate,
+.sg-app.is-deep:has(.sg-panel[data-pos='peek']) .map__ctrl,
+.sg-app.is-deep:has(.sg-panel[data-pos='peek']) .map__btn--locate {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ══════════════════════════════════════════════════════════ точка на карте */
+
+/* Коробка метки стоит так, чтобы её низ приходился ровно на центр карты:
+   именно эта точка и станет адресом. */
+.sg-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: var(--z-ui);
+  width: 30px;
+  height: 42px;
+  margin: -40px 0 0 -15px;
+  pointer-events: none;
+}
+
+.sg-center__pin {
+  position: absolute;
+  left: 2px;
+  top: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-full) var(--r-full) 2px var(--r-full);
+  background: var(--accent);
+  border: 3px solid var(--map-ring, #15151A);
+  transform: rotate(45deg);
+  transition: transform var(--dur-2) var(--ease-spring);
+  animation: sg-drop var(--dur-3) var(--ease) both;
+}
+
+.sg-center__shadow {
+  position: absolute;
+  left: 9px;
+  bottom: 0;
+  width: 12px;
+  height: 4px;
+  border-radius: var(--r-full);
+  background: rgba(0, 0, 0, .38);
+}
+
+/* Пока карту двигают, метка приподнимается — как булавка, которую подняли. */
+.sg-app.is-dragging .sg-center__pin { transform: rotate(45deg) translate(-4px, -4px); }
+
+@keyframes sg-drop {
+  from { opacity: 0; transform: rotate(45deg) translate(-10px, -10px); }
+  to   { opacity: 1; }
+}
+
+/* ══════════════════════════════════════════════════════════ поиск машины */
+
+.sg-radar {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  border: 3px solid var(--map-ring, #15151A);
+}
+
+.sg-radar::before,
+.sg-radar::after {
+  content: '';
+  position: absolute;
+  inset: -66px;
+  border-radius: var(--r-full);
+  border: 2px solid var(--accent);
+  opacity: 0;
+  animation: sg-radar 2.6s var(--ease) infinite;
+}
+.sg-radar::after { animation-delay: 1.3s; }
+
+@keyframes sg-radar {
+  0%   { opacity: .75; transform: scale(.14); }
+  70%  { opacity: 0;   transform: scale(1); }
+  100% { opacity: 0;   transform: scale(1); }
+}
+
+.sg-search-line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-1) 0 var(--sp-3);
+}
+
+.sg-search-line .progress { flex: 1 1 auto; }
+
+/* ══════════════════════════════════════════════════════════ курьер */
+
+.sg-courier {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+}
+
+.sg-courier__text { flex: 1 1 auto; min-width: 0; }
+
+.sg-courier__name {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+}
+
+.sg-courier__car {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.sg-courier__rate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.sg-plate {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.sg-acts {
+  display: flex;
+  gap: var(--sp-2);
+  padding-bottom: var(--sp-2);
+}
+.sg-acts > .btn { flex: 1 1 0; }
+
+/* ══════════════════════════════════════════════════════════ деньги и детали */
+
+.sg-sum {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  font-size: var(--fs-sm);
+}
+.sg-sum + .sg-sum { border-top: 1px solid var(--line-soft); }
+.sg-sum__name { color: var(--muted); }
+.sg-sum__val { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sg-sum--total { font-size: var(--fs-h3); }
+.sg-sum--total .sg-sum__name { color: var(--text); font-weight: 700; }
+.sg-sum--total .sg-sum__val { font-family: var(--font-display); font-weight: 800; }
+
+/* Итог в подвале шторки допуслуг: слева подпись, справа сумма. */
+.sg-total {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.sg-total__name {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.2;
+}
+
+.sg-total__val {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sg-fields { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+.sg-agree {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  min-height: 48px;
+  padding: var(--sp-2) 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  text-align: left;
+}
+
+.sg-agree__box {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  border: 2px solid var(--line);
+  border-radius: var(--r-xs);
+  color: transparent;
+  transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
+              color var(--dur-1) var(--ease);
+}
+.sg-agree__box > svg { width: 16px; height: 16px; }
+
+.sg-agree.is-on .sg-agree__box {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ══════════════════════════════════════════════════════════ состояния */
+
+.sg-boot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-7) var(--sp-5) var(--sp-8);
+}
+
+.sg-boot__bar {
+  width: 120px;
+  height: 4px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.sg-boot__bar i {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  animation: sg-slide 1.3s var(--ease) infinite;
+}
+
+.sg-boot__text { color: var(--muted); font-size: var(--fs-sm); }
+
+.sg-wait {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0 var(--sp-4);
+}
+
+.sg-fail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-5) var(--sp-2) var(--sp-4);
+  text-align: center;
+}
+
+.sg-fail__icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: var(--sp-1);
+  border-radius: var(--r-full);
+  background: var(--err-soft);
+  color: var(--err);
+}
+.sg-fail__icon > svg { width: 26px; height: 26px; }
+
+.sg-fail__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+}
+
+.sg-fail__text {
+  max-width: 34ch;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+/* Связь пропала: тонкая полоска над шторкой, чтобы не пугать модальным окном. */
+.sg-offline {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px var(--sp-4);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.sg-noscript {
+  position: fixed;
+  left: var(--sp-4);
+  right: var(--sp-4);
+  bottom: calc(var(--sp-4) + var(--safe-b));
+  z-index: var(--z-modal);
+  padding: var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  box-shadow: var(--shadow-2);
+}
+
+/* ══════════════════════════════════════════════════════════ мелочи */
+
+.sg-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 0 var(--sp-3);
+}
+
+.sg-chips .chip { min-height: 44px; }
+
+.sg-extra {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 56px;
+  padding: var(--sp-3) 0;
+}
+.sg-extra + .sg-extra { border-top: 1px solid var(--line-soft); }
+
+/* Разовую услугу включают тапом по всей строке, а не по тумблеру в 48×28:
+   в такой пятачок попадают не с первого раза, и человек думает, что сломалось. */
+.sg-extra--tap { cursor: pointer; }
+.sg-extra--tap:active { background: var(--surface-2); }
+
+.sg-rate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0 var(--sp-4);
+}
+
+/* Звёзды крупные, но попасть пальцем всё равно тяжело — расширяем зону нажатия
+   на шесть пикселей вверх и вниз, до тех же 44 px, что и у остальных кнопок. */
+.sg-rate .stars { padding: 6px 0; }
+.sg-rate .stars__hit { inset: -6px 0; }
+
+/* ══════════════════════════════════════════════════════════ широкий экран */
+
+@media (min-width: 620px) {
+  .sg-panel { justify-content: flex-start; padding: 0 0 var(--sp-4) var(--sp-4); }
+  .sg-panel__box {
+    max-width: 420px;
+    border-radius: var(--r-xl);
+  }
+  .sg-step--tall { height: min(70dvh, 620px); }
+  .sg-map { --map-ui-bottom: calc(var(--sp-4) + var(--safe-b)); }
+}
+
+/* На совсем узких экранах ужимаем отступы, но не высоту кнопок. */
+@media (max-width: 359px) {
+  .sg-head, .sg-body, .sg-foot { padding-left: var(--sp-3); padding-right: var(--sp-3); }
+  .sg-brand__name { display: none; }
+}
+
+/* ══════════════════════════════════════════════════════════ меньше движения */
+
+/* Длительности глушит tokens.css, но задержки каскада он не трогает: без этого
+   строки появлялись бы мгновенно, зато по очереди — рывками. */
+@media (prefers-reduced-motion: reduce) {
+  .sg-list > *,
+  .sg-car__art.is-in {
+    animation: none;
+  }
+  .sg-step,
+  .sg-step--enter,
+  .sg-step--out,
+  .sg-step--back.sg-step--enter,
+  .sg-step--out.sg-step--back-out {
+    transform: none;
+  }
+}

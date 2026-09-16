@@ -1,0 +1,24 @@
+# Sprinter Go — systemd-служба (автозапуск python-сервера сайта)
+# Установка: sudo bash /home/gotaxi/deploy/install-service.sh
+# Логи:      journalctl -u sprinter-go -f
+[Unit]
+Description=Sprinter Go static site (python server, port 7022)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/gotaxi
+# 0.0.0.0 — доступ по IP:7022 напрямую; за nginx поменяйте на 127.0.0.1
+ExecStart=/usr/bin/python3 /home/gotaxi/server.py --port 7022 --host 0.0.0.0 --root /home/gotaxi
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+# Запуск от непривилегированного пользователя (создайте: sudo useradd -r -s /usr/sbin/nologin gotaxi; sudo chown -R gotaxi:gotaxi /home/gotaxi)
+# User=gotaxi
+# Group=gotaxi
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Знак сервиса: фургон в движении. Рисуем вектором, чтобы он был чётким
+     на любом экране и не тащить за собой картинки. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+  <group android:translateX="14" android:translateY="30">
+    <path android:fillColor="#14130F"
+        android:pathData="M6,4h34a4,4 0 0 1 4,4v26h-42a4,4 0 0 1 -4,-4v-22a4,4 0 0 1 4,-4z"/>
+    <path android:fillColor="#14130F"
+        android:pathData="M44,14h12l10,12v8h-22z"/>
+    <path android:fillColor="#F3F1EB"
+        android:pathData="M48,18h7l6,7h-13z"/>
+    <path android:fillColor="#14130F"
+        android:pathData="M18,34m-6,0a6,6 0 1 0 12,0a6,6 0 1 0 -12,0"/>
+    <path android:fillColor="#14130F"
+        android:pathData="M54,34m-6,0a6,6 0 1 0 12,0a6,6 0 1 0 -12,0"/>
+    <path android:fillColor="#14130F" android:fillAlpha="0.55"
+        android:pathData="M-12,10h10v4h-10z M-8,18h8v4h-8z M-12,26h10v4h-10z"/>
+  </group>
+</vector>

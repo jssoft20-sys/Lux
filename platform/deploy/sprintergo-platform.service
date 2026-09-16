@@ -1,0 +1,68 @@
+# Sprinter Go — служба systemd.
+#
+# Ставится скриптом deploy/install-service.sh, который подставит сюда реальные
+# пути и пользователя. Если ставите руками — скопируйте файл в
+# /etc/systemd/system/sprintergo-platform.service, поправьте пути и выполните:
+#     systemctl daemon-reload
+#     systemctl enable --now sprintergo-platform
+#
+# Полезное потом:
+#     systemctl status sprintergo-platform     что сейчас
+#     systemctl restart sprintergo-platform    перезапуск после обновления
+#     journalctl -u sprintergo-platform -f     живой журнал
+
+[Unit]
+Description=Sprinter Go — сервис грузоперевозок
+Documentation=file:/opt/sprintergo-platform/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sprintergo
+Group=sprintergo
+WorkingDirectory=/opt/sprintergo-platform
+
+# Порт слушаем только на localhost: наружу сервис смотрит через nginx.
+Environment=HOST=127.0.0.1
+Environment=PORT=7030
+Environment=SG_DATA=/opt/sprintergo-platform/data
+# Без этого вывод копится в буфере и в журнал попадает с большим опозданием.
+Environment=PYTHONUNBUFFERED=1
+
+ExecStart=/usr/bin/python3 /opt/sprintergo-platform/app.py
+
+# Приложение по SIGTERM закрывает живые подключения и дописывает базу.
+# Тридцати секунд ему хватает с большим запасом.
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=30
+
+Restart=always
+RestartSec=3
+# Если сервис падает по кругу, пусть systemd не молотит вхолостую.
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+# Тот же файл журнала, что и у scripts/start.sh, — чтобы искать всегда в одном
+# месте. Нужен systemd 240 и новее; на старых системах закомментируйте
+# обе строки и читайте журнал через journalctl.
+StandardOutput=append:/opt/sprintergo-platform/data/sprintergo.log
+StandardError=append:/opt/sprintergo-platform/data/sprintergo.log
+
+# ── ограничения на всякий случай ─────────────────────────────────────────────
+# Сервису нужна ровно одна папка на запись — data. Всё остальное закрыто:
+# если однажды в коде найдут дыру, дальше этой папки уйти не получится.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+ReadWritePaths=/opt/sprintergo-platform/data
+LimitNOFILE=16384
+
+[Install]
+WantedBy=multi-user.target

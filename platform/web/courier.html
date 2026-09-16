@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="ru" data-app="courier">
+<head>
+<meta charset="utf-8">
+<!-- maximum-scale и user-scalable гасят зум страницы: водитель держит телефон
+     в держателе, и случайный двойной тап не должен уводить экран в сторону.
+     Safari этот запрет игнорирует — там зум добивает touch-action в courier.css. -->
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Sprinter Go — курьер</title>
+<meta name="description" content="Рабочее приложение водителя Sprinter Go: смена, заказы, заработок.">
+<!-- Светлая тема первая: приложение открывается светлым, тёмную водитель
+     включает сам в профиле — днём в кабине светлый экран читается лучше. -->
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F4F4F6">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<!-- default, а не black-translucent: на светлом фоне белые часы не видно. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Sprinter Go">
+<meta name="robots" content="noindex,nofollow">
+
+<link rel="manifest" href="/manifest-courier.webmanifest">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+<link rel="preload" href="/assets/fonts/onest-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/inter-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+
+<link rel="stylesheet" href="/assets/css/fonts.css">
+<link rel="stylesheet" href="/assets/css/tokens.css">
+<link rel="stylesheet" href="/assets/css/base.css">
+<link rel="stylesheet" href="/assets/css/components.css">
+<link rel="stylesheet" href="/assets/css/map.css">
+<link rel="stylesheet" href="/assets/css/courier.css">
+<link rel="stylesheet" href="/assets/css/shell.css">
+
+<!-- Скрипты выключены — гасить заставку некому, поэтому её просто не показываем. -->
+<noscript><style>.sg-splash { display: none; }</style></noscript>
+
+<script>
+  /* Всё, что должно случиться до первой отрисовки — иначе мигает.
+
+     1. Токен уже лежит: показываем рабочий экран, а не форму входа.
+        Модульный скрипт выполняется отложенно и на это опоздал бы.
+     2. Тема. По умолчанию светлая — так решил владелец. Ключ читаем и сырым,
+        и в виде JSON (клиентское приложение хранит его через JSON.stringify),
+        а кладём обратно строкой: courier/work.js ждёт именно её.
+     3. Холодный ли запуск: заставку целиком показываем в установленном
+        приложении и при первом заходе за час, иначе она надоедает.
+     4. Строка состояния телефона на время заставки жёлтая, как она сама. */
+  (function () {
+    var r = document.documentElement;
+    try {
+      if (localStorage.getItem('sg_token')) r.dataset.screen = 'app';
+    } catch (e) { /* приватный режим: покажем вход, дальше разберётся приложение */ }
+
+    var theme = '';
+    try {
+      var raw = localStorage.getItem('sg_theme');
+      theme = String(raw === null || raw === undefined ? '' : raw).replace(/^"|"$/g, '');
+    } catch (e) {}
+    if (theme !== 'dark' && theme !== 'light' && theme !== 'auto') theme = 'light';
+    if (theme === 'auto') r.removeAttribute('data-theme');
+    else r.dataset.theme = theme;
+    try { localStorage.setItem('sg_theme', theme); } catch (e) {}
+
+    var cold = true;
+    try {
+      var seen = parseInt(localStorage.getItem('sg_seen_courier') || '0', 10) || 0;
+      var now = Math.floor(Date.now() / 1000);
+      cold = (now - seen) > 3600;
+      localStorage.setItem('sg_seen_courier', String(now));
+    } catch (e) {}
+    if (window.matchMedia && matchMedia('(display-mode: standalone)').matches) cold = true;
+    if (navigator.standalone === true) cold = true;
+    r.dataset.boot = cold ? 'cold' : 'warm';
+
+    var meta = document.querySelector('meta[name="theme-color"]');
+    var accent = getComputedStyle(r).getPropertyValue('--accent').trim();
+    if (meta && accent) meta.setAttribute('content', accent);
+  })();
+</script>
+
+<script type="module" src="/assets/js/core/shell.js"></script>
+</head>
+<body>
+
+<!-- ── заставка ─────────────────────────────────────────────────────────────
+     Видна с первого кадра, ещё до скриптов: у водителя приложение стоит
+     значком на экране, и пустое белое поле при запуске выглядит как сбой.
+     Гасит её core/shell.js — data-ready говорит ему, за чем следить:
+     рабочий экран или форма входа, смотря что покажется. -->
+<div class="sg-splash" id="sg-splash" data-ready="#app-main,#gate" aria-hidden="true">
+  <div class="sg-splash__mark">
+    <svg class="sg-splash__van" viewBox="0 0 512 512" width="132" height="132" aria-hidden="true" focusable="false">
+      <g fill="currentColor">
+        <path d="M96 196a24 24 0 0 1 24-24h150a24 24 0 0 1 24 24v130H96z"/>
+        <path d="M310 216h58a24 24 0 0 1 19.6 10.2l32 45.6A24 24 0 0 1 424 286v40h-114z"/>
+        <rect x="96" y="326" width="328" height="20" rx="10"/>
+        <circle cx="172" cy="352" r="40"/>
+        <circle cx="368" cy="352" r="40"/>
+      </g>
+      <g fill="currentColor" opacity=".5">
+        <rect x="28" y="216" width="54" height="16" rx="8"/>
+        <rect x="8" y="252" width="74" height="16" rx="8"/>
+        <rect x="36" y="288" width="46" height="16" rx="8"/>
+      </g>
+      <g class="sg-splash__hole">
+        <rect x="326" y="232" width="56" height="38" rx="8"/>
+        <circle cx="172" cy="352" r="15"/>
+        <circle cx="368" cy="352" r="15"/>
+      </g>
+    </svg>
+    <span class="sg-splash__name">Sprinter Go</span>
+  </div>
+</div>
+
+<!-- ── набор иконок ──────────────────────────────────────────────────────────
+     Один общий лист символов: и нижняя панель, и профиль тянут отсюда через
+     <use href="#i-…">. Все нарисованы на сетке 24×24 одной толщиной линии,
+     цвет и толщина приходят из CSS (.ico), поэтому иконка красится вместе
+     с текстом и нигде не выбивается из ряда. -->
+<svg class="sprite" width="0" height="0" aria-hidden="true" focusable="false">
+  <defs>
+
+    <!-- смена: кнопка питания -->
+    <symbol id="i-shift" viewBox="0 0 24 24">
+      <path d="M12 3.8v7.5"/>
+      <path d="M17.3 6.9a7.5 7.5 0 1 1-10.6 0"/>
+    </symbol>
+
+    <!-- заказы: коробка -->
+    <symbol id="i-orders" viewBox="0 0 24 24">
+      <path d="M12 3.6 3.8 8v8L12 20.4 20.2 16V8z"/>
+      <path d="M3.8 8 12 12.4 20.2 8"/>
+      <path d="M12 12.4v8"/>
+    </symbol>
+
+    <!-- заработок: кошелёк -->
+    <symbol id="i-money" viewBox="0 0 24 24">
+      <rect x="3.4" y="6" width="17.2" height="12.6" rx="3"/>
+      <path d="M15.4 10.6h5.2v3.4h-5.2a1.7 1.7 0 0 1 0-3.4z"/>
+    </symbol>
+
+    <!-- профиль: человек -->
+    <symbol id="i-user" viewBox="0 0 24 24">
+      <circle cx="12" cy="8.4" r="3.7"/>
+      <path d="M4.9 19.6c1.1-3.2 3.8-5.2 7.1-5.2s6 2 7.1 5.2"/>
+    </symbol>
+
+    <!-- мои данные: карточка с фото -->
+    <symbol id="i-id" viewBox="0 0 24 24">
+      <rect x="3" y="5.2" width="18" height="13.6" rx="3"/>
+      <circle cx="9" cy="10.9" r="2.1"/>
+      <path d="M5.9 16.2c.6-1.5 1.8-2.3 3.1-2.3s2.5.8 3.1 2.3"/>
+      <path d="M14.8 10.2h3.7M14.8 13.6h3.7"/>
+    </symbol>
+
+    <!-- машина: фургон. Линия рамы разорвана ровно там, где стоят колёса -->
+    <symbol id="i-van" viewBox="0 0 24 24">
+      <path d="M3 15.5V8a2 2 0 0 1 2-2h7.6v9.5"/>
+      <path d="M12.6 9.5h3.6l3.6 3.5v2.5h-1.4"/>
+      <path d="M3 15.5h1.6M8.6 15.5h5.8"/>
+      <circle cx="6.6" cy="17.5" r="2"/>
+      <circle cx="16.4" cy="17.5" r="2"/>
+    </symbol>
+
+    <!-- документы и проверка: щит с галочкой -->
+    <symbol id="i-shield" viewBox="0 0 24 24">
+      <path d="M12 3.4 5 6.2v5.1c0 4 2.8 7.7 7 9.3 4.2-1.6 7-5.3 7-9.3V6.2z"/>
+      <path d="m8.9 11.9 2.2 2.2 4-4.3"/>
+    </symbol>
+
+    <!-- рейтинг: звезда -->
+    <symbol id="i-star" viewBox="0 0 24 24">
+      <path d="m12 3.9 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.6 10l5.8-.8z"/>
+    </symbol>
+
+    <!-- язык: глобус -->
+    <symbol id="i-globe" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="8.4"/>
+      <path d="M3.6 12h16.8"/>
+      <path d="M12 3.6c2.1 2.3 3.2 5.2 3.2 8.4s-1.1 6.1-3.2 8.4c-2.1-2.3-3.2-5.2-3.2-8.4S9.9 5.9 12 3.6z"/>
+    </symbol>
+
+    <!-- тема: круг, наполовину залитый -->
+    <symbol id="i-theme" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="8.4"/>
+      <path d="M12 3.6a8.4 8.4 0 0 1 0 16.8z" fill="currentColor" stroke="none"/>
+    </symbol>
+
+    <!-- поддержка: гарнитура -->
+    <symbol id="i-support" viewBox="0 0 24 24">
+      <path d="M4.7 13.6v-1.4a7.3 7.3 0 0 1 14.6 0v1.4"/>
+      <rect x="2.9" y="13.5" width="4.4" height="5.7" rx="2"/>
+      <rect x="16.7" y="13.5" width="4.4" height="5.7" rx="2"/>
+    </symbol>
+
+    <!-- выход: дверь со стрелкой -->
+    <symbol id="i-out" viewBox="0 0 24 24">
+      <path d="M14.6 8.4V6.3a1.8 1.8 0 0 0-1.8-1.8H6.3a1.8 1.8 0 0 0-1.8 1.8v11.4a1.8 1.8 0 0 0 1.8 1.8h6.5a1.8 1.8 0 0 0 1.8-1.8v-2.1"/>
+      <path d="M19.5 12H9.7"/>
+      <path d="m16.6 9.1 2.9 2.9-2.9 2.9"/>
+    </symbol>
+
+    <!-- галочка -->
+    <symbol id="i-check" viewBox="0 0 24 24">
+      <path d="M19.6 6.6 9.4 16.8 4.4 11.8"/>
+    </symbol>
+
+    <!-- стрелка строки вправо -->
+    <symbol id="i-next" viewBox="0 0 24 24">
+      <path d="m9.5 5.5 6.5 6.5-6.5 6.5"/>
+    </symbol>
+
+    <!-- назад -->
+    <symbol id="i-back" viewBox="0 0 24 24">
+      <path d="m14.5 5.5-6.5 6.5 6.5 6.5"/>
+    </symbol>
+
+  </defs>
+</svg>
+
+<!-- ── вход и регистрация ─────────────────────────────────────────────────
+     Эти два экрана лежат прямо в разметке: это первое, что видит человек,
+     и ждать загрузки скриптов ради формы входа незачем. -->
+<section class="gate" id="gate" aria-labelledby="gate-title">
+  <div class="gate__head">
+    <img class="gate__logo" src="/assets/img/logo.svg" width="56" height="56" alt="" aria-hidden="true">
+    <h1 class="gate__title" id="gate-title" data-t="courier.app">Sprinter Go для курьеров</h1>
+    <p class="gate__sub">Заказы, смена и заработок в одном месте</p>
+  </div>
+
+  <div class="segmented gate__tabs" role="tablist" aria-label="Вход или регистрация">
+    <button class="segmented__i is-on" type="button" role="tab" aria-selected="true"
+            aria-controls="form-login" id="tab-login" data-gate-tab="login"
+            data-t="courier.login">Вход</button>
+    <button class="segmented__i" type="button" role="tab" aria-selected="false"
+            aria-controls="form-register" id="tab-register" data-gate-tab="register"
+            data-t="courier.register">Регистрация</button>
+  </div>
+
+  <!-- ── вход ── -->
+  <form class="gate__form" id="form-login" role="tabpanel" aria-labelledby="tab-login" novalidate>
+    <label class="field">
+      <input class="field__input" type="email" name="email" id="login-email" placeholder=" "
+             autocomplete="username" inputmode="email" enterkeyhint="next" required>
+      <span class="field__label" data-t="courier.email">Почта</span>
+    </label>
+
+    <label class="field">
+      <input class="field__input" type="password" name="password" id="login-password" placeholder=" "
+             autocomplete="current-password" enterkeyhint="go" required>
+      <span class="field__label" data-t="courier.password">Пароль</span>
+      <button class="field__eye" type="button" data-eye="login-password"
+              aria-label="Показать пароль" title="Показать пароль"></button>
+    </label>
+
+    <p class="gate__err" id="login-err" role="alert" hidden></p>
+
+    <button class="btn btn--primary btn--lg btn--block" type="submit"
+            data-t="courier.login_btn">Войти</button>
+
+    <button class="gate__link" type="button" id="forgot"
+            data-t="courier.forgot">Забыли пароль?</button>
+  </form>
+
+  <!-- ── регистрация ── -->
+  <form class="gate__form" id="form-register" role="tabpanel" aria-labelledby="tab-register" novalidate hidden>
+    <p class="gate__hint" data-t="courier.register_hint">Заполните анкету, проверим в течение дня</p>
+
+    <label class="field">
+      <input class="field__input" type="text" name="name" placeholder=" "
+             autocomplete="name" enterkeyhint="next" maxlength="80" required>
+      <span class="field__label" data-t="courier.name">Имя и фамилия</span>
+    </label>
+
+    <label class="field">
+      <input class="field__input" type="email" name="email" placeholder=" "
+             autocomplete="email" inputmode="email" enterkeyhint="next" required>
+      <span class="field__label" data-t="courier.email">Почта</span>
+    </label>
+
+    <label class="field">
+      <input class="field__input" type="tel" name="phone" placeholder=" "
+             autocomplete="tel" inputmode="tel" enterkeyhint="next" required>
+      <span class="field__label" data-t="courier.phone">Телефон</span>
+      <span class="field__hint" data-t="common.phone_ph">+996 700 000 000</span>
+    </label>
+
+    <label class="field">
+      <input class="field__input" type="password" name="password" id="reg-password" placeholder=" "
+             autocomplete="new-password" enterkeyhint="next" required>
+      <span class="field__label" data-t="courier.password">Пароль</span>
+      <button class="field__eye" type="button" data-eye="reg-password"
+              aria-label="Показать пароль" title="Показать пароль"></button>
+      <span class="field__hint">Не короче восьми символов</span>
+    </label>
+
+    <h2 class="gate__group" data-t="courier.car">Автомобиль</h2>
+
+    <label class="field field--sel field--fill">
+      <select class="field__input" name="vehicle_class" id="reg-class" required>
+        <option value="">Выберите класс</option>
+      </select>
+      <span class="field__label" data-t="courier.vehicle_class">Класс машины</span>
+    </label>
+
+    <label class="field">
+      <input class="field__input" type="text" name="car_model" placeholder=" "
+             autocomplete="off" enterkeyhint="next" maxlength="60" required>
+      <span class="field__label" data-t="courier.car_model">Марка и модель</span>
+      <span class="field__hint" data-t="courier.car_model_ph">Mercedes Sprinter</span>
+    </label>
+
+    <div class="gate__pair">
+      <label class="field">
+        <input class="field__input" type="text" name="car_plate" placeholder=" "
+               autocomplete="off" enterkeyhint="next" required>
+        <span class="field__label" data-t="courier.car_plate">Госномер</span>
+      </label>
+      <label class="field">
+        <input class="field__input" type="text" name="car_color" placeholder=" "
+               autocomplete="off" enterkeyhint="next" maxlength="30">
+        <span class="field__label" data-t="courier.car_color">Цвет</span>
+      </label>
+    </div>
+
+    <label class="field">
+      <input class="field__input" type="number" name="capacity_kg" placeholder=" "
+             inputmode="numeric" min="1" max="20000" enterkeyhint="next" required>
+      <span class="field__label" data-t="courier.capacity">Грузоподъёмность, кг</span>
+    </label>
+
+    <h2 class="gate__group" data-t="courier.body">Кузов, см</h2>
+    <div class="gate__trio">
+      <label class="field">
+        <input class="field__input" type="number" name="body_d" placeholder=" "
+               inputmode="numeric" min="1" max="900" enterkeyhint="next">
+        <span class="field__label" data-t="courier.body_d">Длина</span>
+      </label>
+      <label class="field">
+        <input class="field__input" type="number" name="body_w" placeholder=" "
+               inputmode="numeric" min="1" max="400" enterkeyhint="next">
+        <span class="field__label" data-t="courier.body_w">Ширина</span>
+      </label>
+      <label class="field">
+        <input class="field__input" type="number" name="body_h" placeholder=" "
+               inputmode="numeric" min="1" max="400" enterkeyhint="go">
+        <span class="field__label" data-t="courier.body_h">Высота</span>
+      </label>
+    </div>
+
+    <p class="gate__err" id="register-err" role="alert" hidden></p>
+
+    <button class="btn btn--primary btn--lg btn--block" type="submit"
+            data-t="courier.register_btn">Отправить заявку</button>
+  </form>
+
+  <div class="gate__foot">
+    <button class="gate__lang" type="button" data-lang="ru">Русский</button>
+    <span class="gate__dot" aria-hidden="true"></span>
+    <button class="gate__lang" type="button" data-lang="ky">Кыргызча</button>
+  </div>
+</section>
+
+<!-- ── рабочее приложение ───────────────────────────────────────────────────
+     Панель разделов лежит в разметке готовой: она видна с первого кадра,
+     ещё до того, как модули поднимут маршрутизатор. Дальше её перерисовывает
+     приложение — по тем же классам и тем же иконкам из набора выше. -->
+<div class="app" id="app">
+  <header class="app__top" id="app-top"></header>
+
+  <main class="app__main" id="app-main" tabindex="-1">
+    <div class="boot" id="boot"><span class="boot__ring" aria-hidden="true"></span></div>
+  </main>
+
+  <nav class="dock" id="dock" aria-label="Разделы">
+    <button class="dock__i is-on" type="button" data-nav="/shift" aria-current="page">
+      <span class="dock__ico"><svg class="ico" aria-hidden="true"><use href="#i-shift"></use></svg></span>
+      <span class="dock__t" data-t="courier.nav_shift">Смена</span>
+    </button>
+    <button class="dock__i" type="button" data-nav="/order">
+      <span class="dock__ico"><svg class="ico" aria-hidden="true"><use href="#i-orders"></use></svg></span>
+      <span class="dock__t" data-t="courier.nav_orders">Заказы</span>
+    </button>
+    <button class="dock__i" type="button" data-nav="/history">
+      <span class="dock__ico"><svg class="ico" aria-hidden="true"><use href="#i-money"></use></svg></span>
+      <span class="dock__t" data-t="courier.nav_money">Заработок</span>
+    </button>
+    <button class="dock__i" type="button" data-nav="/profile">
+      <span class="dock__ico"><svg class="ico" aria-hidden="true"><use href="#i-user"></use></svg></span>
+      <span class="dock__t" data-t="courier.nav_profile">Профиль</span>
+    </button>
+  </nav>
+</div>
+
+<!-- Полноэкранное предложение заказа живёт поверх всего. -->
+<div class="offer" id="offer" hidden></div>
+
+<!-- ── заготовка профиля ────────────────────────────────────────────────────
+     Разметка экрана «Профиль» целиком: карточка сверху и список строк с
+     иконками. Экран собирается клонированием этой заготовки — так вёрстка
+     остаётся в одном месте, а модулю остаётся заполнить слоты.
+
+     Как заполнять:
+       [data-slot] — куда класть значения (фото, имя, звёзды, подписи);
+       [data-row]  — по чему вешать обработчик нажатия на всю строку;
+       [hidden]    — снять с «Проверен», когда проверка пройдена.
+     После вставки клона по нему нужно пройтись applyTo(), иначе data-t
+     останутся непереведёнными. -->
+<template id="tpl-me">
+  <div class="me">
+
+    <section class="me__card">
+      <span class="avatar avatar--lg avatar--accent me__ava" data-slot="avatar"></span>
+
+      <div class="me__info">
+        <h2 class="me__name" data-slot="name">—</h2>
+
+        <div class="me__rate">
+          <span class="me__stars" data-slot="stars"></span>
+          <b class="me__score" data-slot="rating">—</b>
+          <span class="me__orders" data-slot="orders"></span>
+        </div>
+
+        <p class="me__since" data-slot="since"></p>
+
+        <span class="badge badge--ok me__ok" data-slot="verified" hidden>
+          <svg class="ico ico--xs" aria-hidden="true"><use href="#i-check"></use></svg>
+          <span data-t="courier.me_verified">Проверен</span>
+        </span>
+      </div>
+    </section>
+
+    <div class="list me__list">
+
+      <button class="list__row list__row--tap me__item" type="button" data-row="me">
+        <span class="me__ico"><svg class="ico" aria-hidden="true"><use href="#i-id"></use></svg></span>
+        <span class="me__body">
+          <span class="me__label" data-t="courier.me_data">Мои данные</span>
+          <span class="me__note" data-slot="contacts"></span>
+        </span>
+        <svg class="ico ico--sm me__go" aria-hidden="true"><use href="#i-next"></use></svg>
+      </button>
+
+      <button class="list__row list__row--tap me__item" type="button" data-row="car">
+        <span class="me__ico"><svg class="ico" aria-hidden="true"><use href="#i-van"></use></svg></span>
+        <span class="me__body">
+          <span class="me__label" data-t="courier.me_car">Машина</span>
+          <span class="me__note" data-slot="car"></span>
+        </span>
+        <svg class="ico ico--sm me__go" aria-hidden="true"><use href="#i-next"></use></svg>
+      </button>
+
+      <button class="list__row list__row--tap me__item" type="button" data-row="docs">
+        <span class="me__ico me__ico--ok"><svg class="ico" aria-hidden="true"><use href="#i-shield"></use></svg></span>
+        <span class="me__body">
+          <span class="me__label" data-t="courier.me_docs">Документы и проверка</span>
+          <span class="me__note" data-slot="docs_note"></span>
+        </span>
+        <span class="me__val" data-slot="docs"></span>
+        <svg class="ico ico--sm me__go" aria-hidden="true"><use href="#i-next"></use></svg>
+      </button>
+
+      <button class="list__row list__row--tap me__item" type="button" data-row="rating">
+        <span class="me__ico me__ico--accent"><svg class="ico" aria-hidden="true"><use href="#i-star"></use></svg></span>
+        <span class="me__body">
+          <span class="me__label" data-t="courier.me_rating">Рейтинг</span>
+          <span class="me__note" data-slot="rating_note"></span>
+        </span>
+        <span class="me__val" data-slot="rating_v"></span>
+        <svg class="ico ico--sm me__go" aria-hidden="true"><use href="#i-next"></use></svg>
+      </button>
+
+      <button class="list__row list__row--tap me__item" type="button" data-row="lang">
+        <span class="me__ico"><svg class="ico" aria-hidden="true"><use href="#i-globe"></use></svg></span>
+        <span class="me__body">
+          <span class="me__label" data-t="courier.me_lang">Язык</span>
+        </span>
+        <span class="me__val" data-slot="lang"></span>
+        <svg class="ico ico--sm me__go" aria-hidden="true"><use href="#i-next"></use></svg>
+      </button>
+
+      <button class="list__row list__row--tap me__item" type="button" data-row="theme">
+        <span class="me__ico"><svg class="ico" aria-hidden="true"><use href="#i-theme"></use></svg></span>
+        <span class="me__body">
+          <span class="me__label" data-t="courier.me_theme">Тема</span>
+        </span>
+        <span class="me__val" data-slot="theme"></span>
+        <svg class="ico ico--sm me__go" aria-hidden="true"><use href="#i-next"></use></svg>
+      </button>
+
+      <button class="list__row list__row--tap me__item" type="button" data-row="support">
+        <span class="me__ico me__ico--info"><svg class="ico" aria-hidden="true"><use href="#i-support"></use></svg></span>
+        <span class="me__body">
+          <span class="me__label" data-t="courier.me_support">Поддержка</span>
+          <span class="me__note" data-t="courier.me_support_note">Ответим в рабочее время</span>
+        </span>
+        <svg class="ico ico--sm me__go" aria-hidden="true"><use href="#i-next"></use></svg>
+      </button>
+
+      <button class="list__row list__row--tap me__item me__item--danger" type="button" data-row="logout">
+        <span class="me__ico me__ico--danger"><svg class="ico" aria-hidden="true"><use href="#i-out"></use></svg></span>
+        <span class="me__body">
+          <span class="me__label" data-t="courier.me_logout">Выйти</span>
+        </span>
+      </button>
+
+    </div>
+  </div>
+</template>
+
+<script type="module">
+  /* Строки нижней панели и профиля объявлены здесь, а не в общем словаре:
+     lang.ru.js правят соседние модули, и лезть туда за десятком ключей —
+     верный способ поймать конфликт. extend() чужие ключи не перетирает.
+
+     Путь собираем от SG_BASE: сервис умеют вешать в подпапку вроде /go/,
+     и статический импорт с корневым путём там бы промахнулся. */
+  const base = window.SG_BASE || '/';
+  const i18n = await import(new URL(base + 'assets/js/core/i18n.js', location.href).href);
+
+  i18n.extend({
+    ru: {
+      'courier.nav_shift': 'Смена',
+      'courier.nav_orders': 'Заказы',
+      'courier.nav_money': 'Заработок',
+      'courier.nav_profile': 'Профиль',
+
+      'courier.me_data': 'Мои данные',
+      'courier.me_car': 'Машина',
+      'courier.me_docs': 'Документы и проверка',
+      'courier.me_rating': 'Рейтинг',
+      'courier.me_lang': 'Язык',
+      'courier.me_theme': 'Тема',
+      'courier.me_support': 'Поддержка',
+      'courier.me_support_note': 'Ответим в рабочее время',
+      'courier.me_logout': 'Выйти',
+      'courier.me_verified': 'Проверен',
+      'courier.me_unverified': 'Проверка не пройдена',
+      'courier.me_since': 'На линии с {year} года',
+    },
+    ky: {
+      'courier.nav_shift': 'Смена',
+      'courier.nav_orders': 'Заказдар',
+      'courier.nav_money': 'Киреше',
+      'courier.nav_profile': 'Профиль',
+
+      'courier.me_data': 'Менин маалыматым',
+      'courier.me_car': 'Унаа',
+      'courier.me_docs': 'Документтер жана текшерүү',
+      'courier.me_rating': 'Рейтинг',
+      'courier.me_lang': 'Тил',
+      'courier.me_theme': 'Тема',
+      'courier.me_support': 'Колдоо',
+      'courier.me_support_note': 'Иш убакытта жооп беребиз',
+      'courier.me_logout': 'Чыгуу',
+      'courier.me_verified': 'Текшерилген',
+      'courier.me_unverified': 'Текшерүүдөн өтө элек',
+      'courier.me_since': '{year}-жылдан бери линияда',
+    },
+  });
+
+  /* Приложение могло пройтись по разметке раньше нас — повторяем проход,
+     иначе на месте новых ключей остались бы сами ключи. */
+  i18n.applyTo(document);
+</script>
+
+<script type="module" src="/assets/js/courier/app.js"></script>
+</body>
+</html>
