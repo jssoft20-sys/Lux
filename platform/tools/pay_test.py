@@ -230,6 +230,10 @@ def main():
             check('после подтверждения заказ считается оплаченным',
                   (st or {}).get('paid') is True or (st or {}).get('status') == 'paid',
                   str(st)[:200])
+            # И при этом настоящая машина за придуманным грузом не едет.
+            check('демо-заказ не уходит в поиск машины',
+                  (st or {}).get('order_status') != 'searching',
+                  str((st or {}).get('order_status')))
 
         # Настоящий заказ этой кнопкой оплаченным не объявишь.
         code, bad_try = req('POST', '/admin/pay/demo/confirm',

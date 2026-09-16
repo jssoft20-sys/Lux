@@ -505,6 +505,12 @@ def _resume(order):
     есть курьер — не трогаем, диспетчер сам разберётся."""
     if order.get('status') not in ('draft', 'expired'):
         return False
+    # Демонстрационный заказ придуман для показа экрана оплаты. Отправлять по
+    # нему живого водителя на выдуманный адрес нельзя: владелец щёлкает «оплачено»
+    # в панели, а машина уезжает на «Пример: Чуй 100».
+    if str(order.get('payment_id') or '').startswith('demo-'):
+        log('оплата: демо-заказ', order.get('public_id'), '— поиск машины не запускаем')
+        return False
     try:
         from . import dispatch
         dispatch.start_search(order['id'])
