@@ -73,7 +73,9 @@ const api = async (method, path, body, token) => {
 };
 
 async function courier() {
-  const email = 'driver@test.kg';
+  // Свой водитель, не общий: вход ограничен парой «адрес + почта», и когда все
+  // прогоны логинятся одним и тем же, последнему уже не пускают.
+  const email = 'chat-driver@test.kg';
   const password = 'sprinter2026';
   let login = await api('POST', '/auth/login', { email, password });
   if (login.status !== 200) {
@@ -82,8 +84,8 @@ async function courier() {
       const data = process.env.SG_DATA || '';
       const env = { ...process.env };
       if (data && !env.SG_DB) env.SG_DB = `${data}/sprintergo.sqlite3`;
-      execFileSync('python3', ['tools/mkcourier.py', email, password, 'Талгат Осмонов',
-                               '0700112233', 'van', 'Mercedes Sprinter', '01KG762ATN'],
+      execFileSync('python3', ['tools/mkcourier.py', email, password, 'Бакыт Чат',
+                               '0700112255', 'van', 'Mercedes Sprinter', '01KG555CHT'],
                    { cwd: process.cwd(), env, stdio: 'pipe' });
       login = await api('POST', '/auth/login', { email, password });
     } catch { /* дальше проверим токен */ }
@@ -256,6 +258,9 @@ const bubbles = page => page.evaluate(() =>
       await api('POST', `/courier/orders/${oid}/status`, { status: st }, ct);
     }
   }
+  // Уходим с линии: соседний прогон ждёт предложения своему водителю, а
+  // диспетчер отдаёт заказ ближайшему свободному — и наш бы его перехватил.
+  await api('POST', '/courier/online', { online: false }, ct);
   await browser.close();
   wire.close();
   console.log(`\n\x1b[1mИтог:\x1b[0m пройдено ${pass}, провалено ${fails.length}`);

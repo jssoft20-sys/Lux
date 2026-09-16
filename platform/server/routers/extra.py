@@ -69,6 +69,10 @@ ZONE_MIN_ORDERS = 2           # одинокий заказ — это не зо
 ZONE_MIN_TOTAL = 4            # и по трём заказам на город рисовать нечего
 ZONE_MAX_CELLS = 40
 ZONE_MIN_LEVEL = 0.15
+# Сколько заказов в ячейке — это «густо». Цвет считаем от этого числа, а не от
+# самой людной клетки на карте: иначе в тихую ночь две заявки красятся так же
+# густо, как двадцать в пятницу вечером, и водитель перестаёт верить карте.
+ZONE_FULL_ORDERS = 12
 
 # Черновики не считаем: заказ, за который не заплатили, спроса не показывает.
 ZONE_STATUSES = ('searching', 'assigned', 'to_pickup', 'at_pickup', 'in_transit',
@@ -972,10 +976,18 @@ def _compute_zones(t):
     if total >= ZONE_MIN_TOTAL:
         top = max(counts.values()) if counts else 0
         if top >= ZONE_MIN_ORDERS:
+            # Шкала абсолютная: два заказа — это всегда бледно, дюжина — всегда
+            # густо, и неважно, что творится в соседнем районе. Логарифм, а не
+            # прямая: разница между двумя и четырьмя заказами водителю важнее,
+            # чем между двадцатью и двадцатью двумя.
+            # Шкалу растягиваем от самой первой зоны до густой: два заказа —
+            # едва заметная сиреневая, дюжина — насыщенная фиолетовая.
+            span = math.log(1.0 + max(1, ZONE_FULL_ORDERS - ZONE_MIN_ORDERS))
             for (gy, gx), n in counts.items():
                 if n < ZONE_MIN_ORDERS:
                     continue
-                level = max(ZONE_MIN_LEVEL, min(1.0, n / float(top)))
+                part = math.log(1.0 + (n - ZONE_MIN_ORDERS)) / span
+                level = ZONE_MIN_LEVEL + (1.0 - ZONE_MIN_LEVEL) * min(1.0, part)
                 cells.append({'lat': round((gy + 0.5) * dlat, 6),
                               'lng': round((gx + 0.5) * dlng, 6),
                               'level': round(level, 2), 'orders': n})

@@ -267,8 +267,11 @@ async function actions(page) {
   if (ct) {
     const left = await api('GET', '/courier/orders?active=1', null, ct);
     for (const o of (left.body?.items || left.body || [])) {
-      await api('POST', `/courier/orders/${o.id}/status`, { status: 'done' }, ct);
+      for (const st of ['at_pickup', 'in_transit', 'done']) {
+        await api('POST', `/courier/orders/${o.id}/status`, { status: st }, ct);
+      }
     }
+    await api('POST', '/courier/online', { online: false }, ct);
   }
 
   await browser.close();

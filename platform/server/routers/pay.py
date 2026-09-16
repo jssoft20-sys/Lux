@@ -190,6 +190,9 @@ def make_qr(ctx, public_id):
     return {
         'enabled': True,
         'provider': 'optima',
+        # Демонстрационный код нарисовали мы, а не банк. Экран клиента обязан
+        # сказать об этом прямо — иначе человек наведёт камеру и будет ждать.
+        'demo': bool(qr.get('demo')),
         'status': order['payment_status'],
         'transaction_id': qr['transaction_id'],
         'qr_base64': qr['qr_base64'],

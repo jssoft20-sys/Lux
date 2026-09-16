@@ -98,7 +98,8 @@ def main():
               code == 200 and bool(login_name and password), f'код {code}: {str(saved)[:220]}')
         check('адрес обработчика подсказан целиком',
               '/pay/callback' in str(creds.get('url') or ''), str(creds.get('url'))[:120])
-        code, again = req('GET', '/admin/pay/settings', adm)
+        code, again = req('GET', '/admin/pay/settings', None, adm)
+        check('настройки оплаты читаются админом', code == 200, f'код {code}: {str(again)[:160]}')
         check('пароль показан ровно один раз',
               'password' not in json.dumps(again, ensure_ascii=False)
               or str(password) not in json.dumps(again, ensure_ascii=False),
@@ -186,6 +187,56 @@ def main():
         code, st = req('GET', '/pay/%s/status?t=%s'
                        % (pid, urllib.parse.quote('чужой-токен')))
         check('чужому состояние оплаты не показывают', code in (401, 403, 404), f'код {code}')
+
+        # ── демо-оплата: владелец должен увидеть свой экран без банка ──────
+        # Раньше одного переключателя не хватало: демо требовало вдобавок
+        # включить приём брони и выбрать Оптиму, иначе клиент не видел ничего.
+        print('\n\033[1mДемо-оплата\033[0m')
+        code, off = req('PUT', '/admin/pay/settings',
+                        {'enabled': False, 'provider': 'none', 'demo': True}, adm)
+        check('демо включается одним переключателем', code == 200, f'код {code}: {str(off)[:160]}')
+        code, back = req('GET', '/admin/pay/settings', None, adm)
+        shown = ((back or {}).get('settings') or back or {})
+        check('и не сбрасывается при перезагрузке страницы',
+              code == 200 and shown.get('demo') is True, f'код {code}: {str(back)[:200]}')
+
+        # Именно эта кнопка и есть «демо кр код»: владелец жмёт её в панели.
+        code, demo = req('POST', '/admin/pay/demo', {}, adm)
+        check('панель выпустила демо-код', code in (200, 201) and bool((demo or {}).get('qr_base64')),
+              f'код {code}: {str(demo)[:180]}')
+        pid2 = (demo or {}).get('public_id')
+        tok2 = (demo or {}).get('token')
+
+        if pid2 and tok2:
+            code, qr = req('POST', f'/pay/{pid2}/qr', {'t': tok2})
+            check('клиент по ссылке видит тот же код',
+                  code in (200, 201) and bool((qr or {}).get('qr_base64')),
+                  f'код {code}: {str(qr)[:160]}')
+            check('и он помечен демонстрационным', (qr or {}).get('demo') is True, str(qr)[:200])
+            check('транзакция демонстрационная, а не банковская',
+                  str((qr or {}).get('transaction_id') or '').startswith('demo-'),
+                  str((qr or {}).get('transaction_id')))
+
+            code, st = req('GET', f'/pay/{pid2}/status?t={tok2}')
+            check('состояние оплаты тоже знает про демо', (st or {}).get('demo') is True,
+                  str(st)[:200])
+
+            code, done = req('POST', '/admin/pay/demo/confirm',
+                             {'public_id': pid2, 'comment': 'Демонстрация из прогона'}, adm)
+            check('демо-оплату можно подтвердить из панели', code in (200, 201),
+                  f'код {code}: {str(done)[:160]}')
+            time.sleep(3)          # у состояния оплаты свой предел: раз в две секунды
+            code, st = req('GET', f'/pay/{pid2}/status?t={tok2}')
+            check('после подтверждения заказ считается оплаченным',
+                  (st or {}).get('paid') is True or (st or {}).get('status') == 'paid',
+                  str(st)[:200])
+
+        # Настоящий заказ этой кнопкой оплаченным не объявишь.
+        code, bad_try = req('POST', '/admin/pay/demo/confirm',
+                            {'public_id': pid, 'comment': 'Демонстрация из прогона'}, adm)
+        check('настоящий заказ кнопкой демо не оплатить', code == 403,
+              f'код {code}: {str(bad_try)[:160]}')
+
     finally:
         log.seek(0)
         server_log = log.read()

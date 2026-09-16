@@ -142,14 +142,16 @@ def provider():
     себя 'none': пусть лучше заказ уйдёт на наличные, чем упрётся в пустой ключ.
     """
     cfg = config()
+    # Демо-режим сам по себе достаточен. Раньше он требовал вдобавок включить
+    # приём брони и выбрать Оптиму, и владелец, щёлкнув одну «демо-оплату»,
+    # не видел ничего: заказ молча уходил на наличные. Демо затем и нужно,
+    # чтобы одним переключателем увидеть настоящий экран — реквизиты банка при
+    # этом не нужны, код рисуем сами, деньги не ходят.
+    if cfg['demo']:
+        return 'optima'
     if not cfg['enabled']:
         return 'none'
     code = cfg['provider']
-    # В демо-режиме реквизиты банка не нужны: код рисуем сами, деньги не ходят.
-    # Это единственный способ показать владельцу настоящий экран оплаты до того,
-    # как банк выдаст ключи.
-    if code == 'optima' and cfg['demo']:
-        return 'optima'
     if code == 'optima' and not (cfg['key'] and cfg['company']):
         _warn_once('optima_creds',
                    'Оптима включена, но не заполнены payment.optima_key или'
@@ -909,6 +911,10 @@ def _callback_answer(ok, http, state, tid, received, message):
 def qr_view(row):
     """Что отдаём на экран оплаты. Ни ключей, ни реквизитов банка."""
     return {
+        # Демонстрация должна быть подписана демонстрацией. Иначе однажды
+        # владелец забудет выключить режим, клиент отсканирует нарисованный
+        # код, банк его не узнает, и виноват будет сервис.
+        'demo': (row.get('provider') or '') == 'demo',
         'transaction_id': row['transaction_id'],
         'qr_base64': row.get('qr_base64') or '',
         'qr_url': row.get('qr_url') or '',
@@ -1059,6 +1065,10 @@ def refresh_status(order):
     row = last_qr(order)
     if not row or row['status'] != 'pending' or provider() != 'optima':
         return order, row
+    # Нарисованный нами код банк не знает, и спрашивать его о такой транзакции
+    # незачем: в кабинете Оптимы это выглядело бы как поток чужих запросов.
+    if (row.get('provider') or '') == 'demo':
+        return order, row
     t = db.now()
     if t - int(row['checked_at'] or 0) < STATUS_POLL_EVERY_S:
         return order, row
@@ -1099,6 +1109,7 @@ def payment_view(order, row=None, lang='ru'):
         'order_status': order['status'],
         'provider': provider(),
         'enabled': enabled(),
+        'demo': bool(config()['demo']),
         # status — короткое поле для экрана оплаты: 'none' | 'pending' | 'paid' | 'failed'
         'status': order.get('payment_status') or 'none',
         'payment_status': order.get('payment_status') or 'none',

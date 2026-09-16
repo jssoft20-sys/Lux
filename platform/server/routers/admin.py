@@ -25,7 +25,7 @@ API = '/api/v1'
 router = Router()
 
 # Значения этих настроек наружу не отдаём — только признак «заполнено».
-SECRET_KEYS = ('payment.secret', 'payment.optima_key', 'payment.callback_password',
+SECRET_KEYS = ('payment.optima_key', 'payment.callback_password',
                'smtp.pass', 'geo.key', 'map.key', 'route.key')
 
 # Ключи, которых ещё нет в settings.DEFAULTS. Тип значения берётся отсюда, иначе
@@ -60,7 +60,6 @@ LIMITS = {
     # Час пик дольше свободной дороги, ночь быстрее — иначе это опечатка.
     'route.rush_factor': (1, 3), 'route.night_factor': (0.5, 1),
     'smtp.port': (1, 65535), 'security.session_days': (1, 365),
-    'payment.lifetime_s': (300, 86400),
 }
 
 # Настройки, у которых выбор из списка.

@@ -27,9 +27,6 @@ DEFAULTS = {
     'payment.enabled': False,
     'payment.provider': 'none',         # none | optima | manual
     'payment.prepay_commission': False, # клиент платит комиссию вперёд как бронь
-    'payment.merchant_id': '',
-    'payment.secret': '',
-    'payment.test_mode': True,
 
     # Бронь: клиент платит вперёд только комиссию сервиса, остальное — наличными
     # курьеру. Размер брони считается от комиссии и зажимается этими границами,

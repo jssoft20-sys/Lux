@@ -60,6 +60,7 @@ extend({
     'pay.lead': 'Платите только бронь {sum} — остальное отдадите курьеру наличными',
     'pay.lead_short': 'Это бронь. Остальное — курьеру наличными',
     'pay.scan': 'Отсканируйте в приложении банка',
+    'pay.demo': 'Демонстрация: это не настоящий код, деньги не спишутся',
     'pay.making': 'Готовим код',
     'pay.rest': 'Курьеру наличными — {sum}',
     'pay.total': 'Весь заказ — {sum}',
@@ -97,6 +98,7 @@ extend({
     'pay.lead': 'Бир гана {sum} бронь төлөйсүз — калганын курьерге накталай бересиз',
     'pay.lead_short': 'Бул бронь. Калганы — курьерге накталай',
     'pay.scan': 'Банкыңыздын тиркемесинен сканерлеңиз',
+    'pay.demo': 'Көрсөтүү: бул чыныгы код эмес, акча алынбайт',
     'pay.making': 'Код даярдалып жатат',
     'pay.rest': 'Курьерге накталай — {sum}',
     'pay.total': 'Заказдын толук баасы — {sum}',
@@ -283,12 +285,17 @@ export function createPayStep(app, opts = {}) {
 
   const sum = el('div', { className: 'sg-pay__sum' }, '—');
   const hint = el('div', { className: 'sg-pay__hint' }, t('pay.scan'));
+  /* Демонстрационный код нарисовали мы сами, банк его не знает. Об этом надо
+     сказать прямо на экране: иначе однажды владелец забудет выключить режим,
+     клиент честно отсканирует картинку, ничего не произойдёт — и виноват
+     будет сервис. */
+  const demo = el('div', { className: 'sg-pay__demo', hidden: true }, t('pay.demo'));
   const rest = el('div', { className: 'sg-pay__rest' });
   const timer = el('div', { className: 'sg-pay__timer' });
 
   const live = el('div', {
     className: 'sg-pay__live', role: 'status', 'aria-live': 'polite',
-  }, hint, rest, timer);
+  }, demo, hint, rest, timer);
 
   const stateIcon = el('span', { className: 'sg-pay__state-icon', html: icon('alert') });
   const stateTitle = el('div', { className: 'sg-pay__state-title' });
@@ -438,6 +445,8 @@ export function createPayStep(app, opts = {}) {
       hint.textContent = noImage ? t('pay.wait_note') : t('pay.scan');
       paintTimer();
     }
+    demo.hidden = !(qr && qr.demo);
+    demo.textContent = t('pay.demo');
     paintActions();
   }
 

@@ -2056,7 +2056,7 @@ function catalogPage(host, ctx, spec) {
 
 /* ═══════════════════════════════════════════════════════ настройки */
 
-const SECRET_KEYS = ['payment.secret', 'smtp.pass', 'geo.key', 'map.key'];
+const SECRET_KEYS = ['smtp.pass', 'geo.key', 'map.key'];
 
 const TABS = [
   { code: 'service', label: 'admin.set_service' },
@@ -2175,13 +2175,11 @@ function tabFields(code, data, pick) {
       choiceField('payment.provider', 'admin.pay_provider', providers.map((p) => ({
         value: p.code, text: p.title + (p.ready ? '' : ' · ' + t('adm.secret_empty')),
       })), { span: 2 }),
-      { name: 'payment.merchant_id', kind: 'text', label: 'admin.pay_merchant' },
-      {
-        name: 'payment.secret', kind: 'password', label: 'admin.pay_secret',
-        hintText: (data.secrets || {})['payment.secret'] ? t('adm.secret_saved') : t('adm.secret_empty'),
-      },
-      { name: 'payment.lifetime_s', kind: 'number', label: 'adm.pay_lifetime', min: 300, max: 86400, fallback: 1800 },
-      { name: 'payment.test_mode', kind: 'switch', label: 'admin.pay_test' },
+      /* Ключ банка, ID магазина, срок жизни кода и тестовый режим отсюда убраны:
+         эти поля сохранялись, но ничего не делали — настоящие реквизиты Оптимы
+         живут в разделе «Оплата», и вводить их в двух местах значит однажды
+         ввести в неправильном. Здесь остаются только те переключатели, которые
+         и правда действуют. */
       { name: 'payment.prepay_commission', kind: 'switch', label: 'admin.pay_prepay', span: 2 },
     ];
   }

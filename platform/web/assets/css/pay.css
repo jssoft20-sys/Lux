@@ -215,6 +215,20 @@
 
 .sg-pay.is-paid .sg-pay__hint { color: var(--ok); font-weight: 600; }
 
+/* Демонстрация. Не украшение: человек должен понять, что код нарисованный,
+   раньше, чем наведёт на него камеру. */
+.sg-pay__demo {
+  display: inline-block;
+  margin: 0 auto var(--sp-2);
+  padding: 6px var(--sp-3);
+  border-radius: var(--r-full);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
 /* Сколько останется отдать курьеру — та самая строка, из-за которой человек
    не гадает, почему просят сто пятьдесят вместо полутора тысяч. */
 .sg-pay__rest {
