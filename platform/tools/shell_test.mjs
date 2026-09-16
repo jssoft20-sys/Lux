@@ -212,6 +212,117 @@ async function main() {
     await ctx.close();
   }
 
+  console.log('\n\x1b[1m4г. Листаешь — обновление не срабатывает\x1b[0m');
+  {
+    /* Владелец жаловался: «листаешь бывает обновление баг срабатывает». Внутри
+       шторки это уже проверено выше, но тот же баг был и без шторки — на
+       обычном длинном экране. Главный блок у курьера и в админке лежит на
+       странице и сам не прокручивается, поэтому его scrollTop всё время ноль:
+       жест считал, что человек в самом верху, хотя он листал середину списка. */
+    const { ctx, page } = await phone(browser, { errors });
+    let hits = 0;
+    await page.route(/\/api\/v1\/admin\//, r => { hits++; return r.continue(); });
+    await page.goto(BASE + '/admin', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2500);
+    const mail = page.locator('input[type="email"], input[name="email"]').first();
+    const pass = page.locator('input[type="password"], input[name="password"]').first();
+    if (await mail.count() && await pass.count()) {
+      await mail.fill(process.env.SG_ADMIN_EMAIL || 'admin@test.kg');
+      await pass.fill(process.env.SG_ADMIN_PASSWORD || 'admin12345');
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(3500);
+    }
+    const tall = await page.evaluate(() => {
+      const doc = document.scrollingElement || document.documentElement;
+      doc.scrollTop = 400;
+      return { top: doc.scrollTop, height: doc.scrollHeight, view: doc.clientHeight };
+    });
+    if (tall.top > 50) {
+      const cdp2 = await ctx.newCDPSession(page);
+      const swipe2 = async (x, y, steps) => {
+        await cdp2.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+        for (let i = 1; i <= steps; i++) {
+          await cdp2.send('Input.dispatchTouchEvent',
+            { type: 'touchMove', touchPoints: [{ x, y: y + i * 10 }] });
+          await page.waitForTimeout(16);
+        }
+        await cdp2.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      };
+      const was = hits;
+      await swipe2(195, 220, 14);
+      await page.waitForTimeout(2200);
+      ok('посреди списка жест обновление не запускает', hits === was,
+         `запросов было ${was}, стало ${hits}`);
+    } else {
+      // Не на чем проверять — так и скажем, а не сделаем вид, что проверили.
+      ok('в админке нашёлся достаточно длинный экран', false,
+         `страница ${tall.height} при экране ${tall.view}`);
+    }
+    await ctx.close();
+  }
+
+  console.log('\n\x1b[1m4д. Шторка растягивается, а не висит\x1b[0m');
+  {
+    /* «Когда тянешь любое модальное окно вверх — снизу пусто; чтобы там не было
+       так, а растягивалось куда доступно». Раньше жест вверх не делал ничего:
+       растягивание надо было включать параметром, и не включал его никто. */
+    const { ctx, page } = await phone(browser, { errors });
+    await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(3000);
+    const hi = page.locator('button:has-text("Понятно"), button:has-text("Пропустить")').first();
+    if (await hi.count()) { await hi.click({ force: true }).catch(() => {}); await page.waitForTimeout(600); }
+
+    await page.evaluate(async () => {
+      const ui = await import(String(window.SG_BASE || '/') + 'assets/js/core/ui.js');
+      const box = document.createElement('div');
+      for (let i = 0; i < 24; i++) {
+        const row = document.createElement('p');
+        row.style.margin = '14px 0';
+        row.textContent = 'строка ' + (i + 1);
+        box.appendChild(row);
+      }
+      window.__probeSheet = ui.sheet({ title: 'Проба', content: box });
+    });
+    await page.waitForTimeout(900);
+
+    const grip = await page.evaluate(() => {
+      const g = document.querySelector('.sheet__grip');
+      if (!g) return null;
+      const r = g.getBoundingClientRect();
+      return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+    });
+    const size = () => page.evaluate(() => {
+      const b = document.querySelector('.sheet__box');
+      if (!b) return null;
+      const r = b.getBoundingClientRect();
+      return { h: Math.round(r.height), bottom: Math.round(r.bottom), vh: window.innerHeight };
+    });
+    const was = await size();
+    if (grip && was) {
+      const cdp3 = await ctx.newCDPSession(page);
+      await cdp3.send('Input.dispatchTouchEvent',
+        { type: 'touchStart', touchPoints: [{ x: grip.x, y: grip.y }] });
+      for (let i = 1; i <= 16; i++) {
+        await cdp3.send('Input.dispatchTouchEvent',
+          { type: 'touchMove', touchPoints: [{ x: grip.x, y: Math.round(grip.y - i * 22) }] });
+        await page.waitForTimeout(16);
+      }
+      await cdp3.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await page.waitForTimeout(900);
+      const now = await size();
+      ok('потянули вверх — шторка выросла', now && now.h > was.h + 100,
+         `было ${was.h}, стало ${now && now.h}`);
+      // Именно про это была жалоба: снизу не должно остаться пустоты.
+      ok('и низом осталась прижата к краю экрана',
+         now && Math.abs(now.bottom - now.vh) <= 2,
+         `низ на ${now && now.bottom} при экране ${now && now.vh}`);
+    } else {
+      ok('шторка открылась', false, 'не нашли .sheet__grip');
+    }
+    await page.evaluate(() => window.__probeSheet && window.__probeSheet.close());
+    await ctx.close();
+  }
+
   console.log('\n\x1b[1m5. Память места\x1b[0m');
   {
     const { ctx, page } = await phone(browser, { errors });

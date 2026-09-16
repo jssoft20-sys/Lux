@@ -446,7 +446,14 @@ export function sheet(opts = {}) {
   const full = !!opts.full;
   const prevFocus = document.activeElement;
 
-  let expandable = !!opts.expandable && !full;
+  /* Растягивание — поведение по умолчанию. Владелец просил прямо: «когда тянешь
+     любое модальное окно вверх, снизу пусто — чтобы там не было так, а
+     растягивалось куда доступно». Раньше эту возможность надо было включать
+     параметром, и её не включал никто: шторка на треть экрана просто не
+     отзывалась на жест вверх. Теперь отзывается любая, а expandable: false
+     оставлен для тех, кому расти действительно некуда. Видимых изменений без
+     жеста нет: пока человек не потянул, шторка стоит по содержимому. */
+  let expandable = opts.expandable !== false && !full;
   let state = 'content';                    // 'content' | 'expanded'
   let contentH = 0;
   let maxH = 0;
@@ -1088,9 +1095,11 @@ const PTR_SVG =
 /* Прокручиваемый предок, который сам ещё не в нуле. Если палец начал движение
    внутри такого блока, обновлять нельзя: человек листает список, а не тянет
    страницу. Именно на это заказчик и жаловался. */
-function scrolledAncestor(from, stop) {
+function scrolledAncestor(from) {
   let n = from;
-  while (n && n !== stop && n.nodeType === 1) {
+  // Идём выше самого узла, до корня: прокручиваться может и то, что лежит над
+  // ним, — а листающему человеку всё равно, какой блок в разметке главный.
+  while (n && n.nodeType === 1 && n !== document.documentElement) {
     if (n.scrollTop > 0 && n.scrollHeight > n.clientHeight + 1) {
       const ov = getComputedStyle(n).overflowY;
       if (ov === 'auto' || ov === 'scroll') return true;
@@ -1129,9 +1138,16 @@ export function pullToRefresh(scrollEl, onRefresh, opts = {}) {
 
   let pid = null, y0 = 0, x0 = 0, live = false, pull = 0, busy = false, shown = false;
 
-  const top = () => (page
-    ? (document.scrollingElement || document.documentElement).scrollTop
-    : node.scrollTop);
+  /* Сколько уже прокручено. Узел, которому повесили жест, сам может и не
+     прокручиваться: у курьера и в админке главный блок лежит на обычной
+     странице, и вниз уезжает она, а не он. Тогда node.scrollTop всё время
+     ноль, и обновление срабатывало посреди списка — на это и жаловались.
+     Поэтому берём большее из двух: своё и страницы. */
+  const top = () => {
+    const doc = document.scrollingElement || document.documentElement;
+    if (page) return doc.scrollTop || 0;
+    return Math.max(node.scrollTop || 0, doc.scrollTop || 0);
+  };
 
   function place() {
     const r = node.getBoundingClientRect();
@@ -1204,7 +1220,7 @@ export function pullToRefresh(scrollEl, onRefresh, opts = {}) {
     if (lockDepth > 0) return;                  // открыта шторка или фото
     if (e.target.closest && e.target.closest('[data-map], .map, [data-no-refresh]')) return;
     if (top() > 0) return;
-    if (scrolledAncestor(e.target, node)) return;
+    if (scrolledAncestor(e.target)) return;
     pid = e.pointerId;
     y0 = e.clientY;
     x0 = e.clientX;
