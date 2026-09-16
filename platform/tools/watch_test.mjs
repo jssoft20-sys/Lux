@@ -55,9 +55,14 @@ async function courier() {
   if (!token) return null;
   // Водитель на стенде один на все прогоны. Если прошлый оставил ему заказ в
   // работе, диспетчер новых предложений не пришлёт — закрываем хвосты.
+  // Заказ нельзя закрыть одним шагом: статусы ходят по цепочке. Проходим её
+  // целиком, ошибки не важны — важно, чтобы водитель освободился и диспетчер
+  // снова слал ему предложения.
   const busy = await api('GET', '/courier/orders?active=1', null, token);
   for (const o of (busy.body?.items || busy.body || [])) {
-    await api('POST', `/courier/orders/${o.id}/status`, { status: 'done' }, token);
+    for (const st of ['at_pickup', 'in_transit', 'done']) {
+      await api('POST', `/courier/orders/${o.id}/status`, { status: st }, token);
+    }
   }
   await api('POST', '/courier/online', { online: true }, token);
   await api('POST', '/courier/geo', { lat: 42.8760, lng: 74.5710, heading: 90, speed: 0 }, token);

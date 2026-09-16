@@ -34,6 +34,7 @@ run "ядро: база, маршруты, деньги"      python3 tools/core
 run "API: заказ целиком"                env TEST_PORT=$((PORT + 1)) python3 tools/api_test.py
 run "деньги: бронь и уведомление банка" env TEST_PORT=$((PORT + 2)) python3 tools/pay_test.py
 run "карточка для мессенджеров"         python3 tools/share_test.py
+run "переписка: повторы и обрывы"       python3 tools/chat_test.py
 run "свой кодировщик QR"                python3 tools/qr_test.py
 
 if [ "$FAST" = "быстро" ] || [ -z "$NODE" ]; then
@@ -58,6 +59,7 @@ else
   run "сценарий: заказ вживую" env TEST_PORT=$UIPORT SG_DATA="$UIDATA" node tools/flow_test.mjs
   run "ссылка: живая карта"    env TEST_PORT=$UIPORT SG_DATA="$UIDATA" node tools/watch_test.mjs
   run "мостик в приложение"    env TEST_PORT=$UIPORT SG_DATA="$UIDATA" node tools/app_test.mjs
+  run "чат при обрыве связи"   env TEST_PORT=$UIPORT SG_DATA="$UIDATA" node tools/chatui_test.mjs
 
   kill "$srv" 2>/dev/null
   wait "$srv" 2>/dev/null

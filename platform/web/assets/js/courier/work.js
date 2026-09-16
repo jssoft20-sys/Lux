@@ -96,6 +96,7 @@ extend({
     'chat.new': 'Новое сообщение от клиента',
     'chat.unread': 'Непрочитанных: {n}',
     'chat.load_fail': 'Не получилось загрузить переписку',
+    'chat.slow': 'Связь подвисла, но сообщение доставлено',
 
     'rate.client': 'Оцените клиента',
     'rate.hint': 'Оценку видят диспетчер и другие курьеры, клиенту она не уходит',
@@ -194,6 +195,7 @@ extend({
     'chat.new': 'Клиенттен жаңы кабар',
     'chat.unread': 'Окулбагандары: {n}',
     'chat.load_fail': 'Жазышууну жүктөй албадык',
+    'chat.slow': 'Байланыш кечиктирди, бирок билдирүү жеткирилди',
 
     'rate.client': 'Клиентти баалаңыз',
     'rate.hint': 'Бааны диспетчер жана башка жүкчүлөр көрөт, клиентке барбайт',
@@ -2320,25 +2322,54 @@ function openChat(orderId, peer, opts = {}) {
   }
   input.addEventListener('input', grow);
 
+  /* Один и тот же текст, набранный человеком: пробелы по краям и перевод
+     строки в счёт не идут. */
+  function sameText(a, b) {
+    return String(a || '').trim() === String(b || '').trim();
+  }
+
   let sending = false;
+  /* Ключ отправки живёт, пока в поле тот же текст: связь подвисла, водитель
+     жмёт ещё раз — сервер узнаёт свою же запись по ключу и второго пузыря не
+     заводит (server/routers/extra.py, _send_message). */
+  let sendKey = '';
+  let sendKeyFor = '';
+
+  function keyFor(text) {
+    if (sendKey && sendKeyFor === text) return sendKey;
+    sendKeyFor = text;
+    sendKey = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+    return sendKey;
+  }
 
   async function send() {
     const text = input.value.trim();
     if (!text || sending || !c.canSend) return;
     sending = true;
     sendBtn.disabled = true;
+    const key = keyFor(text);
     input.value = '';
     grow();
     try {
-      const res = await api.post('/courier/orders/' + orderId + '/messages', { text });
+      const res = await api.post('/courier/orders/' + orderId + '/messages', { text, key });
       const msg = chatPush(c, res && res.message);
       if (msg) add(msg);
+      sendKey = '';
+      sendKeyFor = '';
       haptic();
       if (typeof opts.onChange === 'function') opts.onChange();
     } catch (e) {
-      input.value = text;                 // текст возвращаем: набирать заново обидно
-      grow();
-      toast((e && e.message) || t('err.unknown'), { type: 'err' });
+      // Сообщение могло уже уйти и вернуться потоком, пока мы ждали ответа.
+      // Тогда возвращать текст в поле нельзя: водитель отправит его вторым.
+      if (c.items.some((m) => m.mine && sameText(m.text, text))) {
+        sendKey = '';
+        sendKeyFor = '';
+        toast(t('chat.slow'), { type: 'warn' });
+      } else {
+        input.value = text;               // текст возвращаем: набирать заново обидно
+        grow();
+        toast((e && e.message) || t('err.unknown'), { type: 'err' });
+      }
     }
     sending = false;
     sendBtn.disabled = !c.canSend || !input.value.trim();

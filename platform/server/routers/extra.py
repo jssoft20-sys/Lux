@@ -355,6 +355,12 @@ def _publish_message(order, row):
                     dict(payload, order_id=order['id']))
 
 
+# Ключ отправки: телефон придумывает его сам и повторяет при повторной
+# отправке того же сообщения. Длину и знаки держим скромными — это не токен,
+# а метка, и в базе она лежит рядом с текстом.
+KEY_RX = re.compile(r'^[A-Za-z0-9_\-]{6,64}$')
+
+
 def _send_message(ctx, order, side):
     """Приём сообщения от одной из сторон. Проверки одни и те же для обоих."""
     lang = _lang(ctx, order.get('lang') or 'ru')
@@ -363,12 +369,40 @@ def _send_message(ctx, order, side):
     text = clean_text(ctx.json.get('text') or ctx.json.get('message'))
     if not text:
         bad(say('chat.empty', lang), 'empty_text')
+
+    # Повтор той же отправки. На плохой связи сообщение доходит, а ответ —
+    # нет; человек жмёт «отправить ещё раз», и без этой проверки в переписке
+    # оказывались два одинаковых пузыря. Отвечаем тем, что уже записано, — как
+    # будто всё получилось с первого раза (так оно и было).
+    key = str(ctx.json.get('key') or ctx.json.get('client_key') or '').strip()
+    # Ключ придумывают оба телефона независимо, и однажды они совпадут. Чтобы
+    # клиент не получил в ответ сообщение курьера, храним ключ вместе со
+    # стороной: у клиента и у курьера это разные пространства.
+    key = ('%s:%s' % (side, key)) if key and KEY_RX.match(key) else None
+    if key:
+        was = db.row('SELECT * FROM messages WHERE order_id=? AND client_key=?',
+                     (order['id'], key))
+        if was:
+            return {'ok': True, 'message': _msg_view(dict(was), side), 'repeat': True,
+                    'unread': _unread(order['id'], side), 'now': db.now()}, 201
+
     if not LIMIT.check('msg:%s:%s' % (side, order['id']), MSG_PER_MIN, 60):
         too_many(say('chat.too_often', lang))
 
     t = db.now()
-    mid = db.insert('messages', {'order_id': order['id'], 'sender': side,
-                                 'text': text, 'at': t, 'read_at': None})
+    try:
+        mid = db.insert('messages', {'order_id': order['id'], 'sender': side,
+                                     'text': text, 'at': t, 'read_at': None,
+                                     'client_key': key})
+    except sqlite3.IntegrityError:
+        # Два повтора пришли разом и обогнали друг друга: второй упирается в
+        # уникальность ключа. Отдаём то, что успел записать первый.
+        was = db.row('SELECT * FROM messages WHERE order_id=? AND client_key=?',
+                     (order['id'], key))
+        if not was:
+            raise
+        return {'ok': True, 'message': _msg_view(dict(was), side), 'repeat': True,
+                'unread': _unread(order['id'], side), 'now': db.now()}, 201
     row = {'id': mid, 'sender': side, 'text': text, 'at': t, 'read_at': None}
     _publish_message(order, row)
     return {'ok': True, 'message': _msg_view(row, side),

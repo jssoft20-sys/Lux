@@ -11,7 +11,7 @@
 """
 import json, os, sqlite3, threading, time
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 _local = threading.local()
 _path = None
 _write_lock = threading.RLock()      # sqlite не любит параллельную запись даже в WAL
@@ -263,6 +263,13 @@ ADDED_COLUMNS = {
         ('token', 'TEXT'),          # опознаём вернувшегося клиента без регистрации
         ('name_asked', 'INTEGER NOT NULL DEFAULT 0'),
     ],
+    'messages': [
+        # Ключ отправки, который придумывает телефон. Нужен на плохой связи:
+        # сообщение дошло, а ответ до телефона не добрался, человек жмёт
+        # «отправить ещё раз» — и в переписке два одинаковых пузыря. С ключом
+        # повтор находит уже записанное сообщение и ничего не добавляет.
+        ('client_key', 'TEXT'),
+    ],
 }
 
 
@@ -278,6 +285,10 @@ def _migrate(conn):
                      'ON clients(token) WHERE token IS NOT NULL')
         conn.execute('CREATE INDEX IF NOT EXISTS ix_couriers_verify '
                      'ON couriers(verify_status)')
+        # Ключ отправки уникален внутри заказа: два телефона могут придумать
+        # одинаковый, но в разных переписках это никому не мешает.
+        conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS ix_messages_key '
+                     'ON messages(order_id, client_key) WHERE client_key IS NOT NULL')
         cur_version = conn.execute('PRAGMA user_version').fetchone()[0]
         if cur_version != SCHEMA_VERSION:
             conn.execute(f'PRAGMA user_version={SCHEMA_VERSION}')

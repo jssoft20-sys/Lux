@@ -1934,10 +1934,20 @@ export function mountTrack(app, pid, token) {
 
   /* Свой пузырь до ответа сервера: человек видит своё сообщение сразу, а не
      через полсекунды сетевого молчания. */
+  /* Ключ отправки: живёт с пузырём и не меняется при повторе. На плохой связи
+     сообщение доходит, а ответ теряется; человек жмёт «ещё раз» — и без ключа
+     в переписке оказывались два одинаковых пузыря. Сервер по ключу узнаёт свою
+     же запись и ничего не добавляет (server/routers/extra.py, _send_message). */
+  function sendKey() {
+    const rnd = Math.random().toString(36).slice(2, 10);
+    return 'c' + Date.now().toString(36) + rnd;
+  }
+
   function addPending(text) {
     chat.seq += 1;
     const msg = {
       key: 'p' + chat.seq,
+      sendKey: sendKey(),
       id: 0,
       mine: true,
       text,
@@ -1994,6 +2004,7 @@ export function mountTrack(app, pid, token) {
       chat.note = res.message || '';
       chat.maxText = Number(res.max_text) || 1000;
       chat.loaded = true;
+      chatBeat();
     } catch (e) {
       if (dead) return;
       chat.error = e;
@@ -2323,7 +2334,8 @@ export function mountTrack(app, pid, token) {
     async function deliver(msg) {
       try {
         const res = await api.post(base + '/messages',
-                                   { text: msg.text, t: token, lang: getLang() });
+                                   { text: msg.text, key: msg.sendKey,
+                                     t: token, lang: getLang() });
         if (dead) return;
         const got = res && res.message;
         const id = got && got.id !== undefined && got.id !== null ? Number(got.id) : 0;
@@ -2344,14 +2356,19 @@ export function mountTrack(app, pid, token) {
       } catch (e) {
         if (dead) return;
         msg.pending = false;
-        msg.failed = true;
-        toast(errText(e), { type: 'err' });
+        // Пока мы ждали ответа, сообщение могло прийти обратно потоком и уже
+        // стать доставленным. Красить его в «не ушло» нельзя: человек нажмёт
+        // «ещё раз» и увидит два одинаковых пузыря.
+        if (!msg.id) {
+          msg.failed = true;
+          toast(errText(e), { type: 'err' });
+        }
       }
       if (chatUi) chatUi.sync();
     }
 
     function resend(msg) {
-      if (!chat.canSend || msg.pending) return;
+      if (!chat.canSend || msg.pending || msg.id) return;
       msg.failed = false;
       msg.pending = true;
       if (chat.pending.indexOf(msg) < 0) chat.pending.push(msg);
@@ -2423,7 +2440,13 @@ export function mountTrack(app, pid, token) {
     sync(true);
     toBottom();
     if (!chat.loaded) loadChat(true);
-    else markRead();
+    else {
+      markRead();
+      // Открытый чат переспрашиваем чаще закрытого, и первый раз — сразу:
+      // человек мог вернуться к нему как раз после обрыва.
+      resyncChat();
+    }
+    chatBeat();
   }
 
   function closeChat(now) {
@@ -2437,6 +2460,7 @@ export function mountTrack(app, pid, token) {
     clearTimeout(readTimer);
     readTimer = 0;
     paintUnread();
+    chatBeat();
   }
 
   /* ── загрузка и поток ────────────────────────────────────────────────── */
@@ -2480,13 +2504,65 @@ export function mountTrack(app, pid, token) {
     return () => payWatchers.delete(fn);
   }
 
+  /* ── переписка не должна терять сообщения ────────────────────────────────
+
+     Поток событий переигрывает только то, что случилось при нём. Связь на
+     минуту пропала — всё, что курьер написал за эту минуту, прошло мимо, и
+     следующее живое сообщение ложится прямо поверх дыры: человек видит ответ
+     на вопрос, которого не видел. Раньше вернуть пропавшее могла только
+     перезагрузка страницы.
+
+     Поэтому две страховки, обе — как у курьера (courier/work.js):
+     после каждого возврата связи перечитываем переписку целиком, и, пока
+     человек в чате, тихо переспрашиваем её раз в несколько секунд. Целиком, а
+     не хвостом: отметка «прочитано» приходит правкой старых сообщений, по
+     хвосту её не видно. Свои неотправленные пузыри loadChat бережёт сам. */
+
+  const CHAT_POLL_OPEN_MS = 12000;     // чат открыт — человек ждёт ответа
+  const CHAT_POLL_IDLE_MS = 45000;     // чат закрыт — хватит и значка
+  const CHAT_RESYNC_GAP_MS = 2000;     // поток рвётся пачками, незачем частить
+  let chatPoll = 0;
+  let chatSyncAt = 0;
+
+  function resyncChat() {
+    // Ни разу не открывали — и перечитывать нечего: счётчик непрочитанного
+    // придёт с первым же открытием.
+    if (dead || !chat.loaded || chat.loading) return;
+    const now = Date.now();
+    if (now - chatSyncAt < CHAT_RESYNC_GAP_MS) return;
+    chatSyncAt = now;
+    Promise.resolve(loadChat(true)).then(() => {
+      if (dead) return;
+      if (chatUi) {
+        chatUi.sync();
+        markRead();
+      }
+      paintUnread();
+    }).catch(() => { /* не вышло — попробуем на следующем круге */ });
+  }
+
+  function chatBeat() {
+    if (chatPoll) clearTimeout(chatPoll);
+    if (dead || !chat.loaded) return;
+    chatPoll = setTimeout(() => {
+      chatPoll = 0;
+      // В свёрнутой вкладке не тормошим сервер: вернётся человек — вернётся
+      // и поток, а он позовёт resyncChat сам.
+      if (document.visibilityState !== 'hidden') resyncChat();
+      chatBeat();
+    }, chatUi ? CHAT_POLL_OPEN_MS : CHAT_POLL_IDLE_MS);
+  }
+
   function listen() {
     if (stream || dead) return;
     stream = api.stream(base + '/stream', {
       auth: false,
       params: { t: token, lang: getLang() },
       events: ['search_failed', 'message', 'message_read'],
-      onOpen: markOnline,
+      onOpen: () => {
+        markOnline();
+        resyncChat();
+      },
       onError: markOffline,
       onEvent: (name, data) => {
         if (dead || !data || typeof data !== 'object') return;
@@ -3379,6 +3455,8 @@ export function mountTrack(app, pid, token) {
     destroy() {
       dead = true;
       stopBeat();
+      clearTimeout(chatPoll);
+      chatPoll = 0;
       clearTimeout(offTimer);
       clearTimeout(readTimer);
       readTimer = 0;
