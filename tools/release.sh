@@ -13,6 +13,10 @@ rm -rf "$OUT" && mkdir -p "$OUT/somex/web"
 pnpm --filter @somex/api deploy --prod --legacy "$OUT/somex/api"
 rm -rf "$OUT/somex/api/src" "$OUT/somex/api/test" "$OUT/somex/api/tsconfig*.json" "$OUT/somex/api/nest-cli.json"
 (cd "$OUT/somex/api" && npx prisma generate >/dev/null)
+# trim: uploads from dev, duplicate query engines of the CLI (migrate deploy needs only the schema engine), typescript
+rm -rf "$OUT/somex/api/storage" "$OUT/somex/api/.env"
+find "$OUT/somex/api/node_modules/.pnpm" -path "*node_modules/prisma/libquery_engine-*" -delete
+rm -rf "$OUT/somex/api/node_modules/.pnpm"/typescript@* "$OUT/somex/api/node_modules/typescript"
 cp -r apps/mobile/dist "$OUT/somex/web/mobile"
 cp -r apps/admin/dist "$OUT/somex/web/admin"
 cp deploy/.env.example deploy/install.sh deploy/start.sh deploy/stop.sh deploy/docker-compose.yml deploy/README.md "$OUT/somex/"
