@@ -53,8 +53,14 @@ else
 fi
 set -a; . ./.env; set +a
 
-# ── нативные модули (если сервер другой архитектуры/libc) ──
-if ! node -e "require('./api/node_modules/argon2'); require('./api/node_modules/sharp')" >/dev/null 2>&1; then
+# ── зависимости API ──
+if [ ! -d api/node_modules ]; then
+  log "Устанавливаю зависимости API (npm ci, 2–5 минут)"
+  apt-get install -y -q python3 make g++ >/dev/null   # на случай сборки нативных модулей
+  (cd api && npm ci --omit=dev --no-audit --no-fund 2>&1 | tail -3)
+  log "Генерирую Prisma client"
+  (cd api && npx prisma generate >/dev/null)
+elif ! node -e "require('./api/node_modules/argon2'); require('./api/node_modules/sharp')" >/dev/null 2>&1; then
   warn "Пересобираю нативные модули под этот сервер"
   apt-get install -y -q python3 make g++ >/dev/null
   (cd api && npm rebuild argon2 sharp >/dev/null 2>&1 || true)

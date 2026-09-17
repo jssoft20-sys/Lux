@@ -25,9 +25,10 @@ services:
       REDIS_URL: redis://redis:6379
       CLAMAV_HOST: clamav
       API_PORT: '7055'
-    command: sh -c "apt-get update -qq >/dev/null && apt-get install -y -qq openssl >/dev/null; npx prisma migrate deploy && (npx tsx prisma/seed.ts || true) && node dist/main.js"
+    command: sh -c "apt-get update -qq >/dev/null && apt-get install -y -qq openssl >/dev/null; [ -d node_modules ] || (npm ci --omit=dev --no-audit --no-fund && npx prisma generate); npx prisma migrate deploy && (npx tsx prisma/seed.ts || true) && node dist/main.js"
     volumes:
       - ./api:/somex/api
+      - ./shared:/somex/shared
       - ./web:/somex/web
       - storage:/somex/api/storage
     ports: ['7055:7055']
