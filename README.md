@@ -65,7 +65,7 @@ docker compose -f infra/docker-compose.yml up -d --build
 | `pnpm typecheck` | `tsc --noEmit` во всех пакетах |
 | `pnpm db:migrate` / `pnpm db:deploy` | миграции (dev / prod) |
 | `pnpm db:seed` | сид справочников и демо-данных (идемпотентный) |
-| `pnpm --filter @somex/api test:e2e` | e2e-тесты API |
+| `pnpm --filter @somex/api test:smoke` | сквозной smoke-тест API (регистрация → KYC → сделка → эскроу → вывод → админка) против запущенного dev-API |
 
 ## Лицензирование и комплаенс
 

@@ -5,7 +5,7 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* .npmrc tsconfig.base.json ./
 COPY packages/shared packages/shared
 COPY apps/${APP}/package.json apps/${APP}/
-RUN pnpm install --frozen-lockfile --filter @somex/${APP}... --ignore-scripts && pnpm --filter @somex/shared build
+RUN pnpm install --frozen-lockfile --filter @somex/${APP}... && pnpm --filter @somex/shared build
 COPY apps/${APP} apps/${APP}
 # API is reached through nginx on the same origin, so no VITE_API_URL is baked in
 RUN cd apps/${APP} && npx vite build

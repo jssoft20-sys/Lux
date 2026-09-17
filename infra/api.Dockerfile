@@ -7,9 +7,9 @@ COPY packages/shared/package.json packages/shared/tsconfig.json packages/shared/
 COPY packages/shared/src packages/shared/src
 COPY apps/api/package.json apps/api/tsconfig.json apps/api/tsconfig.build.json apps/api/nest-cli.json apps/api/
 COPY apps/api/prisma apps/api/prisma
-RUN pnpm install --frozen-lockfile --filter @somex/api... --ignore-scripts && pnpm --filter @somex/shared build
+RUN pnpm install --frozen-lockfile --filter @somex/api... && pnpm --filter @somex/shared build
 COPY apps/api/src apps/api/src
-RUN cd apps/api && npx prisma generate && pnpm build && pnpm prune --prod
+RUN cd apps/api && npx prisma generate && pnpm build
 
 # ---- runtime ----
 FROM node:22-alpine
