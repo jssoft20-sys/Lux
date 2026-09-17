@@ -8,7 +8,7 @@
 tar xzf somex-test.tar.gz && cd somex && sudo bash install.sh
 ```
 
-Скрипт ставит Node 22, PostgreSQL, Redis, создаёт базу, генерирует секреты в `.env`, применяет миграции, заполняет тестовые данные и запускает сервис `somex` (systemd) на порту **7055**.
+Скрипт ставит Node 22, PostgreSQL, Redis, создаёт базу, генерирует секреты в `.env`, применяет миграции, заполняет тестовые данные и запускает сервис `somex` (systemd) на порту **7055**. Минимум 1 ГБ RAM: на маленьких VPS установщик сам добавляет swap 2 ГБ, иначе `npm ci` убивает OOM-killer.
 
 Другой порт: `sudo PORT=8080 bash install.sh`. Если есть Docker: `cp .env.example .env`, заполните `MASTER_KEY`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` (`openssl rand -hex 32`) и `docker compose up -d`.
 

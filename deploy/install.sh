@@ -53,12 +53,29 @@ else
 fi
 set -a; . ./.env; set +a
 
+# ── память: npm ci на VPS с 1 ГБ RAM убивает OOM-killer, поэтому при нехватке добавляем swap ──
+MEM_MB="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)"
+SWAP_MB="$(awk '/SwapTotal/ {print int($2/1024)}' /proc/meminfo)"
+if [ $((MEM_MB + SWAP_MB)) -lt 2500 ] && [ ! -f /swapfile ]; then
+  log "Мало памяти (${MEM_MB} МБ RAM, ${SWAP_MB} МБ swap) — создаю swap 2 ГБ"
+  if (fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none) && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile; then
+    grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  else
+    warn "Swap создать не удалось (контейнер без поддержки swap?). Если npm ci будет убит, добавьте памяти серверу."
+    rm -f /swapfile
+  fi
+fi
+
 # ── зависимости API (ставятся заново, если изменился package-lock.json — например, после обновления архива) ──
 LOCK_SUM="$(sha256sum api/package-lock.json | cut -c1-16)"
 if [ ! -d api/node_modules ] || [ "$(cat api/node_modules/.somex-lock 2>/dev/null)" != "$LOCK_SUM" ]; then
   log "Устанавливаю зависимости API (npm ci, 2–5 минут)"
   apt-get install -y -q python3 make g++ >/dev/null   # на случай сборки нативных модулей
-  (cd api && npm ci --omit=dev --no-audit --no-fund 2>&1 | tail -3)
+  rm -rf api/node_modules                              # остатки прерванной установки
+  if ! (cd api && NODE_OPTIONS=--max-old-space-size=768 npm ci --omit=dev --no-audit --no-fund --loglevel=error 2>&1 | tail -5); then
+    warn "npm ci не завершился. Обычно это нехватка памяти: проверьте free -h, добавьте swap и запустите install.sh снова."
+    exit 1
+  fi
   log "Генерирую Prisma client"
   (cd api && npx prisma generate >/dev/null)
   echo "$LOCK_SUM" > api/node_modules/.somex-lock
