@@ -138,9 +138,9 @@ async function seedUsers() {
 async function seedAds(users: Record<string, string>) {
   if ((await prisma.ad.count()) > 0) return;
   const ads: Array<[string, AdSide, string, string, number, number, number, string]> = [
-    ['+996700111222', 'SELL', '88.40', 'OPTIMA', 5000, 200000, 2000, 'BISHKEK'],
-    ['+996700111222', 'SELL', '88.45', 'MBANK', 5000, 150000, 1500, 'ALL'],
-    ['+996555777888', 'SELL', '88.50', 'OPTIMA', 10000, 500000, 5000, 'BISHKEK'],
+    ['+996700111222', 'SELL', '88.40', 'OPTIMA', 5000, 200000, 12000, 'BISHKEK'],
+    ['+996700111222', 'SELL', '88.45', 'MBANK', 5000, 150000, 5000, 'ALL'],
+    ['+996555777888', 'SELL', '88.50', 'OPTIMA', 10000, 500000, 8000, 'BISHKEK'],
     ['+996777333444', 'SELL', '88.60', 'BAKAI', 5000, 300000, 3000, 'ALL'],
     ['+996999555666', 'SELL', '88.70', 'MBANK', 20000, 1000000, 3000, 'ALL'],
     ['+996550101010', 'SELL', '88.90', 'DEMIR', 3000, 100000, 1000, 'OSH_CITY'],

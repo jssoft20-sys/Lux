@@ -62,7 +62,7 @@ export class UsersService {
       },
       balance: { available: u.balance?.available.toString() ?? '0', locked: u.balance?.locked.toString() ?? '0', asset: 'USDT' },
       stats: {
-        completedOrders: ordersCount,
+        completedOrders: Math.max(u.completedOrders, ordersCount),
         activeOrders,
         rating: u.ratingCount ? Math.round((u.ratingSum / u.ratingCount) * 20) / 20 : null,
         completionRate: this.completionRate(u.completedOrders, u.disputesLost),

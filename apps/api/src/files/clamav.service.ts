@@ -36,7 +36,7 @@ export class ClamAvService {
       sock.on('data', (d) => (out += d.toString()));
       sock.on('close', () => {
         clearTimeout(timer);
-        resolve(out.trim());
+        resolve(out.replace(/\0/g, '').trim()); // z-commands return NUL-terminated replies
       });
       sock.connect(port, host, () => {
         sock.write(`z${cmd}\0`);

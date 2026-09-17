@@ -1,0 +1,128 @@
+# Somex — full stack: Postgres, Redis, ClamAV, MinIO, API, mobile app, admin panel, nginx edge.
+# Usage:  cp .env.example .env  →  fill secrets  →  docker compose -f infra/docker-compose.yml up -d --build
+name: somex
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: somex
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-somex}
+      POSTGRES_DB: somex
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U somex -d somex']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory', '256mb', '--maxmemory-policy', 'allkeys-lru']
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    environment:
+      CLAMAV_NO_FRESHCLAMD: 'false'
+    volumes:
+      - clamdb:/var/lib/clamav
+    healthcheck:
+      test: ['CMD', 'clamdcheck.sh']
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 180s
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-somex}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-somexsomex}
+    volumes:
+      - miniodata:/data
+    ports:
+      - '127.0.0.1:9001:9001'
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on: [minio]
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 ${S3_ACCESS_KEY:-somex} ${S3_SECRET_KEY:-somexsomex}; do sleep 2; done;
+      mc mb -p local/${S3_BUCKET:-somex} || true;
+      exit 0"
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/api.Dockerfile
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://somex:${POSTGRES_PASSWORD:-somex}@postgres:5432/somex?schema=public
+      REDIS_URL: redis://redis:6379
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: 3310
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-s3}
+      S3_ENDPOINT: http://minio:9000
+      OTP_DEV_ECHO: 'false'
+      DEV_SIMULATE_CHAIN: 'false'
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    volumes:
+      - apistorage:/app/apps/api/storage
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:4000/api/v1/health']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  mobile:
+    build:
+      context: ..
+      dockerfile: infra/web.Dockerfile
+      args:
+        APP: mobile
+    restart: unless-stopped
+
+  admin:
+    build:
+      context: ..
+      dockerfile: infra/web.Dockerfile
+      args:
+        APP: admin
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/proxy.inc:/etc/nginx/proxy.inc:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on: [api, mobile, admin]
+
+volumes:
+  pgdata:
+  redisdata:
+  clamdb:
+  miniodata:
+  apistorage:
