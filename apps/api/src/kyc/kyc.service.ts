@@ -46,7 +46,7 @@ export class KycService {
       level: user.kycLevel,
       status: user.kycStatus,
       fullName: user.fullName,
-      provider: configured ? 'didit' : loadEnv().NODE_ENV !== 'production' ? 'sandbox' : 'none',
+      provider: configured ? 'didit' : this.sandboxAllowed() ? 'sandbox' : 'none',
       verification: last
         ? { id: last.id, status: last.status, url: last.status === KycStatus.IN_PROGRESS ? last.providerUrl : null, declineReason: last.declineReason, createdAt: last.createdAt, completedAt: last.completedAt }
         : null,
@@ -77,7 +77,7 @@ export class KycService {
       return { mode: 'didit', verificationId: v.id, url: session.url };
     }
 
-    if (loadEnv().NODE_ENV === 'production') throw E.bad('KYC_UNAVAILABLE', 'Сервис верификации временно недоступен');
+    if (!this.sandboxAllowed()) throw E.bad('KYC_UNAVAILABLE', 'Сервис верификации временно недоступен');
     const v =
       active ??
       (await this.prisma.kycVerification.create({ data: { userId, provider: 'sandbox', status: KycStatus.IN_PROGRESS, providerSessionId: `sandbox-${userId}-${Date.now()}` } }));
@@ -85,9 +85,15 @@ export class KycService {
     return { mode: 'sandbox', verificationId: v.id, url: null };
   }
 
-  /** Development-only path that simulates a provider decision (no external calls). */
+  /** Sandbox KYC (form + simulated decision) is available in development and on TEST_MODE stands; never with a configured provider in production. */
+  private sandboxAllowed() {
+    const env = loadEnv();
+    return env.NODE_ENV !== 'production' || env.TEST_MODE;
+  }
+
+  /** Development / test-stand path that simulates a provider decision (no external calls). */
   async sandboxComplete(userId: string, dto: { fullName: string; documentNumber: string; dateOfBirth: string; documentType?: string; outcome?: 'APPROVED' | 'DECLINED' }) {
-    if (loadEnv().NODE_ENV === 'production' || (await this.didit.isConfigured())) throw E.forbidden('Sandbox KYC недоступен');
+    if (!this.sandboxAllowed() || (await this.didit.isConfigured())) throw E.forbidden('Sandbox KYC недоступен');
     const v = await this.prisma.kycVerification.findFirst({ where: { userId, provider: 'sandbox', status: KycStatus.IN_PROGRESS }, orderBy: { createdAt: 'desc' } });
     if (!v) throw E.bad('NO_SESSION', 'Сначала начните верификацию');
     const parts = dto.fullName.trim().split(/\s+/);

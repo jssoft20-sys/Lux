@@ -113,8 +113,10 @@ export class AuthService {
           lastIp: ctx.ip,
         },
       });
+      const cooldownH = await this.settings.num('security.new_device_cooldown_hours');
+      // cooldown disabled (test stands): drop any lock left over from an earlier configuration
+      if (cooldownH <= 0 && user.sensitiveOpsLockedUntil) await this.prisma.user.update({ where: { id: user.id }, data: { sensitiveOpsLockedUntil: null } });
       if (isNewDevice) {
-        const cooldownH = await this.settings.num('security.new_device_cooldown_hours');
         if (cooldownH > 0) await this.prisma.user.update({ where: { id: user.id }, data: { sensitiveOpsLockedUntil: new Date(Date.now() + hours(cooldownH)) } });
         await this.prisma.riskEvent.create({
           data: {

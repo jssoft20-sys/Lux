@@ -88,6 +88,8 @@ async function seedUsers() {
     let u = await prisma.user.findUnique({ where: { phone: d.phone } });
     if (u) {
       created[d.phone] = u.id;
+      // re-seeding a test stand: drop a new-device lock left by an earlier configuration
+      if (u.sensitiveOpsLockedUntil) await prisma.user.update({ where: { id: u.id }, data: { sensitiveOpsLockedUntil: null } });
       continue;
     }
     const fullName = `${d.lastName} ${d.firstName} ${d.patronymic}`;

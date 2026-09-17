@@ -64,7 +64,7 @@ async function bootstrap() {
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
       imgSrc: ["'self'", 'data:', 'blob:'],
       connectSrc: ["'self'", 'ws:', 'wss:'],
-      workerSrc: ["'self'"],
+      workerSrc: ["'self'", 'blob:'], // image-compression / QR libraries spawn blob workers from our own scripts
       manifestSrc: ["'self'"],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
@@ -95,7 +95,7 @@ async function bootstrap() {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Device-Id', 'X-Idempotency-Key', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Device-Id', 'X-Idempotency-Key', 'X-Requested-With', 'X-Client'],
   });
 
   mountWebApps(app, env);

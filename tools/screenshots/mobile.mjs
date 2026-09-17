@@ -79,7 +79,7 @@ try {
   await sleep(1500);
   await shot(page, '09-chat');
   await page.goto(`${BASE}/profile`);
-  await page.waitForSelector('text=Мой профиль');
+  await page.waitForSelector('text=Профиль');
   await sleep(700);
   await shot(page, '10-profile');
   await page.goto(`${BASE}/wallet/deposit`);
@@ -139,7 +139,8 @@ try {
   const devBtn = sp.locator('button', { hasText: /код \d{6}, нажмите/ });
   if (await devBtn.isVisible().catch(() => false)) {
     await devBtn.click();
-    await sp.getByText('Подтвердить и отпустить').click();
+    // the code input auto-confirms once all 6 digits are in; the button only remains for manual confirmation
+    await sp.getByText('Подтвердить и отпустить').click({ timeout: 3000 }).catch(() => undefined);
   }
   await sp.waitForSelector('text=Сделка завершена', { timeout: 20000 });
   await sleep(1400);

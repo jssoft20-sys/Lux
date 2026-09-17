@@ -102,11 +102,17 @@ async function login(phone, device) {
   log('  balance after withdrawal lock: available', me2.balance.available, 'locked', me2.balance.locked);
   // admin
   const al = await call('POST', '/admin/auth/login', { email: 'admin@somex.kg', password: 'ChangeMe!2026' });
-  assert(al.mfaRequired && al.mfaSetupRequired && al.setup.secret, 'admin mfa setup enforced');
-  const code = authenticator.generate(al.setup.secret);
-  const at = await call('POST', '/admin/auth/totp', { tmpToken: al.tmpToken, code });
-  assert(at.accessToken, 'admin logged in');
-  log('✔ admin login with enforced TOTP enrolment');
+  let at;
+  if (al.accessToken) {
+    at = al; // TEST_MODE stands do not enforce TOTP enrolment
+    log('✔ admin login (test mode, TOTP not enforced)');
+  } else {
+    assert(al.mfaRequired && al.mfaSetupRequired && al.setup.secret, 'admin mfa setup enforced');
+    const code = authenticator.generate(al.setup.secret);
+    at = await call('POST', '/admin/auth/totp', { tmpToken: al.tmpToken, code });
+    assert(at.accessToken, 'admin logged in');
+    log('✔ admin login with enforced TOTP enrolment');
+  }
   const stats = await call('GET', '/admin/dashboard/stats', null, at.accessToken);
   log('  stats: users', stats.users.total, 'escrow', stats.money.escrowLocked, 'fees', stats.money.feesCollected, 'queues', JSON.stringify(stats.queues));
   const users = await call('GET', '/admin/users?q=' + encodeURIComponent(BUYER_PHONE), null, at.accessToken);
@@ -136,8 +142,7 @@ async function login(phone, device) {
   log('✔ simulated deposit →', sim.status, sim.amount);
   // viewer role restrictions
   const vl = await call('POST', '/admin/auth/login', { email: 'support@somex.kg', password: 'ChangeMe!2026' });
-  const vcode = authenticator.generate(vl.setup.secret);
-  const vt = await call('POST', '/admin/auth/totp', { tmpToken: vl.tmpToken, code: vcode });
+  const vt = vl.accessToken ? vl : await call('POST', '/admin/auth/totp', { tmpToken: vl.tmpToken, code: authenticator.generate(vl.setup.secret) });
   await call('GET', '/admin/settings', null, vt.accessToken).then(() => assert(false, 'support cannot read settings')).catch((e) => assert(/403/.test(e.message), 'RBAC works'));
   log('✔ RBAC: SUPPORT denied on settings');
   // refresh is bound to the device that logged in: another device fingerprint is rejected

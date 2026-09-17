@@ -91,7 +91,7 @@ export class P2pController {
   }
 
   @UseGuards(ActiveUserGuard)
-  @Throttle({ short: { limit: 3, ttl: 10_000 } })
+  @Throttle({ short: { limit: 5, ttl: 10_000 }, medium: { limit: 20, ttl: 60_000 } })
   @Post('orders/:id/release')
   @HttpCode(200)
   release(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ReleaseDto, @Req() req: Request) {

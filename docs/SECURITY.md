@@ -11,9 +11,10 @@
 | Только номера Кыргызстана | `normalizeKgPhone` (`^\+996[2579]\d{8}$`), маска `555 123 456`, флаг 🇰🇬 |
 | OTP через WhatsApp | Wappi `POST /api/sync/message/send`, 6 цифр, TTL 5 мин, 5 попыток, единоразовое использование, хранится HMAC-хэш |
 | Анти-перебор | Лимиты в Redis: на номер/час, на IP/час, cooldown повторной отправки; глобальный throttler (Redis storage) на все эндпоинты; идентичный ответ для чёрного списка (без enumeration) |
-| Сессии | Access JWT 15 мин, refresh 30 дней с **ротацией и детекцией повторного использования** (компрометация семьи → отзыв всех), макс. N сессий, сессии/устройства управляются пользователем и админом |
-| Устройства | Fingerprint → таблица `Device`; **новое устройство = cooldown 24ч** на вывод и отпуск (требует доп. OTP), уведомление в WhatsApp, risk-событие |
-| PIN / Face ID | argon2id, step-up токен 5 минут для отпуска эскроу и вывода |
+| Сессии | Access JWT 15 мин живёт **только в памяти приложения** (не в localStorage/cookie — XSS не может его украсть). Refresh 30 дней: в браузере — **httpOnly cookie `SameSite=Strict`, `Secure` за HTTPS, `Path=/api/v1/auth`** (скрипты не видят, на другие URL не отправляется), в нативном приложении — в защищённом хранилище. **Ротация и детекция повторного использования** (компрометация семьи → отзыв всех), **привязка refresh к устройству** (другой fingerprint → отзыв семьи + аудит `session.device_mismatch`), макс. N сессий, сессии/устройства управляются пользователем и админом |
+| CSRF | Запросы по cookie (`/auth/refresh`, `/auth/logout`, admin аналогично) принимаются только с заголовком `X-Requested-With: XMLHttpRequest` и `Origin`/`Referer` самого сайта (или из `CORS_ORIGINS`); остальные эндпоинты авторизуются только Bearer-токеном из памяти, cookie для них не действует |
+| Устройства | Fingerprint → таблица `Device`; **новое устройство = cooldown** на вывод и отпуск (`security.new_device_cooldown_hours`, по умолчанию 24 ч; в `TEST_MODE` — 0), уведомление в WhatsApp, risk-событие; админ может снять ограничение (Пользователь → «Снять ограничение») |
+| PIN / Face ID | argon2id; **5 ошибок → блокировка на 15 минут** (счётчик в Redis, аудит `user.pin_failed`); step-up токен 5 минут для отпуска эскроу и вывода |
 | Админы | argon2id пароль, **обязательный TOTP** (enrolment при первом входе), блокировка после 5 ошибок, IP allowlist (глобальный + персональный, CIDR), короткие сессии, роли |
 
 ## Деньги
@@ -40,7 +41,9 @@
 * Поиск по номеру документа/счёту/чёрному списку — HMAC blind-index, оригиналы не хранятся.
 * Аудит: append-only, `hash = sha256(canonical(row) + prevHash)`, проверка целостности в админке; все действия админов с обязательной причиной.
 * Логи: pino с редактированием токенов/кодов/PIN/паролей.
-* HTTP: helmet, CORS allowlist, CSP/HSTS в nginx, rate-limit на auth.
+* HTTP (приложение и админка отдаются самим API): helmet, **CSP** `default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` (инлайн-скрипты и чужие домены не выполняются — защита от XSS/кликджекинга), `Permissions-Policy` (камера только для своего origin, микрофон/геолокация/платежи выключены), `Referrer-Policy: strict-origin-when-cross-origin`, `X-Content-Type-Options: nosniff`, `Cross-Origin-Resource-Policy: same-origin`, HSTS за HTTPS; все ответы `/api` — `Cache-Control: no-store`; CORS allowlist; rate-limit на auth и глобальный throttler.
+* Ввод: все DTO проходят `class-validator` с `whitelist` + `forbidNonWhitelisted`, Prisma параметризует SQL (инъекции невозможны), ответы API отдают только явные поля (номера счетов маскируются до блокировки эскроу, телефоны контрагентов не раскрываются).
+* Чаты и профили: доступ к сообщениям/файлам только участникам сделки и админу (проверка на каждом запросе и при подключении к WebSocket), сообщения сканируются на попытки увести сделку вне платформы (флаг для комплаенса), файлы в чате проходят антивирус и перекодирование.
 
 ## Custody (production)
 
