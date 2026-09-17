@@ -25,7 +25,7 @@ export default defineConfig({
           { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
         ],
       },
-      workbox: { navigateFallbackDenylist: [/^\/api\//], globPatterns: ['**/*.{js,css,html,svg,png,woff2}'] },
+      workbox: { navigateFallbackDenylist: [/^\/api\//, /^\/admin/, /^\/socket\.io/], globPatterns: ['**/*.{js,css,html,svg,png,woff2}'] },
     }),
   ],
   resolve: {

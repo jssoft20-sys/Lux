@@ -14,16 +14,59 @@ export class ApiError extends Error {
   }
 }
 
+function randomId(): string {
+  // crypto.randomUUID is unavailable on insecure origins (http://IP), so fall back to getRandomValues / Math.random
+  try {
+    const c: any = typeof crypto !== 'undefined' ? crypto : undefined;
+    if (c?.randomUUID) return c.randomUUID();
+    if (c?.getRandomValues) {
+      const a: Uint8Array = c.getRandomValues(new Uint8Array(16));
+      return Array.from(a, (b: number) => b.toString(16).padStart(2, '0')).join('');
+    }
+  } catch {
+    /* ignore */
+  }
+  return `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`;
+}
+
+let memoryDeviceId = '';
 export function deviceId(): string {
   try {
     let id = localStorage.getItem('somex.device');
     if (!id) {
-      id = `web-${crypto.randomUUID()}`;
+      id = `web-${randomId()}`;
       localStorage.setItem('somex.device', id);
     }
     return id;
   } catch {
-    return 'web-unknown';
+    if (!memoryDeviceId) memoryDeviceId = `web-${randomId()}`;
+    return memoryDeviceId;
+  }
+}
+
+/** Clipboard write with a fallback for insecure origins (plain http on an IP address). */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* fall through */
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
   }
 }
 

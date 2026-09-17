@@ -101,7 +101,7 @@ export class AdminSettingsController {
   @Get('system')
   async system() {
     const [clam, storage, tron, wappi, smtp, didit] = await Promise.all([this.clamav.ping(), this.storage.check(), this.tron.simulated() ? { ok: true, detail: 'simulated' } : this.tron.check(), this.wappi.isConfigured(), this.mail.isConfigured(), this.didit.isConfigured()]);
-    return { env: loadEnv().NODE_ENV, chainSimulated: this.tron.simulated(), otpDevEcho: loadEnv().OTP_DEV_ECHO, clamav: clam, storage, tron, wappiConfigured: wappi, smtpConfigured: smtp, diditConfigured: didit, node: process.version, uptimeSec: Math.round(process.uptime()) };
+    return { env: loadEnv().NODE_ENV, testMode: loadEnv().TEST_MODE, testOtpCode: loadEnv().TEST_MODE ? loadEnv().TEST_OTP_CODE : undefined, chainSimulated: this.tron.simulated(), otpDevEcho: loadEnv().OTP_DEV_ECHO, clamav: clam, storage, tron, wappiConfigured: wappi, smtpConfigured: smtp, diditConfigured: didit, node: process.version, uptimeSec: Math.round(process.uptime()) };
   }
 
   // ─── admins ───

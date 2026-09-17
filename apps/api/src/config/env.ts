@@ -20,6 +20,12 @@ const envSchema = z.object({
   ADMIN_JWT_REFRESH_TTL: z.string().default('12h'),
   OTP_DEV_ECHO: bool.default(false),
   DEV_SIMULATE_CHAIN: bool.default(false),
+  /** Test mode: fixed OTP code for every number, no external services required. NEVER enable with real money. */
+  TEST_MODE: bool.default(false),
+  TEST_OTP_CODE: z.string().regex(/^\d{6}$/).default('000000'),
+  /** When set, the API also serves the built web apps (single-port deployment). */
+  WEB_MOBILE_DIR: z.string().optional().default(''),
+  WEB_ADMIN_DIR: z.string().optional().default(''),
 
   WAPPI_API_URL: z.string().default('https://wappi.pro'),
   WAPPI_TOKEN: z.string().optional().default(''),
@@ -77,11 +83,11 @@ export function loadEnv(): Env {
     const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('\n');
     throw new Error(`Invalid environment configuration:\n${issues}`);
   }
-  if (parsed.data.NODE_ENV === 'production') {
+  if (parsed.data.NODE_ENV === 'production' && !parsed.data.TEST_MODE) {
     if (parsed.data.OTP_DEV_ECHO) throw new Error('OTP_DEV_ECHO must be disabled in production');
     if (parsed.data.DEV_SIMULATE_CHAIN) throw new Error('DEV_SIMULATE_CHAIN must be disabled in production');
-    if (/^0+$/.test(parsed.data.MASTER_KEY)) throw new Error('MASTER_KEY must be a real random key in production');
   }
+  if (parsed.data.NODE_ENV === 'production' && /^0+$/.test(parsed.data.MASTER_KEY)) throw new Error('MASTER_KEY must be a real random key in production');
   cached = parsed.data;
   return cached;
 }

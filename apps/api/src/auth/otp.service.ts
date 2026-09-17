@@ -18,6 +18,8 @@ export interface OtpIssueResult {
   resendAfterSec: number;
   maskedPhone: string;
   devCode?: string;
+  /** TEST_MODE: the fixed code that is accepted for every number */
+  testMode?: boolean;
 }
 
 /**
@@ -88,6 +90,12 @@ export class OtpService {
     await this.redis.set(cooldownKey, '1', 'EX', resendSec);
 
     let devCode: string | undefined;
+    if (env.TEST_MODE) {
+      // test deployments: the fixed code always works; a real WhatsApp message is still sent when Wappi is configured
+      devCode = env.TEST_OTP_CODE;
+      if (configured) this.wappi.sendText(phone, T.otp(template, code, Math.round(ttlSec / 60))).catch(() => undefined);
+      return { requestId: row.id, channel: configured ? 'whatsapp' : 'dev', ttlSec, resendAfterSec: resendSec, maskedPhone: maskPhoneForDisplay(phone), devCode, testMode: true };
+    }
     if (configured) {
       const text = T.otp(template, code, Math.round(ttlSec / 60));
       const res = await this.wappi.sendText(phone, text);
@@ -114,6 +122,11 @@ export class OtpService {
 
   /** Returns true when the code is valid; consumes it. Throws with remaining attempts otherwise. */
   async verify(phone: string, purpose: OtpPurpose, code: string): Promise<boolean> {
+    const env = loadEnv();
+    if (env.TEST_MODE && code === env.TEST_OTP_CODE) {
+      await this.prisma.otpCode.updateMany({ where: { phone, purpose, consumedAt: null }, data: { consumedAt: new Date() } });
+      return true;
+    }
     const row = await this.prisma.otpCode.findFirst({
       where: { phone, purpose, consumedAt: null },
       orderBy: { createdAt: 'desc' },

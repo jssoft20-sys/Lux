@@ -40,3 +40,6 @@ playwright-report/
 
 # redis dumps
 dump.rdb
+
+# release archives
+release/

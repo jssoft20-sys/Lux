@@ -78,6 +78,8 @@ const DEMO: DemoUser[] = [
   { phone: '+996550101010', firstName: 'Эльдар', lastName: 'Мамбетов', patronymic: 'Русланович', nickname: 'Eldar_Osh', balance: '2100', completed: 96, rating: 4.6, banks: [['DEMIR', '4444999988887777'], ['MBANK', '996550101010']], daysOld: 60, doc: 'ID6234567' },
   { phone: '+996222444666', firstName: 'Жылдыз', lastName: 'Осмонова', patronymic: 'Канатовна', nickname: 'Jyldyz', balance: '350', completed: 12, rating: 4.4, banks: [['OPTIMA', '4169582222004444']], daysOld: 20, doc: 'ID7234567' },
   { phone: '+996770909090', firstName: 'Тимур', lastName: 'Жумабеков', patronymic: 'Нурланович', nickname: 'Timur_New', balance: '0', completed: 0, rating: 0, banks: [], daysOld: 1, doc: '' },
+  // dedicated test account: KYC passed, PIN 0000, accounts in three banks
+  { phone: '+996500000000', firstName: 'Тест', lastName: 'Тестов', patronymic: 'Тестович', nickname: 'Tester', balance: '5000', completed: 25, rating: 4.8, banks: [['OPTIMA', '4169580000009999'], ['MBANK', '996500000000'], ['BAKAI', '5555000000009999']], daysOld: 30, doc: 'ID0000001' },
 ];
 
 async function seedUsers() {
@@ -110,7 +112,7 @@ async function seedUsers() {
         lastSeenAt: new Date(),
         createdAt,
         balance: { create: { available: new Prisma.Decimal(d.balance), locked: 0 } },
-        pinHash: d.phone === '+996555123456' ? await argon2.hash('1234', { type: argon2.argon2id }) : null,
+        pinHash: d.phone === '+996555123456' ? await argon2.hash('1234', { type: argon2.argon2id }) : d.phone === '+996500000000' ? await argon2.hash('0000', { type: argon2.argon2id }) : null,
       },
     });
     created[d.phone] = u.id;

@@ -6,7 +6,7 @@ import { AlertTriangle, Copy, HelpCircle, MessageCircle, ScrollText, ShieldAlert
 import { Avatar, BankLogo, Button, Header, Row, Sheet, Skeleton } from '@/components/ui';
 import { EscrowPill, StatusCard } from '@/components/OrderBits';
 import { useOrder } from '@/hooks/useOrder';
-import { api } from '@/lib/api';
+import { api, copyText } from '@/lib/api';
 import { fmt, cn } from '@/lib/format';
 
 export default function OrderDetails() {
@@ -29,7 +29,7 @@ export default function OrderDetails() {
   });
 
   const copy = (v: string) => {
-    navigator.clipboard?.writeText(v).then(() => toast.success('Скопировано'));
+    copyText(v).then((ok) => (ok ? toast.success('Скопировано') : toast.error('Не удалось скопировать')));
   };
 
   if (!o) {

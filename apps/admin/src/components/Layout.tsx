@@ -74,6 +74,11 @@ export function Layout() {
         <div className="sticky top-0 z-30 bg-[#0a0e0d]/90 backdrop-blur border-b border-[#1f2a26] px-6 h-12 flex items-center gap-3">
           <span className="live-dot" />
           <span className="text-[12px] muted">Live · обновление каждые 15 с</span>
+          {stats.data?.testMode && (
+            <span className="tag tag-yellow ml-2" title="TEST_MODE=true: OTP-код фиксированный, блокчейн симулируется, 2FA не обязателен">
+              <AlertTriangle size={12} /> ТЕСТОВЫЙ РЕЖИМ · код входа 000000
+            </span>
+          )}
           {freeze.data?.hotWallet?.frozen && (
             <span className="tag tag-red ml-2">
               <AlertTriangle size={12} /> HOT WALLET ЗАМОРОЖЕН

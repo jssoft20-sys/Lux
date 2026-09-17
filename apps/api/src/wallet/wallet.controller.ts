@@ -10,6 +10,7 @@ import { ActiveUserGuard } from '../auth/guards/status.guard';
 import { clientIp } from '../common/utils/request';
 import { PageDto } from '../common/dto/page.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { E } from '../common/errors';
 
 @Controller('wallet')
 export class WalletController {
@@ -35,6 +36,18 @@ export class WalletController {
   @Get('deposits')
   deposits_(@CurrentUser() user: AuthUser, @Query() q: PageDto) {
     return this.deposits.list(user.id, q.page, q.limit);
+  }
+
+  /** Test/dev only (DEV_SIMULATE_CHAIN=true): credit a fake TRC20 deposit to yourself. */
+  @UseGuards(ActiveUserGuard)
+  @Throttle({ short: { limit: 2, ttl: 10_000 } })
+  @Post('deposits/simulate')
+  @HttpCode(200)
+  async simulate(@CurrentUser() user: AuthUser, @Body() body: { amount?: string }) {
+    const amount = String(body?.amount ?? '100').replace(/[^\d.]/g, '') || '100';
+    if (Number(amount) <= 0 || Number(amount) > 100000) throw E.bad('AMOUNT', 'Сумма от 1 до 100 000 USDT');
+    const d = await this.deposits.simulate(user.id, amount);
+    return this.deposits.view(d);
   }
 
   @Get('withdrawals')

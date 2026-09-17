@@ -1,14 +1,42 @@
 import 'reflect-metadata';
+import { config as loadDotenv } from 'dotenv';
+loadDotenv();
+loadDotenv({ path: '../.env' });
 import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
-import { json, urlencoded } from 'express';
+import express, { json, urlencoded, type NextFunction, type Request, type Response } from 'express';
+import { existsSync } from 'fs';
+import { resolve, join } from 'path';
 import { AppModule } from './app.module';
 import { loadEnv } from './config/env';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { Logger as PinoLogger } from 'nestjs-pino';
+
+/** Serves the built SPAs from the API process (single-port deployments): admin at /admin, mobile at /. */
+function mountWebApps(app: NestExpressApplication, env: ReturnType<typeof loadEnv>) {
+  const mobileDir = env.WEB_MOBILE_DIR ? resolve(env.WEB_MOBILE_DIR) : '';
+  const adminDir = env.WEB_ADMIN_DIR ? resolve(env.WEB_ADMIN_DIR) : '';
+  const isApi = (p: string) => p.startsWith('/api') || p.startsWith('/socket.io');
+  if (adminDir && existsSync(join(adminDir, 'index.html'))) {
+    app.use('/admin', express.static(adminDir, { index: false, maxAge: '7d' }));
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (req.method === 'GET' && (req.path === '/admin' || req.path.startsWith('/admin/')) && req.accepts('html')) return res.sendFile(join(adminDir, 'index.html'), { headers: { 'Cache-Control': 'no-cache' } });
+      next();
+    });
+    Logger.log(`Admin panel served from ${adminDir} at /admin`, 'Web');
+  }
+  if (mobileDir && existsSync(join(mobileDir, 'index.html'))) {
+    app.use(express.static(mobileDir, { index: false, maxAge: '7d' }));
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (req.method === 'GET' && !isApi(req.path) && !req.path.startsWith('/admin') && req.accepts('html') && !req.path.includes('.')) return res.sendFile(join(mobileDir, 'index.html'), { headers: { 'Cache-Control': 'no-cache' } });
+      next();
+    });
+    Logger.log(`Mobile app served from ${mobileDir} at /`, 'Web');
+  }
+}
 
 async function bootstrap() {
   const env = loadEnv();
@@ -19,8 +47,9 @@ async function bootstrap() {
 
   app.use(
     helmet({
-      contentSecurityPolicy: false, // API only; CSP is applied by nginx for the web apps
+      contentSecurityPolicy: false, // CSP for the web apps is applied by nginx in production
       crossOriginResourcePolicy: { policy: 'cross-origin' },
+      crossOriginOpenerPolicy: false,
     }),
   );
   app.use(json({ limit: '2mb' }));
@@ -29,13 +58,15 @@ async function bootstrap() {
   const origins = env.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean);
   app.enableCors({
     origin: (origin, cb) => {
-      if (!origin || origins.includes(origin) || env.NODE_ENV !== 'production') return cb(null, true);
+      if (!origin || origins.includes(origin) || env.NODE_ENV !== 'production' || env.TEST_MODE) return cb(null, true);
       return cb(new Error('CORS: origin not allowed'), false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Device-Id', 'X-Idempotency-Key', 'X-Requested-With'],
   });
+
+  mountWebApps(app, env);
 
   app.setGlobalPrefix('api');
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
@@ -50,7 +81,7 @@ async function bootstrap() {
   app.useGlobalFilters(new AllExceptionsFilter());
   app.enableShutdownHooks();
 
-  if (env.NODE_ENV !== 'production') {
+  if (env.NODE_ENV !== 'production' || env.TEST_MODE) {
     const config = new DocumentBuilder()
       .setTitle('Somex API')
       .setDescription('P2P USDT platform for Kyrgyzstan — escrow, KYC, anti-fraud, wallet, admin')
@@ -62,7 +93,13 @@ async function bootstrap() {
   }
 
   await app.listen(env.API_PORT, '0.0.0.0');
-  Logger.log(`Somex API listening on :${env.API_PORT} (${env.NODE_ENV})`, 'Bootstrap');
+  Logger.log(`Somex API listening on :${env.API_PORT} (${env.NODE_ENV}${env.TEST_MODE ? ', TEST MODE' : ''})`, 'Bootstrap');
+  if (env.TEST_MODE) {
+    Logger.warn('══════════════════════════════════════════════════════════════', 'TestMode');
+    Logger.warn(` TEST MODE: любой номер +996 входит с кодом ${env.TEST_OTP_CODE}, блокчейн симулируется,`, 'TestMode');
+    Logger.warn(' 2FA админов не обязателен. Не использовать с реальными деньгами.', 'TestMode');
+    Logger.warn('══════════════════════════════════════════════════════════════', 'TestMode');
+  }
 }
 
 bootstrap().catch((e) => {

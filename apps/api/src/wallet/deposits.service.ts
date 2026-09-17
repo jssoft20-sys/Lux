@@ -51,6 +51,7 @@ export class DepositsService {
       address: addr.address,
       asset: 'USDT',
       standard: 'TRC20',
+      simulated: this.tron.simulated(),
       requiredConfirmations: confirmations,
       minAmount: '1',
       warning: 'Отправляйте только USDT в сети TRON (TRC20). Другие токены и сети будут утеряны.',

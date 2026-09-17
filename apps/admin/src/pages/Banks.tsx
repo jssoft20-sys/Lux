@@ -32,7 +32,7 @@ export default function BanksPage() {
       <Table head={['Лого', 'Код', 'Название', 'Тип', 'Видно имя плательщика', 'Формат счёта', 'Включён', 'Порядок']} loading={banks.isLoading}>
         {banks.data?.map((b) => (
           <tr key={b.code}>
-            <td><img src={`/banks/${b.logo}`} alt="" className="w-8 h-8 rounded-lg" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')} /></td>
+            <td><img src={`${import.meta.env.BASE_URL}banks/${b.logo}`} alt="" className="w-8 h-8 rounded-lg" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')} /></td>
             <td className="mono">{b.code}</td>
             <td className="font-semibold">{b.name}</td>
             <td><Tag className={b.kind === 'BANK' ? 'tag-green' : 'tag-yellow'}>{b.kind}</Tag></td>

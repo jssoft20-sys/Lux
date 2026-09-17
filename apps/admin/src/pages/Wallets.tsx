@@ -18,6 +18,8 @@ export default function WalletsPage() {
   const [freezeOpen, setFreezeOpen] = useState(false);
   const sync = useMutation({ mutationFn: () => api('/wallet/hot/sync', { body: {} }), onSuccess: () => { toast.success('Синхронизировано'); qc.invalidateQueries({ queryKey: ['wallet'] }); }, onError: (e: any) => toast.error(e.message) });
   const setHot = useMutation({ mutationFn: (body: any) => api('/wallet/hot/limits', { body }), onSuccess: () => { toast.success('Сохранено'); qc.invalidateQueries({ queryKey: ['wallet'] }); setLimits(null); setFreezeOpen(false); }, onError: (e: any) => toast.error(e.message) });
+  const [sim, setSim] = useState({ phone: '', amount: '100' });
+  const simulate = useMutation({ mutationFn: () => api('/dev/simulate-deposit', { body: { phone: sim.phone, amount: sim.amount } }), onSuccess: () => { toast.success('Тестовый депозит зачислен'); qc.invalidateQueries({ queryKey: ['wallet'] }); }, onError: (e: any) => toast.error(e.message) });
   const globalFreeze = useMutation({ mutationFn: (v: boolean) => api('/settings', { method: 'PUT', body: { values: { 'wallet.withdrawals_frozen': String(v) } } }), onSuccess: () => { toast.success('Глобальная заморозка обновлена'); qc.invalidateQueries({ queryKey: ['wallet'] }); }, onError: (e: any) => toast.error(e.message) });
   const d = w.data;
   const hot = d?.hotWallet;
@@ -33,7 +35,18 @@ export default function WalletsPage() {
         </>
       }
     >
-      {d?.chainSimulated && <div className="card p-3 mb-3 text-[12px] text-yellow flex items-center gap-2"><AlertTriangle size={14} /> Блокчейн в режиме симуляции (DEV_SIMULATE_CHAIN=true): депозиты и трансляции эмулируются.</div>}
+      {d?.chainSimulated && (
+        <div className="card p-3 mb-3 text-[12px] flex flex-wrap items-center gap-2">
+          <span className="text-yellow flex items-center gap-2"><AlertTriangle size={14} /> Блокчейн в режиме симуляции: депозиты и трансляции эмулируются.</span>
+          {can(admin?.role, 'FINANCE') && (
+            <span className="ml-auto flex items-center gap-2">
+              <input value={sim.phone} onChange={(e) => setSim({ ...sim, phone: e.target.value })} placeholder="+996 555 123 456" className="input w-[180px]" />
+              <input value={sim.amount} onChange={(e) => setSim({ ...sim, amount: e.target.value })} className="input w-[90px] mono" />
+              <Btn size="sm" variant="yellow" loading={simulate.isPending} disabled={!sim.phone} onClick={() => simulate.mutate()}>Симулировать депозит USDT</Btn>
+            </span>
+          )}
+        </div>
+      )}
       <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-3">
         <Kpi label="Hot wallet USDT" value={hot ? fmt(hot.balanceCached) : '—'} sub={hot ? `${fmt(hot.nativeBalance)} TRX на комиссии · синк ${dt(hot.lastSyncAt)}` : 'не настроен'} tone={hot?.frozen ? 'red' : 'green'} />
         <Kpi label="Обязательства" value={`${fmt(Number(d?.userAvailable ?? 0) + Number(d?.escrowLocked ?? 0))}`} sub={`доступно ${fmt(d?.userAvailable)} + эскроу ${fmt(d?.escrowLocked)}`} />

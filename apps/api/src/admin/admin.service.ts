@@ -11,6 +11,7 @@ import { AdminListQuery } from './dto/admin.dto';
 import { usdt, ZERO } from '../common/utils/money';
 import { TronService } from '../wallet/chain/tron.service';
 import { days } from '../common/utils/time';
+import { loadEnv } from '../config/env';
 import { normalizeKgPhone } from '@somex/shared';
 
 @Injectable()
@@ -55,6 +56,8 @@ export class AdminService {
     ]);
     const userLiabilities = (balances._sum.available ?? ZERO).plus(escrow._sum.locked ?? ZERO);
     return {
+      testMode: loadEnv().TEST_MODE,
+      chainSimulated: this.tron.simulated(),
       users: { total: users, today: usersToday },
       queues: { kycPending, depositsHeld, withdrawalsPending, disputesOpen, riskPending, ordersActive },
       money: { escrowLocked: (escrow._sum.locked ?? ZERO).toString(), userAvailable: (balances._sum.available ?? ZERO).toString(), userLiabilities: userLiabilities.toString(), feesCollected: (fees._sum.delta ?? ZERO).toString(), hotWallet: hot ? { address: hot.address, usdt: hot.balanceCached.toString(), trx: hot.nativeBalance.toString(), frozen: hot.frozen, lastSyncAt: hot.lastSyncAt, dailyLimit: hot.dailyLimit.toString(), sentToday: hot.sentToday.toString() } : null },

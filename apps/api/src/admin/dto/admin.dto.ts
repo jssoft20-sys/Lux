@@ -90,7 +90,8 @@ export class RateDto {
   @IsNumberString() price: string;
 }
 export class SimulateDepositDto {
-  @IsString() userId: string;
+  @IsOptional() @IsString() userId?: string;
+  @IsOptional() @IsString() @MaxLength(32) phone?: string;
   @IsNumberString() amount: string;
   @IsOptional() @IsString() @MaxLength(64) fromAddress?: string;
 }

@@ -18,6 +18,7 @@ import { E } from '../../common/errors';
 import { FilesService } from '../../files/files.service';
 import { LedgerService } from '../../wallet/ledger.service';
 import { Prisma } from '@prisma/client';
+import { normalizeKgPhone } from '@somex/shared';
 
 @AdminScope()
 @UseGuards(AdminAuthGuard)
@@ -186,7 +187,15 @@ export class AdminMainController {
 
   // ─── dev helpers (only with DEV_SIMULATE_CHAIN=true) ───
   @Roles('FINANCE') @Post('dev/simulate-deposit') @HttpCode(200) async simulateDeposit(@CurrentAdmin() a: AuthAdmin, @Body() dto: SimulateDepositDto) {
-    const d = await this.deposits.simulate(dto.userId, dto.amount, dto.fromAddress);
+    let userId = dto.userId;
+    if (!userId && dto.phone) {
+      const phone = normalizeKgPhone(dto.phone);
+      const u = phone ? await this.prisma.user.findUnique({ where: { phone }, select: { id: true } }) : null;
+      if (!u) throw E.notFound('Пользователь');
+      userId = u.id;
+    }
+    if (!userId) throw E.bad('USER', 'Укажите userId или phone');
+    const d = await this.deposits.simulate(userId, dto.amount, dto.fromAddress);
     await this.audit.log({ actorType: 'ADMIN', actorId: a.id, action: 'dev.simulate_deposit', targetType: 'Deposit', targetId: d.id, meta: dto });
     return { ...d, amount: d.amount.toString(), blockNumber: d.blockNumber?.toString() };
   }

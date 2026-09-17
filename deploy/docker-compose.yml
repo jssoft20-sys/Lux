@@ -1,0 +1,36 @@
+# Альтернатива install.sh, если на сервере есть Docker:  docker compose up -d
+# Всё на одном порту 7055. Секреты берутся из .env (скопируйте .env.example → .env и заполните MASTER_KEY/JWT_*).
+name: somex-test
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment: { POSTGRES_USER: somex, POSTGRES_PASSWORD: somex, POSTGRES_DB: somex }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ['CMD-SHELL', 'pg_isready -U somex -d somex'], interval: 5s, timeout: 5s, retries: 20 }
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    volumes: [clamdb:/var/lib/clamav]
+  api:
+    image: node:22-bookworm-slim
+    restart: unless-stopped
+    working_dir: /somex/api
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://somex:somex@postgres:5432/somex?schema=public
+      REDIS_URL: redis://redis:6379
+      CLAMAV_HOST: clamav
+      API_PORT: '7055'
+    command: sh -c "apt-get update -qq >/dev/null && apt-get install -y -qq openssl >/dev/null; npx prisma migrate deploy && (npx tsx prisma/seed.ts || true) && node dist/main.js"
+    volumes:
+      - ./api:/somex/api
+      - ./web:/somex/web
+      - storage:/somex/api/storage
+    ports: ['7055:7055']
+    depends_on:
+      postgres: { condition: service_healthy }
+volumes: { pgdata: {}, clamdb: {}, storage: {} }

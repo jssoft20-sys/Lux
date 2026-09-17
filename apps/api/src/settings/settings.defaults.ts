@@ -30,7 +30,7 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: 'security.new_device_cooldown_hours', group: 'security', label: 'Ограничение чувствительных операций после нового устройства (часы)', type: 'number', default: '24' },
   { key: 'security.release_requires_pin', group: 'security', label: 'Требовать PIN/биометрию при отпуске USDT', type: 'boolean', default: 'true' },
   { key: 'security.withdraw_requires_otp', group: 'security', label: 'Требовать OTP при выводе', type: 'boolean', default: 'true' },
-  { key: 'security.admin_totp_required', group: 'security', label: 'Обязательный 2FA для админов', type: 'boolean', default: 'true' },
+  { key: 'security.admin_totp_required', group: 'security', label: 'Обязательный 2FA для админов', description: 'В TEST_MODE по умолчанию выключен', type: 'boolean', default: process.env.TEST_MODE === 'true' ? 'false' : 'true' },
   { key: 'security.admin_ip_allowlist', group: 'security', label: 'Глобальный IP allowlist админки (через запятую, пусто = все)', type: 'text', default: '' },
   { key: 'security.admin_session_minutes', group: 'security', label: 'Сессия админа (минуты)', type: 'number', default: '720' },
   { key: 'security.max_sessions_per_user', group: 'security', label: 'Макс. активных сессий на пользователя', type: 'number', default: '5' },

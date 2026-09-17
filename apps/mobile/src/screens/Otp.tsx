@@ -98,7 +98,7 @@ export default function Otp() {
         </motion.div>
         {meta?.devCode && (
           <button onClick={() => setCode(meta.devCode)} className="mt-4 mx-auto px-3 py-1.5 rounded-lg bg-[#fff3d6] text-[#6b4a00] text-[12px] font-semibold">
-            DEV: код {meta.devCode} — нажмите, чтобы подставить
+            {meta.testMode ? `Тестовый режим: код ${meta.devCode} — нажмите, чтобы подставить` : `DEV: код ${meta.devCode} — нажмите, чтобы подставить`}
           </button>
         )}
         <div className="text-center text-[13px] muted mt-4">
