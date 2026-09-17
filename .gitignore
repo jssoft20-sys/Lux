@@ -1,0 +1,39 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+build/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+# env & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# runtime data
+storage/
+uploads/
+logs/
+*.log
+apps/api/storage/
+
+# prisma
+apps/api/prisma/*.db
+
+# os / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# playwright / screenshots scratch
+test-results/
+playwright-report/
