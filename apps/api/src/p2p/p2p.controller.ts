@@ -7,7 +7,7 @@ import { ChatService } from './chat.service';
 import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { ActiveUserGuard } from '../auth/guards/status.guard';
-import { CancelOrderDto, CreateAdDto, CreateOrderDto, DeclarePaymentDto, ListAdsDto, OpenDisputeDto, RateDto, ReleaseDto, SendMessageDto, UpdateAdDto } from './dto/p2p.dto';
+import { CancelOrderDto, CreateAdDto, CreateOrderDto, DeclarePaymentDto, ListAdsDto, OpenDisputeDto, RateDto, ReleaseDto, SendMessageDto, UpdateAdDto, OrdersListDto } from './dto/p2p.dto';
 import { clientIp } from '../common/utils/request';
 import { PageDto } from '../common/dto/page.dto';
 import { IsString, MaxLength } from 'class-validator';
@@ -69,8 +69,8 @@ export class P2pController {
   }
 
   @Get('orders')
-  listOrders(@CurrentUser() user: AuthUser, @Query('filter') filter: 'active' | 'completed' | 'all' = 'all', @Query() q: PageDto) {
-    return this.orders.list(user.id, filter, q.page, q.limit);
+  listOrders(@CurrentUser() user: AuthUser, @Query() q: OrdersListDto) {
+    return this.orders.list(user.id, q.filter ?? 'all', q.page, q.limit);
   }
 
   @Get('orders/:id')

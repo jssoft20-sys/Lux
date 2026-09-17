@@ -1,3 +1,4 @@
+import { PageDto } from '../../common/dto/page.dto';
 import { IsBoolean, IsIn, IsInt, IsNumberString, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -81,4 +82,9 @@ export class RateDto {
 export class SendMessageDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(2000) text?: string;
   @IsOptional() @IsString() fileId?: string;
+}
+
+/** GET /p2p/orders — paging plus the tab filter used by the mobile "Сделки" screen. */
+export class OrdersListDto extends PageDto {
+  @IsOptional() @IsIn(['active', 'completed', 'all']) filter?: 'active' | 'completed' | 'all' = 'all';
 }
