@@ -53,13 +53,15 @@ else
 fi
 set -a; . ./.env; set +a
 
-# ── зависимости API ──
-if [ ! -d api/node_modules ]; then
+# ── зависимости API (ставятся заново, если изменился package-lock.json — например, после обновления архива) ──
+LOCK_SUM="$(sha256sum api/package-lock.json | cut -c1-16)"
+if [ ! -d api/node_modules ] || [ "$(cat api/node_modules/.somex-lock 2>/dev/null)" != "$LOCK_SUM" ]; then
   log "Устанавливаю зависимости API (npm ci, 2–5 минут)"
   apt-get install -y -q python3 make g++ >/dev/null   # на случай сборки нативных модулей
   (cd api && npm ci --omit=dev --no-audit --no-fund 2>&1 | tail -3)
   log "Генерирую Prisma client"
   (cd api && npx prisma generate >/dev/null)
+  echo "$LOCK_SUM" > api/node_modules/.somex-lock
 elif ! node -e "require('./api/node_modules/argon2'); require('./api/node_modules/sharp')" >/dev/null 2>&1; then
   warn "Пересобираю нативные модули под этот сервер"
   apt-get install -y -q python3 make g++ >/dev/null
