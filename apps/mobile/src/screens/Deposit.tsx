@@ -2,7 +2,9 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { QRCodeSVG } from 'qrcode.react';
 import { toast } from 'sonner';
-import { Copy, Info } from 'lucide-react';
+import { ChevronDown, Copy, Info } from 'lucide-react';
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Badge, Button, Header, Skeleton } from '@/components/ui';
 import { api, copyText } from '@/lib/api';
 import { fmt, date } from '@/lib/format';
@@ -22,6 +24,7 @@ export default function Deposit() {
   const info = useQuery({ queryKey: ['deposit-address'], queryFn: () => api<any>('/wallet/deposit-address?network=TRON'), retry: false });
   const list = useQuery({ queryKey: ['deposits'], queryFn: () => api<any>('/wallet/deposits?limit=10'), refetchInterval: 15_000 });
   const d = info.data;
+  const [howOpen, setHowOpen] = useState(false);
   const tone = (s: string) => (s === 'CREDITED' ? 'green' : s === 'HELD' || s === 'REJECTED' ? 'red' : 'yellow');
   return (
     <div className="h-full theme-dark screen flex flex-col">
@@ -61,15 +64,21 @@ export default function Deposit() {
               </div>
             )}
             <div className="warn-card p-3 mt-3 text-[12px]">{d.warning}</div>
-            <div className="card p-3 mt-3">
-              <div className="text-[13px] font-semibold flex items-center gap-2">
-                <Info size={16} className="text-green" /> Как пополнить
-              </div>
-              <ol className="list-decimal pl-5 mt-2 text-[12px] muted flex flex-col gap-1">
-                {d.instructions.map((s: string) => (
-                  <li key={s}>{s}</li>
-                ))}
-              </ol>
+            <div className="card mt-3 overflow-hidden">
+              <button onClick={() => setHowOpen(!howOpen)} className="w-full p-3 text-[13px] font-semibold flex items-center gap-2">
+                <Info size={16} className="text-green" /> Как пополнить <ChevronDown size={16} className={`ml-auto transition ${howOpen ? 'rotate-180' : ''}`} />
+              </button>
+              <AnimatePresence initial={false}>
+                {howOpen && (
+                  <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
+                    <ol className="list-decimal pl-8 pr-3 pb-3 text-[12px] muted flex flex-col gap-1">
+                      {d.instructions.map((s: string) => (
+                        <li key={s}>{s}</li>
+                      ))}
+                    </ol>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </>
         )}

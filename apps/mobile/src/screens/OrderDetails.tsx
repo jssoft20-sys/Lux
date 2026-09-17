@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AlertTriangle, Copy, HelpCircle, MessageCircle, ScrollText, ShieldAlert, ShieldCheck } from 'lucide-react';
-import { Avatar, BankLogo, Button, Header, Row, Sheet, Skeleton } from '@/components/ui';
+import { Avatar, BankLogo, Button, Header, Pressable, Row, Sheet, Skeleton } from '@/components/ui';
 import { EscrowPill, StatusCard } from '@/components/OrderBits';
 import { useOrder } from '@/hooks/useOrder';
 import { api, copyText } from '@/lib/api';
@@ -57,10 +57,10 @@ export default function OrderDetails() {
         title={`Сделка #${o.number}`}
         subtitle={<span className="text-green">{buyer ? 'Покупка' : 'Продажа'} USDT · {o.bank.shortName} → {o.bank.shortName}</span>}
         right={
-          <button onClick={() => nav(`/orders/${o.id}/chat`)} className="relative w-10 h-10 rounded-full card flex items-center justify-center press">
+          <Pressable onClick={() => nav(`/orders/${o.id}/chat`)} scale={0.88} className="relative w-10 h-10 rounded-full card flex items-center justify-center">
             <MessageCircle size={20} className="text-green" />
             {o.unreadMessages > 0 && <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-green text-[#06240f] text-[10px] font-bold flex items-center justify-center">{o.unreadMessages}</span>}
-          </button>
+          </Pressable>
         }
       />
       <div className="px-4 pb-8 flex-1 overflow-y-auto hide-scroll">
@@ -110,9 +110,9 @@ export default function OrderDetails() {
                 <div className="font-bold number-mono tracking-wide">{(o.payment?.accountNumber ?? o.payment?.accountMasked ?? '').replace(/(\d{4})(?=\d)/g, '$1 ')}</div>
               </div>
               {o.payment?.accountNumber && (
-                <button onClick={() => copy(o.payment.accountNumber)} className="w-9 h-9 rounded-xl card2 flex items-center justify-center press">
+                <Pressable onClick={() => copy(o.payment.accountNumber)} scale={0.85} className="w-9 h-9 rounded-xl card2 flex items-center justify-center">
                   <Copy size={16} />
-                </button>
+                </Pressable>
               )}
             </div>
           </div>

@@ -16,7 +16,8 @@ async function newPage(device) {
   return page;
 }
 async function typeKeypad(page, digits) {
-  for (const d of digits) await page.locator('button', { hasText: new RegExp(`^${d}`) }).first().click();
+  // native numeric keyboard: a single <input type="tel"> holds the local part of the number
+  await page.fill('input[type=tel]', digits);
 }
 async function login(page, localDigits) {
   await page.goto(`${BASE}/login`);
@@ -37,7 +38,7 @@ try {
   await page.waitForSelector('text=Код из WhatsApp');
   await sleep(300);
   await shot(page, '03-otp');
-  await page.locator('button', { hasText: 'DEV: код' }).click();
+  await page.locator('button', { hasText: /код \d{6}, нажмите/ }).click();
   await page.waitForURL(/\/(\?.*)?$/, { timeout: 15000 });
   await page.waitForSelector('text=Мой баланс');
   await sleep(1500);
@@ -111,7 +112,7 @@ try {
   await login(sp, seller.slice(3));
   await sp.getByText('Получить код').click();
   await sp.waitForSelector('text=Код из WhatsApp');
-  await sp.locator('button', { hasText: 'DEV: код' }).click();
+  await sp.locator('button', { hasText: /код \d{6}, нажмите/ }).click();
   await sp.waitForURL(/\/(\?.*)?$/, { timeout: 15000 });
   await sp.goto(orderUrl);
   await sp.waitForSelector('text=Проверьте поступление');
@@ -131,10 +132,13 @@ try {
   await sleep(2100);
   await sp.mouse.up();
   await sleep(1500);
-  const otpVisible = await sp.getByText('DEV код:').isVisible().catch(() => false);
-  if (otpVisible) {
-    const code = (await sp.getByText('DEV код:').innerText()).replace(/\D/g, '');
-    await sp.locator('input[placeholder="••••••"]').fill(code);
+  if (await sp.getByText('PIN-код', { exact: true }).isVisible().catch(() => false)) {
+    await sp.locator('input[type=tel]').last().fill('0000');
+    await sleep(900);
+  }
+  const devBtn = sp.locator('button', { hasText: /код \d{6}, нажмите/ });
+  if (await devBtn.isVisible().catch(() => false)) {
+    await devBtn.click();
     await sp.getByText('Подтвердить и отпустить').click();
   }
   await sp.waitForSelector('text=Сделка завершена', { timeout: 20000 });

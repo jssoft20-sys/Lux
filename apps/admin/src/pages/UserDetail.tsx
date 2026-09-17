@@ -63,6 +63,7 @@ export default function UserDetail() {
             </Btn>
           )}
           {can(admin?.role, 'COMPLIANCE', 'RISK', 'SUPPORT') && <Btn onClick={() => act.mutate({ path: 'force-logout' })}>Завершить сессии</Btn>}
+          {can(admin?.role, 'COMPLIANCE', 'RISK', 'SUPPORT') && u.sensitiveOpsLockedUntil && new Date(u.sensitiveOpsLockedUntil) > new Date() && <Btn variant="yellow" onClick={() => act.mutate({ path: 'clear-cooldown' })}>Снять ограничение (cooldown)</Btn>}
           {can(admin?.role, 'FINANCE') && <Btn onClick={() => setDialog('adjust')}>Корректировка баланса</Btn>}
         </>
       }

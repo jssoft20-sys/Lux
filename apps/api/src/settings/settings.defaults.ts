@@ -27,7 +27,7 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: 'security.otp_resend_sec', group: 'security', label: 'Пауза перед повторной отправкой OTP (сек)', type: 'number', default: '60' },
   { key: 'security.otp_max_per_hour', group: 'security', label: 'Макс. OTP на номер в час', type: 'number', default: '5' },
   { key: 'security.otp_max_per_ip_hour', group: 'security', label: 'Макс. OTP с одного IP в час', type: 'number', default: '20' },
-  { key: 'security.new_device_cooldown_hours', group: 'security', label: 'Ограничение чувствительных операций после нового устройства (часы)', type: 'number', default: '24' },
+  { key: 'security.new_device_cooldown_hours', group: 'security', label: 'Ограничение чувствительных операций после нового устройства (часы)', description: 'В TEST_MODE по умолчанию 0 — включите, чтобы проверить сценарий', type: 'number', default: process.env.TEST_MODE === 'true' ? '0' : '24' },
   { key: 'security.release_requires_pin', group: 'security', label: 'Требовать PIN/биометрию при отпуске USDT', type: 'boolean', default: 'true' },
   { key: 'security.withdraw_requires_otp', group: 'security', label: 'Требовать OTP при выводе', type: 'boolean', default: 'true' },
   { key: 'security.admin_totp_required', group: 'security', label: 'Обязательный 2FA для админов', description: 'В TEST_MODE по умолчанию выключен', type: 'boolean', default: process.env.TEST_MODE === 'true' ? 'false' : 'true' },

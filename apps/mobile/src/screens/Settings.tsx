@@ -24,7 +24,7 @@ export default function Settings() {
       <div className="px-4 pb-8 flex-1 overflow-y-auto hide-scroll">
         <div className="text-[13px] font-semibold mb-2">Публичное имя в P2P</div>
         <div className="flex gap-2">
-          <input value={nick} onChange={(e) => setNick(e.target.value)} className="input flex-1 h-11 px-3 text-[14px]" placeholder="Например: AltynTrade" />
+          <input value={nick} onChange={(e) => setNick(e.target.value)} className="input flex-1 h-11 px-3 text-[16px]" placeholder="Например: AltynTrade" />
           <button onClick={() => save.mutate({ nickname: nick })} className="btn-green px-4 rounded-xl font-semibold text-[13px]">
             Сохранить
           </button>

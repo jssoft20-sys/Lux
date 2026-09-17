@@ -44,6 +44,83 @@ export function deviceId(): string {
   }
 }
 
+/** Headers every request carries: device binding + CSRF marker; the refresh cookie is sent automatically. */
+function baseHeaders(): Record<string, string> {
+  return { 'X-Device-Id': deviceId(), 'X-Client': 'web', 'X-Requested-With': 'XMLHttpRequest' };
+}
+
+let refreshing: Promise<boolean> | null = null;
+
+/** Rotates the session using the httpOnly refresh cookie; returns false when the session is gone. */
+export async function refreshSession(): Promise<boolean> {
+  const { setAccess, logout } = useAuth.getState();
+  if (!refreshing) {
+    refreshing = fetch(`${BASE}/auth/refresh`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', ...baseHeaders() }, body: '{}' })
+      .then(async (r) => {
+        if (!r.ok) {
+          logout();
+          return false;
+        }
+        const j = await r.json();
+        setAccess(j.accessToken);
+        return true;
+      })
+      .catch(() => false)
+      .finally(() => setTimeout(() => (refreshing = null), 100));
+  }
+  return refreshing;
+}
+
+/** Called once on app start: restores the session from the cookie and loads the profile. */
+export async function restoreSession(): Promise<void> {
+  const st = useAuth.getState();
+  try {
+    if (await refreshSession()) {
+      const me = await api<any>('/me', { retry: false });
+      st.setUser(me);
+    }
+  } catch {
+    st.logout();
+  } finally {
+    useAuth.getState().setRestored();
+  }
+}
+
+export async function api<T = any>(path: string, opts: { method?: string; body?: unknown; form?: FormData; headers?: Record<string, string>; retry?: boolean } = {}): Promise<T> {
+  const { accessToken } = useAuth.getState();
+  const headers: Record<string, string> = { ...baseHeaders(), ...(opts.headers || {}) };
+  if (!opts.form) headers['Content-Type'] = 'application/json';
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const res = await fetch(`${BASE}${path}`, { method: opts.method || (opts.body || opts.form ? 'POST' : 'GET'), headers, credentials: 'include', body: opts.form ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined) });
+  if (res.status === 401 && opts.retry !== false && !path.startsWith('/auth/')) {
+    if (await refreshSession()) return api<T>(path, { ...opts, retry: false });
+  }
+  const text = await res.text();
+  let json: any = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = { message: text };
+  }
+  if (!res.ok) {
+    const msg = Array.isArray(json?.message) ? json.message.join(', ') : json?.message || `Ошибка ${res.status}`;
+    throw new ApiError(res.status, json?.code || 'ERROR', msg, json);
+  }
+  return json as T;
+}
+
+export function fileUrl(id: string | null | undefined) {
+  return id ? `${BASE}/files/${id}` : '';
+}
+
+/** Fetch a private file as an object URL (auth header required, so no plain <img src>). */
+export async function fetchFileBlob(id: string): Promise<string> {
+  const { accessToken } = useAuth.getState();
+  const res = await fetch(`${BASE}/files/${id}`, { headers: { Authorization: `Bearer ${accessToken}`, ...baseHeaders() }, credentials: 'include' });
+  if (!res.ok) throw new Error('file');
+  return URL.createObjectURL(await res.blob());
+}
+
 /** Clipboard write with a fallback for insecure origins (plain http on an IP address). */
 export async function copyText(text: string): Promise<boolean> {
   try {
@@ -68,61 +145,4 @@ export async function copyText(text: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-let refreshing: Promise<boolean> | null = null;
-
-async function refreshTokens(): Promise<boolean> {
-  const { refreshToken, setTokens, logout } = useAuth.getState();
-  if (!refreshToken) return false;
-  if (!refreshing) {
-    refreshing = fetch(`${BASE}/auth/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Device-Id': deviceId() }, body: JSON.stringify({ refreshToken }) })
-      .then(async (r) => {
-        if (!r.ok) {
-          logout();
-          return false;
-        }
-        const j = await r.json();
-        setTokens(j.accessToken, j.refreshToken);
-        return true;
-      })
-      .catch(() => false)
-      .finally(() => setTimeout(() => (refreshing = null), 100));
-  }
-  return refreshing;
-}
-
-export async function api<T = any>(path: string, opts: { method?: string; body?: unknown; form?: FormData; headers?: Record<string, string>; retry?: boolean } = {}): Promise<T> {
-  const { accessToken } = useAuth.getState();
-  const headers: Record<string, string> = { 'X-Device-Id': deviceId(), ...(opts.headers || {}) };
-  if (!opts.form) headers['Content-Type'] = 'application/json';
-  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  const res = await fetch(`${BASE}${path}`, { method: opts.method || (opts.body || opts.form ? 'POST' : 'GET'), headers, body: opts.form ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined) });
-  if (res.status === 401 && opts.retry !== false && accessToken) {
-    if (await refreshTokens()) return api<T>(path, { ...opts, retry: false });
-  }
-  const text = await res.text();
-  let json: any = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
-    json = { message: text };
-  }
-  if (!res.ok) {
-    const msg = Array.isArray(json?.message) ? json.message.join(', ') : json?.message || `Ошибка ${res.status}`;
-    throw new ApiError(res.status, json?.code || 'ERROR', msg, json);
-  }
-  return json as T;
-}
-
-export function fileUrl(id: string | null | undefined) {
-  return id ? `${BASE}/files/${id}` : '';
-}
-
-/** Fetch a private file as an object URL (auth header required, so no plain <img src>). */
-export async function fetchFileBlob(id: string): Promise<string> {
-  const { accessToken } = useAuth.getState();
-  const res = await fetch(`${BASE}/files/${id}`, { headers: { Authorization: `Bearer ${accessToken}`, 'X-Device-Id': deviceId() } });
-  if (!res.ok) throw new Error('file');
-  return URL.createObjectURL(await res.blob());
 }

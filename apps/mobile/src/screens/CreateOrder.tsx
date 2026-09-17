@@ -100,15 +100,13 @@ export default function CreateOrder() {
             <div className="warn-card p-3 mt-3 flex gap-2 text-[12px]">
               <AlertTriangle size={18} className="shrink-0" />
               <span>
-                Используйте только свой счёт {a.bank?.shortName}. Сделки с третьими лицами запрещены. {buying ? 'Продавец' : 'Покупатель'} увидит ваше ФИО: <b>{user?.fullName ?? 'по KYC'}</b>.
+                Оплата только со своего счёта {a.bank?.shortName} на имя <b>{user?.fullName ?? 'по KYC'}</b>.
               </span>
             </div>
             {!hasBankMethod && (
               <div className="info-card p-3 mt-3 text-[12px] flex gap-2">
                 <ShieldCheck size={18} className="text-green shrink-0" />
-                <span>
-                  Сделка идёт только <b>{a.bank?.shortName} → {a.bank?.shortName}</b>. Для продолжения добавьте свой счёт {a.bank?.name} на своё имя — мы попросим сделать это при создании сделки.
-                </span>
+                <span>Нужен ваш счёт в {a.bank?.name} — добавим на следующем шаге.</span>
               </div>
             )}
           </>

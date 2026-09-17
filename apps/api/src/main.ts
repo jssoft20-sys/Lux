@@ -7,6 +7,7 @@ import { Logger, ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import express, { json, urlencoded, type NextFunction, type Request, type Response } from 'express';
 import { existsSync } from 'fs';
 import { resolve, join } from 'path';
@@ -47,11 +48,42 @@ async function bootstrap() {
 
   app.use(
     helmet({
-      contentSecurityPolicy: false, // CSP for the web apps is applied by nginx in production
-      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      contentSecurityPolicy: false, // applied per-route below (Swagger UI needs inline scripts in dev)
+      crossOriginResourcePolicy: { policy: 'same-origin' },
       crossOriginOpenerPolicy: false,
+      referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+      hsts: { maxAge: 63072000, includeSubDomains: true },
     }),
   );
+  // Content-Security-Policy for the served web apps: only our own scripts run in the browser (XSS containment)
+  const csp = helmet.contentSecurityPolicy({
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      connectSrc: ["'self'", 'ws:', 'wss:'],
+      workerSrc: ["'self'"],
+      manifestSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      upgradeInsecureRequests: null,
+    },
+  });
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.path.startsWith('/api')) {
+      // API responses carry personal and financial data: never cache them
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Pragma', 'no-cache');
+      return next();
+    }
+    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=()');
+    return csp(req, res, next);
+  });
+  app.use(cookieParser());
   app.use(json({ limit: '2mb' }));
   app.use(urlencoded({ extended: false, limit: '1mb' }));
 

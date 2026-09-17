@@ -72,7 +72,7 @@ export default function PaymentMethods() {
         <Button variant="soft" className="mt-4" onClick={() => setOpen(true)} disabled={!verified}>
           <Plus size={18} /> Добавить счёт
         </Button>
-        <div className="info-card p-3 mt-4 text-[12px]">Сделки идут по правилу «банк → тот же банк»: чтобы торговать с продавцом в Optima, у вас должен быть счёт Optima на ваше имя.</div>
+        <div className="text-[11px] muted text-center mt-3">Сделки идут «банк → тот же банк»</div>
       </div>
       <Sheet open={open} onClose={() => setOpen(false)} title="Новый счёт">
         <div className="text-[13px] font-semibold mb-2">Банк</div>
@@ -89,7 +89,7 @@ export default function PaymentMethods() {
           <Lock size={14} className="muted" />
           <span className="text-[14px] font-medium">{user?.fullName}</span>
         </div>
-        <div className="text-[11px] muted mt-1">ФИО из KYC — изменить нельзя. Это защита от оплат с чужих счетов.</div>
+        <div className="text-[11px] muted mt-1">ФИО из KYC, изменить нельзя</div>
         <div className="text-[13px] font-semibold mt-4 mb-2">{selected?.accountHint ?? 'Номер счёта / карты'}</div>
         <input value={account} onChange={(e) => setAccount(e.target.value)} inputMode="numeric" className="input w-full h-12 px-3 number-mono text-[16px]" placeholder={selected?.kind === 'EWALLET' ? '+996 555 123 456' : '4169 5800 0000 1234'} />
         {selected && !selected.showsSenderName && <div className="warn-card p-3 mt-3 text-[12px]">В {selected.name} получатель не видит имя плательщика. Продавцы могут отказывать в сделках с этим способом.</div>}

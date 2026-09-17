@@ -2,6 +2,7 @@ import { Home, ReceiptText, Zap, MessagesSquare, User } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/format';
+import { haptic } from '@/lib/haptics';
 
 export function BottomNav({ unread = 0, onQuick }: { unread?: number; onQuick: () => void }) {
   const loc = useLocation();
@@ -14,25 +15,25 @@ export function BottomNav({ unread = 0, onQuick }: { unread?: number; onQuick: (
   ];
   return (
     <div className="absolute left-0 right-0 bottom-0 z-30">
-      <div className="mx-0 bg-[#0e1512]/95 backdrop-blur border-t border-[#1d2823] safe-bottom pt-2 px-2 flex items-end justify-between">
-        {items.map((it, i) =>
+      <div className="bg-[#0e1512]/95 backdrop-blur border-t border-[#1d2823] safe-bottom pt-2 px-2 flex items-end justify-between">
+        {items.map((it) =>
           it === null ? (
-            <button key="quick" onClick={onQuick} className="relative -mt-7 w-[58px] h-[58px] rounded-full btn-green green-glow flex items-center justify-center press" aria-label="Быстрые действия">
+            <motion.button key="quick" whileTap={{ scale: 0.88, rotate: -8 }} onClick={() => { haptic(12); onQuick(); }} className="relative -mt-7 w-[58px] h-[58px] rounded-full btn-green green-glow flex items-center justify-center" aria-label="Быстрые действия">
               <Zap size={26} fill="#06240f" />
-            </button>
+            </motion.button>
           ) : (
-            <NavLink key={it.to} to={it.to} className="flex-1 flex flex-col items-center gap-1 py-1 relative">
+            <NavLink key={it.to} to={it.to} onClick={() => haptic(5)} className="flex-1 flex flex-col items-center gap-1 py-1 relative">
               {({ isActive }) => {
                 const active = isActive || (it.to === '/' && loc.pathname === '/');
                 return (
-                  <>
-                    <div className="relative">
-                      <it.icon size={22} className={cn(active ? 'text-green' : 'text-[#7b877f]')} />
+                  <motion.span whileTap={{ scale: 0.85 }} className="flex flex-col items-center gap-1">
+                    <span className="relative">
+                      <it.icon size={22} className={cn('transition-colors', active ? 'text-green' : 'text-[#7b877f]')} />
                       {!!it.badge && <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-green text-[#06240f] text-[10px] font-bold flex items-center justify-center">{it.badge}</span>}
-                    </div>
-                    <span className={cn('text-[10px] font-medium', active ? 'text-green' : 'text-[#7b877f]')}>{it.label}</span>
+                    </span>
+                    <span className={cn('text-[10px] font-medium transition-colors', active ? 'text-green' : 'text-[#7b877f]')}>{it.label}</span>
                     {active && <motion.span layoutId="nav-dot" className="absolute -bottom-0.5 w-1 h-1 rounded-full bg-green" />}
-                  </>
+                  </motion.span>
                 );
               }}
             </NavLink>

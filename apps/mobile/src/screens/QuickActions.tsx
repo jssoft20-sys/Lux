@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { ArrowDownToLine, ArrowUpFromLine, Megaphone, ShoppingCart, Tag } from 'lucide-react';
-import { Sheet } from '@/components/ui';
+import { Pressable, Sheet } from '@/components/ui';
 
 export function QuickActions({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
@@ -19,7 +19,7 @@ export function QuickActions({ onClose }: { onClose: () => void }) {
     <Sheet open onClose={onClose} title="Быстрые действия">
       <div className="flex flex-col gap-2">
         {items.map((it) => (
-          <button key={it.title} onClick={() => go(it.to)} className="card p-4 flex items-center gap-4 text-left press">
+          <Pressable key={it.title} onClick={() => go(it.to)} className="card p-4 flex items-center gap-4 w-full">
             <span className="w-11 h-11 rounded-2xl bg-green/15 text-green flex items-center justify-center">
               <it.icon size={22} />
             </span>
@@ -27,7 +27,7 @@ export function QuickActions({ onClose }: { onClose: () => void }) {
               <span className="block font-semibold text-[15px]">{it.title}</span>
               <span className="block text-[12px] muted">{it.text}</span>
             </span>
-          </button>
+          </Pressable>
         ))}
       </div>
     </Sheet>

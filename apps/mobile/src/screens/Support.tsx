@@ -35,8 +35,8 @@ export default function Support() {
           </div>
         </a>
         <div className="text-[13px] font-semibold mt-4 mb-2">Новое обращение</div>
-        <input value={subject} onChange={(e) => setSubject(e.target.value)} className="input w-full h-11 px-3 text-[14px]" placeholder="Тема" />
-        <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={4} className="input w-full p-3 text-[14px] mt-2" placeholder="Опишите проблему, укажите номер сделки" />
+        <input value={subject} onChange={(e) => setSubject(e.target.value)} className="input w-full h-11 px-3 text-[16px]" placeholder="Тема" />
+        <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={4} className="input w-full p-3 text-[16px] mt-2" placeholder="Опишите проблему, укажите номер сделки" />
         <Button className="mt-3" disabled={subject.length < 3 || message.length < 5} loading={send.isPending} onClick={() => send.mutate()}>
           Отправить
         </Button>

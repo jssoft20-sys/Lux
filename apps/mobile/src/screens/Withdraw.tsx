@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ClipboardPaste, ShieldAlert } from 'lucide-react';
-import { Button, Header, Row, Sheet } from '@/components/ui';
-import { Keypad } from '@/components/Keypad';
+import { ClipboardPaste } from 'lucide-react';
+import { Button, CodeInput, Header, Row, Sheet } from '@/components/ui';
+import { hapticError, hapticSuccess } from '@/lib/haptics';
 import { api } from '@/lib/api';
 import { useAuth } from '@/store/auth';
 import { fmt, cn } from '@/lib/format';
@@ -51,15 +51,19 @@ export default function Withdraw() {
     toast.success(msg ?? (status === 'APPROVED' ? 'Вывод принят в обработку' : 'Вывод создан'));
     nav('/wallet/history', { replace: true });
   }
+  const [pinErr, setPinErr] = useState(0);
   async function verifyPin(p: string) {
     try {
       const r = await api<any>('/auth/pin/verify', { body: { pin: p } });
       stepUp.current = r.stepUpToken;
       setPinOpen(false);
       setPin('');
+      hapticSuccess();
       create.mutate(r.stepUpToken);
     } catch (e: any) {
       setPin('');
+      setPinErr((x) => x + 1);
+      hapticError();
       toast.error(e.message);
     }
   }
@@ -70,7 +74,7 @@ export default function Withdraw() {
       <div className="px-4 pb-8 flex-1 overflow-y-auto hide-scroll">
         <div className="text-[13px] font-semibold mb-2">Адрес получателя</div>
         <div className={cn('input h-12 flex items-center px-3 gap-2', address && !validAddr && 'border-red')}>
-          <input value={address} onChange={(e) => setAddress(e.target.value.trim())} placeholder="T..." className="flex-1 bg-transparent outline-none text-[14px] number-mono" />
+          <input value={address} onChange={(e) => setAddress(e.target.value.trim())} placeholder="T..." className="flex-1 bg-transparent outline-none text-[16px] number-mono" />
           <button onClick={() => navigator.clipboard?.readText().then((t) => setAddress(t.trim()))} className="muted">
             <ClipboardPaste size={18} />
           </button>
@@ -104,27 +108,24 @@ export default function Withdraw() {
             ))}
           </div>
         )}
-        <div className="info-card p-3 mt-3 text-[12px] flex gap-2">
-          <ShieldAlert size={18} className="text-green shrink-0" />
-          <span>Крупные, необычные выводы и выводы на новые адреса проходят дополнительную проверку. Подтверждение кодом из WhatsApp{user?.security.pinSet ? ' и PIN' : ''}.</span>
-        </div>
         <Button className="mt-4" disabled={!validAddr || !quote?.ok} loading={create.isPending} onClick={() => (user?.security.pinSet ? setPinOpen(true) : create.mutate(undefined))}>
           Вывести {amount ? `${fmt(amount, 2)} USDT` : ''}
         </Button>
       </div>
-      <Sheet open={pinOpen} onClose={() => setPinOpen(false)} title="Подтвердите PIN-кодом">
-        <div className="flex justify-center gap-3 my-5">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <span key={i} className={cn('w-4 h-4 rounded-full border-2', pin.length > i ? 'bg-green border-green' : 'line')} />
-          ))}
-        </div>
-        <Keypad light={false} onKey={(k) => { const p = (pin + k).slice(0, 4); setPin(p); if (p.length === 4) verifyPin(p); }} onDelete={() => setPin((p) => p.slice(0, -1))} />
+      <Sheet open={pinOpen} onClose={() => setPinOpen(false)} title="PIN-код">
+        <div className="text-[12px] muted mb-4">Подтвердите вывод {amount ? `${fmt(amount, 2)} USDT` : ''}</div>
+        <CodeInput length={4} value={pin} onChange={setPin} onComplete={verifyPin} secret error={pinErr} />
+        <div className="h-24" />
       </Sheet>
       <Sheet open={!!otp} onClose={() => setOtp(null)} title="Код из WhatsApp">
-        <div className="text-[12px] muted">Мы отправили код подтверждения вывода в WhatsApp.</div>
-        {otp?.devCode && <div className="mt-2 text-[12px] text-yellow">DEV код: {otp.devCode}</div>}
-        <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" className="input w-full h-14 px-4 text-[24px] number-mono text-center mt-3" placeholder="••••••" />
-        <Button className="mt-3" disabled={code.length < 6} loading={confirm.isPending} onClick={() => confirm.mutate()}>
+        <div className="text-[12px] muted mb-4">Код подтверждения вывода отправлен в WhatsApp</div>
+        <CodeInput length={6} value={code} onChange={setCode} onComplete={() => confirm.mutate()} />
+        {otp?.devCode && (
+          <button type="button" onClick={() => setCode(otp.devCode!)} className="mt-4 mx-auto block px-3 py-1.5 rounded-lg warn-card text-[12px] font-semibold">
+            Тестовый режим — код {otp.devCode}, нажмите
+          </button>
+        )}
+        <Button className="mt-4" disabled={code.length < 6} loading={confirm.isPending} onClick={() => confirm.mutate()}>
           Подтвердить вывод
         </Button>
       </Sheet>

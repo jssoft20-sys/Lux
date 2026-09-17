@@ -166,7 +166,7 @@ export default function Chat() {
       <div className="px-3 pb-3 safe-bottom">
         {canChat ? (
           <div className="card2 flex items-center gap-1 pl-3 pr-1 py-1">
-            <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && text.trim() && send.mutate({ text: text.trim() })} placeholder="Напишите сообщение..." className="flex-1 bg-transparent outline-none text-[14px] h-10" />
+            <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && text.trim() && send.mutate({ text: text.trim() })} placeholder="Напишите сообщение..." className="flex-1 bg-transparent outline-none text-[16px] h-10" />
             <input ref={fileInput} type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => e.target.files?.[0] && attach(e.target.files[0])} />
             <button onClick={() => fileInput.current?.click()} className="w-10 h-10 flex items-center justify-center muted">
               <Paperclip size={20} />
@@ -178,7 +178,7 @@ export default function Chat() {
         ) : (
           <div className="text-center text-[12px] muted py-2">Чат закрыт — сделка завершена</div>
         )}
-        <div className="text-center text-[10px] muted mt-1">Не переходите в WhatsApp/Telegram. Somex не защищает сделки вне приложения.</div>
+        <div className="text-center text-[10px] muted mt-1">Общайтесь только здесь — сделки вне Somex не защищены</div>
       </div>
     </div>
   );

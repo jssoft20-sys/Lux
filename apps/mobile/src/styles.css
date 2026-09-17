@@ -28,6 +28,11 @@
 }
 
 * { -webkit-tap-highlight-color: transparent; }
+button, a, [role='button'] { touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+input, textarea, select { font-size: 16px; } /* prevents iOS zoom-on-focus */
+:focus-visible { outline: 2px solid #22c55e; outline-offset: 2px; border-radius: 6px; }
+.touch-none { touch-action: none; }
+.press-row:active { background: rgba(255, 255, 255, 0.04); }
 html, body, #root { height: 100%; }
 body { margin: 0; background: #050807; font-family: var(--font-sans); color: var(--color-text); -webkit-font-smoothing: antialiased; overscroll-behavior: none; }
 button { font-family: inherit; }

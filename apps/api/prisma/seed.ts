@@ -132,7 +132,6 @@ async function seedUsers() {
         await prisma.paymentMethod.create({ data: { userId: u.id, bankCode: bank, holderName: fullName, accountNumberEnc: encrypt(acc), accountMasked: mask(acc), accountHash: blindIndex(`${bank}:${acc}`), status: 'ACTIVE', nameMatchesKyc: true } });
       }
     }
-    await prisma.device.create({ data: { userId: u.id, fingerprint: createHash('sha256').update(`seed-device-${d.phone}`).digest('hex').slice(0, 32), platform: 'ios', model: 'iPhone 15 Pro', osVersion: '17.5', appVersion: '1.0.0', trusted: true, lastIp: '212.42.96.10' } });
   }
   return created;
 }

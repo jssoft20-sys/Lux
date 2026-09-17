@@ -13,7 +13,7 @@ export class AdminTotpEnableDto {
   @IsString() @Matches(/^\d{6}$/) code: string;
 }
 export class AdminRefreshDto {
-  @IsString() refreshToken: string;
+  @IsOptional() @IsString() refreshToken?: string;
 }
 export class AdminChangePasswordDto {
   @IsString() currentPassword: string;

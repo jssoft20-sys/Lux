@@ -1,11 +1,12 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react';
-import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { Navigate, Route, Routes, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuth } from '@/store/auth';
 import { useProfile, useUnread } from '@/hooks/useProfile';
+import { restoreSession } from '@/lib/api';
 import { BottomNav } from '@/components/BottomNav';
 import { QuickActions } from '@/screens/QuickActions';
-import { Spinner } from '@/components/ui';
+import { LogoMark } from '@/components/Logo';
 
 const Welcome = lazy(() => import('@/screens/Welcome'));
 const Login = lazy(() => import('@/screens/Login'));
@@ -34,6 +35,7 @@ const Support = lazy(() => import('@/screens/Support'));
 const Settings = lazy(() => import('@/screens/Settings'));
 
 const NAV_ROUTES = ['/', '/orders', '/chats', '/profile'];
+const PUBLIC = ['/welcome', '/login', '/otp'];
 
 function Guard({ children }: { children: React.ReactElement }) {
   const { accessToken } = useAuth();
@@ -42,65 +44,89 @@ function Guard({ children }: { children: React.ReactElement }) {
   return children;
 }
 
+function Splash() {
+  return (
+    <div className="h-full theme-dark screen flex flex-col items-center justify-center gap-3">
+      <motion.div animate={{ scale: [1, 1.08, 1], opacity: [0.8, 1, 0.8] }} transition={{ repeat: Infinity, duration: 1.6 }}>
+        <LogoMark size={72} />
+      </motion.div>
+      <div className="text-[13px] muted">Somex</div>
+    </div>
+  );
+}
+
+// stack-like navigation: forward pushes slide in from the right, back pops slide in from the left
+const variants = {
+  enter: (dir: number) => ({ x: dir >= 0 ? 36 : -36, opacity: 0 }),
+  center: { x: 0, opacity: 1 },
+  exit: (dir: number) => ({ x: dir >= 0 ? -24 : 24, opacity: 0 }),
+};
+
 export default function App() {
   const loc = useLocation();
   const nav = useNavigate();
-  const { accessToken } = useAuth();
+  const navType = useNavigationType();
+  const { accessToken, restored } = useAuth();
   const [quick, setQuick] = useState(false);
-  useProfile(!!accessToken);
+  const dir = useRef(1);
+  if (navType === 'POP') dir.current = -1;
+  else dir.current = 1;
+  useProfile(!!accessToken && restored);
   const unread = useUnread();
   const showNav = !!accessToken && NAV_ROUTES.includes(loc.pathname);
 
   useEffect(() => {
-    if (!accessToken && !['/welcome', '/login', '/otp'].includes(loc.pathname)) nav('/welcome', { replace: true });
-  }, [accessToken, loc.pathname, nav]);
+    restoreSession();
+  }, []);
+
+  useEffect(() => {
+    if (restored && !accessToken && !PUBLIC.includes(loc.pathname)) nav('/welcome', { replace: true });
+  }, [accessToken, restored, loc.pathname, nav]);
 
   return (
     <div className="h-full flex items-center justify-center" style={{ background: 'radial-gradient(1200px 600px at 50% -10%, #10201a 0%, #050807 60%)' }}>
       <div className="phone-frame">
         <div className="dynamic-island" />
         <div className="phone-screen theme-dark screen">
-          <Suspense
-            fallback={
-              <div className="h-full flex items-center justify-center">
-                <Spinner />
-              </div>
-            }
-          >
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div key={loc.pathname} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.22, ease: 'easeOut' }} className="absolute inset-0 overflow-y-auto hide-scroll">
-                <Routes location={loc}>
-                  <Route path="/welcome" element={<Welcome />} />
-                  <Route path="/login" element={<Login />} />
-                  <Route path="/otp" element={<Otp />} />
-                  <Route path="/" element={<Guard><Home /></Guard>} />
-                  <Route path="/kyc" element={<Guard><Kyc /></Guard>} />
-                  <Route path="/kyc/callback" element={<Guard><Kyc callback /></Guard>} />
-                  <Route path="/ads/:id/order" element={<Guard><CreateOrder /></Guard>} />
-                  <Route path="/orders" element={<Guard><Orders /></Guard>} />
-                  <Route path="/orders/:id" element={<Guard><OrderDetails /></Guard>} />
-                  <Route path="/orders/:id/confirm" element={<Guard><ConfirmPayment /></Guard>} />
-                  <Route path="/orders/:id/chat" element={<Guard><Chat /></Guard>} />
-                  <Route path="/orders/:id/release" element={<Guard><Release /></Guard>} />
-                  <Route path="/orders/:id/complete" element={<Guard><OrderComplete /></Guard>} />
-                  <Route path="/orders/:id/dispute" element={<Guard><Dispute /></Guard>} />
-                  <Route path="/chats" element={<Guard><Chats /></Guard>} />
-                  <Route path="/profile" element={<Guard><Profile /></Guard>} />
-                  <Route path="/profile/payment-methods" element={<Guard><PaymentMethods /></Guard>} />
-                  <Route path="/profile/security" element={<Guard><Security /></Guard>} />
-                  <Route path="/profile/settings" element={<Guard><Settings /></Guard>} />
-                  <Route path="/wallet/deposit" element={<Guard><Deposit /></Guard>} />
-                  <Route path="/wallet/withdraw" element={<Guard><Withdraw /></Guard>} />
-                  <Route path="/wallet/history" element={<Guard><History /></Guard>} />
-                  <Route path="/notifications" element={<Guard><Notifications /></Guard>} />
-                  <Route path="/ads/new" element={<Guard><PostAd /></Guard>} />
-                  <Route path="/ads/mine" element={<Guard><MyAds /></Guard>} />
-                  <Route path="/support" element={<Guard><Support /></Guard>} />
-                  <Route path="*" element={<Navigate to={accessToken ? '/' : '/welcome'} replace />} />
-                </Routes>
-              </motion.div>
-            </AnimatePresence>
-          </Suspense>
+          {!restored ? (
+            <Splash />
+          ) : (
+            <Suspense fallback={<Splash />}>
+              <AnimatePresence mode="popLayout" initial={false} custom={dir.current}>
+                <motion.div key={loc.pathname} custom={dir.current} variants={variants} initial="enter" animate="center" exit="exit" transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.8 }} className="absolute inset-0 overflow-y-auto hide-scroll">
+                  <Routes location={loc}>
+                    <Route path="/welcome" element={<Welcome />} />
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/otp" element={<Otp />} />
+                    <Route path="/" element={<Guard><Home /></Guard>} />
+                    <Route path="/kyc" element={<Guard><Kyc /></Guard>} />
+                    <Route path="/kyc/callback" element={<Guard><Kyc callback /></Guard>} />
+                    <Route path="/ads/:id/order" element={<Guard><CreateOrder /></Guard>} />
+                    <Route path="/orders" element={<Guard><Orders /></Guard>} />
+                    <Route path="/orders/:id" element={<Guard><OrderDetails /></Guard>} />
+                    <Route path="/orders/:id/confirm" element={<Guard><ConfirmPayment /></Guard>} />
+                    <Route path="/orders/:id/chat" element={<Guard><Chat /></Guard>} />
+                    <Route path="/orders/:id/release" element={<Guard><Release /></Guard>} />
+                    <Route path="/orders/:id/complete" element={<Guard><OrderComplete /></Guard>} />
+                    <Route path="/orders/:id/dispute" element={<Guard><Dispute /></Guard>} />
+                    <Route path="/chats" element={<Guard><Chats /></Guard>} />
+                    <Route path="/profile" element={<Guard><Profile /></Guard>} />
+                    <Route path="/profile/payment-methods" element={<Guard><PaymentMethods /></Guard>} />
+                    <Route path="/profile/security" element={<Guard><Security /></Guard>} />
+                    <Route path="/profile/settings" element={<Guard><Settings /></Guard>} />
+                    <Route path="/wallet/deposit" element={<Guard><Deposit /></Guard>} />
+                    <Route path="/wallet/withdraw" element={<Guard><Withdraw /></Guard>} />
+                    <Route path="/wallet/history" element={<Guard><History /></Guard>} />
+                    <Route path="/notifications" element={<Guard><Notifications /></Guard>} />
+                    <Route path="/ads/new" element={<Guard><PostAd /></Guard>} />
+                    <Route path="/ads/mine" element={<Guard><MyAds /></Guard>} />
+                    <Route path="/support" element={<Guard><Support /></Guard>} />
+                    <Route path="*" element={<Navigate to={accessToken ? '/' : '/welcome'} replace />} />
+                  </Routes>
+                </motion.div>
+              </AnimatePresence>
+            </Suspense>
+          )}
           {showNav && <BottomNav unread={unread.data?.unread ?? 0} onQuick={() => setQuick(true)} />}
           <AnimatePresence>{quick && <QuickActions onClose={() => setQuick(false)} />}</AnimatePresence>
         </div>

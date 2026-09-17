@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Bell, ChevronDown, Clock, History as HistoryIcon, Plus, ArrowUpRight, SlidersHorizontal, ShieldCheck } from 'lucide-react';
 import { LogoMark } from '@/components/Logo';
-import { Avatar, BankLogo, Button, Skeleton, Sheet, Toggle } from '@/components/ui';
+import { Avatar, BankLogo, Button, Skeleton, Sheet, Toggle, Pressable } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/store/auth';
 import { useBanks, useRate } from '@/hooks/useProfile';
@@ -67,14 +67,14 @@ export default function Home() {
         <LogoMark size={30} />
         <span className="text-[19px] font-extrabold tracking-tight">Somex</span>
         <div className="ml-auto flex items-center gap-1">
-          <button onClick={() => setOpen(true)} className="relative w-10 h-10 rounded-full flex items-center justify-center press">
+          <Pressable onClick={() => setOpen(true)} className="relative w-10 h-10 rounded-full flex items-center justify-center" scale={0.85}>
             <SlidersHorizontal size={20} />
             {activeFilters > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-green" />}
-          </button>
-          <button onClick={() => nav('/notifications')} className="relative w-10 h-10 rounded-full flex items-center justify-center press">
+          </Pressable>
+          <Pressable onClick={() => nav('/notifications')} className="relative w-10 h-10 rounded-full flex items-center justify-center" scale={0.85}>
             <Bell size={20} />
             {!!unreadN.data?.unread && <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-red text-white text-[10px] font-bold flex items-center justify-center">{unreadN.data.unread}</span>}
-          </button>
+          </Pressable>
         </div>
       </div>
 
@@ -98,10 +98,10 @@ export default function Home() {
               { l: 'Вывести', i: ArrowUpRight, to: '/wallet/withdraw' },
               { l: 'История', i: HistoryIcon, to: '/wallet/history' },
             ].map((a) => (
-              <button key={a.l} onClick={() => nav(a.to)} className="card2 h-[58px] flex flex-col items-center justify-center gap-1 press">
+              <Pressable key={a.l} onClick={() => nav(a.to)} className="card2 h-[58px] flex flex-col items-center justify-center gap-1" scale={0.94}>
                 <a.i size={18} />
                 <span className="text-[11px] font-medium">{a.l}</span>
-              </button>
+              </Pressable>
             ))}
           </div>
         </div>
@@ -140,7 +140,7 @@ export default function Home() {
             {ads.isLoading && Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[64px]" />)}
             <AnimatePresence initial={false}>
               {ads.data?.items?.map((ad: any, i: number) => (
-                <motion.div key={ad.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.03, 0.3) }} className="card p-3 grid grid-cols-[1fr_88px_92px] items-center">
+                <motion.div key={ad.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} whileTap={{ scale: 0.985 }} transition={{ delay: Math.min(i * 0.03, 0.3) }} onClick={() => nav(`/ads/${ad.id}/order`)} className="card p-3 grid grid-cols-[1fr_88px_92px] items-center cursor-pointer">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="relative">
                       <Avatar name={ad.advertiser.name} size={38} />
@@ -165,7 +165,7 @@ export default function Home() {
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <span className="text-[11px] muted number-mono">{ad.limitsLabel}</span>
-                    <Button size="sm" onClick={() => nav(`/ads/${ad.id}/order`)} className="!h-8 !px-4 !w-auto">
+                    <Button size="sm" onClick={(e) => { e.stopPropagation(); nav(`/ads/${ad.id}/order`); }} className="!h-8 !px-4 !w-auto">
                       {side === 'BUY' ? 'Купить' : 'Продать'}
                     </Button>
                   </div>
@@ -220,7 +220,7 @@ function FiltersPanel({ draft, setDraft, banks, count, onReset, onApply }: { dra
   const Field = ({ label, k, placeholder }: { label: string; k: keyof Filters; placeholder: string }) => (
     <label className="flex-1 input h-11 flex items-center px-3 gap-2">
       <span className="text-[12px] muted">{label}</span>
-      <input inputMode="numeric" value={(draft[k] as string) || ''} onChange={(e) => setDraft({ ...draft, [k]: e.target.value.replace(/[^\d]/g, '') })} placeholder={placeholder} className="bg-transparent outline-none w-full text-[14px] font-semibold number-mono" />
+      <input inputMode="numeric" value={(draft[k] as string) || ''} onChange={(e) => setDraft({ ...draft, [k]: e.target.value.replace(/[^\d]/g, '') })} placeholder={placeholder} className="bg-transparent outline-none w-full text-[16px] font-semibold number-mono" />
     </label>
   );
   return (
@@ -253,7 +253,7 @@ function FiltersPanel({ draft, setDraft, banks, count, onReset, onApply }: { dra
       </div>
       <div className="text-[13px] font-semibold mt-4 mb-2">Регион продавца</div>
       <div className="input h-11 flex items-center px-3">
-        <select value={draft.region || 'ALL'} onChange={(e) => setDraft({ ...draft, region: e.target.value })} className="bg-transparent w-full outline-none text-[14px] font-medium">
+        <select value={draft.region || 'ALL'} onChange={(e) => setDraft({ ...draft, region: e.target.value })} className="bg-transparent w-full outline-none text-[16px] font-medium">
           {REGIONS.map((r) => (
             <option key={r.code} value={r.code}>
               {r.name}

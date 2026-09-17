@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ReceiptText } from 'lucide-react';
-import { Avatar, Badge, Empty, Skeleton } from '@/components/ui';
+import { Avatar, Badge, Empty, Skeleton, Pressable } from '@/components/ui';
 import { Timer } from '@/components/OrderBits';
 import { api } from '@/lib/api';
 import { fmt, date, STATUS_LABEL, cn } from '@/lib/format';
@@ -27,7 +27,7 @@ export default function Orders() {
       <div className="flex-1 overflow-y-auto hide-scroll px-4 pb-28 flex flex-col gap-2">
         {q.isLoading && Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[84px]" />)}
         {q.data?.items?.map((o: any) => (
-          <button key={o.id} onClick={() => nav(`/orders/${o.id}`)} className="card p-3 text-left press">
+          <Pressable key={o.id} onClick={() => nav(`/orders/${o.id}`)} className="card p-3 w-full">
             <div className="flex items-center gap-3">
               <Avatar name={o.counterparty.name} size={40} />
               <div className="flex-1 min-w-0">
@@ -53,7 +53,7 @@ export default function Orders() {
               )}
               {o.unreadMessages > 0 && <span className="text-green font-semibold">{o.unreadMessages} новых сообщений</span>}
             </div>
-          </button>
+          </Pressable>
         ))}
         {q.data && q.data.items.length === 0 && <Empty icon={<ReceiptText />} title={tab === 'active' ? 'Активных сделок нет' : 'Завершённых сделок нет'} text="Выберите предложение на главной, чтобы начать" />}
       </div>

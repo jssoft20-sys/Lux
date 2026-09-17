@@ -20,7 +20,7 @@ export class OtpVerifyDto {
 }
 
 export class RefreshDto {
-  @IsString() @Length(20, 512) refreshToken: string;
+  @IsOptional() @IsString() @Length(20, 512) refreshToken?: string;
 }
 
 export class PinDto {

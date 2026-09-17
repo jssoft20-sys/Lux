@@ -181,6 +181,11 @@ export class AdminService {
     await this.audit.log({ actorType: 'ADMIN', actorId: adminId, action: 'user.reset_devices', targetType: 'User', targetId: id });
   }
 
+  async clearCooldown(id: string, adminId: string) {
+    await this.prisma.user.update({ where: { id }, data: { sensitiveOpsLockedUntil: null } });
+    await this.audit.log({ actorType: 'ADMIN', actorId: adminId, action: 'user.cooldown_cleared', targetType: 'User', targetId: id });
+  }
+
   async resetPin(id: string, adminId: string) {
     await this.prisma.user.update({ where: { id }, data: { pinHash: null } });
     await this.audit.log({ actorType: 'ADMIN', actorId: adminId, action: 'user.reset_pin', targetType: 'User', targetId: id });

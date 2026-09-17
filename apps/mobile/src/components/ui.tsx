@@ -1,16 +1,46 @@
-import { motion, HTMLMotionProps } from 'framer-motion';
-import { ReactNode, useEffect, useState } from 'react';
+import { motion, HTMLMotionProps, useDragControls, useMotionValue, useTransform, AnimatePresence } from 'framer-motion';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/format';
+import { haptic } from '@/lib/haptics';
 
-export function Button({ children, variant = 'green', size = 'lg', loading, className, disabled, ...rest }: { children: ReactNode; variant?: 'green' | 'ghost' | 'danger' | 'soft'; size?: 'lg' | 'md' | 'sm'; loading?: boolean } & HTMLMotionProps<'button'>) {
+export function Button({ children, variant = 'green', size = 'lg', loading, className, disabled, onClick, ...rest }: { children: ReactNode; variant?: 'green' | 'ghost' | 'danger' | 'soft'; size?: 'lg' | 'md' | 'sm'; loading?: boolean } & HTMLMotionProps<'button'>) {
   const base = 'inline-flex items-center justify-center gap-2 font-semibold rounded-2xl transition disabled:opacity-50 disabled:pointer-events-none select-none';
   const sizes = { lg: 'h-[54px] px-5 text-[16px] w-full', md: 'h-11 px-4 text-[15px]', sm: 'h-9 px-3 text-[13px] rounded-xl' };
   const variants = { green: 'btn-green green-glow', ghost: 'btn-ghost', danger: 'btn-danger', soft: 'bg-green/15 text-green' };
   return (
-    <motion.button whileTap={{ scale: 0.97 }} className={cn(base, sizes[size], variants[variant], className)} disabled={disabled || loading} {...rest}>
+    <motion.button
+      whileTap={{ scale: 0.96 }}
+      transition={{ type: 'spring', stiffness: 600, damping: 30 }}
+      className={cn(base, sizes[size], variants[variant], className)}
+      disabled={disabled || loading}
+      onClick={(e) => {
+        haptic();
+        onClick?.(e);
+      }}
+      {...rest}
+    >
       {loading ? <Loader2 className="animate-spin" size={18} /> : children}
+    </motion.button>
+  );
+}
+
+/** Any tappable surface (rows, cards, chips): scale feedback + haptic. */
+export function Pressable({ children, className, onClick, disabled, scale = 0.975, ...rest }: { children: ReactNode; className?: string; onClick?: () => void; disabled?: boolean; scale?: number } & Omit<HTMLMotionProps<'button'>, 'onClick'>) {
+  return (
+    <motion.button
+      whileTap={disabled ? undefined : { scale }}
+      transition={{ type: 'spring', stiffness: 700, damping: 32 }}
+      className={cn('text-left', className)}
+      disabled={disabled}
+      onClick={() => {
+        haptic(6);
+        onClick?.();
+      }}
+      {...rest}
+    >
+      {children}
     </motion.button>
   );
 }
@@ -20,9 +50,9 @@ export function Header({ title, subtitle, right, back = true, onBack, className 
   return (
     <div className={cn('safe-top px-4 pb-3 flex items-center gap-3', className)}>
       {back && (
-        <button onClick={onBack ?? (() => nav(-1))} className="w-10 h-10 -ml-2 rounded-full flex items-center justify-center press" aria-label="Назад">
+        <motion.button whileTap={{ scale: 0.85 }} onClick={() => { haptic(5); onBack ? onBack() : nav(-1); }} className="w-10 h-10 -ml-2 rounded-full flex items-center justify-center" aria-label="Назад">
           <ChevronLeft size={26} />
-        </button>
+        </motion.button>
       )}
       <div className="flex-1 min-w-0">
         {title && <div className="text-[17px] font-bold leading-tight truncate">{title}</div>}
@@ -49,9 +79,9 @@ export function Badge({ children, tone = 'gray', className }: { children: ReactN
 
 export function Toggle({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
-    <button onClick={() => !disabled && onChange(!on)} className={cn('relative w-[50px] h-[30px] rounded-full transition-colors', on ? 'bg-green' : 'bg-[#cfd6d2] dark:bg-[#2a3530]', disabled && 'opacity-50')} aria-pressed={on}>
+    <motion.button whileTap={disabled ? undefined : { scale: 0.94 }} onClick={() => { if (disabled) return; haptic(); onChange(!on); }} className={cn('relative w-[50px] h-[30px] rounded-full transition-colors', on ? 'bg-green' : 'bg-[#cfd6d2] dark:bg-[#2a3530]', disabled && 'opacity-50')} aria-pressed={on}>
       <motion.span layout transition={{ type: 'spring', stiffness: 600, damping: 32 }} className={cn('absolute top-[3px] w-6 h-6 rounded-full bg-white shadow', on ? 'left-[23px]' : 'left-[3px]')} />
-    </button>
+    </motion.button>
   );
 }
 
@@ -90,7 +120,14 @@ export function Spinner({ size = 22 }: { size?: number }) {
   return <Loader2 className="animate-spin text-green" size={size} />;
 }
 
+/**
+ * Bottom sheet: drag the handle/header down to dismiss (velocity or distance), tap the backdrop, or press Escape.
+ * The backdrop fades with the drag so the gesture feels physical.
+ */
 export function Sheet({ open, onClose, children, title, theme = 'dark' }: { open: boolean; onClose: () => void; children: ReactNode; title?: ReactNode; theme?: 'dark' | 'light' }) {
+  const controls = useDragControls();
+  const y = useMotionValue(0);
+  const backdrop = useTransform(y, [0, 320], [1, 0]);
   useEffect(() => {
     if (!open) return;
     const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -98,28 +135,50 @@ export function Sheet({ open, onClose, children, title, theme = 'dark' }: { open
     return () => window.removeEventListener('keydown', h);
   }, [open, onClose]);
   return (
-    <>
-      {open && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/60 z-40" />}
+    <AnimatePresence>
       {open && (
-        <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', stiffness: 380, damping: 36 }} className={cn('absolute left-0 right-0 bottom-0 z-50 rounded-t-[28px] screen max-h-[92%] overflow-y-auto hide-scroll', theme === 'light' ? 'theme-light' : 'theme-dark')}>
-          <div className="w-10 h-1.5 rounded-full bg-black/20 mx-auto mt-3 mb-2" />
-          {title && <div className="px-5 pb-2 text-[20px] font-extrabold">{title}</div>}
-          <div className="px-5 pb-8 safe-bottom">{children}</div>
-        </motion.div>
+        <>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ opacity: backdrop }} onClick={onClose} className="absolute inset-0 bg-black/60 z-40" />
+          <motion.div
+            drag="y"
+            dragControls={controls}
+            dragListener={false}
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0, bottom: 0.9 }}
+            style={{ y }}
+            onDragEnd={(_, info) => {
+              if (info.offset.y > 110 || info.velocity.y > 700) {
+                haptic(5);
+                onClose();
+              }
+            }}
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', stiffness: 380, damping: 36 }}
+            className={cn('absolute left-0 right-0 bottom-0 z-50 rounded-t-[28px] screen max-h-[92%] flex flex-col', theme === 'light' ? 'theme-light' : 'theme-dark')}
+          >
+            <div onPointerDown={(e) => controls.start(e)} className="touch-none cursor-grab active:cursor-grabbing shrink-0">
+              <div className="w-11 h-1.5 rounded-full bg-black/25 dark:bg-white/25 mx-auto mt-3 mb-2" style={{ background: theme === 'light' ? 'rgba(0,0,0,.2)' : 'rgba(255,255,255,.25)' }} />
+              {title && <div className="px-5 pb-2 text-[20px] font-extrabold">{title}</div>}
+            </div>
+            <div className="px-5 pb-8 safe-bottom overflow-y-auto hide-scroll">{children}</div>
+          </motion.div>
+        </>
       )}
-    </>
+    </AnimatePresence>
   );
 }
 
 export function Check({ on, size = 26 }: { on: boolean; size?: number }) {
   return (
-    <span className={cn('rounded-full inline-flex items-center justify-center shrink-0 transition', on ? 'bg-green text-[#06240f]' : 'border-2 line')} style={{ width: size, height: size }}>
+    <motion.span animate={on ? { scale: [1, 1.18, 1] } : { scale: 1 }} transition={{ duration: 0.25 }} className={cn('rounded-full inline-flex items-center justify-center shrink-0 transition', on ? 'bg-green text-[#06240f]' : 'border-2 line')} style={{ width: size, height: size }}>
       {on && (
         <svg width={size * 0.55} height={size * 0.55} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M5 13l4 4L19 7" />
         </svg>
       )}
-    </span>
+    </motion.span>
   );
 }
 
@@ -131,5 +190,53 @@ export function Empty({ icon, title, text, action }: { icon?: ReactNode; title: 
       {text && <div className="text-[13px] muted max-w-[260px]">{text}</div>}
       {action && <div className="mt-3">{action}</div>}
     </div>
+  );
+}
+
+/**
+ * Code input backed by a single native numeric field: the system keyboard opens (tel/one-time-code),
+ * the boxes just mirror the value. Works for OTP (6) and PIN (4).
+ */
+export function CodeInput({ length, value, onChange, onComplete, secret, autoFocus = true, size = 'md', light = false, error }: { length: number; value: string; onChange: (v: string) => void; onComplete?: (v: string) => void; secret?: boolean; autoFocus?: boolean; size?: 'md' | 'lg'; light?: boolean; error?: number }) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (autoFocus) setTimeout(() => ref.current?.focus(), 60);
+  }, [autoFocus]);
+  useEffect(() => {
+    if (value.length === length) onComplete?.(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+  const box = size === 'lg' ? 'w-[46px] h-[56px] text-[24px]' : 'w-[40px] h-[48px] text-[20px]';
+  return (
+    <motion.div key={error} animate={error ? { x: [0, -8, 8, -6, 6, 0] } : {}} transition={{ duration: 0.4 }} className="relative" onClick={() => ref.current?.focus()}>
+      <input
+        ref={ref}
+        value={value}
+        onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, length))}
+        type="tel"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="one-time-code"
+        maxLength={length}
+        aria-label="Код"
+        className="absolute inset-0 w-full h-full opacity-0"
+        style={{ caretColor: 'transparent', color: 'transparent' }}
+      />
+      {secret ? (
+        <div className="flex justify-center gap-3 py-2 pointer-events-none">
+          {Array.from({ length }).map((_, i) => (
+            <motion.span key={i} animate={value.length > i ? { scale: [1, 1.3, 1] } : {}} className={cn('w-4 h-4 rounded-full border-2', value.length > i ? 'bg-green border-green' : light ? 'border-[#0b100e]/30' : 'line')} />
+          ))}
+        </div>
+      ) : (
+        <div className="flex justify-center gap-2.5 pointer-events-none">
+          {Array.from({ length }).map((_, i) => (
+            <div key={i} className={cn('rounded-xl border-2 flex items-center justify-center font-bold number-mono transition-colors', box, light ? 'bg-white' : 'card2', value.length === i ? 'border-green' : value[i] ? (light ? 'border-[#0b100e]/40' : 'border-[#3a4741]') : light ? 'border-[#e3e8e5]' : 'line')}>
+              {value[i] ?? ''}
+            </div>
+          ))}
+        </div>
+      )}
+    </motion.div>
   );
 }

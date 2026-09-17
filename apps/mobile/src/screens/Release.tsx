@@ -4,8 +4,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, useMotionValue, animate } from 'framer-motion';
 import { toast } from 'sonner';
 import { AlertTriangle, Smartphone } from 'lucide-react';
-import { Button, Check, Header, Sheet } from '@/components/ui';
-import { Keypad } from '@/components/Keypad';
+import { Button, Check, CodeInput, Header, Sheet } from '@/components/ui';
+import { hapticError, hapticSuccess } from '@/lib/haptics';
 import { useOrder } from '@/hooks/useOrder';
 import { api } from '@/lib/api';
 import { useAuth } from '@/store/auth';
@@ -78,15 +78,19 @@ export default function Release() {
     },
   });
 
+  const [pinErr, setPinErr] = useState(0);
   async function verifyPin(p: string) {
     try {
       const r = await api<any>('/auth/pin/verify', { body: { pin: p } });
       stepUp.current = r.stepUpToken;
       setPinOpen(false);
       setPin('');
+      hapticSuccess();
       release.mutate({ stepUpToken: r.stepUpToken });
     } catch (e: any) {
       setPin('');
+      setPinErr((x) => x + 1);
+      hapticError();
       toast.error(e.message);
     }
   }
@@ -134,7 +138,7 @@ export default function Release() {
         <div className="card p-3 mt-3">
           <div className="text-[12px] muted">Сверка ФИО (введите имя отправителя из приложения банка)</div>
           <div className="flex gap-2 mt-2">
-            <input value={observed} onChange={(e) => { setObserved(e.target.value); setNameResult(null); }} placeholder="Например: Бекжан Абдыкадыров" className="input flex-1 h-11 px-3 text-[14px]" />
+            <input value={observed} onChange={(e) => { setObserved(e.target.value); setNameResult(null); }} placeholder="Например: Бекжан Абдыкадыров" className="input flex-1 h-11 px-3 text-[16px]" />
             <Button size="md" variant="soft" onClick={() => check.mutate()} disabled={!observed.trim()} loading={check.isPending}>
               Сверить
             </Button>
@@ -164,20 +168,20 @@ export default function Release() {
         </Button>
       </div>
 
-      <Sheet open={pinOpen} onClose={() => setPinOpen(false)} title="Подтвердите PIN-кодом">
-        <div className="text-[12px] muted">Face ID / PIN защищает отпуск USDT, даже если телефон в чужих руках.</div>
-        <div className="flex justify-center gap-3 my-5">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <span key={i} className={cn('w-4 h-4 rounded-full border-2', pin.length > i ? 'bg-green border-green' : 'line')} />
-          ))}
-        </div>
-        <Keypad light={false} onKey={(k) => { const p = (pin + k).slice(0, 4); setPin(p); if (p.length === 4) verifyPin(p); }} onDelete={() => setPin((p) => p.slice(0, -1))} />
+      <Sheet open={pinOpen} onClose={() => setPinOpen(false)} title="PIN-код">
+        <div className="text-[12px] muted mb-4">Подтвердите отпуск USDT</div>
+        <CodeInput length={4} value={pin} onChange={setPin} onComplete={verifyPin} secret error={pinErr} />
+        <div className="h-24" />
       </Sheet>
       <Sheet open={!!otpOpen} onClose={() => setOtpOpen(null)} title="Код из WhatsApp">
-        <div className="text-[12px] muted">{otpOpen?.reason}</div>
-        {otpOpen?.devCode && <div className="mt-2 text-[12px] text-yellow">DEV код: {otpOpen.devCode}</div>}
-        <input value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" className="input w-full h-14 px-4 text-[24px] number-mono text-center mt-3" placeholder="••••••" />
-        <Button className="mt-3" disabled={otp.length < 6} loading={release.isPending} onClick={() => release.mutate({ stepUpToken: stepUp.current, otpCode: otp })}>
+        <div className="text-[12px] muted mb-4">{otpOpen?.reason}</div>
+        <CodeInput length={6} value={otp} onChange={setOtp} onComplete={(v) => release.mutate({ stepUpToken: stepUp.current, otpCode: v })} />
+        {otpOpen?.devCode && (
+          <button type="button" onClick={() => setOtp(otpOpen.devCode!)} className="mt-4 mx-auto block px-3 py-1.5 rounded-lg warn-card text-[12px] font-semibold">
+            Тестовый режим — код {otpOpen.devCode}, нажмите
+          </button>
+        )}
+        <Button className="mt-4" disabled={otp.length < 6} loading={release.isPending} onClick={() => release.mutate({ stepUpToken: stepUp.current, otpCode: otp })}>
           Подтвердить и отпустить
         </Button>
       </Sheet>

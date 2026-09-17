@@ -64,7 +64,7 @@ export default function Dispute() {
           ))}
         </div>
         <div className="text-[13px] font-semibold mt-4 mb-2">Опишите ситуацию</div>
-        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} className="input w-full p-3 text-[14px]" placeholder="Что произошло, когда, какие суммы и имена вы видите в приложении банка" />
+        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} className="input w-full p-3 text-[16px]" placeholder="Что произошло, когда, какие суммы и имена вы видите в приложении банка" />
         <input ref={input} type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
         <Button variant="ghost" size="md" className="mt-3 w-full" onClick={() => input.current?.click()}>
           <Paperclip size={16} /> Приложить доказательство ({files.length})

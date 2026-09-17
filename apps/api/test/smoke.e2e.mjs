@@ -16,7 +16,7 @@ async function login(phone, device) {
   const req = await call('POST', '/auth/otp/request', { phone }, null, { device });
   assert(req.devCode, 'dev code echoed');
   const v = await call('POST', '/auth/otp/verify', { phone, code: req.devCode, device: { platform: 'ios', model: 'iPhone 15', appVersion: '1.0.0' } }, null, { device });
-  return v;
+  return { ...v, device };
 }
 (async () => {
   // 1. new user registers
@@ -140,13 +140,16 @@ async function login(phone, device) {
   const vt = await call('POST', '/admin/auth/totp', { tmpToken: vl.tmpToken, code: vcode });
   await call('GET', '/admin/settings', null, vt.accessToken).then(() => assert(false, 'support cannot read settings')).catch((e) => assert(/403/.test(e.message), 'RBAC works'));
   log('✔ RBAC: SUPPORT denied on settings');
+  // refresh is bound to the device that logged in: another device fingerprint is rejected
+  await call('POST', '/auth/refresh', { refreshToken: seller.refreshToken }, null, { device: 'stolen-device-9' }).then(() => assert(false, 'device mismatch')).catch((e) => assert(/401/.test(e.message), 'device-bound refresh rejected: ' + e.message));
+  log('✔ refresh token bound to the login device (mismatch -> session revoked)');
   // refresh rotation + reuse detection
-  const r1 = await call('POST', '/auth/refresh', { refreshToken: buyer.refreshToken });
-  await call('POST', '/auth/refresh', { refreshToken: buyer.refreshToken }).then(() => assert(false, 'reuse')).catch((e) => assert(/401/.test(e.message), 'reuse detected'));
+  const r1 = await call('POST', '/auth/refresh', { refreshToken: buyer.refreshToken }, null, { device: buyer.device });
+  await call('POST', '/auth/refresh', { refreshToken: buyer.refreshToken }, null, { device: buyer.device }).then(() => assert(false, 'reuse')).catch((e) => assert(/401/.test(e.message), 'reuse detected'));
   await call('GET', '/me', null, r1.accessToken).then(() => assert(false, 'family revoked')).catch((e) => assert(/401/.test(e.message), 'family revoked after reuse'));
   log('✔ refresh rotation + reuse detection revokes the family');
   await new Promise((r) => setTimeout(r, 12000));
-  const ws = await call('GET', '/wallet/withdrawals', null, seller.accessToken).catch(() => null);
+  const ws = await call('GET', '/wallet/withdrawals', null, buyer.accessToken).catch(() => null);
   const wlist = await call('GET', '/admin/withdrawals', null, at.accessToken);
   log('  withdrawal processor status:', wlist.items[0].status, wlist.items[0].txHash);
   log('\nALL SMOKE CHECKS PASSED');

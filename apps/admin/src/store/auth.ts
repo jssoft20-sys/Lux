@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 
 export interface AdminUser {
   id: string;
@@ -10,27 +9,25 @@ export interface AdminUser {
   mustChangePassword: boolean;
 }
 
+/** Access token and admin profile live in memory only; the refresh token is an httpOnly cookie. */
 interface S {
   accessToken: string | null;
-  refreshToken: string | null;
   admin: AdminUser | null;
-  setTokens: (a: string, r: string) => void;
+  restored: boolean;
+  setAccess: (a: string | null) => void;
   setAdmin: (a: AdminUser | null) => void;
+  setRestored: () => void;
   logout: () => void;
 }
 
-export const useAdminAuth = create<S>()(
-  persist(
-    (set) => ({
-      accessToken: null,
-      refreshToken: null,
-      admin: null,
-      setTokens: (accessToken, refreshToken) => set({ accessToken, refreshToken }),
-      setAdmin: (admin) => set({ admin }),
-      logout: () => set({ accessToken: null, refreshToken: null, admin: null }),
-    }),
-    { name: 'somex.admin' },
-  ),
-);
+export const useAdminAuth = create<S>()((set) => ({
+  accessToken: null,
+  admin: null,
+  restored: false,
+  setAccess: (accessToken) => set({ accessToken }),
+  setAdmin: (admin) => set({ admin }),
+  setRestored: () => set({ restored: true }),
+  logout: () => set({ accessToken: null, admin: null }),
+}));
 
 export const can = (role: string | undefined, ...roles: string[]) => !!role && (role === 'SUPERADMIN' || roles.includes(role));

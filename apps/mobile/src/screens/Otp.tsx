@@ -1,20 +1,20 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { MessageCircle } from 'lucide-react';
-import { Button, Header } from '@/components/ui';
-import { Keypad } from '@/components/Keypad';
+import { Button, CodeInput, Header } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/store/auth';
+import { hapticError, hapticSuccess } from '@/lib/haptics';
 import { formatKgPhone } from '@somex/shared';
 
 export default function Otp() {
   const nav = useNavigate();
-  const { pendingPhone, setTokens, setUser } = useAuth();
+  const { pendingPhone, setAccess, setUser } = useAuth();
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [left, setLeft] = useState(60);
+  const [err, setErr] = useState(0);
   const [meta, setMeta] = useState<any>(() => {
     try {
       return JSON.parse(sessionStorage.getItem('somex.otp') || 'null');
@@ -22,7 +22,6 @@ export default function Otp() {
       return null;
     }
   });
-  const [err, setErr] = useState(0);
 
   useEffect(() => {
     if (!pendingPhone) nav('/login', { replace: true });
@@ -36,30 +35,27 @@ export default function Otp() {
   }, [meta]);
 
   async function verify(c: string) {
-    if (!pendingPhone) return;
+    if (!pendingPhone || loading) return;
     setLoading(true);
     try {
       const ua = navigator.userAgent;
       const model = /iPhone/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : 'Web';
       const r = await api<any>('/auth/otp/verify', { body: { phone: pendingPhone, code: c, device: { platform: 'web', model, appVersion: '1.0.0', name: model } } });
-      setTokens(r.accessToken, r.refreshToken);
+      setAccess(r.accessToken);
       setUser(r.user);
       sessionStorage.removeItem('somex.otp');
-      if (r.isNewDevice) toast.warning('Вход с нового устройства: вывод и отпуск USDT ограничены на 24 часа');
+      hapticSuccess();
+      if (r.isNewDevice) toast.warning('Вход с нового устройства');
       nav(r.user.kyc.status === 'APPROVED' ? '/' : '/kyc', { replace: true });
     } catch (e: any) {
       setErr((x) => x + 1);
       setCode('');
+      hapticError();
       toast.error(e.message);
     } finally {
       setLoading(false);
     }
   }
-
-  useEffect(() => {
-    if (code.length === 6) verify(code);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code]);
 
   async function resend() {
     if (!pendingPhone || left > 0) return;
@@ -84,40 +80,33 @@ export default function Otp() {
         <div className="text-center mt-4">
           <div className="text-[24px] font-extrabold tracking-tight">Код из WhatsApp</div>
           <div className="text-[14px] muted mt-1">
-            Мы отправили 6-значный код на
-            <br />
-            <span className="font-semibold text-[#0b100e]">{pendingPhone ? formatKgPhone(pendingPhone) : ''}</span>
+            Отправлен на <span className="font-semibold text-[#0b100e] number-mono">{pendingPhone ? formatKgPhone(pendingPhone) : ''}</span>
           </div>
         </div>
-        <motion.div key={err} animate={err ? { x: [0, -8, 8, -6, 6, 0] } : {}} className="flex justify-center gap-2.5 mt-6">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className={`w-[46px] h-[56px] rounded-xl border-2 flex items-center justify-center text-[24px] font-bold number-mono bg-white ${code.length === i ? 'border-green' : code[i] ? 'border-[#0b100e]/40' : 'border-[#e3e8e5]'}`}>
-              {code[i] ?? ''}
-            </div>
-          ))}
-        </motion.div>
+        <div className="mt-6">
+          <CodeInput length={6} value={code} onChange={setCode} onComplete={verify} size="lg" light error={err} />
+        </div>
         {meta?.devCode && (
-          <button onClick={() => setCode(meta.devCode)} className="mt-4 mx-auto px-3 py-1.5 rounded-lg bg-[#fff3d6] text-[#6b4a00] text-[12px] font-semibold">
-            {meta.testMode ? `Тестовый режим: код ${meta.devCode} — нажмите, чтобы подставить` : `DEV: код ${meta.devCode} — нажмите, чтобы подставить`}
+          <button type="button" onClick={() => setCode(meta.devCode)} className="mt-4 mx-auto px-3 py-1.5 rounded-lg bg-[#fff3d6] text-[#6b4a00] text-[12px] font-semibold">
+            {meta.testMode ? `Тестовый режим — код ${meta.devCode}, нажмите` : `DEV — код ${meta.devCode}, нажмите`}
           </button>
         )}
-        <div className="text-center text-[13px] muted mt-4">
+        <div className="text-center text-[13px] muted mt-5">
           {left > 0 ? (
             <>
               Отправить повторно через <span className="font-semibold number-mono">{left} с</span>
             </>
           ) : (
-            <button onClick={resend} className="text-green font-semibold">
+            <button type="button" onClick={resend} className="text-green font-semibold">
               Отправить код ещё раз
             </button>
           )}
         </div>
-        <div className="text-center text-[12px] muted mt-2">Никому не сообщайте код. Сотрудники Somex его не спрашивают.</div>
-        <div className="mt-auto pb-5">
-          <Button className="mb-3" loading={loading} disabled={code.length < 6} onClick={() => verify(code)}>
+        <div className="mt-auto pb-6">
+          <Button loading={loading} disabled={code.length < 6} onClick={() => verify(code)}>
             Войти
           </Button>
-          <Keypad onKey={(k) => setCode((c) => (c.length < 6 ? c + k : c))} onDelete={() => setCode((c) => c.slice(0, -1))} />
+          <div className="text-center text-[11px] muted mt-3">Никому не сообщайте код</div>
         </div>
       </div>
     </div>

@@ -33,16 +33,21 @@ export interface PaymentMethod {
   nameMatchesKyc: boolean;
 }
 
+/**
+ * Tokens and profile are kept in memory only. The refresh token lives in an httpOnly cookie set by
+ * the API, so nothing sensitive is readable by scripts or left in localStorage. Only UI flags persist.
+ */
 interface AuthState {
   accessToken: string | null;
-  refreshToken: string | null;
   user: Profile | null;
   onboarded: boolean;
   pendingPhone: string | null;
-  setTokens: (a: string, r: string) => void;
+  restored: boolean;
+  setAccess: (token: string | null) => void;
   setUser: (u: Profile | null) => void;
   setPendingPhone: (p: string | null) => void;
   setOnboarded: () => void;
+  setRestored: () => void;
   logout: () => void;
 }
 
@@ -50,16 +55,17 @@ export const useAuth = create<AuthState>()(
   persist(
     (set) => ({
       accessToken: null,
-      refreshToken: null,
       user: null,
       onboarded: false,
       pendingPhone: null,
-      setTokens: (accessToken, refreshToken) => set({ accessToken, refreshToken }),
+      restored: false,
+      setAccess: (accessToken) => set({ accessToken }),
       setUser: (user) => set({ user }),
       setPendingPhone: (pendingPhone) => set({ pendingPhone }),
       setOnboarded: () => set({ onboarded: true }),
-      logout: () => set({ accessToken: null, refreshToken: null, user: null }),
+      setRestored: () => set({ restored: true }),
+      logout: () => set({ accessToken: null, user: null }),
     }),
-    { name: 'somex.auth', partialize: (s) => ({ accessToken: s.accessToken, refreshToken: s.refreshToken, user: s.user, onboarded: s.onboarded }) },
+    { name: 'somex.ui', partialize: (s) => ({ onboarded: s.onboarded }) },
   ),
 );

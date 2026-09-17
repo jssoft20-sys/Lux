@@ -222,6 +222,16 @@ export class UsersService {
     return { ok: true };
   }
 
+  async deleteNotification(userId: string, id: string) {
+    await this.prisma.notification.deleteMany({ where: { id, userId, channel: 'INAPP' } });
+    return { ok: true };
+  }
+
+  async clearNotifications(userId: string, onlyRead: boolean) {
+    await this.prisma.notification.deleteMany({ where: { userId, channel: 'INAPP', ...(onlyRead ? { readAt: { not: null } } : {}) } });
+    return { ok: true };
+  }
+
   async createTicket(userId: string, dto: { subject: string; message: string; orderId?: string }) {
     const t = await this.prisma.supportTicket.create({ data: { userId, subject: dto.subject, message: dto.message, orderId: dto.orderId } });
     return t;

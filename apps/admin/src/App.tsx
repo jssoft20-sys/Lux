@@ -1,7 +1,8 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAdminAuth } from '@/store/auth';
+import { restoreSession } from '@/lib/api';
 import { Layout } from '@/components/Layout';
 
 const Login = lazy(() => import('@/pages/Login'));
@@ -32,6 +33,17 @@ function Guard({ children }: { children: React.ReactElement }) {
 }
 
 export default function App() {
+  const restored = useAdminAuth((s) => s.restored);
+  useEffect(() => {
+    restoreSession();
+  }, []);
+  if (!restored) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 className="animate-spin text-green" />
+      </div>
+    );
+  }
   return (
     <Suspense
       fallback={

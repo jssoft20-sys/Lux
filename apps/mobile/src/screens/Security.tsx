@@ -1,26 +1,26 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Fingerprint, KeyRound, LogOut, Smartphone, Trash2 } from 'lucide-react';
-import { Badge, Button, Header, Sheet, Toggle } from '@/components/ui';
-import { Keypad } from '@/components/Keypad';
+import { Badge, Button, CodeInput, Header, Pressable, Sheet, Toggle } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/store/auth';
 import { ago, cn } from '@/lib/format';
+import { hapticError, hapticSuccess } from '@/lib/haptics';
 
 export default function Security() {
-  const nav = useNavigate();
   const qc = useQueryClient();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const devices = useQuery({ queryKey: ['devices'], queryFn: () => api<any[]>('/me/devices') });
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => api<any[]>('/me/sessions') });
   const [pinOpen, setPinOpen] = useState(false);
   const [pin, setPin] = useState('');
   const [pin2, setPin2] = useState('');
+  const [err, setErr] = useState(0);
   const setPinM = useMutation({
     mutationFn: (p: string) => api('/auth/pin', { body: { pin: p } }),
     onSuccess: () => {
+      hapticSuccess();
       toast.success('PIN установлен');
       qc.invalidateQueries({ queryKey: ['me'] });
       setPinOpen(false);
@@ -33,17 +33,18 @@ export default function Security() {
   const removeDevice = useMutation({ mutationFn: (id: string) => api(`/me/devices/${id}`, { method: 'DELETE' }), onSuccess: () => qc.invalidateQueries({ queryKey: ['devices'] }), onError: (e: any) => toast.error(e.message) });
   const revoke = useMutation({ mutationFn: (id: string) => api(`/me/sessions/${id}`, { method: 'DELETE' }), onSuccess: () => qc.invalidateQueries({ queryKey: ['sessions'] }) });
   const locked = user?.security.sensitiveOpsLockedUntil;
+  const stage = pin.length < 4 ? 1 : 2;
   return (
     <div className="h-full theme-dark screen flex flex-col">
       <Header title="Безопасность" />
       <div className="px-4 pb-8 flex-1 overflow-y-auto hide-scroll">
-        {locked && <div className="warn-card p-3 text-[12px] mb-3">Вход с нового устройства: вывод и отпуск USDT требуют дополнительного подтверждения до {new Date(locked).toLocaleString('ru-RU')}.</div>}
-        <div className="card divide-y line">
-          <button onClick={() => setPinOpen(true)} className="w-full flex items-center gap-3 p-3 text-left">
+        {locked && <div className="warn-card p-3 text-[12px] mb-3">Вход с нового устройства: вывод и отпуск USDT требуют подтверждения до {new Date(locked).toLocaleString('ru-RU')}.</div>}
+        <div className="card divide-y line overflow-hidden">
+          <Pressable onClick={() => { setPin(''); setPin2(''); setPinOpen(true); }} className="w-full flex items-center gap-3 p-3 press-row" scale={0.99}>
             <KeyRound size={18} className="text-green" />
-            <span className="flex-1 text-[14px] font-medium">PIN-код для отпуска USDT и вывода</span>
+            <span className="flex-1 text-[14px] font-medium">PIN-код</span>
             <Badge tone={user?.security.pinSet ? 'green' : 'yellow'}>{user?.security.pinSet ? 'Установлен' : 'Не задан'}</Badge>
-          </button>
+          </Pressable>
           <div className="flex items-center gap-3 p-3">
             <Fingerprint size={18} className="text-green" />
             <span className="flex-1 text-[14px] font-medium">Face ID / отпечаток</span>
@@ -60,13 +61,13 @@ export default function Security() {
                   {d.model || d.platform || 'Устройство'} {d.current && <span className="text-green text-[11px]">· это устройство</span>}
                 </div>
                 <div className="text-[11px] muted">
-                  {d.lastIp} · {ago(d.lastSeenAt)} {d.trusted ? '· доверенное' : ''}
+                  {d.lastIp} · {ago(d.lastSeenAt)}
                 </div>
               </div>
               {!d.current && (
-                <button onClick={() => removeDevice.mutate(d.id)} className="text-red">
+                <Pressable onClick={() => removeDevice.mutate(d.id)} className="text-red p-1" scale={0.85}>
                   <Trash2 size={16} />
-                </button>
+                </Pressable>
               )}
             </div>
           ))}
@@ -82,9 +83,9 @@ export default function Security() {
                 <div className="text-[11px] muted truncate">{s.userAgent}</div>
               </div>
               {!s.current && (
-                <button onClick={() => revoke.mutate(s.id)} className="text-[12px] text-red">
+                <Pressable onClick={() => revoke.mutate(s.id)} className="text-[12px] text-red" scale={0.9}>
                   Завершить
-                </button>
+                </Pressable>
               )}
             </div>
           ))}
@@ -101,31 +102,31 @@ export default function Security() {
           <LogOut size={16} /> Завершить все другие сессии
         </Button>
       </div>
-      <Sheet open={pinOpen} onClose={() => setPinOpen(false)} title={pin.length < 4 ? 'Новый PIN-код' : 'Повторите PIN-код'}>
-        <div className="flex justify-center gap-3 my-5">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <span key={i} className={cn('w-4 h-4 rounded-full border-2', (pin.length < 4 ? pin : pin2).length > i ? 'bg-green border-green' : 'line')} />
-          ))}
-        </div>
-        <Keypad
-          light={false}
-          onKey={(k) => {
-            if (pin.length < 4) setPin(pin + k);
-            else {
-              const p2 = (pin2 + k).slice(0, 4);
-              setPin2(p2);
-              if (p2.length === 4) {
-                if (p2 === pin) setPinM.mutate(pin);
-                else {
-                  toast.error('PIN-коды не совпадают');
-                  setPin('');
-                  setPin2('');
-                }
+      <Sheet open={pinOpen} onClose={() => setPinOpen(false)} title={stage === 1 ? 'Новый PIN-код' : 'Повторите PIN-код'}>
+        <div className="text-[12px] muted mb-4">4 цифры. Нужен для отпуска USDT и вывода.</div>
+        {stage === 1 ? (
+          <CodeInput key="p1" length={4} value={pin} onChange={setPin} secret error={err} />
+        ) : (
+          <CodeInput
+            key="p2"
+            length={4}
+            value={pin2}
+            onChange={setPin2}
+            secret
+            error={err}
+            onComplete={(v) => {
+              if (v === pin) setPinM.mutate(pin);
+              else {
+                hapticError();
+                setErr((x) => x + 1);
+                toast.error('PIN-коды не совпадают');
+                setPin('');
+                setPin2('');
               }
-            }
-          }}
-          onDelete={() => (pin.length < 4 ? setPin(pin.slice(0, -1)) : setPin2(pin2.slice(0, -1)))}
-        />
+            }}
+          />
+        )}
+        <div className="h-24" />
       </Sheet>
     </div>
   );

@@ -81,6 +81,16 @@ export class UsersController {
     return this.users.markRead(user.id, id);
   }
 
+  @Delete('notifications/:id')
+  deleteNotification(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.users.deleteNotification(user.id, id);
+  }
+
+  @Delete('notifications')
+  clearNotifications(@CurrentUser() user: AuthUser, @Query('read') read?: string) {
+    return this.users.clearNotifications(user.id, read !== '0');
+  }
+
   @Get('history')
   history(@CurrentUser() user: AuthUser, @Query() q: PageDto) {
     return this.users.history(user.id, q.page, q.limit);

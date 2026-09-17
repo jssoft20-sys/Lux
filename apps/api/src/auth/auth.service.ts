@@ -15,6 +15,9 @@ import { BlacklistService } from '../risk/blacklist.service';
 import { randomUUID } from 'crypto';
 import { hours } from '../common/utils/time';
 import { UsersService } from '../users/users.service';
+import { Inject } from '@nestjs/common';
+import Redis from 'ioredis';
+import { REDIS } from '../redis/redis.module';
 
 export interface RequestCtx {
   ip?: string;
@@ -36,6 +39,7 @@ export class AuthService {
     private readonly notifications: NotificationsService,
     private readonly blacklist: BlacklistService,
     private readonly users: UsersService,
+    @Inject(REDIS) private readonly redis: Redis,
   ) {}
 
   normalizePhone(input: string): string {
@@ -111,7 +115,7 @@ export class AuthService {
       });
       if (isNewDevice) {
         const cooldownH = await this.settings.num('security.new_device_cooldown_hours');
-        await this.prisma.user.update({ where: { id: user.id }, data: { sensitiveOpsLockedUntil: new Date(Date.now() + hours(cooldownH)) } });
+        if (cooldownH > 0) await this.prisma.user.update({ where: { id: user.id }, data: { sensitiveOpsLockedUntil: new Date(Date.now() + hours(cooldownH)) } });
         await this.prisma.riskEvent.create({
           data: {
             userId: user.id,
@@ -126,7 +130,7 @@ export class AuthService {
         await this.notifications.notify({
           userId: user.id,
           title: 'Вход с нового устройства',
-          body: `Выполнен вход с нового устройства ${device?.model || ''}. Чувствительные операции ограничены на ${cooldownH} ч.`,
+          body: cooldownH > 0 ? `Выполнен вход с нового устройства ${device?.model || ''}. Вывод и отпуск USDT ограничены на ${cooldownH} ч.` : `Выполнен вход с нового устройства ${device?.model || ''}. Если это не вы — завершите все сессии в разделе Безопасность.`,
           whatsapp: true,
           whatsappText: T.newDevice(device?.model || '', ctx.ip || ''),
         });
@@ -191,6 +195,15 @@ export class AuthService {
     }
     if (session.expiresAt < new Date()) throw E.unauthorized('Сессия истекла');
     if (session.user.status === UserStatus.BANNED || session.user.deletedAt) throw E.forbidden('Аккаунт заблокирован');
+    // device binding: a refresh token presented from another device fingerprint is treated as stolen
+    if (ctx.deviceFingerprint && session.deviceId) {
+      const device = await this.prisma.device.findUnique({ where: { id: session.deviceId }, select: { fingerprint: true, blocked: true } });
+      if (device && (device.fingerprint !== ctx.deviceFingerprint || device.blocked)) {
+        await this.prisma.session.updateMany({ where: { family: session.family, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'DEVICE_MISMATCH' } });
+        await this.audit.log({ actorType: 'SYSTEM', action: 'session.device_mismatch', targetType: 'User', targetId: session.userId, meta: { family: session.family }, ip: ctx.ip });
+        throw E.unauthorized('Сессия привязана к другому устройству. Войдите снова.');
+      }
+    }
 
     await this.prisma.session.update({ where: { id: session.id }, data: { revokedAt: new Date(), revokedReason: 'ROTATED' } });
     const next = await this.createSession(session.userId, session.deviceId!, ctx, session.family);
@@ -217,11 +230,31 @@ export class AuthService {
   }
 
   async verifyPin(userId: string, pin: string) {
-    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { pinHash: true } });
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { pinHash: true, phone: true } });
     if (!user.pinHash) throw E.bad('PIN_NOT_SET', 'PIN-код не установлен');
+    const failKey = `pin:fail:${userId}`;
+    const fails = Number((await this.redisGet(failKey)) ?? 0);
+    if (fails >= 5) throw E.tooMany('PIN заблокирован на 15 минут после 5 неверных попыток', 900);
     const ok = await this.crypto.verifySecret(user.pinHash, pin);
-    if (!ok) throw E.bad('PIN_INVALID', 'Неверный PIN-код');
+    if (!ok) {
+      const n = await this.redisIncr(failKey, 900);
+      await this.audit.log({ actorType: 'USER', actorId: userId, action: 'user.pin_failed', targetType: 'User', targetId: userId, meta: { attempts: n } });
+      throw E.bad('PIN_INVALID', n >= 5 ? 'PIN заблокирован на 15 минут' : `Неверный PIN-код. Осталось попыток: ${5 - n}`);
+    }
+    await this.redisDel(failKey);
     return { stepUpToken: this.tokens.signStepUp(userId), expiresIn: 300 };
+  }
+
+  private redisGet(key: string) {
+    return this.redis.get(key);
+  }
+  private async redisIncr(key: string, ttlSec: number) {
+    const n = await this.redis.incr(key);
+    if (n === 1) await this.redis.expire(key, ttlSec);
+    return n;
+  }
+  private redisDel(key: string) {
+    return this.redis.del(key);
   }
 
   async setBiometric(userId: string, enabled: boolean) {

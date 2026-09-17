@@ -76,18 +76,18 @@ export default function PostAd() {
           ].map(([k, l]) => (
             <label key={k} className="input h-12 flex flex-col justify-center px-3">
               <span className="text-[10px] muted">{l}</span>
-              <input inputMode="numeric" value={(f as any)[k]} onChange={(e) => set(k, e.target.value.replace(/\D/g, ''))} className="bg-transparent outline-none number-mono text-[15px] font-semibold" />
+              <input inputMode="numeric" value={(f as any)[k]} onChange={(e) => set(k, e.target.value.replace(/\D/g, ''))} className="bg-transparent outline-none number-mono text-[16px] font-semibold" />
             </label>
           ))}
         </div>
         <label className="input h-12 flex flex-col justify-center px-3 mt-2">
           <span className="text-[10px] muted">Объём (USDT) {f.side === 'SELL' && `· доступно ${fmt(user?.balance.available, 2)}`}</span>
-          <input inputMode="decimal" value={f.totalAmount} onChange={(e) => set('totalAmount', e.target.value.replace(/[^\d.]/g, ''))} className="bg-transparent outline-none number-mono text-[15px] font-semibold" placeholder="1000" />
+          <input inputMode="decimal" value={f.totalAmount} onChange={(e) => set('totalAmount', e.target.value.replace(/[^\d.]/g, ''))} className="bg-transparent outline-none number-mono text-[16px] font-semibold" placeholder="1000" />
         </label>
         <div className="grid grid-cols-2 gap-2 mt-2">
           <label className="input h-12 flex flex-col justify-center px-3">
             <span className="text-[10px] muted">Регион</span>
-            <select value={f.region} onChange={(e) => set('region', e.target.value)} className="bg-transparent outline-none text-[14px] font-medium">
+            <select value={f.region} onChange={(e) => set('region', e.target.value)} className="bg-transparent outline-none text-[16px] font-medium">
               {REGIONS.map((r) => (
                 <option key={r.code} value={r.code}>
                   {r.name}
@@ -97,7 +97,7 @@ export default function PostAd() {
           </label>
           <label className="input h-12 flex flex-col justify-center px-3">
             <span className="text-[10px] muted">Окно оплаты (мин)</span>
-            <select value={f.paymentWindowMin} onChange={(e) => set('paymentWindowMin', e.target.value)} className="bg-transparent outline-none text-[14px] font-medium">
+            <select value={f.paymentWindowMin} onChange={(e) => set('paymentWindowMin', e.target.value)} className="bg-transparent outline-none text-[16px] font-medium">
               {[10, 15, 20, 30, 45, 60].map((m) => (
                 <option key={m} value={m}>
                   {m}
@@ -106,7 +106,7 @@ export default function PostAd() {
             </select>
           </label>
         </div>
-        <textarea value={f.terms} onChange={(e) => set('terms', e.target.value)} rows={3} className="input w-full p-3 text-[13px] mt-2" placeholder="Условия сделки" />
+        <textarea value={f.terms} onChange={(e) => set('terms', e.target.value)} rows={3} className="input w-full p-3 text-[16px] mt-2" placeholder="Условия сделки" />
         <Button className="mt-4" disabled={!f.bankCode || !f.price || !f.totalAmount} loading={create.isPending} onClick={() => create.mutate()}>
           Разместить объявление
         </Button>

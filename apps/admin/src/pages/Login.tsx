@@ -9,7 +9,7 @@ import { Btn } from '@/components/ui';
 
 export default function Login() {
   const nav = useNavigate();
-  const { setTokens, setAdmin } = useAdminAuth();
+  const { setAccess, setAdmin } = useAdminAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mfa, setMfa] = useState<{ tmpToken: string; setup?: { secret: string; qrDataUrl: string } } | null>(null);
@@ -17,7 +17,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   async function finish(r: any) {
-    setTokens(r.accessToken, r.refreshToken);
+    setAccess(r.accessToken);
     setAdmin(r.admin);
     nav('/', { replace: true });
   }
