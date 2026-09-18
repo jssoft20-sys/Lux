@@ -150,7 +150,17 @@ unzip -o /home/paygo.zip -d /tmp/paygo-new
 /home/PayGo/scripts/update.sh /tmp/paygo-new/PayGo    # backup → стоп ботов → rsync → pip → миграции → рестарт → healthcheck
 ```
 
-`.env`, `data/`, `venv/` при обновлении не затрагиваются.
+`.env`, `data/`, `venv/`, `logs/`, `backups/` при обновлении не затрагиваются. Во время обновления лишние экземпляры PayGo (ручные запуски, старый docker compose) останавливаются автоматически.
+
+## 17. Лишние экземпляры (409 Conflict, бот отвечает через раз)
+
+```bash
+/home/PayGo/scripts/kill_stray.sh              # стоп юнитов → убить всё лишнее только у PayGo → старт юнитов → healthcheck
+/home/PayGo/scripts/kill_stray.sh --dry-run    # только показать, что было бы остановлено
+/home/PayGo/scripts/kill_stray.sh --sessions   # + завершить все сеансы админки (все входят заново через подтверждение в боте)
+```
+
+Скрипт видит только процессы PayGo: python из `/home/PayGo/venv`, модули `paygobot.*` / `paygo.*`, docker-контейнеры `paygo-*`. Другие проекты, сайты и боты на том же сервере не затрагиваются.
 
 ---
 

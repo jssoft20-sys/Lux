@@ -591,3 +591,16 @@ def test_deposit_detail_carries_the_bank_payment_hint(logged, user, fake_provide
     assert item["payment"] and item["payment"]["kind"] == "candidate" and item["payment"]["amount"] == pay and item["payment"]["source"] == "webhook"
     r = logged.post(P + f"/deposits/{dep_id}/action", json={"action": "credit", "amount": pay})
     assert r.status_code == 200 and r.json()["item"]["status"] == "success"
+
+
+def test_cli_revoke_sessions_signs_everybody_out(logged, admin):
+    from paygo import cli
+
+    assert logged.get(P + "/auth/me").status_code == 200
+    assert cli.main(["revoke-sessions"]) == 0
+    assert logged.get(P + "/auth/me").status_code == 401
+    with transaction() as db:
+        from paygo.models import AdminSession, AuditLog
+
+        assert all(s.revoked_at is not None and s.revoked_reason == "revoked_by_cli" for s in db.query(AdminSession).all())
+        assert db.query(AuditLog).filter_by(action="auth.sessions_revoked_all").count() == 1

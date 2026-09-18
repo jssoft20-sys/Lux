@@ -7,7 +7,7 @@ Commands:
   gen-secrets        print freshly generated secrets for .env
   check              verify configuration and database connectivity
   import-legacy      import 1xBet/1win cash desk credentials from the old config.json
-  set-webhook-secret rotate WEBHOOK_SECRET helper (prints new value)
+  revoke-sessions    end every admin-panel session and pending login (used by scripts/kill_stray.sh --sessions)
 """
 from __future__ import annotations
 
@@ -88,6 +88,28 @@ def cmd_check(_args) -> int:
     return 0
 
 
+def cmd_revoke_sessions(_args) -> int:
+    """End every admin-panel session and pending login (everybody signs in again)."""
+    from sqlalchemy import select
+
+    from .db import transaction
+    from .models import Admin, LoginRequest
+    from .services import auth
+    from .utils import utcnow
+
+    with transaction() as db:
+        total = 0
+        for admin in db.execute(select(Admin)).scalars().all():
+            total += auth.revoke_all_sessions(db, admin.id, reason="revoked_by_cli")
+        pending = db.execute(select(LoginRequest).where(LoginRequest.status == "pending")).scalars().all()
+        for row in pending:
+            row.status = "expired"
+            row.decided_at = utcnow()
+        auth.audit(db, "auth.sessions_revoked_all", actor="cli", details={"sessions": total, "pending_logins": len(pending)})
+    print(f"сеансы админки завершены: {total}; отменено ожидающих входов: {len(pending)}")
+    return 0
+
+
 def cmd_import_legacy(args) -> int:
     from .db import transaction
     from .legacy_import import import_config
@@ -115,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(fn=cmd_create_admin)
     sub.add_parser("seed").set_defaults(fn=cmd_seed)
     sub.add_parser("check").set_defaults(fn=cmd_check)
+    sub.add_parser("revoke-sessions").set_defaults(fn=cmd_revoke_sessions)
     p = sub.add_parser("import-legacy")
     p.add_argument("path")
     p.add_argument("--enable", default="1xbet", help="comma separated cash keys to enable (default: 1xbet)")

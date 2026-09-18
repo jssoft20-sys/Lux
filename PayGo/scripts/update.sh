@@ -20,6 +20,8 @@ rsync -a --exclude venv --exclude .env --exclude data --exclude logs --exclude b
 venv/bin/pip install -q -r requirements.txt zxing-cpp
 venv/bin/pip install -q -e .
 chmod +x scripts/*.sh || true
+# лишние экземпляры PayGo (ручные запуски, старый docker compose) убираются, иначе два бота делят одни обновления (409 Conflict)
+[ -x scripts/kill_stray.sh ] && scripts/kill_stray.sh --only-kill --quiet || true
 # файлы, скопированные от root, должны принадлежать пользователю сервисов
 if id "$APP_USER" >/dev/null 2>&1; then chown -R "$APP_USER:$APP_USER" "$APP_DIR"; fi
 [ -f .env ] && chmod 600 .env
