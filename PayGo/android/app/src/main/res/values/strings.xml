@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PayGo</string>
+    <string name="splash_text">PayGo</string>
+    <string name="offline_title">Нет соединения</string>
+    <string name="offline_text">Не удалось загрузить PayGo. Проверьте подключение к интернету и попробуйте снова.</string>
+    <string name="retry">Повторить</string>
+    <string name="retrying">Загрузка…</string>
+    <string name="chooser_title">Выберите файл</string>
+    <string name="camera_permission_denied">Нет доступа к камере — выберите файл из галереи</string>
+    <string name="no_app_for_link">Нет приложения для открытия ссылки</string>
+    <string name="download_started">Загрузка началась</string>
+    <string name="download_failed">Не удалось начать загрузку</string>
+</resources>

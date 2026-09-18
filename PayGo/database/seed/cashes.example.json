@@ -1,0 +1,7 @@
+{
+  "_comment": "Пример ручного добавления касс через API/админку. Учётные данные шифруются в БД. Ключи: servcul → login, cashierpass, cashdeskid, hash; xapi → api_key, agent_login, agent_password, agent_cashdeskid",
+  "cashes": [
+    {"key": "1xbet", "name": "1xBet", "provider_type": "servcul", "enabled": true, "priority": 10, "currency": "KGS", "accepted_currency_ids": "", "deposit_min": 100, "deposit_max": 100000, "low_balance_threshold": 20000, "critical_balance_threshold": 1000, "auto_enable_threshold": 5000, "credentials": {"login": "", "cashierpass": "", "cashdeskid": "", "hash": ""}},
+    {"key": "1win", "name": "1win", "provider_type": "xapi", "enabled": false, "priority": 20, "currency": "KGS", "deposit_min": 100, "deposit_max": 100000, "credentials": {"api_key": "", "agent_login": "", "agent_password": "", "agent_cashdeskid": ""}}
+  ]
+}

@@ -1,0 +1,17 @@
+# secrets and server-local state never go to git
+PayGo/.env
+PayGo/venv/
+PayGo/data/
+PayGo/logs/
+PayGo/backups/
+PayGo/*.egg-info/
+PayGo/backend/*.egg-info/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.sqlite3
+PayGo/android/.gradle/
+PayGo/android/app/build/
+PayGo/android/build/
+PayGo/android/local.properties

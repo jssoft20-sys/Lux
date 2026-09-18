@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.PayGo" parent="Base.Theme.PayGo">
+        <item name="android:navigationBarColor">@color/paygo_bg</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <!-- System splash (Android 12+): same background as the in-app splash. -->
+        <item name="android:windowSplashScreenBackground">@color/paygo_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+    </style>
+</resources>

@@ -1,0 +1,25 @@
+[Unit]
+Description=PayGo backend (FastAPI, port 7035)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=paygo
+Group=paygo
+WorkingDirectory=/home/PayGo
+EnvironmentFile=/home/PayGo/.env
+ExecStart=/home/PayGo/venv/bin/python -m paygo.server
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/home/PayGo/data /home/PayGo
+StandardOutput=append:/home/PayGo/logs/backend.log
+StandardError=append:/home/PayGo/logs/backend.log
+
+[Install]
+WantedBy=multi-user.target

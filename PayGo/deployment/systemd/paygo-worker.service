@@ -1,0 +1,23 @@
+[Unit]
+Description=PayGo background worker (payments, expiry, cash monitor, push)
+After=network-online.target postgresql.service paygo-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=paygo
+Group=paygo
+WorkingDirectory=/home/PayGo
+EnvironmentFile=/home/PayGo/.env
+ExecStart=/home/PayGo/venv/bin/python -m paygo.workers.main
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths=/home/PayGo/data /home/PayGo
+StandardOutput=append:/home/PayGo/logs/worker.log
+StandardError=append:/home/PayGo/logs/worker.log
+
+[Install]
+WantedBy=multi-user.target

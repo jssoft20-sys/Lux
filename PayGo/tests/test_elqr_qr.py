@@ -1,0 +1,90 @@
+from decimal import Decimal
+
+import pytest
+from paygo.services import elqr, qr
+
+TEMPLATE = "00020101021132710013QR.Optima.C2B01032031016109182123435011811112149664:1:1120211130212331500112149664:1:15204999953034175904ELQR6304F6A1"
+
+
+def test_inject_amount_roundtrip():
+    payload = elqr.inject_amount(TEMPLATE, Decimal("1500.37"))
+    assert payload.startswith("000201")
+    assert elqr.amount_from_payload(payload) == Decimal("1500.37")
+    # amount is locked against editing (32.12 = 12)
+    root = dict(elqr.parse_tlv(elqr.strip_crc(payload)))
+    assert dict(elqr.parse_tlv(root["32"]))["12"] == "12"
+
+
+def test_normalize_from_bank_link():
+    link = "https://mobile.optima24.kg/my-qr/confirm-screen?qr-url=" + TEMPLATE
+    prefix, payload = elqr.normalize(link)
+    assert payload.startswith("000201") and "6304" not in payload[-8:]
+
+
+def test_bank_meta():
+    meta = elqr.bank_meta(TEMPLATE)
+    assert meta["bank_name"] == "Optima Bank"
+    assert meta["account"] == "1091821234350118"
+
+
+def test_bank_links_encoding():
+    payload = elqr.inject_amount(TEMPLATE, 100)
+    links = elqr.bank_links(payload, [{"key": "mbank", "name": "MBank", "prefix": "https://app.mbank.kg/qr/#", "enabled": True, "priority": 1}, {"key": "odengi", "name": "O", "prefix": "https://api.dengi.o.kg/#", "enabled": True, "priority": 2, "encode_payload": True}, {"key": "off", "name": "x", "prefix": "https://x/#", "enabled": False}])
+    assert len(links) == 2
+    assert links[0]["url"].endswith(payload)
+    assert "%3A" in links[1]["url"]
+
+
+def test_branded_qr_decodes():
+    zxing = pytest.importorskip("zxingcpp")
+    import io
+
+    from PIL import Image
+
+    value = elqr.qr_image_value(elqr.inject_amount(TEMPLATE, Decimal("250.11")))
+    png = qr.render_qr_png(value)
+    img = Image.open(io.BytesIO(png))
+    results = zxing.read_barcodes(img)
+    assert results and results[0].text == value
+    small = img.resize((240, 240))
+    assert zxing.read_barcodes(small)[0].text == value
+
+
+def test_pay_card_with_overlay_decodes():
+    """The client-facing card (watermark + translucent diagonal text) must scan."""
+    zxing = pytest.importorskip("zxingcpp")
+    import io
+
+    from paygo.services import elqr, qr
+    from PIL import Image
+
+    payload = elqr.inject_amount("00020101021132710013QR.Optima.C2B01032031016109182123435011811112149664:1:1120211130212331500112149664:1:15204999953034175904ELQR", "1500.37")
+    value = elqr.qr_image_value(payload)
+    png = qr.render_pay_card(value, title="ОТСКАНИРУЙТЕ QR", subtitle="В любом банке", overlay="ПОПОЛНЕНИЯ ДЛЯ ОНЛАЙН КАЗИНО", watermark="PAYGO")
+    img = Image.open(io.BytesIO(png))
+    assert img.size == (880, 1100)
+    results = zxing.read_barcodes(img)
+    assert results and results[0].text == value
+    # phone-sized preview (Telegram compresses photos) still decodes
+    small = img.resize((440, 550), Image.LANCZOS)
+    assert zxing.read_barcodes(small)[0].text == value
+
+
+def test_qr_decoder_reads_tilted_and_dark_photos():
+    import io
+
+    from paygo.services.qr import render_qr_png
+    from paygo.services.qr_decode import decode_bytes
+    from PIL import Image, ImageEnhance
+
+    payload = "00020101021132710013QR.Optima.C2B01032031016109182123435011811112149664:1:1120211130212331500112149664:1:15204999953034175904ELQR"
+    img = Image.open(io.BytesIO(render_qr_png(payload))).convert("L")
+    # a phone photo: tilted 18°, on a grey background, darker, slightly blurred and small
+    canvas = Image.new("L", (int(img.width * 1.8), int(img.height * 1.8)), 150)
+    canvas.paste(img, (int(img.width * 0.4), int(img.height * 0.4)))
+    photo = canvas.rotate(18, resample=Image.BICUBIC, expand=True, fillcolor=150)
+    photo = ImageEnhance.Brightness(photo).enhance(0.55)
+    photo = photo.resize((photo.width // 2, photo.height // 2), Image.BILINEAR)
+    out = io.BytesIO()
+    photo.save(out, format="JPEG", quality=60)
+    assert decode_bytes(out.getvalue(), budget=8.0) == payload

@@ -1,0 +1,23 @@
+[Unit]
+Description=PayGo client Telegram bot
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=paygo
+Group=paygo
+WorkingDirectory=/home/PayGo
+EnvironmentFile=/home/PayGo/.env
+ExecStart=/home/PayGo/venv/bin/python -m paygobot.main_bot
+Restart=always
+RestartSec=3
+TimeoutStopSec=25
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths=/home/PayGo/data /home/PayGo
+StandardOutput=append:/home/PayGo/logs/bot.log
+StandardError=append:/home/PayGo/logs/bot.log
+
+[Install]
+WantedBy=multi-user.target
