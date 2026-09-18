@@ -158,6 +158,25 @@ def test_autopay_pauses_and_warns_on_low_balance(user, fake_provider, payout_fak
     assert not payout_fake.paid
 
 
+def test_autopay_paces_sends_by_interval(user, fake_provider, payout_fake):
+    from paygo.services import autopay
+
+    _set(autopay_enabled=True, autopay_dry_run=False, autopay_min_interval_seconds=18)
+    _make_withdrawal(user, "PACE001", "p1")
+    _make_withdrawal(user, "PACE002", "p2")
+    # first tick sends exactly one
+    assert autopay.run_once()["sent"] == 1
+    assert len(payout_fake.paid) == 1
+    # immediately after: throttled, nothing reaches the bank
+    r2 = autopay.run_once()
+    assert r2.get("sent", 0) == 0 and r2.get("throttled_for", 0) > 0
+    assert len(payout_fake.paid) == 1
+    # once the interval has elapsed, the second one goes
+    autopay._LAST_SENT_AT = 0.0
+    assert autopay.run_once()["sent"] == 1
+    assert len(payout_fake.paid) == 2
+
+
 def test_autopay_off_when_not_enabled(user, fake_provider, payout_fake):
     _set(autopay_enabled=False)
     wid = _make_withdrawal(user, "OFF1234", "o1")

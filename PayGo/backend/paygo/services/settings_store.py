@@ -118,6 +118,7 @@ DEFAULTS: dict[str, Any] = {
     "autopay_low_balance": 20000,        # warn the owner to top up Optima24 below this balance
     "autopay_require_decoded_qr": True,  # only auto-pay withdrawals whose destination QR is parsed
     "autopay_max_age_minutes": 180,      # do not auto-pay a withdrawal older than this (operator checks it)
+    "autopay_min_interval_seconds": 18,  # bank-friendly gap between transfers (Optima asked for 15-20s)
     # support
     "support_greeting": "Здравствуйте! Это поддержка PayGo. Опишите вопрос одним сообщением — большинство вопросов решаются автоматически.",
     "support_rate_limit_messages": 6,

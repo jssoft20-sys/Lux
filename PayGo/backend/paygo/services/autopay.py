@@ -51,6 +51,9 @@ _PROVIDER_NAME: str = ""
 _BALANCE: Decimal | None = None
 _BALANCE_AT: float = 0.0
 _BALANCE_TTL = 30.0
+# monotonic time of the last real transfer attempt — the engine never sends faster than
+# ``autopay_min_interval_seconds`` so it does not flood the bank (Optima asked for 15-20s)
+_LAST_SENT_AT: float = 0.0
 
 # autopay states stored under withdrawal.provider_response["autopay"]
 _HANDLED_STATES = {"sending", "sent", "pending", "ambiguous", "duplicate"}
@@ -71,6 +74,7 @@ class Config:
         self.low_balance = money(settings_store.get(db, "autopay_low_balance", 20000))
         self.require_qr = settings_store.get_bool(db, "autopay_require_decoded_qr", True)
         self.max_age_minutes = settings_store.get_int(db, "autopay_max_age_minutes", 180)
+        self.min_interval = settings_store.get_int(db, "autopay_min_interval_seconds", 18)
 
     @property
     def active(self) -> bool:
@@ -96,9 +100,26 @@ def _provider() -> PayoutProvider | None:
 
 def reset_provider() -> None:
     """Drop the cached provider/session (after changing credentials or on a fresh login)."""
-    global _PROVIDER, _PROVIDER_NAME, _BALANCE, _BALANCE_AT
+    global _PROVIDER, _PROVIDER_NAME, _BALANCE, _BALANCE_AT, _LAST_SENT_AT
     with _LOCK:
-        _PROVIDER, _PROVIDER_NAME, _BALANCE, _BALANCE_AT = None, "", None, 0.0
+        _PROVIDER, _PROVIDER_NAME, _BALANCE, _BALANCE_AT, _LAST_SENT_AT = None, "", None, 0.0, 0.0
+
+
+def _seconds_since_send() -> float:
+    import time
+
+    with _LOCK:
+        last = _LAST_SENT_AT
+    return time.monotonic() - last if last else 1e9
+
+
+def _mark_sent() -> None:
+    """Record that a transfer was just attempted, so the next one waits out the interval."""
+    global _LAST_SENT_AT
+    import time
+
+    with _LOCK:
+        _LAST_SENT_AT = time.monotonic()
 
 
 def _cached_balance(provider: PayoutProvider, *, force: bool = False) -> Decimal | None:
@@ -314,6 +335,7 @@ def pay_withdrawal(withdrawal_id: int, operator_id: int | None = None, *, force:
         claimed = _claim(db, withdrawal_id, provider.name)
         if claimed is None:
             return {"ok": False, "message": "Заявку не удалось взять в автовыплату (уже в работе)"}
+    _mark_sent()  # count the bank-friendly interval from this attempt (success or not)
     try:
         result = provider.pay(target)
     except PayoutError as exc:
@@ -357,11 +379,23 @@ def run_once() -> dict[str, Any]:
 
     with transaction() as db:
         spent_today = _today_autopay_total(db)
-        candidates = _candidates(db, cfg)
-        ids = [c.id for c in candidates]
+        ids = [c.id for c in _candidates(db, cfg)]
 
-    sent = 0
-    skipped = 0
+    bal = str(balance) if balance is not None else None
+    if not ids:
+        return {"active": True, "balance": bal, "sent": 0, "scanned": 0}
+
+    # dry-run marks every candidate at once — nothing reaches the bank, so no pacing needed
+    if cfg.dry_run:
+        for wid in ids:
+            pay_withdrawal(wid, operator_id=None)
+        return {"active": True, "dry_run": True, "scanned": len(ids)}
+
+    # live mode: never faster than the bank-friendly interval — at most one transfer per tick
+    since = _seconds_since_send()
+    if since < cfg.min_interval:
+        return {"active": True, "balance": bal, "scanned": len(ids), "throttled_for": round(cfg.min_interval - since, 1)}
+
     for withdrawal_id in ids:
         with transaction() as db:
             w = db.get(Withdrawal, withdrawal_id)
@@ -369,15 +403,11 @@ def run_once() -> dict[str, Any]:
                 continue
             amount = money(w.amount)
         if cfg.daily_cap > 0 and spent_today + amount > cfg.daily_cap:
-            skipped += 1
-            continue
-        result = pay_withdrawal(withdrawal_id, operator_id=None)
-        if result.get("ok") and not result.get("dry_run"):
-            sent += 1
-            spent_today += amount
-        elif result.get("dry_run"):
-            skipped += 1
-    return {"active": True, "balance": str(balance) if balance is not None else None, "sent": sent, "scanned": len(ids), "skipped": skipped}
+            continue  # over today's cap — no bank request, keep scanning for one that fits
+        result = pay_withdrawal(withdrawal_id, operator_id=None)  # this attempt records the interval
+        sent = 1 if (result.get("ok") and not result.get("dry_run")) else 0
+        return {"active": True, "balance": bal, "sent": sent, "scanned": len(ids), "status": result.get("status")}
+    return {"active": True, "balance": bal, "sent": 0, "scanned": len(ids), "skipped": "daily_cap"}
 
 
 def _candidates(db: Session, cfg: Config) -> list[Withdrawal]:
@@ -435,5 +465,7 @@ def status(db: Session) -> dict[str, Any]:
             "min_reserve": str(cfg.min_reserve),
             "low_balance": str(cfg.low_balance),
             "max_age_minutes": cfg.max_age_minutes,
+            "min_interval_seconds": cfg.min_interval,
         },
+        "next_send_in": max(0, round(cfg.min_interval - _seconds_since_send(), 1)) if cfg.active and not cfg.dry_run else 0,
     }

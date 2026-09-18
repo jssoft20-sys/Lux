@@ -311,7 +311,7 @@ def main() -> None:
         ("support", tick_support, 300.0),
         ("jobs", tick_jobs, 2.0),
         ("broadcasts", tick_broadcasts, 1.5),
-        ("autopay", tick_autopay, 8.0),
+        ("autopay", tick_autopay, 4.0),
     ]
     imap_reader = None
     if settings.imap_enabled and settings.imap_idle:
