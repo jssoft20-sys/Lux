@@ -204,12 +204,14 @@ def take(db: Session, w: Withdrawal, operator_id: int | None) -> bool:
     return True
 
 
-def complete(db: Session, w: Withdrawal, operator_id: int | None) -> bool:
+def complete(db: Session, w: Withdrawal, operator_id: int | None, *, auto_ref: str = "") -> bool:
     if w.status in {"success", "cancelled"}:
         return False
     if money(w.amount) <= 0:
         raise WithdrawalError("Нельзя завершить вывод без суммы. Сначала перепроверьте код в кассе.")
-    if receipt_required(db, w) and not w.receipt_file:
+    # ``auto_ref`` — an automated payout carries the bank transaction id as its own proof,
+    # so the manual transfer receipt is not required for it.
+    if not auto_ref and receipt_required(db, w) and not w.receipt_file:
         raise WithdrawalError(f"Для вывода от {money(settings_store.get(db, 'withdraw_receipt_min', 10000) or 0)} {w.currency} прикрепите чек перевода.")
     w.status = "success"
     w.completed_at = utcnow()
@@ -217,6 +219,8 @@ def complete(db: Session, w: Withdrawal, operator_id: int | None) -> bool:
     w.operator_id = operator_id
     w.needs_attention = False
     w.error = ""
+    if auto_ref:
+        w.provider_ref = (w.provider_ref or auto_ref)[:128]
     db.flush()
     cash = db.get(PaymentCash, w.cash_id)
     _final_notify(db, w, render_text(db, "text_withdraw_done", player=w.player_id, amount=money(w.amount), cur=w.currency, cash=cash.name if cash else "", emoji=cash.emoji if cash else ""), "success", photo_url=("/" + w.receipt_file.lstrip("/")) if w.receipt_file else "")

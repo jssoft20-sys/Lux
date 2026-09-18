@@ -132,6 +132,22 @@ class Settings(BaseSettings):
     notification_max_age_seconds: int = Field(default=600, alias="NOTIFICATION_MAX_AGE_SECONDS")
     stuck_processing_timeout_seconds: int = Field(default=180, alias="STUCK_PROCESSING_TIMEOUT_SECONDS")
 
+    # --- automatic payouts (client withdrawals sent from an owner banking account) ---
+    # Which payout channel the auto-withdrawal engine uses. "" disables it entirely,
+    # "optima24" drives the Optima24 mobile-bank API, "fake" is a no-network simulator
+    # used by tests and by a first dry run. Secrets live ONLY here / in .env — never in
+    # the database, the source tree, or a delivered archive. The admin-panel switches
+    # (autopay_enabled, autopay_dry_run, limits) control behaviour, not these values.
+    payout_provider: str = Field(default="", alias="PAYOUT_PROVIDER")
+    optima24_base_url: str = Field(default="https://telebank3.optima24.kg:3080", alias="OPTIMA24_BASE_URL")
+    optima24_login: str = Field(default="", alias="OPTIMA24_LOGIN")
+    optima24_password: str = Field(default="", alias="OPTIMA24_PASSWORD")
+    optima24_device_id: str = Field(default="", alias="OPTIMA24_DEVICE_ID")
+    optima24_device_token: str = Field(default="", alias="OPTIMA24_DEVICE_TOKEN")
+    optima24_source_account: str = Field(default="", alias="OPTIMA24_SOURCE_ACCOUNT")
+    # the mobile app itself waits 30s per call, so the client mirrors that ceiling
+    optima24_timeout_seconds: float = Field(default=30.0, alias="OPTIMA24_TIMEOUT_SECONDS")
+
     @field_validator("base_path")
     @classmethod
     def _normalize_base_path(cls, value: str) -> str:
@@ -160,6 +176,20 @@ class Settings(BaseSettings):
     @property
     def imap_sender_list(self) -> list[str]:
         return [x.strip().lower() for x in (self.imap_senders or "").split(",") if x.strip()]
+
+    @property
+    def payout_provider_name(self) -> str:
+        return (self.payout_provider or "").strip().lower()
+
+    @property
+    def payout_configured(self) -> bool:
+        """A payout channel is selected and its required secrets are present."""
+        name = self.payout_provider_name
+        if name == "fake":
+            return True
+        if name == "optima24":
+            return bool(self.optima24_base_url and self.optima24_login and self.optima24_password)
+        return False
 
     def uploads_dir(self) -> Path:
         path = self.data_dir / "uploads"

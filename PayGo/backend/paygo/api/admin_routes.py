@@ -28,6 +28,7 @@ from ..models import (
     Withdrawal,
 )
 from ..providers import provider_types
+from ..services import autopay as autopay_service
 from ..services import broadcasts as broadcast_service
 from ..services import cashes as cash_service
 from ..services import deposits as deposit_service
@@ -356,7 +357,7 @@ def get_withdrawal(withdrawal_id: int, principal: Principal = Depends(current_pr
         raise HTTPException(404, "NOT_FOUND")
     return {
         "ok": True,
-        "item": {**withdrawal_service.public_withdrawal(w, full=True), "operator_name": _operator_name(db, w.operator_id), "receipt_required": withdrawal_service.receipt_required(db, w)},
+        "item": {**withdrawal_service.public_withdrawal(w, full=True), "operator_name": _operator_name(db, w.operator_id), "receipt_required": withdrawal_service.receipt_required(db, w), "autopay_active": autopay_service.is_active(db)},
         "history": support_service.recent_events(db, "withdrawal", w.public_id, limit=30),
         "user": public_user(w.user, user_summary(db, w.user)),
         "payment_links": elqr.bank_links(w.generated_qr_payload, deposit_service.bank_link_rows(db)) if w.generated_qr_payload else [],
@@ -392,6 +393,17 @@ def withdrawal_action(withdrawal_id: int, body: ActionBody, request: Request, pr
             db.expire_all()  # the re-check ran in its own transactions: answer with the fresh row
             fresh = db.get(Withdrawal, withdrawal_id)
             return {"ok": True, "item": withdrawal_service.public_withdrawal(fresh, full=True)}
+        elif body.action == "autopay":
+            # operator asks to send this one via the payout channel now (respects dry-run + balance)
+            db.commit()
+            result = autopay_service.pay_withdrawal(w.id, principal.id, force=True)
+            audit(db, "withdrawal.autopay", admin_id=principal.id, actor=principal.admin.username, ip=ip, entity_type="withdrawal", entity_id=w.public_id, details={"ok": result.get("ok"), "dry_run": result.get("dry_run")})
+            db.commit()
+            if not result.get("ok"):
+                raise HTTPException(400, result.get("message") or "Автовыплата недоступна")
+            db.expire_all()
+            fresh = db.get(Withdrawal, withdrawal_id)
+            return {"ok": True, "message": result.get("message"), "dry_run": result.get("dry_run"), "item": withdrawal_service.public_withdrawal(fresh, full=True)}
         else:
             raise HTTPException(400, "Неизвестное действие")
     except withdrawal_service.WithdrawalError as exc:
@@ -417,6 +429,12 @@ def withdrawal_edit(withdrawal_id: int, body: EditBody, request: Request, princi
         raise HTTPException(400, "Нет изменяемых полей")
     audit(db, "withdrawal.edit", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), entity_type="withdrawal", entity_id=w.public_id, details=changes)
     return {"ok": True, "item": withdrawal_service.public_withdrawal(w, full=True)}
+
+
+@router.get("/autopay")
+def autopay_status(principal: Principal = Depends(require("operations")), db: Session = Depends(get_db)):
+    """State of the automatic-payout engine: channel, balance, limits, pending count."""
+    return {"ok": True, "autopay": autopay_service.status(db)}
 
 
 @router.get("/withdrawals/{withdrawal_id}/qr.png")

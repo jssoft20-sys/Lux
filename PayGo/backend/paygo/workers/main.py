@@ -100,6 +100,15 @@ def tick_support() -> None:
         support_service.auto_resolve_idle(db)
 
 
+def tick_autopay() -> None:
+    """Send validated withdrawals to clients automatically (off unless configured + enabled)."""
+    from ..services import autopay
+
+    result = autopay.run_once()
+    if result.get("sent"):
+        logger.info("autopay: %s", result)
+
+
 # ------------------------------------------------------------------- admin push
 
 def _push_send(subscription: PushSubscription, payload: str) -> tuple[bool, str, bool]:
@@ -302,6 +311,7 @@ def main() -> None:
         ("support", tick_support, 300.0),
         ("jobs", tick_jobs, 2.0),
         ("broadcasts", tick_broadcasts, 1.5),
+        ("autopay", tick_autopay, 8.0),
     ]
     imap_reader = None
     if settings.imap_enabled and settings.imap_idle:

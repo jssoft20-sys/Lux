@@ -106,6 +106,18 @@ DEFAULTS: dict[str, Any] = {
     # cash monitor
     "cash_monitor_enabled": True,
     "cash_monitor_interval_seconds": 60,
+    # ---- automatic payouts (send validated withdrawals to the client automatically) ----
+    # The engine only runs when a payout channel is configured in .env (PAYOUT_PROVIDER)
+    # AND autopay_enabled is on. It never touches money while autopay_dry_run is on: it
+    # logs exactly what it *would* send. Turn dry-run off only after a real test transfer.
+    "autopay_enabled": False,            # master switch (off until the channel is tested)
+    "autopay_dry_run": True,             # simulate only — no real transfer is sent
+    "autopay_max_amount": 15000,         # per-payout ceiling; above this an operator pays by hand
+    "autopay_daily_cap": 300000,         # total auto-sent per calendar day; above this the engine pauses
+    "autopay_min_reserve": 500,          # never spend the account below this balance
+    "autopay_low_balance": 20000,        # warn the owner to top up Optima24 below this balance
+    "autopay_require_decoded_qr": True,  # only auto-pay withdrawals whose destination QR is parsed
+    "autopay_max_age_minutes": 180,      # do not auto-pay a withdrawal older than this (operator checks it)
     # support
     "support_greeting": "Здравствуйте! Это поддержка PayGo. Опишите вопрос одним сообщением — большинство вопросов решаются автоматически.",
     "support_rate_limit_messages": 6,
