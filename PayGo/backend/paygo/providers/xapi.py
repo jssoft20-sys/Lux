@@ -94,7 +94,7 @@ class XapiAdapter(BaseAdapter):
         value = float(amount)
         status, data = self._request("/v1/client/deposit", {"userId": int(str(player_id)), "amount": value})
         ok = success(status, data, require_reference=True)
-        return ProviderResult(ok=ok, status=status, data=data, message="OK" if ok else human_error(status, data, "deposit"), reference=extract_reference(data))
+        return ProviderResult(ok=ok, status=status, data=data, message="OK" if ok else human_error(status, data, "deposit"), reference=extract_reference(data), amount=extract_amount(data) if ok else None)
 
     def withdraw(self, player_id: str, code: str) -> ProviderResult:
         code_value: Any = str(code).strip()

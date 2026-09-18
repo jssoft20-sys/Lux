@@ -186,13 +186,40 @@ def get_deposit(deposit_id: int, principal: Principal = Depends(current_principa
         raise HTTPException(404, "NOT_FOUND")
     events = support_service.recent_events(db, "deposit", deposit.public_id, limit=30)
     payment_event = db.get(PaymentEvent, deposit.payment_event_id) if deposit.payment_event_id else None
+    # the same bank-payment hint as in the lists (matched, or an unmatched notification with this exact
+    # amount): the card shows it and «Зачислить» is prefilled with what the bank actually received
+    hint = deposit_service.payment_hints(db, [deposit]).get(deposit.id)
     return {
         "ok": True,
-        "item": {**deposit_service.public_deposit(db, deposit, full=True), "operator_name": _operator_name(db, deposit.operator_id)},
+        "item": {**deposit_service.public_deposit(db, deposit, full=True), "operator_name": _operator_name(db, deposit.operator_id), "payment": hint},
         "history": events,
         "payment_event": payments.public_event(payment_event) if payment_event else None,
         "user": public_user(deposit.user, user_summary(db, deposit.user)),
     }
+
+
+def _apply_paid_amount(db: Session, deposit: Deposit, amount: Any, principal: Principal, ip: str) -> None:
+    """«Зачислить» / «Отметить зачисленным» with the amount the client really paid.
+
+    The rule of the desk: exactly what came from the bank — tiyins included — is what the player
+    gets. The operator types that figure in the dialog; it becomes the request's pay_amount
+    (the client is not told about an «amount change» — the credit follows immediately)."""
+    if amount in (None, ""):
+        return
+    try:
+        paid = money(amount)
+    except Exception:
+        raise HTTPException(400, "Некорректная сумма")
+    if paid <= 0:
+        raise HTTPException(400, "Сумма должна быть больше нуля")
+    if paid == money(deposit.pay_amount):
+        return
+    try:
+        changes = deposit_service.edit_amount(db, deposit, pay_amount=paid, operator_id=principal.id, notify=False)
+    except deposit_service.DepositError as exc:
+        raise HTTPException(400, exc.message)
+    if changes:
+        audit(db, "deposit.paid_amount", admin_id=principal.id, actor=principal.admin.username, ip=ip, entity_type="deposit", entity_id=deposit.public_id, details=changes)
 
 
 @router.post("/deposits/{deposit_id}/action")
@@ -203,6 +230,7 @@ def deposit_action(deposit_id: int, body: ActionBody, request: Request, principa
     ip = client_ip(request)
     result: dict[str, Any] = {"ok": True}
     if body.action == "credit":
+        _apply_paid_amount(db, deposit, body.amount, principal, ip)
         db.commit()
         result = deposit_service.credit_deposit(deposit.id, source="manual", operator_id=principal.id, actor=principal.admin.username)
         if not result.get("ok"):
@@ -210,6 +238,7 @@ def deposit_action(deposit_id: int, body: ActionBody, request: Request, principa
         with_db = db
         audit(with_db, "deposit.credit", admin_id=principal.id, actor=principal.admin.username, ip=ip, entity_type="deposit", entity_id=deposit.public_id)
     elif body.action == "mark_success":
+        _apply_paid_amount(db, deposit, body.amount, principal, ip)
         if not deposit_service.mark_success_manual(db, deposit, principal.id, body.reason):
             raise HTTPException(400, "Заявка уже завершена")
         audit(db, "deposit.mark_success", admin_id=principal.id, actor=principal.admin.username, ip=ip, entity_type="deposit", entity_id=deposit.public_id, details={"reason": body.reason})
@@ -224,6 +253,7 @@ def deposit_action(deposit_id: int, body: ActionBody, request: Request, principa
     else:
         raise HTTPException(400, "Неизвестное действие")
     db.commit()
+    db.expire_all()  # the credit ran in its own transactions: re-read the row instead of answering with the stale copy
     fresh = db.get(Deposit, deposit_id)
     return {"ok": True, "item": deposit_service.public_deposit(db, fresh, full=True), **{k: v for k, v in result.items() if k not in {"ok"}}}
 
@@ -359,6 +389,7 @@ def withdrawal_action(withdrawal_id: int, body: ActionBody, request: Request, pr
             db.commit()
             if not result.get("ok"):
                 raise HTTPException(400, result.get("message") or "Не удалось перепроверить")
+            db.expire_all()  # the re-check ran in its own transactions: answer with the fresh row
             fresh = db.get(Withdrawal, withdrawal_id)
             return {"ok": True, "item": withdrawal_service.public_withdrawal(fresh, full=True)}
         else:

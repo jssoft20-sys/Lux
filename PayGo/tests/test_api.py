@@ -507,3 +507,87 @@ def test_device_description():
     assert describe_device("Mozilla/5.0 (Linux; Android 14; SM-S911B Build/UP1A) Chrome/124 Mobile Safari/537.36") == "Android · SM-S911B · Chrome"
     assert describe_device("Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) Version/17.4 Mobile/15E148 Safari/604.1 PayGoApp/1.0", "iOS") == "iPhone · iOS 17.4 · приложение PayGo"
     assert describe_device("Mozilla/5.0 (Windows NT 10.0) Chrome/120", "Windows · ноутбук") == "Windows · ноутбук · Chrome"
+
+
+def test_manual_credit_uses_the_amount_the_client_paid(logged, user, fake_provider):
+    """«Зачислить на счёт игрока» with the paid amount: the player gets exactly that figure (tiyins
+    included), the request records it, and the client gets «Пополнено» — not an «amount changed» notice."""
+    with transaction() as db:
+        u = db.get(User, user)
+        dep, _ = deposits.create_deposit(db, user=u, cash=get_cash(db, "1xbet"), player_id="123456", amount="1500", idempotency_key="paid1")
+        dep_id, requested = dep.id, str(dep.pay_amount)
+    assert requested != "1500.90"
+    r = logged.post(P + f"/deposits/{dep_id}/action", json={"action": "credit", "amount": "1500,90"})
+    assert r.status_code == 200, r.text
+    item = r.json()["item"]
+    assert item["status"] == "success" and item["pay_amount"] == "1500.90"
+    assert [c for c in fake_provider["calls"] if c[0] == "deposit"][-1][1] == ("123456", Decimal("1500.90"))
+    with transaction() as db:
+        assert db.query(Notification).filter_by(event="deposit_updated").count() == 0
+        done = db.query(Notification).filter_by(event="deposit_success").one()
+        assert "1500.90" in done.body
+    # a paid amount that belongs to another open request is refused, nothing is credited
+    from paygo.services.users import get_or_create
+
+    with transaction() as db:
+        u = db.get(User, user)
+        other, _ = deposits.create_deposit(db, user=u, cash=get_cash(db, "1xbet"), player_id="777777", amount="700", idempotency_key="paid2")
+        u2 = get_or_create(db, {"id": 444555666, "first_name": "Второй"})
+        second, _ = deposits.create_deposit(db, user=u2, cash=get_cash(db, "1xbet"), player_id="888888", amount="700", idempotency_key="paid3")
+        busy, second_id = str(other.pay_amount), second.id
+    r = logged.post(P + f"/deposits/{second_id}/action", json={"action": "credit", "amount": busy})
+    assert r.status_code == 400 and "занята" in r.json()["error"]
+    with transaction() as db:
+        assert db.get(Deposit, second_id).status == "created"
+
+
+def test_mark_success_records_the_paid_amount(logged, user, fake_provider):
+    with transaction() as db:
+        u = db.get(User, user)
+        dep, _ = deposits.create_deposit(db, user=u, cash=get_cash(db, "1xbet"), player_id="123456", amount="400", idempotency_key="paid4")
+        dep_id = dep.id
+    r = logged.post(P + f"/deposits/{dep_id}/action", json={"action": "mark_success", "amount": "400.00", "reason": "зачислил вручную"})
+    assert r.status_code == 200, r.text
+    assert r.json()["item"]["status"] == "success" and r.json()["item"]["pay_amount"] == "400.00"
+    assert not [c for c in fake_provider["calls"] if c[0] == "deposit"]  # no API call for a manual mark
+
+
+def test_provider_that_rounds_the_tiyins_away_is_logged(logged, user, fake_provider, monkeypatch):
+    from paygo.models import SystemLog
+    from paygo.providers import ProviderResult
+    from paygo.services import cashes as cash_service
+
+    class Rounding:
+        def __init__(self, cash, creds):
+            pass
+
+        def deposit(self, player_id, amount):
+            return ProviderResult(ok=True, status=200, data={"Success": True, "OperationId": 5, "Summa": int(amount)}, reference="5", amount=Decimal(int(amount)))
+
+    monkeypatch.setattr(cash_service, "get_adapter", lambda cash, creds: Rounding(cash, creds))
+    with transaction() as db:
+        u = db.get(User, user)
+        dep, _ = deposits.create_deposit(db, user=u, cash=get_cash(db, "1xbet"), player_id="123456", amount="1200", idempotency_key="round1")
+        dep_id, pay = dep.id, str(dep.pay_amount)
+    r = logged.post(P + f"/deposits/{dep_id}/action", json={"action": "credit"})
+    assert r.status_code == 200, r.text
+    with transaction() as db:
+        row = db.query(SystemLog).filter(SystemLog.title == "Касса ответила другой суммой").one()
+        assert pay in row.detail and "1200.00" in row.detail and row.level == "warning"
+
+
+def test_deposit_detail_carries_the_bank_payment_hint(logged, user, fake_provider):
+    """The request card (detail endpoint) shows the same bank payment as the lists — matched or a
+    notification with exactly this amount that is still unmatched — so «Зачислить» starts from it."""
+    from paygo.services import payments
+
+    with transaction() as db:
+        u = db.get(User, user)
+        dep, _ = deposits.create_deposit(db, user=u, cash=get_cash(db, "1xbet"), player_id="123456", amount="640", idempotency_key="hint1")
+        dep_id, pay = dep.id, str(dep.pay_amount)
+        event, _ = payments.ingest_event(db, source="webhook", amount=dep.pay_amount, raw_text="late notice", event_key="hint-ev")
+        event.status = "unmatched"
+    item = logged.get(P + f"/deposits/{dep_id}").json()["item"]
+    assert item["payment"] and item["payment"]["kind"] == "candidate" and item["payment"]["amount"] == pay and item["payment"]["source"] == "webhook"
+    r = logged.post(P + f"/deposits/{dep_id}/action", json={"action": "credit", "amount": pay})
+    assert r.status_code == 200 and r.json()["item"]["status"] == "success"

@@ -582,7 +582,22 @@
     let reason = opts.reason || '';
     if (opts.askReason) { reason = await promptDialog(opts.askReason, 'Клиент увидит причину', opts.placeholder || ''); if (reason === null) return null; }
     if (opts.confirm && !(await confirmDialog(opts.confirm, opts.okLabel || 'Да', opts.danger))) return null;
-    try { const r = await api('/' + path + '/' + tx.id + '/action', { method: 'POST', body: { action, reason } }); toast(opts.done || 'Готово', 'ok'); return r.item || tx; } catch (e) { err(e); return null; }
+    try { const r = await api('/' + path + '/' + tx.id + '/action', { method: 'POST', body: { action, reason, amount: opts.amount } }); toast(opts.done || 'Готово', 'ok'); return r.item || tx; } catch (e) { err(e); return null; }
+  }
+  function creditDialog(tx) {
+    /* «Зачислить на счёт игрока»: the player gets exactly what the client paid — tiyins included.
+       The field is prefilled with the bank payment (when one was found) or the request amount. */
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (v) => { if (settled) return; settled = true; resolve(v); };
+      const fromBank = tx.payment && tx.payment.amount ? String(tx.payment.amount) : '';
+      const input = h('input', { class: 'input', type: 'number', step: '0.01', inputmode: 'decimal', value: fromBank || String(tx.pay_amount || '') });
+      const note = fromBank ? 'Платёж из банка: ' + money(tx.payment.amount) + ' ' + tx.currency + ' · ' + srcLabel(tx.payment.source) : 'Заявка на ' + money(tx.pay_amount) + ' ' + tx.currency + '. Если клиент оплатил другую сумму — впишите её.';
+      const s = sheet({ title: 'Зачислить на счёт игрока', onClose: () => finish(null),
+        body: h('div', null, h('div', { class: 'hint-card' }, 'Зачислится ровно та сумма, что оплатил клиент, с тыйынами.'), h('label', { class: 'field' }, h('span', null, 'Оплачено клиентом, ' + tx.currency), input), h('div', { class: 'small muted' }, note), h('div', { class: 'small muted', style: { marginTop: '6px' } }, 'ID ' + tx.player_id + ' · ' + (tx.cash_name || '').toUpperCase() + (tx.player_name ? ' · ' + tx.player_name : ''))),
+        actions: [h('button', { class: 'action-btn', onclick: () => { finish(null); s.close(); } }, 'Отмена'), h('button', { class: 'action-btn primary', onclick: () => { const v = String(input.value).replace(',', '.').trim(); if (!(Number(v) > 0)) return toast('Введите оплаченную сумму', 'err'); finish(v); s.close(); } }, 'Зачислить')] });
+      setTimeout(() => { input.focus(); input.select(); }, 80);
+    });
   }
   function txTitle(kind, tx) { return h('span', { class: 'tx-title' }, h('span', { class: 'copy-text', onclick: () => copy(tx.public_id || txNo(tx)) }, (kind === 'deposit' ? 'Пополнение' : 'Вывод') + ' # ' + txNo(tx), svg('copy', 13)), txStatus(tx)); }
   function txHero(kind, tx, withStatus) {
@@ -605,7 +620,8 @@
       ['ID счёта', h('span', { class: 'mono strong' }, tx.player_id, tx.player_name ? h('small', null, ' ' + tx.player_name) : null), copyBtn(tx.player_id)],
       !dep ? ['Код вывода', h('span', { class: 'mono strong' }, tx.code || '—'), tx.code ? copyBtn(tx.code) : null] : null,
       ['Источник', srcLabel(tx.source)],
-      dep ? ['Платёж', tx.paid_at ? fmtDate(tx.paid_at) + (tx.payment_source ? ' · ' + srcLabel(tx.payment_source) : '') : 'не поступил'] : null,
+      dep ? ['Платёж', tx.payment ? money(tx.payment.amount) + ' ' + tx.currency + ' · ' + srcLabel(tx.payment.source) + ' · ' + fmtDate(tx.payment.received_at) : (tx.paid_at ? fmtDate(tx.paid_at) + (tx.payment_source ? ' · ' + srcLabel(tx.payment_source) : '') : 'не поступил')] : null,
+      dep && tx.status === 'success' ? ['Зачислено', h('span', { class: 'strong', style: { color: '#0a9d6d' } }, money(tx.pay_amount) + ' ' + tx.currency), null] : null,
       ['Создана', fmtDate(tx.created_at)],
       !dep ? ['Выполнена', tx.completed_at ? fmtDate(tx.completed_at) : '—'] : null,
       ['Обработал', tx.operator_id ? (tx.operator_name || '—') : '—'],
@@ -620,7 +636,7 @@
     const ops = can('operations');
     const out = [];
     if (ops && open) {
-      if (dep) out.push(tx.status === 'processing' ? h('button', { class: 'big-btn green', disabled: true }, 'Зачисляется…') : h('button', { class: 'big-btn green', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const r = await txAction(kind, tx, 'credit', { confirm: 'Зачислить ' + money(tx.pay_amount) + ' ' + tx.currency + ' на ID ' + tx.player_id + '?', okLabel: 'Зачислить', done: 'Зачислено' }); busy(b, false); if (r) ctx.refresh(); } }, 'Зачислить на счёт игрока'));
+      if (dep) out.push(tx.status === 'processing' ? h('button', { class: 'big-btn green', disabled: true }, 'Зачисляется…') : h('button', { class: 'big-btn green', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const amount = await creditDialog(tx); if (amount === null) { busy(b, false); return; } const r = await txAction(kind, tx, 'credit', { amount, done: 'Зачислено ' + money(amount) + ' ' + tx.currency }); busy(b, false); if (r) ctx.refresh(); } }, 'Зачислить на счёт игрока'));
       else if (tx.receipt_required && !tx.has_receipt) out.push(h('button', { class: 'big-btn amber', onclick: async () => { const ok = await pickReceipt(tx, null); if (!ok) return; const r = await txAction(kind, tx, 'complete', { confirm: 'Чек прикреплён. Перевели ' + money(tx.amount) + ' ' + tx.currency + ' клиенту?', okLabel: 'Да, перевёл', done: 'Вывод выполнен' }); ctx.refresh(); } }, svg('image', 18), 'Чек → Перевёл деньги'));
       else out.push(h('button', { class: 'big-btn green', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const r = await txAction(kind, tx, 'complete', { confirm: 'Перевели ' + money(tx.amount) + ' ' + tx.currency + ' клиенту?', okLabel: 'Да, перевёл', done: 'Вывод выполнен' }); busy(b, false); if (r) ctx.refresh(); } }, svg('check', 18), 'Перевёл деньги'));
     }

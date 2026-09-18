@@ -136,3 +136,29 @@ def test_cash_disabled_blocks_deposit(user, fake_provider):
     assert exc.value.code == "DEPOSITS_DISABLED"
     with transaction() as db:
         assert db.get(PaymentCash, get_cash(db, "1xbet").id).auto_disabled
+
+
+def test_amount_extraction_picks_the_payment_not_phones_masks_balances_or_dates():
+    """The figure that gets credited is the payment — never the sender's phone, a card mask,
+    the balance after the operation, the commission, a date or a time."""
+    cases = {
+        "Перевод от 996555123456: 1500.84 сом": "1500.84",
+        "Вам перевели 1500.84 сом от 996555123456": "1500.84",
+        "Пополнение карты 4***1234 на сумму 1500.84 KGS": "1500.84",
+        "MBank: +1 500.84 с. Баланс: 25 000.00 с": "1500.84",
+        "Баланс 25 000.00 KGS. Зачислено 1 500.84 KGS": "1500.84",
+        "Поступление: 900.00 KGS, комиссия 0.00 KGS": "900.00",
+        "Перевод 2 000,05 KGS от Иван И. Баланс 12 345,67 KGS": "2000.05",
+        "Elcart: 18.09.2026 12:01 пополнение 1500,84 KGS карта 5***2299 доступно 30000,00 KGS": "1500.84",
+        "Счет пополнен на 3000 сом 12.09.2026 в 14:05": "3000.00",
+        "Кэшбэк 15.00 сом за покупку. Пополнение 500.50 сом": "500.50",
+        "O!Dengi: Вам перевели 1,500.84 KGS": "1500.84",
+        "Оплата QR 1 000,37 сом. Счет 1091821234350118": "1000.37",
+        "Пополнение +1000,37с": "1000.37",
+        "1500.84": "1500.84",
+    }
+    for text, want in cases.items():
+        assert payments.extract_amount(text) == Decimal(want), text
+    for text in ("Заявка 2260918", "Пароль 1234", ""):
+        with pytest.raises(ValueError):
+            payments.extract_amount(text)

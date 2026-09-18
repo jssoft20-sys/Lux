@@ -39,6 +39,9 @@ class AdminUpdateBody(BaseModel):
 class ActionBody(BaseModel):
     action: str
     reason: str = ""
+    # credit / mark_success: the amount the client actually paid (tiyins included) — it becomes the
+    # request's pay_amount and is exactly what is credited to the player
+    amount: str | float | int | None = None
 
 
 class EditBody(BaseModel):

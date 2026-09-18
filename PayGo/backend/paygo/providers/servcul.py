@@ -147,6 +147,7 @@ class ServculAdapter(BaseAdapter):
             message="OK" if ok else human_error(status, data, "deposit"),
             reference=extract_reference(data),
             duplicate=(not ok) and is_duplicate_message(data),
+            amount=extract_amount(data) if ok else None,  # what the desk says it credited (compared with what was sent)
         )
 
     def withdraw(self, player_id: str, code: str) -> ProviderResult:

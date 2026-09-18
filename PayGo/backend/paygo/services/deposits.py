@@ -208,11 +208,12 @@ def create_deposit(
     raise DepositError("Не удалось подобрать уникальную сумму, попробуйте ещё раз.", "AMOUNT_BUSY") from last_error
 
 
-def edit_amount(db: Session, deposit: Deposit, *, amount: Any = None, pay_amount: Any = None, operator_id: int | None = None) -> dict[str, Any]:
+def edit_amount(db: Session, deposit: Deposit, *, amount: Any = None, pay_amount: Any = None, operator_id: int | None = None, notify: bool = True) -> dict[str, Any]:
     """Operator changes the requested and/or exact payable amount (support fixes a mistyped or partial payment).
 
     Allowed while the request is not credited. The QR is regenerated from the
-    requisite; an active request also gets a fresh card in the client's chat.
+    requisite; an active request also gets a fresh card in the client's chat
+    (``notify=False`` when the credit follows right away — the client only sees «Пополнено»).
     """
     if deposit.status in {"success", "processing"}:
         raise DepositError("Сумму нельзя менять у зачисленной или обрабатываемой заявки", "LOCKED")
@@ -246,7 +247,7 @@ def edit_amount(db: Session, deposit: Deposit, *, amount: Any = None, pay_amount
     deposit.operator_id = operator_id
     db.flush()
     log_event(db, "Сумма заявки изменена оператором", f"{deposit.public_id} • {changes}", category="deposits", entity_type="deposit", entity_id=deposit.public_id)
-    if deposit.status == "created" and "pay_amount" in changes:
+    if notify and deposit.status == "created" and "pay_amount" in changes:
         notify_user(
             db,
             db.get(User, deposit.user_id),
@@ -408,6 +409,9 @@ def credit_deposit(deposit_id: int, *, source: str, event_id: int | None = None,
         )
         if result.ok or result.duplicate:
             deposit = _finalize_success(db, deposit_id, result.data, result.reference, source)
+            if result.ok and result.amount is not None and money(result.amount) != amount:
+                # the desk must credit exactly what the bank received; a provider that rounds the tiyins away is made visible
+                log_event(db, "Касса ответила другой суммой", f"{deposit.public_id} • отправлено {amount} {deposit.currency} → в ответе кассы {money(result.amount)}", level="warning", category="provider", entity_type="deposit", entity_id=deposit.public_id)
             if event_id:
                 event = db.get(PaymentEvent, event_id)
                 if event:

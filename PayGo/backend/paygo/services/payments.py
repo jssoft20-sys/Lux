@@ -21,16 +21,68 @@ from .logs import log_event
 
 logger = logging.getLogger("paygo.payments")
 
-_AMOUNT_PATTERNS = [
-    re.compile(r"(?:зачислен[оа]?|поступил[оа]?|пополнени[ея]|перевод|оплата|платеж|платёж|сумма|amount|credited|received|поступление|зачисление)[^\d\-]{0,40}?([\d][\d\s]*[.,]?\d{0,2})", re.I),
-    re.compile(r"\+\s?([\d][\d\s]*[.,]?\d{0,2})\s*(?:kgs|сом|с\b|som|c\b)", re.I),
-    re.compile(r"([\d][\d\s]*[.,]\d{2})\s*(?:kgs|сом|som|с\b|c\b)", re.I),
-    re.compile(r"([\d][\d\s]*[.,]?\d{0,2})\s*(?:kgs|сом|som)", re.I),
-]
+# A number in a bank notification: «1 500,84», «1500.84», «12 345,67», «1,500.84», «900». Never a
+# piece of a masked card («4***1234»), a phone («996555123456» — too many digits, scored below),
+# a date («18.09.2026») or a time («12:01»).
+_NUMBER = re.compile(
+    r"(?<![\d*.,:])"
+    r"(?P<int>\d{1,3}(?:[   ]\d{3})+|\d{1,3}(?:,\d{3})+(?=\.\d{2}(?!\d))|\d{1,3}(?:,\d{3})+(?![.,]?\d)|\d+)"
+    r"(?:[.,](?P<frac>\d{2}))?"
+    r"(?![\d*])(?![.,]\d)"
+)
+_CURRENCY_AFTER = re.compile(r"^\s{0,3}(?:kgs|kgz|som|сом\w*|с|c)(?![\w])", re.I)
+_PERCENT_AFTER = re.compile(r"^\s{0,2}%")
+_KEYWORD_BEFORE = re.compile(
+    r"(?:зачисл\w*|поступ\w*|пополн\w*|перевод\w*|перевел\w*|оплат\w*|плат[её]ж\w*|сумм\w*|получен\w*|приход\w*|внес\w*|amount|credited|received|payment|deposit|transfer)\W*[^\d\n]{0,40}$",
+    re.I,
+)
+_NOT_PAYMENT_BEFORE = re.compile(r"(?:баланс\w*|остат\w*|доступн\w*|комисси\w*|лимит\w*|итого|balance|available|fee|limit|cashback|кэшбэк\w*)\W*[^\d\n]{0,25}$", re.I)
+MAX_INT_DIGITS = 8  # anything longer is an account / phone number, not soms
+
+
+def amount_candidates(text: str) -> list[tuple[int, int, Decimal]]:
+    """Every plausible amount in the text as ``(score, position, amount)``.
+
+    Scoring: a currency right after the number +4, a payment keyword right before it +3,
+    two decimals (tiyins) +2, a leading «+» +1; a balance / commission / limit keyword before
+    it −3, a percent after it −3, more than 8 integer digits −5. Zero is never an amount."""
+    out: list[tuple[int, int, Decimal]] = []
+    for match in _NUMBER.finditer(text):
+        whole = re.sub(r"[   ,]", "", match.group("int"))
+        frac = match.group("frac")
+        try:
+            dec = money(whole + ("." + frac if frac else ""))
+        except Exception:
+            continue
+        if dec <= 0:
+            continue
+        before = text[max(0, match.start() - 60):match.start()]
+        after = text[match.end():match.end() + 16]
+        score = 0
+        if _CURRENCY_AFTER.search(after):
+            score += 4
+        if _KEYWORD_BEFORE.search(before):
+            score += 3
+        if frac:
+            score += 2
+        if before.rstrip().endswith("+"):
+            score += 1
+        if _NOT_PAYMENT_BEFORE.search(before):
+            score -= 3
+        if _PERCENT_AFTER.search(after):
+            score -= 3
+        if len(whole) > MAX_INT_DIGITS:
+            score -= 5
+        out.append((score, match.start(), dec))
+    return out
 
 
 def extract_amount(raw_text: str, parsed: Any = None) -> Decimal:
-    """Find the payment amount in a bank notification (text / JSON)."""
+    """Find the payment amount in a bank notification (text / JSON).
+
+    The amount the bank actually received — tiyins included — is what gets credited, so the
+    parser must pick the payment figure and nothing else: not the balance after the operation,
+    not the commission, not a card mask, a phone number, a date or a time."""
     if isinstance(parsed, dict):
         for key in ("amount", "sum", "summa", "value", "total", "amount_value"):
             value = parsed.get(key)
@@ -41,25 +93,12 @@ def extract_amount(raw_text: str, parsed: Any = None) -> Decimal:
                         return dec
                 except Exception:
                     pass
-    text = str(raw_text or "")
-    for pattern in _AMOUNT_PATTERNS:
-        for match in pattern.finditer(text):
-            candidate = match.group(1).replace(" ", "").replace(",", ".")
-            try:
-                dec = money(candidate)
-            except Exception:
-                continue
-            if dec > 0:
-                return dec
-    # last resort: any decimal with two digits after the separator
-    match = re.search(r"(\d[\d ]*[.,]\d{2})", text)
-    if match:
-        try:
-            dec = money(match.group(1).replace(" ", "").replace(",", "."))
-            if dec > 0:
-                return dec
-        except Exception:
-            pass
+    candidates = amount_candidates(str(raw_text or ""))
+    if candidates:
+        # the best-scored figure; among equals the first in the text (the payment comes before the balance)
+        best = max(candidates, key=lambda item: (item[0], -item[1]))
+        if best[0] >= 2:
+            return best[2]
     raise ValueError("Не удалось определить сумму платежа")
 
 
