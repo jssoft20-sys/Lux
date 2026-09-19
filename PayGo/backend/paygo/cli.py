@@ -154,7 +154,22 @@ def cmd_payout_check(_args) -> int:
     for provider in pool:
         print(f"  • {provider.key()}  base_url={getattr(provider, 'base_url', '')}")
 
-    # network reachability to each distinct host:port (TCP + TLS), from THIS server
+    # network reachability to each distinct host:port (TCP + TLS), from THIS server.
+    # The TLS check uses the SAME trust settings as the real client (CA bundle / verify flag),
+    # so a pinned self-signed cert reads as OK here too, not a false failure.
+    ca_bundle = (settings.optima24_ca_bundle or "").strip()
+    tls_verify = settings.optima24_tls_verify
+    if ca_bundle:
+        tls_ctx = ssl.create_default_context(cafile=ca_bundle)
+        how = " [через CA bundle]"
+    elif not tls_verify:
+        tls_ctx = ssl.create_default_context()
+        tls_ctx.check_hostname = False
+        tls_ctx.verify_mode = ssl.CERT_NONE  # operator explicitly disabled verification
+        how = " [проверка выключена]"
+    else:
+        tls_ctx = ssl.create_default_context()
+        how = ""
     hosts: set[tuple[str, int]] = set()
     for provider in pool:
         parsed = urlparse(getattr(provider, "base_url", "") or "")
@@ -167,11 +182,11 @@ def cmd_payout_check(_args) -> int:
             print(f"Сеть {host}:{port}: НЕДОСТУПНО — {type(exc).__name__}: {exc}")
             continue
         try:
-            ss = ssl.create_default_context().wrap_socket(sock, server_hostname=host)
-            print(f"Сеть {host}:{port}: TLS OK ({ss.version()})")
+            ss = tls_ctx.wrap_socket(sock, server_hostname=host)
+            print(f"Сеть {host}:{port}: TLS OK ({ss.version()}){how}")
             ss.close()
         except ssl.SSLError as exc:
-            print(f"Сеть {host}:{port}: TCP OK, TLS: {exc}")
+            print(f"Сеть {host}:{port}: TCP OK, но TLS не принят — {exc}. Проверьте OPTIMA24_CA_BUNDLE или поставьте OPTIMA24_TLS_VERIFY=false")
             sock.close()
 
     # login / balance per account (will report the missing capture until the requests are wired)
