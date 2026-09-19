@@ -85,6 +85,44 @@ def test_extract_code_custom_regex():
     assert extract_code(code_mail(body=body), cfg) == "774411"
 
 
+def optima_html_mail(code="4627", *, subject="Код подтверждения otp", sender="Optima Bank <noreply@optimabank.kg>") -> bytes:
+    """The real Optima e-mail shape: a decorative text/plain part + HTML with a CSS block whose
+    sizes/colours contain numbers, the code after the word «Код», and footer numbers."""
+    msg = EmailMessage()
+    msg["From"] = sender
+    msg["To"] = "codes@wwweeewww.fit"
+    msg["Subject"] = subject
+    msg["Date"] = format_datetime(utcnow())
+    msg.set_content("Оптима Банк")  # decorative text/plain, no code
+    html = (
+        "<html><head><style>.body{border:2px solid #bebfc5;border-radius:16px;padding-top:16px}"
+        ".msg{font-size:12px;line-height:16px}</style></head><body>"
+        f"<p>Оптима Банк</p><p>Код подтверждения перевода: {code}</p>"
+        "<p>Контакт-центр: +996 312 90 59 59 Короткий номер: 9595</p><p>(c) 2024 OptimaBank</p></body></html>"
+    )
+    msg.add_alternative(html, subtype="html", charset="utf-8")
+    return msg.as_bytes()
+
+
+def test_extract_code_ignores_css_and_footer_numbers():
+    # the code is 4627; the message also holds 16, 12, 996, 312, 9595, 2024 and CSS hex colours
+    assert extract_code(optima_html_mail("4627"), _cfg(sender="optimabank.kg", subject="otp")) == "4627"
+
+
+def test_extract_code_from_html_only_email():
+    msg = EmailMessage()
+    msg["From"] = "Optima Bank <noreply@optimabank.kg>"
+    msg["Subject"] = "Код подтверждения otp"
+    msg["Date"] = format_datetime(utcnow())
+    msg.set_content("<style>.x{padding:16px}</style><div>Ваш код: 3517. Действует 5 минут.</div>", subtype="html")
+    assert extract_code(msg.as_bytes(), _cfg(sender="optimabank.kg")) == "3517"
+
+
+def test_extract_code_notification_subject_filtered_out():
+    # a same-sender "Notification Service" e-mail is excluded by the subject filter
+    assert extract_code(optima_html_mail("4627", subject="Notification Service"), _cfg(sender="optimabank.kg", subject="otp")) is None
+
+
 # --------------------------------------------------------------------------- reader
 
 def test_reader_returns_newest_code():

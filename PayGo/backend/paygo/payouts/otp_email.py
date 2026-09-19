@@ -27,13 +27,17 @@ from typing import Any
 
 from ..config import Settings, get_settings
 from ..utils import as_utc, utcnow
-from ..workers.imap_source import _body, _header, _imap_date, _sent_at
+from ..workers.imap_source import _header, _imap_date, _sent_at
 
 logger = logging.getLogger("paygo.payouts.otp")
 
 CONNECT_TIMEOUT = 20.0
 # tolerate a little clock skew between our server and the mail server when matching by date
 SKEW = timedelta(seconds=60)
+DEFAULT_CODE_RE = r"(\d{4,8})"
+# a code sitting right after the word "код" / "code" / "otp" — used before any bare-number guess so
+# footer numbers (short numbers, a year, a phone) can never be mistaken for the code
+_CODE_NEAR_KEYWORD = re.compile(r"(?is)(?:код|code|otp)[^\d]{0,60}(\d{4,8})")
 
 
 @dataclass
@@ -70,6 +74,25 @@ class OtpEmailConfig:
         return bool(self.host and self.user and self.password)
 
 
+def _clean_body(msg: Any) -> str:
+    """Readable message text from every text part combined (plain as-is, HTML with its style /
+    script blocks and tags removed). Bank e-mails carry a big CSS block whose sizes and colours
+    contain numbers — stripping it means those can never reach the code search."""
+    parts: list[str] = []
+    for part in (msg.walk() if msg.is_multipart() else [msg]):
+        if part.get_content_maintype() != "text":
+            continue
+        try:
+            text = (part.get_payload(decode=True) or b"").decode(part.get_content_charset() or "utf-8", "ignore")
+        except Exception:
+            continue
+        if part.get_content_subtype() == "html":
+            text = re.sub(r"(?is)<(style|script)[^>]*>.*?</\1>", " ", text)  # drop CSS / JS blocks
+            text = re.sub(r"<[^>]+>", " ", text)
+        parts.append(text)
+    return re.sub(r"\s+", " ", " ".join(parts)).strip()
+
+
 def extract_code(raw: bytes, cfg: OtpEmailConfig, *, since: datetime | None = None) -> str | None:
     """Return the confirmation code from one raw message, or None when it does not qualify."""
     import email as email_mod
@@ -87,12 +110,22 @@ def extract_code(raw: bytes, cfg: OtpEmailConfig, *, since: datetime | None = No
     sent = _sent_at(msg)
     if since is not None and sent is not None and sent < as_utc(since) - SKEW:
         return None  # older than the transfer we are confirming
-    text = f"{subject}\n{_body(msg)}"
-    try:
-        match = re.search(cfg.code_regex, text)
-    except re.error:
-        match = re.search(r"(\d{4,8})", text)
-    return match.group(1) if match else None
+    text = f"{subject}\n{_clean_body(msg)}"
+    # 1) a custom regex, if the operator set one, always wins
+    if cfg.code_regex and cfg.code_regex.strip() not in ("", DEFAULT_CODE_RE):
+        try:
+            match = re.search(cfg.code_regex, text)
+            if match:
+                return match.group(match.lastindex or 0)
+        except re.error:
+            pass
+    # 2) a code right after the word "код" / "code" / "otp"
+    match = _CODE_NEAR_KEYWORD.search(text)
+    if match:
+        return match.group(1)
+    # 3) fallback: the first 4-8 digit run
+    match = re.search(r"\d{4,8}", text)
+    return match.group(0) if match else None
 
 
 class OtpEmailReader:
