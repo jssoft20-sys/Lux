@@ -42,7 +42,7 @@ def payout_fake(monkeypatch):
     reset_settings_cache()
     autopay.reset_provider()
     fake = FakePayoutProvider(balance=Decimal("1000000"))
-    monkeypatch.setattr(autopay, "_provider", lambda: fake)
+    monkeypatch.setattr(autopay, "_pool", lambda: [fake])
     yield fake
     autopay.reset_provider()
     reset_settings_cache()
@@ -175,6 +175,31 @@ def test_autopay_paces_sends_by_interval(user, fake_provider, payout_fake):
     autopay._LAST_SENT_AT = 0.0
     assert autopay.run_once()["sent"] == 1
     assert len(payout_fake.paid) == 2
+
+
+def test_autopay_multi_account_picks_the_fullest_with_funds(user, fake_provider, monkeypatch):
+    from paygo.config import reset_settings_cache
+    from paygo.payouts.base import FakePayoutProvider
+    from paygo.services import autopay
+
+    monkeypatch.setenv("PAYOUT_PROVIDER", "fake")
+    reset_settings_cache()
+    autopay.reset_provider()
+    small = FakePayoutProvider(balance=Decimal("3000"))
+    small.account_name = "acc-small"
+    big = FakePayoutProvider(balance=Decimal("50000"))
+    big.account_name = "acc-big"
+    monkeypatch.setattr(autopay, "_pool", lambda: [small, big])
+    _set(autopay_enabled=True, autopay_dry_run=False, autopay_min_reserve=500, autopay_max_amount=15000)
+    _make_withdrawal(user, "MULTI001", "m1")  # amount 5300 — too big for the small account + reserve
+    try:
+        result = autopay.run_once()
+        assert result["sent"] == 1 and result["account"] == "acc-big"
+        assert len(big.paid) == 1 and len(small.paid) == 0
+        assert big.get_balance() == Decimal("50000") - Decimal("5300")
+    finally:
+        autopay.reset_provider()
+        reset_settings_cache()
 
 
 def test_autopay_off_when_not_enabled(user, fake_provider, payout_fake):

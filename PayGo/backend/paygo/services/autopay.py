@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..db import transaction
 from ..models import Withdrawal
-from ..payouts import PayoutError, PayoutProvider, PayoutResult, PayoutTarget, provider_from_settings
+from ..payouts import PayoutError, PayoutProvider, PayoutResult, PayoutTarget, providers_from_settings
 from ..utils import iso, money, utcnow
 from . import elqr, settings_store
 from .logs import log_event
@@ -43,16 +43,16 @@ from .withdrawals import public_withdrawal
 
 logger = logging.getLogger("paygo.autopay")
 
-# provider + balance caches (autopay runs on one worker thread; the manual API path may also
-# call in, so every shared read/write is under this lock)
+# provider pool + per-account balance cache (autopay runs on one worker thread; the manual API
+# path may also call in, so every shared read/write is under this lock)
 _LOCK = threading.Lock()
-_PROVIDER: PayoutProvider | None = None
-_PROVIDER_NAME: str = ""
-_BALANCE: Decimal | None = None
-_BALANCE_AT: float = 0.0
+_POOL: list[PayoutProvider] | None = None
+_POOL_NAME: str = ""
+_BAL: dict[str, tuple[Decimal | None, float]] = {}  # account key -> (balance, monotonic time)
 _BALANCE_TTL = 30.0
 # monotonic time of the last real transfer attempt — the engine never sends faster than
-# ``autopay_min_interval_seconds`` so it does not flood the bank (Optima asked for 15-20s)
+# ``autopay_min_interval_seconds`` so it does not flood the bank (Optima asked for 15-20s).
+# The interval is global across all accounts, because they share one telebank3 backend.
 _LAST_SENT_AT: float = 0.0
 
 # autopay states stored under withdrawal.provider_response["autopay"]
@@ -83,26 +83,27 @@ class Config:
 
 # --------------------------------------------------------------------------- provider
 
-def _provider() -> PayoutProvider | None:
-    """Return the configured provider, rebuilding it when the channel changes."""
-    global _PROVIDER, _PROVIDER_NAME
+def _pool() -> list[PayoutProvider]:
+    """Return the configured payout accounts, rebuilding when the channel changes."""
+    global _POOL, _POOL_NAME
     settings = get_settings()
     name = settings.payout_provider_name
     with _LOCK:
         if not name:
-            _PROVIDER, _PROVIDER_NAME = None, ""
-            return None
-        if _PROVIDER is None or _PROVIDER_NAME != name:
-            _PROVIDER = provider_from_settings(settings)
-            _PROVIDER_NAME = name
-        return _PROVIDER
+            _POOL, _POOL_NAME = None, ""
+            return []
+        if _POOL is None or _POOL_NAME != name:
+            _POOL = providers_from_settings(settings)
+            _POOL_NAME = name
+        return list(_POOL)
 
 
 def reset_provider() -> None:
-    """Drop the cached provider/session (after changing credentials or on a fresh login)."""
-    global _PROVIDER, _PROVIDER_NAME, _BALANCE, _BALANCE_AT, _LAST_SENT_AT
+    """Drop the cached pool/sessions and balances (after changing credentials or on a fresh login)."""
+    global _POOL, _POOL_NAME, _LAST_SENT_AT
     with _LOCK:
-        _PROVIDER, _PROVIDER_NAME, _BALANCE, _BALANCE_AT, _LAST_SENT_AT = None, "", None, 0.0, 0.0
+        _POOL, _POOL_NAME, _LAST_SENT_AT = None, "", 0.0
+        _BAL.clear()
 
 
 def _seconds_since_send() -> float:
@@ -122,32 +123,61 @@ def _mark_sent() -> None:
         _LAST_SENT_AT = time.monotonic()
 
 
-def _cached_balance(provider: PayoutProvider, *, force: bool = False) -> Decimal | None:
-    global _BALANCE, _BALANCE_AT
+def _account_balance(provider: PayoutProvider, *, force: bool = False) -> Decimal | None:
+    """Balance of one account, cached per account for a few seconds."""
     import time
 
+    key = provider.key()
     now = time.monotonic()
     with _LOCK:
-        if not force and _BALANCE is not None and now - _BALANCE_AT < _BALANCE_TTL:
-            return _BALANCE
+        cached = _BAL.get(key)
+        if not force and cached is not None and cached[0] is not None and now - cached[1] < _BALANCE_TTL:
+            return cached[0]
     try:
         value = provider.get_balance()
     except PayoutError as exc:
-        logger.warning("autopay: balance unavailable: %s", exc)
+        logger.warning("autopay: balance unavailable for %s: %s", key, exc)
         return None
     with _LOCK:
-        _BALANCE, _BALANCE_AT = value, now
+        _BAL[key] = (value, now)
     return value
 
 
-def _remember_balance(value: Decimal | None) -> None:
-    global _BALANCE, _BALANCE_AT
+def _remember_balance(provider: PayoutProvider, value: Decimal | None) -> None:
     import time
 
     if value is None:
         return
     with _LOCK:
-        _BALANCE, _BALANCE_AT = value, time.monotonic()
+        _BAL[provider.key()] = (value, time.monotonic())
+
+
+def _total_balance(pool: list[PayoutProvider], *, force: bool = False) -> Decimal | None:
+    """Sum of the account balances that could be read (None only when none could)."""
+    total = Decimal("0")
+    seen = False
+    for provider in pool:
+        value = _account_balance(provider, force=force)
+        if value is not None:
+            total += value
+            seen = True
+    return total if seen else None
+
+
+def _pick_account(pool: list[PayoutProvider], amount: Decimal, cfg: Config) -> PayoutProvider | None:
+    """Choose an account that can pay ``amount`` and still keep the reserve; most balance first.
+
+    Spreading toward the fullest account keeps any single account from draining and leaves the
+    others as head-room. Accounts whose balance cannot be read are skipped (fail safe)."""
+    eligible: list[tuple[Decimal, PayoutProvider]] = []
+    for provider in pool:
+        balance = _account_balance(provider)
+        if balance is not None and balance - amount >= cfg.min_reserve:
+            eligible.append((balance, provider))
+    if not eligible:
+        return None
+    eligible.sort(key=lambda item: item[0], reverse=True)
+    return eligible[0][1]
 
 
 # --------------------------------------------------------------------------- targets
@@ -242,7 +272,7 @@ def _claim(db: Session, withdrawal_id: int, provider_name: str) -> Withdrawal | 
     return w
 
 
-def _settle(withdrawal_id: int, result: PayoutResult, operator_id: int | None) -> None:
+def _settle(withdrawal_id: int, result: PayoutResult, operator_id: int | None, provider: PayoutProvider | None = None) -> None:
     """Record a transfer outcome and complete / flag the withdrawal accordingly."""
     with transaction() as db:
         w = db.get(Withdrawal, withdrawal_id)
@@ -282,17 +312,20 @@ def _settle(withdrawal_id: int, result: PayoutResult, operator_id: int | None) -
                         f"{w.public_id} • {money(w.amount)} {w.currency} • {result.message}", {"withdrawal_id": w.id, "url": f"#/withdrawals/{w.id}"}, level="critical")
             log_event(db, "Автовыплата не удалась", f"{w.public_id} • {result.message}", level="warning",
                       category="withdrawals", entity_type="withdrawal", entity_id=w.public_id)
-    _remember_balance(result.balance)
+    if provider is not None:
+        _remember_balance(provider, result.balance)
 
 
-def pay_withdrawal(withdrawal_id: int, operator_id: int | None = None, *, force: bool = False, dry_run: bool | None = None) -> dict[str, Any]:
+def pay_withdrawal(withdrawal_id: int, operator_id: int | None = None, *, force: bool = False,
+                   dry_run: bool | None = None, provider: PayoutProvider | None = None) -> dict[str, Any]:
     """Pay one withdrawal now. Used by the worker loop and the operator's manual button.
 
     ``force`` skips the per-payout ceiling and age gate (an operator chose this one) but
-    never skips the balance floor or the dry-run guard.
+    never skips the balance floor or the dry-run guard. With several accounts, the one with
+    the most balance that still keeps its reserve is chosen, unless ``provider`` is given.
     """
-    provider = _provider()
-    if provider is None:
+    pool = _pool()
+    if not pool:
         return {"ok": False, "message": "Платёжный канал не настроен (PAYOUT_PROVIDER)."}
     with transaction() as db:
         cfg = Config(db)
@@ -301,52 +334,56 @@ def pay_withdrawal(withdrawal_id: int, operator_id: int | None = None, *, force:
             return {"ok": False, "message": "Заявка не найдена"}
         if w.status not in {"created", "processing"}:
             return {"ok": False, "message": f"Вывод в статусе «{w.status}» — автовыплата недоступна"}
-        if money(w.amount) <= 0:
+        amount = money(w.amount)
+        if amount <= 0:
             return {"ok": False, "message": "У вывода нет суммы — сначала перепроверьте код"}
         if _autopay_state(w).get("state") in _HANDLED_STATES:
             return {"ok": False, "message": "Автовыплата по этой заявке уже выполняется/выполнена"}
         if not _has_destination(w):
             return {"ok": False, "message": "Нет реквизитов получателя (QR/карта)"}
-        if not force and money(w.amount) > cfg.max_amount > 0:
+        if not force and cfg.max_amount > 0 and amount > cfg.max_amount:
             return {"ok": False, "message": f"Сумма больше лимита автовыплаты ({cfg.max_amount}). Отправьте вручную."}
         target = build_target(w)
         public = public_withdrawal(w)
     use_dry_run = cfg.dry_run if dry_run is None else dry_run
 
-    # balance floor (never drain the account); dry-run still reports it
-    balance = _cached_balance(provider)
-    if balance is not None and cfg.min_reserve >= 0 and balance - money(w.amount) < cfg.min_reserve:
-        with transaction() as db:
-            _notify_low_balance(db, balance, cfg, blocking=True)
-        return {"ok": False, "message": f"Недостаточно средств на Optima24 (баланс {balance}). Пополните счёт.", "withdrawal": public}
-
     if use_dry_run:
         with transaction() as db:
             w = db.get(Withdrawal, withdrawal_id)
             if w is not None and _autopay_state(w).get("state") != "dryrun":
-                _set_autopay(w, state="dryrun", message=f"тест: отправили бы {money(w.amount)} {w.currency} → {target.card or 'QR'}")
+                _set_autopay(w, state="dryrun", message=f"тест: отправили бы {amount} {w.currency} → {target.card or 'QR'}")
                 db.flush()
-                log_event(db, "Автовыплата (тест)", f"{w.public_id} • отправили бы {money(w.amount)} {w.currency} → {target.card or 'QR'}",
+                log_event(db, "Автовыплата (тест)", f"{w.public_id} • отправили бы {amount} {w.currency} → {target.card or 'QR'}",
                           category="withdrawals", entity_type="withdrawal", entity_id=w.public_id)
-        return {"ok": True, "dry_run": True, "message": f"Тест: отправили бы {money(w.amount)} {target.currency} на {target.card or 'QR'}", "withdrawal": public}
+        return {"ok": True, "dry_run": True, "message": f"Тест: отправили бы {amount} {target.currency} на {target.card or 'QR'}", "withdrawal": public}
+
+    # pick an account with enough balance (keeps the reserve), unless the caller chose one
+    chosen = provider or _pick_account(pool, amount, cfg)
+    if chosen is None:
+        total = _total_balance(pool)
+        with transaction() as db:
+            if total is not None:
+                _notify_low_balance(db, total, cfg, blocking=True)
+        available = str(total) if total is not None else "—"
+        return {"ok": False, "message": f"Недостаточно средств на счетах Optima24 (доступно {available}). Пополните с Optima Business.", "withdrawal": public}
 
     # claim, then pay outside the transaction
     with transaction() as db:
-        claimed = _claim(db, withdrawal_id, provider.name)
+        claimed = _claim(db, withdrawal_id, chosen.key())
         if claimed is None:
             return {"ok": False, "message": "Заявку не удалось взять в автовыплату (уже в работе)"}
     _mark_sent()  # count the bank-friendly interval from this attempt (success or not)
     try:
-        result = provider.pay(target)
+        result = chosen.pay(target)
     except PayoutError as exc:
         result = PayoutResult(ok=False, status="failed", message=str(exc))
     except Exception as exc:  # unexpected — treat as ambiguous, never resend
         logger.exception("autopay pay() crashed")
         result = PayoutResult(ok=False, status="failed", acknowledged=True, message=f"{type(exc).__name__}: {exc}")
-    _settle(withdrawal_id, result, operator_id)
+    _settle(withdrawal_id, result, operator_id, chosen)
     with transaction() as db:
         fresh = db.get(Withdrawal, withdrawal_id)
-        return {"ok": result.ok, "status": result.status, "message": result.message,
+        return {"ok": result.ok, "status": result.status, "message": result.message, "account": chosen.key(),
                 "withdrawal": public_withdrawal(fresh) if fresh else public}
 
 
@@ -363,14 +400,14 @@ def _notify_low_balance(db: Session, balance: Decimal, cfg: Config, *, blocking:
 
 def run_once() -> dict[str, Any]:
     """One scan: pay every ready withdrawal within the limits. Called by the worker loop."""
-    provider = _provider()
+    pool = _pool()
     with transaction() as db:
         cfg = Config(db)
-    if provider is None or not cfg.active:
+    if not pool or not cfg.active:
         return {"active": False}
 
-    # balance first: warn / pause on low funds
-    balance = _cached_balance(provider, force=True)
+    # total balance across accounts first: warn / pause on low funds
+    balance = _total_balance(pool, force=True)
     if balance is not None and balance < cfg.low_balance:
         with transaction() as db:
             _notify_low_balance(db, balance, cfg, blocking=balance < cfg.min_reserve)
@@ -406,7 +443,7 @@ def run_once() -> dict[str, Any]:
             continue  # over today's cap — no bank request, keep scanning for one that fits
         result = pay_withdrawal(withdrawal_id, operator_id=None)  # this attempt records the interval
         sent = 1 if (result.get("ok") and not result.get("dry_run")) else 0
-        return {"active": True, "balance": bal, "sent": sent, "scanned": len(ids), "status": result.get("status")}
+        return {"active": True, "balance": bal, "sent": sent, "scanned": len(ids), "status": result.get("status"), "account": result.get("account")}
     return {"active": True, "balance": bal, "sent": 0, "scanned": len(ids), "skipped": "daily_cap"}
 
 
@@ -444,10 +481,12 @@ def is_active(db: Session) -> bool:
 def status(db: Session) -> dict[str, Any]:
     settings = get_settings()
     cfg = Config(db)
-    provider = _provider()
-    balance = None
-    if provider is not None:
-        balance = _cached_balance(provider)
+    pool = _pool()
+    accounts = []
+    for provider in pool:
+        bal = _account_balance(provider)
+        accounts.append({"name": provider.key(), "balance": str(bal) if bal is not None else None})
+    balance = _total_balance(pool) if pool else None
     pending = len(_candidates(db, cfg)) if cfg.active else 0
     return {
         "provider": cfg.provider_name or "",
@@ -456,6 +495,8 @@ def status(db: Session) -> dict[str, Any]:
         "active": cfg.active,
         "dry_run": cfg.dry_run,
         "base_url": settings.optima24_base_url if cfg.provider_name == "optima24" else "",
+        "accounts": accounts,
+        "account_count": len(accounts),
         "balance": str(balance) if balance is not None else None,
         "spent_today": str(_today_autopay_total(db)),
         "pending_candidates": pending,

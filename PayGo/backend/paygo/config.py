@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -147,6 +148,12 @@ class Settings(BaseSettings):
     optima24_source_account: str = Field(default="", alias="OPTIMA24_SOURCE_ACCOUNT")
     # the mobile app itself waits 30s per call, so the client mirrors that ceiling
     optima24_timeout_seconds: float = Field(default=30.0, alias="OPTIMA24_TIMEOUT_SECONDS")
+    # Several Optima24 accounts (several phones): a JSON list, each entry an object with
+    # login/password and optionally name/device_id/device_token/source_account/base_url.
+    # Missing fields fall back to the single OPTIMA24_* values above. Empty = use just the
+    # single account from the flat OPTIMA24_* variables. Codes for every account may share
+    # one OTP mailbox, because payouts are sent one at a time.
+    optima24_accounts: str = Field(default="", alias="OPTIMA24_ACCOUNTS")
     # Optima confirms each transfer with a one-time code sent to e-mail. A dedicated mailbox
     # receives only these codes; PayGo reads it over IMAP and confirms the transfer itself —
     # no phone needed. Keep it SEPARATE from the deposit IMAP mailbox so the two never clash.
@@ -198,13 +205,50 @@ class Settings(BaseSettings):
         return (self.payout_provider or "").strip().lower()
 
     @property
+    def optima24_account_list(self) -> list[dict[str, Any]]:
+        """Resolved Optima24 accounts: the JSON list, or a single account from the flat vars.
+
+        Every entry is filled in from the flat OPTIMA24_* values where a field is missing, so
+        a shared base URL / device only needs to be set once. Accounts without login+password
+        are dropped.
+        """
+        import json
+
+        raw = (self.optima24_accounts or "").strip()
+        entries: list[dict[str, Any]] = []
+        if raw:
+            try:
+                data = json.loads(raw)
+                if isinstance(data, list):
+                    entries = [a for a in data if isinstance(a, dict)]
+            except Exception:
+                entries = []
+        if not entries:
+            entries = [{}]  # single account from the flat OPTIMA24_* variables
+        out: list[dict[str, Any]] = []
+        for i, a in enumerate(entries):
+            resolved = {
+                "name": str(a.get("name") or f"optima{i + 1}"),
+                "base_url": a.get("base_url") or self.optima24_base_url,
+                "login": a.get("login") or self.optima24_login,
+                "password": a.get("password") or self.optima24_password,
+                "device_id": a.get("device_id") or self.optima24_device_id,
+                "device_token": a.get("device_token") or self.optima24_device_token,
+                "source_account": a.get("source_account") or self.optima24_source_account,
+                "timeout": self.optima24_timeout_seconds,
+            }
+            if resolved["login"] and resolved["password"]:
+                out.append(resolved)
+        return out
+
+    @property
     def payout_configured(self) -> bool:
         """A payout channel is selected and its required secrets are present."""
         name = self.payout_provider_name
         if name == "fake":
             return True
         if name == "optima24":
-            return bool(self.optima24_base_url and self.optima24_login and self.optima24_password)
+            return bool(self.optima24_account_list)
         return False
 
     def uploads_dir(self) -> Path:

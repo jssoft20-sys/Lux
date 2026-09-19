@@ -87,6 +87,11 @@ class PayoutProvider:
 
     name = "base"
     label = "Base"
+    account_name = ""  # label of the specific account this instance drives (set by the pool)
+
+    def key(self) -> str:
+        """Stable identifier for this account (used to cache its balance)."""
+        return self.account_name or self.name
 
     def login(self) -> None:
         """Establish or refresh a session. May be a no-op. Raises :class:`PayoutError`."""
@@ -183,25 +188,36 @@ def build_provider(name: str, **kwargs: Any) -> PayoutProvider | None:
     return cls(**kwargs)
 
 
-def provider_from_settings(settings: Any) -> PayoutProvider | None:
-    """Build the configured payout provider from the app settings, or ``None`` when off."""
+def providers_from_settings(settings: Any) -> list[PayoutProvider]:
+    """Build every configured payout account as its own provider (a pool).
+
+    One Optima24 account = one provider. All accounts share a single OTP mailbox: payouts
+    are sent one at a time, so the emailed code always belongs to the current transfer,
+    whichever account submitted it.
+    """
     name = getattr(settings, "payout_provider_name", "") or ""
     if not name:
-        return None
+        return []
     if name == "fake":
-        return build_provider("fake")
+        provider = build_provider("fake")
+        return [provider] if provider else []
     if name == "optima24":
         from .otp_email import reader_from_settings
 
-        return build_provider(
-            "optima24",
-            base_url=settings.optima24_base_url,
-            login=settings.optima24_login,
-            password=settings.optima24_password,
-            device_id=settings.optima24_device_id,
-            device_token=settings.optima24_device_token,
-            source_account=settings.optima24_source_account,
-            timeout=settings.optima24_timeout_seconds,
-            otp_reader=reader_from_settings(settings),
-        )
-    return build_provider(name)
+        reader = reader_from_settings(settings)  # shared mailbox for all accounts
+        out: list[PayoutProvider] = []
+        for account in settings.optima24_account_list:
+            params = {k: v for k, v in account.items() if k != "name"}  # "name" is our label, not a ctor arg
+            provider = build_provider("optima24", otp_reader=reader, **params)
+            if provider is not None:
+                provider.account_name = account.get("name") or "optima24"
+                out.append(provider)
+        return out
+    provider = build_provider(name)
+    return [provider] if provider else []
+
+
+def provider_from_settings(settings: Any) -> PayoutProvider | None:
+    """The first configured provider (for status / single-account callers), or ``None``."""
+    pool = providers_from_settings(settings)
+    return pool[0] if pool else None

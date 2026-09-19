@@ -18,6 +18,7 @@ from .base import (
     PayoutTarget,
     build_provider,
     provider_from_settings,
+    providers_from_settings,
     register,
 )
 
@@ -28,5 +29,6 @@ __all__ = [
     "PayoutTarget",
     "build_provider",
     "provider_from_settings",
+    "providers_from_settings",
     "register",
 ]
