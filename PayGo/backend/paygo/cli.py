@@ -9,6 +9,7 @@ Commands:
   import-legacy      import 1xBet/1win cash desk credentials from the old config.json
   revoke-sessions    end every admin-panel session and pending login (used by scripts/kill_stray.sh --sessions)
   optima-otp-test    read the latest Optima confirmation code from the OTP mailbox (verify setup)
+  payout-check       full payout status: accounts, network reachability, login, OTP mailbox
 """
 from __future__ import annotations
 
@@ -133,6 +134,68 @@ def cmd_optima_otp_test(_args) -> int:
     return 1
 
 
+def cmd_payout_check(_args) -> int:
+    """Full payout connectivity picture: accounts, network reachability, login, OTP mailbox."""
+    import socket
+    import ssl
+    from urllib.parse import urlparse
+
+    from .config import get_settings
+    from .payouts import providers_from_settings
+    from .payouts.otp_email import OtpEmailConfig, reader_from_settings
+
+    settings = get_settings()
+    name = settings.payout_provider_name
+    print(f"Канал выплат: {name or '(выключен — PAYOUT_PROVIDER пуст)'}")
+    if not name:
+        return 1
+    pool = providers_from_settings(settings)
+    print(f"Аккаунтов настроено: {len(pool)}")
+    for provider in pool:
+        print(f"  • {provider.key()}  base_url={getattr(provider, 'base_url', '')}")
+
+    # network reachability to each distinct host:port (TCP + TLS), from THIS server
+    hosts: set[tuple[str, int]] = set()
+    for provider in pool:
+        parsed = urlparse(getattr(provider, "base_url", "") or "")
+        if parsed.hostname:
+            hosts.add((parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80)))
+    for host, port in sorted(hosts):
+        try:
+            sock = socket.create_connection((host, port), timeout=8)
+        except Exception as exc:
+            print(f"Сеть {host}:{port}: НЕДОСТУПНО — {type(exc).__name__}: {exc}")
+            continue
+        try:
+            ss = ssl.create_default_context().wrap_socket(sock, server_hostname=host)
+            print(f"Сеть {host}:{port}: TLS OK ({ss.version()})")
+            ss.close()
+        except ssl.SSLError as exc:
+            print(f"Сеть {host}:{port}: TCP OK, TLS: {exc}")
+            sock.close()
+
+    # login / balance per account (will report the missing capture until the requests are wired)
+    for provider in pool:
+        result = provider.healthcheck()
+        if result.ok:
+            print(f"Вход {provider.key()}: OK, баланс {result.balance}")
+        else:
+            print(f"Вход {provider.key()}: нет — {result.message}")
+
+    # OTP mailbox
+    cfg = OtpEmailConfig.from_settings()
+    if not cfg.configured:
+        print("Почта кодов: не настроена (OPTIMA_OTP_IMAP_*)")
+        return 0
+    reader = reader_from_settings()
+    try:
+        code = reader.latest_code() if reader else None
+        print(f"Почта кодов: OK ({'найден код ' + code if code else 'подключение есть, свежего кода нет'})")
+    except Exception as exc:
+        print(f"Почта кодов: ошибка — {exc}")
+    return 0
+
+
 def cmd_import_legacy(args) -> int:
     from .db import transaction
     from .legacy_import import import_config
@@ -162,6 +225,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("check").set_defaults(fn=cmd_check)
     sub.add_parser("revoke-sessions").set_defaults(fn=cmd_revoke_sessions)
     sub.add_parser("optima-otp-test").set_defaults(fn=cmd_optima_otp_test)
+    sub.add_parser("payout-check").set_defaults(fn=cmd_payout_check)
     p = sub.add_parser("import-legacy")
     p.add_argument("path")
     p.add_argument("--enable", default="1xbet", help="comma separated cash keys to enable (default: 1xbet)")

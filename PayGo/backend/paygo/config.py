@@ -148,6 +148,12 @@ class Settings(BaseSettings):
     optima24_source_account: str = Field(default="", alias="OPTIMA24_SOURCE_ACCOUNT")
     # the mobile app itself waits 30s per call, so the client mirrors that ceiling
     optima24_timeout_seconds: float = Field(default=30.0, alias="OPTIMA24_TIMEOUT_SECONDS")
+    # telebank3 serves a self-signed certificate (the app trusts a pinned cert). Point
+    # OPTIMA24_CA_BUNDLE at a saved copy of that cert chain to verify against it (secure,
+    # recommended). Only if that is impractical, set OPTIMA24_TLS_VERIFY=false to skip
+    # verification — the connection still encrypts, but no longer proves it is really Optima.
+    optima24_ca_bundle: str = Field(default="", alias="OPTIMA24_CA_BUNDLE")
+    optima24_tls_verify: bool = Field(default=True, alias="OPTIMA24_TLS_VERIFY")
     # Several Optima24 accounts (several phones): a JSON list, each entry an object with
     # login/password and optionally name/device_id/device_token/source_account/base_url.
     # Missing fields fall back to the single OPTIMA24_* values above. Empty = use just the

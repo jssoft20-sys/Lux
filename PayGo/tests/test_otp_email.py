@@ -162,6 +162,22 @@ def test_optima_pay_reads_code_then_needs_confirm_capture():
     assert "pay-init/pay-confirm" in str(exc.value)  # got past the code step to the confirm capture
 
 
+def test_resolve_verify_prefers_ca_bundle():
+    from paygo.payouts.optima24 import resolve_verify
+
+    assert resolve_verify("/home/PayGo/optima24-ca.pem", True) == "/home/PayGo/optima24-ca.pem"
+    assert resolve_verify("", True) is True
+    assert resolve_verify("", False) is False
+    assert resolve_verify("   ", False) is False  # blank bundle → fall back to the flag
+
+
+def test_optima_builds_with_tls_verify_off():
+    from paygo.payouts.optima24 import Optima24Provider
+
+    p = Optima24Provider(base_url="https://telebank3.optima24.kg:3080", login="x", password="y", tls_verify=False)
+    assert p is not None  # self-signed cert path: verification disabled, client still constructs
+
+
 def test_optima_pay_without_mailbox_is_loud():
     from paygo.payouts.base import PayoutError, PayoutTarget
     from paygo.payouts.optima24 import Optima24Provider

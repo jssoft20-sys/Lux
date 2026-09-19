@@ -47,6 +47,14 @@ def _clean_base(url: str) -> str:
     return (url or "").strip().rstrip("/")
 
 
+def resolve_verify(ca_bundle: str, tls_verify: bool) -> Any:
+    """httpx ``verify`` value: a CA bundle path when given (pin the self-signed cert),
+    else True (public CAs), or False when verification is explicitly disabled."""
+    if ca_bundle and str(ca_bundle).strip():
+        return str(ca_bundle).strip()
+    return bool(tls_verify)
+
+
 class Optima24Provider(PayoutProvider):
     name = "optima24"
     label = "Optima24"
@@ -62,6 +70,8 @@ class Optima24Provider(PayoutProvider):
         source_account: str = "",
         timeout: float = 30.0,
         otp_reader: Any = None,
+        ca_bundle: str = "",
+        tls_verify: bool = True,
         **_: Any,
     ):
         self.base_url = _clean_base(base_url)
@@ -82,6 +92,7 @@ class Optima24Provider(PayoutProvider):
             limits=httpx.Limits(max_connections=8, max_keepalive_connections=4, keepalive_expiry=60.0),
             headers={"Accept": "application/json", "User-Agent": "PayGo-Payout/1.0"},
             follow_redirects=False,
+            verify=resolve_verify(ca_bundle, tls_verify),  # telebank3 self-signed cert
         )
 
     # ---------------------------------------------------------------- transport

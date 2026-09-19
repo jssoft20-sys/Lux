@@ -208,6 +208,8 @@ def providers_from_settings(settings: Any) -> list[PayoutProvider]:
         out: list[PayoutProvider] = []
         for account in settings.optima24_account_list:
             params = {k: v for k, v in account.items() if k != "name"}  # "name" is our label, not a ctor arg
+            params["ca_bundle"] = settings.optima24_ca_bundle  # telebank3 uses a self-signed cert
+            params["tls_verify"] = settings.optima24_tls_verify
             provider = build_provider("optima24", otp_reader=reader, **params)
             if provider is not None:
                 provider.account_name = account.get("name") or "optima24"
