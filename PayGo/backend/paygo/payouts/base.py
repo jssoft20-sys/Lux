@@ -191,6 +191,8 @@ def provider_from_settings(settings: Any) -> PayoutProvider | None:
     if name == "fake":
         return build_provider("fake")
     if name == "optima24":
+        from .otp_email import reader_from_settings
+
         return build_provider(
             "optima24",
             base_url=settings.optima24_base_url,
@@ -200,5 +202,6 @@ def provider_from_settings(settings: Any) -> PayoutProvider | None:
             device_token=settings.optima24_device_token,
             source_account=settings.optima24_source_account,
             timeout=settings.optima24_timeout_seconds,
+            otp_reader=reader_from_settings(settings),
         )
     return build_provider(name)

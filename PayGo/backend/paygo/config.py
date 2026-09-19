@@ -147,6 +147,22 @@ class Settings(BaseSettings):
     optima24_source_account: str = Field(default="", alias="OPTIMA24_SOURCE_ACCOUNT")
     # the mobile app itself waits 30s per call, so the client mirrors that ceiling
     optima24_timeout_seconds: float = Field(default=30.0, alias="OPTIMA24_TIMEOUT_SECONDS")
+    # Optima confirms each transfer with a one-time code sent to e-mail. A dedicated mailbox
+    # receives only these codes; PayGo reads it over IMAP and confirms the transfer itself —
+    # no phone needed. Keep it SEPARATE from the deposit IMAP mailbox so the two never clash.
+    optima_otp_imap_host: str = Field(default="", alias="OPTIMA_OTP_IMAP_HOST")
+    optima_otp_imap_port: int = Field(default=993, alias="OPTIMA_OTP_IMAP_PORT")
+    optima_otp_imap_user: str = Field(default="", alias="OPTIMA_OTP_IMAP_USER")
+    optima_otp_imap_password: str = Field(default="", alias="OPTIMA_OTP_IMAP_PASSWORD")
+    optima_otp_imap_folder: str = Field(default="INBOX", alias="OPTIMA_OTP_IMAP_FOLDER")
+    # only mail from this sender is trusted as a code source (substring match, e.g. optima24.kg)
+    optima_otp_sender: str = Field(default="", alias="OPTIMA_OTP_SENDER")
+    # optional subject filter (substring); empty = any subject from the trusted sender
+    optima_otp_subject: str = Field(default="", alias="OPTIMA_OTP_SUBJECT")
+    # regex whose first group is the code; the default takes the first 4-8 digit run
+    optima_otp_code_regex: str = Field(default=r"(\d{4,8})", alias="OPTIMA_OTP_CODE_REGEX")
+    optima_otp_wait_seconds: float = Field(default=90.0, alias="OPTIMA_OTP_WAIT_SECONDS")
+    optima_otp_poll_seconds: float = Field(default=3.0, alias="OPTIMA_OTP_POLL_SECONDS")
 
     @field_validator("base_path")
     @classmethod

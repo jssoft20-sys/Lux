@@ -28,7 +28,7 @@ from typing import Any
 
 import httpx
 
-from ..utils import money_or_none
+from ..utils import money_or_none, utcnow
 from .base import PayoutError, PayoutProvider, PayoutResult, PayoutTarget, register
 
 logger = logging.getLogger("paygo.payouts.optima24")
@@ -61,6 +61,7 @@ class Optima24Provider(PayoutProvider):
         device_token: str = "",
         source_account: str = "",
         timeout: float = 30.0,
+        otp_reader: Any = None,
         **_: Any,
     ):
         self.base_url = _clean_base(base_url)
@@ -70,6 +71,7 @@ class Optima24Provider(PayoutProvider):
         self._device_token = device_token
         self._source_account = source_account
         self._timeout = float(timeout or 30.0)
+        self._otp_reader = otp_reader  # reads the emailed confirmation code (may be None)
         self._token: str = ""
         self._lock = threading.Lock()
         # The app waits ~30s per call; a generous read timeout with a short connect timeout
@@ -148,13 +150,16 @@ class Optima24Provider(PayoutProvider):
     # ---------------------------------------------------------------- pay
 
     def pay(self, target: PayoutTarget) -> PayoutResult:
+        """Three steps: submit the transfer, read the e-mailed code, confirm the transfer."""
         self._ensure_session()
         if not target.card and not target.qr_payload:
             return PayoutResult(ok=False, status="failed", message="нет реквизитов получателя (карта/QR)")
-        # CAPTURE_REQUIRED — the outgoing transfer request.
+        submitted_at = utcnow()
+
+        # STEP 1 — CAPTURE_REQUIRED [pay-init]: submit the transfer; Optima e-mails a code.
         # Capture the card/QR transfer the app makes when an operator pays a client, then
         # build and send it here. Pass target.reference as the idempotency key so a repeat
-        # never double-pays, and read the bank transaction id out of the reply:
+        # never double-pays, and keep the pending operation id from the reply for STEP 3:
         #
         #   status, data = self._request("POST", "/api/v1/transfers/Card2Card", json={
         #       "fromAccount": self._source_account,
@@ -164,8 +169,28 @@ class Optima24Provider(PayoutProvider):
         #       "note": target.note(),
         #       "externalId": target.reference,    # idempotency key
         #   })
+        #   if status >= 400:
+        #       return _interpret_transfer(status, data, target)
+        #   operation_id = str((data or {}).get("operationId") or (data or {}).get("id") or "")
+
+        # STEP 2 — read the confirmation code from e-mail (wired and working).
+        code = self._await_code(submitted_at)
+        if code is None:
+            return PayoutResult(ok=False, status="failed", acknowledged=True,
+                                message="Код подтверждения не пришёл на почту за отведённое время — проверьте перевод в Optima24 вручную.")
+
+        # STEP 3 — CAPTURE_REQUIRED [pay-confirm]: confirm the transfer with the code.
+        #   status, data = self._request("POST", "/api/v1/transfers/Confirm", json={
+        #       "operationId": operation_id, "code": code, "externalId": target.reference,
+        #   })
         #   return _interpret_transfer(status, data, target)
-        raise PayoutError(CAPTURE_REQUIRED + " [pay]")
+        raise PayoutError(CAPTURE_REQUIRED + " [pay-init/pay-confirm]")
+
+    def _await_code(self, submitted_at: Any) -> str | None:
+        """Fetch the e-mailed confirmation code that arrived after the transfer was submitted."""
+        if self._otp_reader is None:
+            raise PayoutError("Почта для кодов Optima не настроена (OPTIMA_OTP_IMAP_*).")
+        return self._otp_reader.wait_for_code(since=submitted_at)
 
     def payment_status(self, reference: str) -> PayoutResult:
         self._ensure_session()

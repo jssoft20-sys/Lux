@@ -8,6 +8,7 @@ Commands:
   check              verify configuration and database connectivity
   import-legacy      import 1xBet/1win cash desk credentials from the old config.json
   revoke-sessions    end every admin-panel session and pending login (used by scripts/kill_stray.sh --sessions)
+  optima-otp-test    read the latest Optima confirmation code from the OTP mailbox (verify setup)
 """
 from __future__ import annotations
 
@@ -110,6 +111,28 @@ def cmd_revoke_sessions(_args) -> int:
     return 0
 
 
+def cmd_optima_otp_test(_args) -> int:
+    """Verify the Optima OTP mailbox: connect and print the newest confirmation code."""
+    from .payouts.otp_email import OtpEmailConfig, reader_from_settings
+
+    cfg = OtpEmailConfig.from_settings()
+    if not cfg.configured:
+        print("Почта для кодов Optima не настроена. Заполните OPTIMA_OTP_IMAP_* в .env")
+        return 1
+    print(f"Ящик: {cfg.user}@{cfg.host}:{cfg.port}/{cfg.folder}  отправитель-фильтр: {cfg.sender or '(любой)'}")
+    reader = reader_from_settings()
+    try:
+        code = reader.latest_code() if reader else None
+    except Exception as exc:
+        print(f"Не удалось прочитать почту: {exc}")
+        return 1
+    if code:
+        print(f"Найден код: {code}")
+        return 0
+    print("Свежих писем с кодом не найдено (проверьте, что Optima присылает коды на этот ящик и фильтр отправителя верный).")
+    return 1
+
+
 def cmd_import_legacy(args) -> int:
     from .db import transaction
     from .legacy_import import import_config
@@ -138,6 +161,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("seed").set_defaults(fn=cmd_seed)
     sub.add_parser("check").set_defaults(fn=cmd_check)
     sub.add_parser("revoke-sessions").set_defaults(fn=cmd_revoke_sessions)
+    sub.add_parser("optima-otp-test").set_defaults(fn=cmd_optima_otp_test)
     p = sub.add_parser("import-legacy")
     p.add_argument("path")
     p.add_argument("--enable", default="1xbet", help="comma separated cash keys to enable (default: 1xbet)")

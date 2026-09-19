@@ -17,7 +17,7 @@
 api/            FastAPI-роутеры: auth, admin, webhooks, public (тонкие, без бизнес-логики)
 services/       бизнес-логика: deposits, withdrawals, payments, cashes, support, users, notifications, auth, email, elqr, qr, autopay
 providers/      адаптеры касс: servcul (1xBet Mobcash), xapi (1win); единый интерфейс lookup/deposit/withdraw/balance
-payouts/        каналы выплат клиенту: optima24 (telebank3.optima24.kg), fake (симулятор); интерфейс login/get_balance/pay/payment_status
+payouts/        каналы выплат клиенту: optima24 (telebank3.optima24.kg), fake (симулятор); интерфейс login/get_balance/pay/payment_status; otp_email — чтение кода подтверждения Optima с почты (IMAP)
 workers/        фоновые циклы (в т.ч. autopay — автоотправка готовых выводов клиенту)
 models.py       схема (SQLAlchemy 2), db.py — engine/сессии/транзакции, config.py — .env
 ```
