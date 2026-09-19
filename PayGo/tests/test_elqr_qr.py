@@ -88,3 +88,14 @@ def test_qr_decoder_reads_tilted_and_dark_photos():
     out = io.BytesIO()
     photo.save(out, format="JPEG", quality=60)
     assert decode_bytes(out.getvalue(), budget=8.0) == payload
+
+
+def test_optima_confirm_link():
+    from paygo.services import elqr
+
+    full = elqr.inject_amount("00020101021132710013QR.Optima.C2B01032031016109182123435011811112149664:1:1120211130212331500112149664:1:15204999953034175904ELQR", "135.83")
+    link = elqr.optima_confirm_link(full)
+    assert link.startswith("https://mobile.optima24.kg/my-qr/confirm-screen?url=#00020101")
+    assert " " not in link  # spaces encoded
+    assert elqr.optima_confirm_link("not-a-qr") == ""
+    assert elqr.optima_confirm_link(full, base="https://x/#").startswith("https://x/#000201")

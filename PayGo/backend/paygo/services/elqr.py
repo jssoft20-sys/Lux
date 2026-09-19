@@ -252,3 +252,20 @@ def qr_image_value(payload: str) -> str:
     if not clean.startswith("000201"):
         raise ValueError("QR payload пустой")
     return "https://api.dengi.o.kg/#" + urllib.parse.quote(clean, safe="")
+
+
+OPTIMA_PAY_LINK_BASE = "https://mobile.optima24.kg/my-qr/confirm-screen?url=#"
+
+
+def optima_confirm_link(full_payload: str, base: str = OPTIMA_PAY_LINK_BASE) -> str:
+    """Deep link that opens Optima24 on the confirm screen, recipient and amount pre-filled.
+
+    ``full_payload`` is a complete ELQR (with the amount injected and the CRC tail) — for a
+    withdrawal that is ``generated_qr_payload``. Tapping the link on a phone with the Optima24
+    app opens it ready to pay; the operator still confirms (Face ID / PIN) — the link never
+    sends money on its own. Only spaces are encoded, matching the links Optima itself accepts.
+    """
+    clean = str(full_payload or "").strip()
+    if not clean.startswith("000201"):
+        return ""
+    return (base or OPTIMA_PAY_LINK_BASE) + clean.replace(" ", "%20")
