@@ -22,6 +22,7 @@ body, and which field carries the session token and the transaction id).
 from __future__ import annotations
 
 import logging
+import ssl
 import threading
 from decimal import Decimal
 from typing import Any
@@ -47,12 +48,34 @@ def _clean_base(url: str) -> str:
     return (url or "").strip().rstrip("/")
 
 
-def resolve_verify(ca_bundle: str, tls_verify: bool) -> Any:
-    """httpx ``verify`` value: a CA bundle path when given (pin the self-signed cert),
-    else True (public CAs), or False when verification is explicitly disabled."""
-    if ca_bundle and str(ca_bundle).strip():
-        return str(ca_bundle).strip()
-    return bool(tls_verify)
+def build_ssl_context(ca_bundle: str, tls_verify: bool) -> ssl.SSLContext:
+    """TLS trust for the Optima24 client (and the payout-check probe).
+
+    telebank3 serves a self-signed cert (CN=telebank3.optima24.kg) with a weak SHA-1 signature
+    and no SAN, so standard verification rejects it. Pinning that cert as the trust anchor keeps
+    MITM protection while tolerating those two quirks:
+
+    * ``OPTIMA24_TLS_VERIFY=false`` — a hard override: encrypt but do not verify authenticity.
+    * else with ``OPTIMA24_CA_BUNDLE`` — verify the chain against the pinned cert, with the
+      security level lowered to accept the SHA-1 signature and hostname checking off (the cert
+      has no SAN; the pinned CA is what proves it is really Optima).
+    * else — ordinary public-CA verification.
+    """
+    if not tls_verify:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+    ca = (ca_bundle or "").strip()
+    if ca:
+        ctx = ssl.create_default_context(cafile=ca)
+        ctx.check_hostname = False
+        try:
+            ctx.set_ciphers("DEFAULT@SECLEVEL=1")  # allow the cert's weak (SHA-1) signature digest
+        except ssl.SSLError:  # pragma: no cover - platform dependent
+            pass
+        return ctx
+    return ssl.create_default_context()
 
 
 class Optima24Provider(PayoutProvider):
@@ -92,7 +115,7 @@ class Optima24Provider(PayoutProvider):
             limits=httpx.Limits(max_connections=8, max_keepalive_connections=4, keepalive_expiry=60.0),
             headers={"Accept": "application/json", "User-Agent": "PayGo-Payout/1.0"},
             follow_redirects=False,
-            verify=resolve_verify(ca_bundle, tls_verify),  # telebank3 self-signed cert
+            verify=build_ssl_context(ca_bundle, tls_verify),  # telebank3 self-signed cert
         )
 
     # ---------------------------------------------------------------- transport

@@ -162,13 +162,42 @@ def test_optima_pay_reads_code_then_needs_confirm_capture():
     assert "pay-init/pay-confirm" in str(exc.value)  # got past the code step to the confirm capture
 
 
-def test_resolve_verify_prefers_ca_bundle():
-    from paygo.payouts.optima24 import resolve_verify
+def _self_signed_pem() -> str:
+    import datetime
 
-    assert resolve_verify("/home/PayGo/optima24-ca.pem", True) == "/home/PayGo/optima24-ca.pem"
-    assert resolve_verify("", True) is True
-    assert resolve_verify("", False) is False
-    assert resolve_verify("   ", False) is False  # blank bundle → fall back to the flag
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "telebank3.optima24.kg")])
+    cert = (
+        x509.CertificateBuilder().subject_name(name).issuer_name(name)
+        .public_key(key.public_key()).serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.datetime.utcnow() - datetime.timedelta(days=1))
+        .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=1))
+        .sign(key, hashes.SHA256())
+    )
+    return cert.public_bytes(serialization.Encoding.PEM).decode()
+
+
+def test_build_ssl_context_modes(tmp_path):
+    import ssl
+
+    from paygo.payouts.optima24 import build_ssl_context
+
+    # verify off: no hostname check, no cert requirement
+    off = build_ssl_context("", False)
+    assert off.check_hostname is False and off.verify_mode == ssl.CERT_NONE
+    # default: full verification
+    default = build_ssl_context("", True)
+    assert default.check_hostname is True and default.verify_mode == ssl.CERT_REQUIRED
+    # pinned bundle: verify against it, hostname off (telebank3 cert has no SAN)
+    ca = tmp_path / "ca.pem"
+    ca.write_text(_self_signed_pem())
+    pinned = build_ssl_context(str(ca), True)
+    assert pinned.check_hostname is False and pinned.verify_mode == ssl.CERT_REQUIRED
 
 
 def test_optima_builds_with_tls_verify_off():

@@ -155,21 +155,14 @@ def cmd_payout_check(_args) -> int:
         print(f"  • {provider.key()}  base_url={getattr(provider, 'base_url', '')}")
 
     # network reachability to each distinct host:port (TCP + TLS), from THIS server.
-    # The TLS check uses the SAME trust settings as the real client (CA bundle / verify flag),
-    # so a pinned self-signed cert reads as OK here too, not a false failure.
+    # The TLS check uses the SAME trust context as the real client (pinned CA with the SHA-1
+    # allowance, or verification off), so a pinned self-signed cert reads as OK here too.
+    from .payouts.optima24 import build_ssl_context
+
     ca_bundle = (settings.optima24_ca_bundle or "").strip()
     tls_verify = settings.optima24_tls_verify
-    if ca_bundle:
-        tls_ctx = ssl.create_default_context(cafile=ca_bundle)
-        how = " [через CA bundle]"
-    elif not tls_verify:
-        tls_ctx = ssl.create_default_context()
-        tls_ctx.check_hostname = False
-        tls_ctx.verify_mode = ssl.CERT_NONE  # operator explicitly disabled verification
-        how = " [проверка выключена]"
-    else:
-        tls_ctx = ssl.create_default_context()
-        how = ""
+    tls_ctx = build_ssl_context(ca_bundle, tls_verify)
+    how = " [через CA bundle]" if (ca_bundle and tls_verify) else (" [проверка выключена]" if not tls_verify else "")
     hosts: set[tuple[str, int]] = set()
     for provider in pool:
         parsed = urlparse(getattr(provider, "base_url", "") or "")
