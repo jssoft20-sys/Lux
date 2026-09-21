@@ -68,6 +68,7 @@ class ClaudeAnalyzer:
         batch_size: int = 12,
         min_interval: float = 3.0,
         max_batch_wait: float = 4.0,
+        max_age_minutes: float = 90.0,
     ):
         import anthropic
 
@@ -79,6 +80,8 @@ class ClaudeAnalyzer:
         self.batch_size = batch_size
         self.min_interval = min_interval
         self.max_batch_wait = max_batch_wait
+        self.max_age_s = max_age_minutes * 60.0
+        self.skipped_old = 0
         self.queue: asyncio.Queue[NewsItem] = asyncio.Queue(maxsize=500)
         self._stop = asyncio.Event()
         self._task: asyncio.Task | None = None
@@ -95,6 +98,9 @@ class ClaudeAnalyzer:
 
     def submit(self, item: NewsItem) -> None:
         if item.macro:
+            return
+        if self.max_age_s > 0 and time.time() - item.ts > self.max_age_s:
+            self.skipped_old += 1  # its decayed weight is negligible; the lexicon score is enough
             return
         try:
             self.queue.put_nowait(item)
@@ -233,6 +239,7 @@ class ClaudeAnalyzer:
             "errors": self.errors,
             "last_error": self.last_error,
             "queue": self.queue.qsize(),
+            "skipped_old": self.skipped_old,
             "latency_ms": round(self.last_latency_ms),
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,

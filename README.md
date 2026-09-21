@@ -101,6 +101,18 @@ cp .env.example .env && nano .env
 
 ---
 
+## Обновление и смена настроек без переустановки
+
+```bash
+# обновить код с GitHub (.env и данные сохраняются), перезапуск автоматический
+bash /opt/lux-bot/deploy/update.sh
+
+# поменять любые настройки и перезапустить бот
+bash /opt/lux-bot/deploy/setenv.sh TRADING_MODE=live ANTHROPIC_API_KEY=sk-ant-...
+bash /opt/lux-bot/deploy/setenv.sh TRADING_MODE=paper          # вернуться к виртуальной торговле
+bash /opt/lux-bot/deploy/setenv.sh --no-restart POSITION_SIZE_USDT=8
+```
+
 ## Проверка ключа Binance перед live
 
 ```bash
@@ -140,7 +152,8 @@ cd /opt/lux-bot && .venv/bin/python -m scripts.check_binance
 | `DECISION_INTERVAL_MS` | 100 | Период цикла решений |
 | `NEWS_HALF_LIFE_MINUTES` | 20 | Период полураспада новостного сигнала |
 | `W_NEWS` / `W_MOMENTUM` / `W_ORDERBOOK` / `W_FLOW` | 0.55 / 0.25 / 0.10 / 0.10 | Веса компонентов сигнала |
-| `ANTHROPIC_API_KEY`, `LLM_MODEL` | — / `claude-opus-5` | ИИ-анализ новостей (опционально, платно по тарифам Anthropic) |
+| `ANTHROPIC_API_KEY`, `LLM_MODEL` | — / `claude-opus-5` | ИИ-анализ новостей (опционально, платно по тарифам Anthropic; дешевле: `claude-sonnet-5`, `claude-haiku-4-5`) |
+| `LLM_MAX_AGE_MINUTES` | 90 | Заголовки старше не отправляются в ИИ |
 | `CRYPTOPANIC_TOKEN`, `NEWSAPI_KEY`, `EXTRA_RSS` | — | Дополнительные источники |
 | `DASHBOARD_PASSWORD` | — | Пароль дашборда (логин `lux`). На публичном сервере обязателен |
 | `PORT` / `HOST` | 7066 / 0.0.0.0 | Адрес дашборда |

@@ -95,7 +95,7 @@ async def build_context(cfg: Settings) -> AppContext:
                 db.update_news_llm(item_id, r["score"], r["confidence"], r["reason"], r["impact"], it.tickers)
                 bus.publish("news_update", it.to_dict())
 
-        llm = ClaudeAnalyzer(cfg.anthropic_api_key, cfg.llm_model, set(bases) | {"BTC", "ETH"}, on_llm, cfg.llm_batch_size, cfg.llm_min_interval_seconds)
+        llm = ClaudeAnalyzer(cfg.anthropic_api_key, cfg.llm_model, set(bases) | {"BTC", "ETH"}, on_llm, cfg.llm_batch_size, cfg.llm_min_interval_seconds, max_age_minutes=cfg.llm_max_age_minutes)
     else:
         warnings.append("ANTHROPIC_API_KEY не задан — работает только быстрый лексический анализ новостей")
 

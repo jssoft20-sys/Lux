@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     llm_enabled: bool = True
     llm_batch_size: int = 12
     llm_min_interval_seconds: float = 3.0
+    llm_max_age_minutes: float = 90.0  # do not pay to analyse stale headlines
 
     # ---- Server ----
     host: str = "0.0.0.0"
