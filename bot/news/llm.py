@@ -90,7 +90,9 @@ class ClaudeAnalyzer:
         self.calls = 0
         self.items_done = 0
         self.errors = 0
+        self.consecutive_errors = 0
         self.last_error = ""
+        self.last_error_ts = 0.0
         self.last_call_ts = 0.0
         self.last_latency_ms = 0.0
         self.input_tokens = 0
@@ -133,13 +135,18 @@ class ClaudeAnalyzer:
                 await asyncio.sleep(gap)
             try:
                 results = await self.analyse(batch)
+                self.consecutive_errors = 0
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001
                 self.errors += 1
-                self.last_error = f"{type(e).__name__}: {str(e)[:200]}"
-                log.warning("LLM analysis failed: %s", self.last_error)
-                await asyncio.sleep(5)
+                self.consecutive_errors += 1
+                self.last_error = str(e)[:200]
+                self.last_error_ts = time.time()
+                # a dead key / unsupported region / no credits keeps failing: back off up to 5 minutes
+                delay = min(5 * 2 ** (self.consecutive_errors - 1), 300)
+                log.warning("LLM analysis failed: %s (next attempt in %ds)", self.last_error, delay)
+                await asyncio.sleep(delay)
                 continue
             for r in results:
                 try:
@@ -180,13 +187,19 @@ class ClaudeAnalyzer:
                 response = await self.client.messages.create(**kwargs)
         except a.RateLimitError as e:
             retry_after = e.response.headers.get("retry-after", "20") if getattr(e, "response", None) else "20"
-            raise RuntimeError(f"rate limited, retry after {retry_after}s") from e
+            raise RuntimeError(f"лимит запросов Anthropic, повтор через {retry_after} с") from e
         except a.AuthenticationError as e:
-            raise RuntimeError("invalid ANTHROPIC_API_KEY") from e
+            raise RuntimeError("неверный ANTHROPIC_API_KEY (401)") from e
+        except a.PermissionDeniedError as e:
+            raise RuntimeError(f"доступ запрещён (403): {getattr(e, 'message', e)} — обычно регион сервера не поддерживается Anthropic") from e
+        except a.NotFoundError as e:
+            raise RuntimeError(f"модель {self.model} недоступна (404): {getattr(e, 'message', e)}") from e
+        except a.BadRequestError as e:
+            raise RuntimeError(f"ошибка запроса (400): {getattr(e, 'message', e)}") from e
         except a.APIStatusError as e:
-            raise RuntimeError(f"API error {e.status_code}: {getattr(e, 'message', e)}") from e
+            raise RuntimeError(f"ошибка API {e.status_code}: {getattr(e, 'message', e)}") from e
         except a.APIConnectionError as e:
-            raise RuntimeError(f"connection error: {e}") from e
+            raise RuntimeError(f"нет соединения с api.anthropic.com: {e}") from e
         self.last_latency_ms = (time.perf_counter() - t0) * 1000
         self.calls += 1
         usage = getattr(response, "usage", None)

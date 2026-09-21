@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
+import hmac
 import logging
 import secrets
 import time
@@ -33,6 +35,40 @@ def _auth_ok(cfg: Settings, header: str | None) -> bool:
     except Exception:  # noqa: BLE001
         return False
     return secrets.compare_digest(user, cfg.dashboard_user) and secrets.compare_digest(password, pwd)
+
+
+# Safari/iOS does not send Basic-auth credentials on WebSocket handshakes, so the page fetches a
+# short-lived token over an authenticated GET and passes it as ?token= on the socket URL.
+_WS_SECRET = secrets.token_bytes(32)
+
+
+def make_ws_token(ttl: int = 3600) -> str:
+    exp = str(int(time.time()) + ttl)
+    return exp + "." + hmac.new(_WS_SECRET, exp.encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def check_ws_token(token: str | None) -> bool:
+    if not token or "." not in token:
+        return False
+    exp, sig = token.split(".", 1)
+    if not exp.isdigit() or int(exp) < time.time():
+        return False
+    return hmac.compare_digest(sig, hmac.new(_WS_SECRET, exp.encode(), hashlib.sha256).hexdigest()[:32])
+
+
+def dynamic_warnings(ctx: AppContext) -> list[str]:
+    out = list(ctx.warnings)
+    now = time.time()
+    if ctx.llm is not None and ctx.llm.last_error and (ctx.llm.calls == 0 or now - ctx.llm.last_error_ts < 900):
+        out.append(f"ИИ-анализ не работает: {ctx.llm.last_error} (бот продолжает торговать по лексическому анализу)")
+    if not ctx.stream.connected:
+        out.append("Нет связи с Binance WebSocket: " + (ctx.stream.last_error or "переподключение…"))
+    eng = ctx.engine
+    if eng.broker.mode == "live" and eng.last_quote_balance and not eng.portfolio.positions:
+        min_needed = max((float(r.min_notional) for s, r in ctx.rules.items() if s in eng.symbols), default=5.0) * 1.05
+        if eng.last_quote_balance < min_needed:
+            out.append(f"На счёте {eng.last_quote_balance:.2f} {ctx.cfg.quote_asset} — меньше минимума для одной сделки ({min_needed:.2f}); пополните спотовый кошелёк")
+    return out
 
 
 def build_snapshot(ctx: AppContext) -> dict[str, Any]:
@@ -65,7 +101,7 @@ def build_snapshot(ctx: AppContext) -> dict[str, Any]:
         "account": {k: v for k, v in ctx.account_info.items() if k in ("mode", "quote_free", "real_quote_free", "real_checked_ts", "real_error", "tradable", "blocked")},
         "positions": eng.portfolio.snapshot(bids),
         "signals": signals,
-        "warnings": ctx.warnings,
+        "warnings": dynamic_warnings(ctx),
     }
 
 
@@ -123,11 +159,16 @@ def create_app(cfg: Settings, get_ctx: Callable[[], AppContext]) -> FastAPI:
     async def positions() -> list[dict[str, Any]]:
         return build_snapshot(ctx())["positions"]
 
+    @app.get("/api/ws-token")
+    async def ws_token() -> dict[str, Any]:
+        return {"token": make_ws_token(), "ttl": 3600}
+
     @app.get("/api/trades")
     async def trades(limit: int = 100) -> dict[str, Any]:
         c = ctx()
+        mode = c.engine.broker.mode
         midnight = c.engine._midnight()
-        return {"trades": c.db.trades(limit=min(limit, 1000)), "today": c.db.trade_stats(since=midnight), "all": c.db.trade_stats()}
+        return {"mode": mode, "trades": c.db.trades(limit=min(limit, 1000), mode=mode), "today": c.db.trade_stats(since=midnight, mode=mode), "all": c.db.trade_stats(mode=mode)}
 
     @app.get("/api/news")
     async def news(limit: int = 80) -> list[dict[str, Any]]:
@@ -140,7 +181,8 @@ def create_app(cfg: Settings, get_ctx: Callable[[], AppContext]) -> FastAPI:
     @app.get("/api/equity")
     async def equity(hours: float = 24) -> list[dict[str, Any]]:
         since = time.time() - hours * 3600 if hours > 0 else None
-        rows = ctx().db.equity(since=since, limit=20000)
+        c = ctx()
+        rows = c.db.equity(since=since, limit=20000, mode=c.engine.broker.mode)
         step = max(1, len(rows) // 1500)  # keep the chart light
         return rows[::step] if step > 1 else rows
 
@@ -184,7 +226,7 @@ def create_app(cfg: Settings, get_ctx: Callable[[], AppContext]) -> FastAPI:
     # ---- live stream ----
     @app.websocket("/ws")
     async def ws_endpoint(ws: WebSocket) -> None:
-        if not _auth_ok(cfg, ws.headers.get("authorization")):
+        if not (_auth_ok(cfg, ws.headers.get("authorization")) or check_ws_token(ws.query_params.get("token"))):
             await ws.close(code=1008)
             return
         await ws.accept()

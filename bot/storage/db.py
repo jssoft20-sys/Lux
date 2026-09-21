@@ -57,7 +57,8 @@ CREATE TABLE IF NOT EXISTS equity (
     equity REAL NOT NULL,
     quote_balance REAL NOT NULL,
     unrealized REAL NOT NULL,
-    realized_today REAL NOT NULL
+    realized_today REAL NOT NULL,
+    mode TEXT DEFAULT 'paper'
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -89,6 +90,9 @@ class Database:
         for col, decl in (("summary", "TEXT"), ("source_weight", "REAL DEFAULT 0.8"), ("llm_confidence", "REAL"), ("llm_impact", "TEXT")):
             if col not in have:
                 self._conn.execute(f"ALTER TABLE news ADD COLUMN {col} {decl}")
+        have = {r[1] for r in self._conn.execute("PRAGMA table_info(equity)").fetchall()}
+        if "mode" not in have:
+            self._conn.execute("ALTER TABLE equity ADD COLUMN mode TEXT DEFAULT 'paper'")
 
     def close(self) -> None:
         with self._lock:
@@ -113,14 +117,27 @@ class Database:
             ),
         )
 
-    def trades(self, limit: int = 200, since: float | None = None) -> list[dict[str, Any]]:
+    def trades(self, limit: int = 200, since: float | None = None, mode: str | None = None) -> list[dict[str, Any]]:
+        conds, params = [], []
         if since is not None:
-            return self._rows("SELECT * FROM trades WHERE ts >= ? ORDER BY ts DESC LIMIT ?", (since, limit))
-        return self._rows("SELECT * FROM trades ORDER BY ts DESC LIMIT ?", (limit,))
+            conds.append("ts >= ?")
+            params.append(since)
+        if mode is not None:
+            conds.append("mode = ?")
+            params.append(mode)
+        where = ("WHERE " + " AND ".join(conds)) if conds else ""
+        return self._rows(f"SELECT * FROM trades {where} ORDER BY ts DESC LIMIT ?", (*params, limit))
 
-    def trade_stats(self, since: float | None = None) -> dict[str, Any]:
-        where = "WHERE side='SELL' AND pnl IS NOT NULL" + (" AND ts >= ?" if since is not None else "")
-        params: tuple = (since,) if since is not None else ()
+    def trade_stats(self, since: float | None = None, mode: str | None = None) -> dict[str, Any]:
+        where = "WHERE side='SELL' AND pnl IS NOT NULL"
+        params_list: list[Any] = []
+        if since is not None:
+            where += " AND ts >= ?"
+            params_list.append(since)
+        if mode is not None:
+            where += " AND mode = ?"
+            params_list.append(mode)
+        params: tuple = tuple(params_list)
         rows = self._rows(
             f"SELECT COUNT(*) AS n, COALESCE(SUM(pnl),0) AS pnl, SUM(CASE WHEN pnl>0 THEN 1 ELSE 0 END) AS wins, "
             f"COALESCE(SUM(CASE WHEN pnl>0 THEN pnl ELSE 0 END),0) AS gross_win, COALESCE(SUM(CASE WHEN pnl<0 THEN pnl ELSE 0 END),0) AS gross_loss, "
@@ -185,14 +202,19 @@ class Database:
         return {r["id"] for r in self._rows("SELECT id FROM news WHERE ts >= ?", (since,))}
 
     # ---- equity ----
-    def add_equity(self, ts: float, equity: float, quote_balance: float, unrealized: float, realized_today: float) -> None:
-        self._exec("INSERT OR REPLACE INTO equity (ts, equity, quote_balance, unrealized, realized_today) VALUES (?,?,?,?,?)", (ts, equity, quote_balance, unrealized, realized_today))
+    def add_equity(self, ts: float, equity: float, quote_balance: float, unrealized: float, realized_today: float, mode: str = "paper") -> None:
+        self._exec("INSERT OR REPLACE INTO equity (ts, equity, quote_balance, unrealized, realized_today, mode) VALUES (?,?,?,?,?,?)", (ts, equity, quote_balance, unrealized, realized_today, mode))
 
-    def equity(self, since: float | None = None, limit: int = 5000) -> list[dict[str, Any]]:
+    def equity(self, since: float | None = None, limit: int = 5000, mode: str | None = None) -> list[dict[str, Any]]:
+        conds, params = [], []
         if since is not None:
-            rows = self._rows("SELECT * FROM equity WHERE ts >= ? ORDER BY ts DESC LIMIT ?", (since, limit))
-        else:
-            rows = self._rows("SELECT * FROM equity ORDER BY ts DESC LIMIT ?", (limit,))
+            conds.append("ts >= ?")
+            params.append(since)
+        if mode is not None:
+            conds.append("mode = ?")
+            params.append(mode)
+        where = ("WHERE " + " AND ".join(conds)) if conds else ""
+        rows = self._rows(f"SELECT * FROM equity {where} ORDER BY ts DESC LIMIT ?", (*params, limit))
         rows.reverse()
         return rows
 

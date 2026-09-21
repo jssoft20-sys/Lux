@@ -92,7 +92,8 @@
   function renderSignals(snap) {
     const tb = $("signals").querySelector("tbody"); tb.innerHTML = "";
     const rows = snap.signals || [];
-    $("signals-note").textContent = rows.length ? `${rows.length} пар · порог входа ${snap.config ? snap.config.buy_threshold : ""} · тон рынка ${fmtSigned(snap.news ? snap.news.market_score : 0, 2)}` : "ожидание рыночных данных…";
+    const best = rows.find(r => !r.in_position);
+    $("signals-note").textContent = rows.length ? `${rows.length} пар · порог входа ${snap.config ? snap.config.buy_threshold : ""} · лучший сейчас: ${best ? best.symbol.replace(state.quote, "") + " " + fmtSigned(best.composite, 2) : "—"} · тон рынка ${fmtSigned(snap.news ? snap.news.market_score : 0, 2)}` : "ожидание рыночных данных…";
     if (!rows.length) { tb.appendChild(el("tr", { class: "empty-row" })).appendChild(el("td", { colspan: 11 }, "Ожидание данных Binance…")); return; }
     for (const s of rows) {
       const tr = el("tr", { class: s.in_position ? "inpos" : "" });
@@ -272,15 +273,25 @@
   async function loadNews() { try { const d = await api("/api/news?limit=80"); if (d) { state.news = d; renderNews(); } } catch (e) { console.warn("news", e); } }
   async function loadSources() { try { const d = await api("/api/sources"); if (d) { state.sources = d; renderSources(); } } catch (e) { console.warn("sources", e); } }
   async function loadEvents() { try { const d = await api("/api/events?limit=80"); if (d) d.slice().reverse().forEach(e => addLog({ ts: e.ts, level: e.level, data: { message: e.message.replace(/^log: /, "") } })); } catch (e) { console.warn("events", e); } }
-  async function loadStatus() { try { const d = await api("/api/status"); if (d) { state.snap = d; renderStatus(d); renderSignals(d); renderPositions(d); } } catch (e) { console.warn("status", e); } }
+  async function loadStatus() { const d = await api("/api/status"); if (d) { state.snap = d; renderStatus(d); renderSignals(d); renderPositions(d); } }
 
-  // ---------- websocket ----------
-  let ws = null, wsBackoff = 1000, wsTimer = null;
-  function connectWS() {
-    const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
-    try { ws = new WebSocket(url); } catch (e) { scheduleWS(); return; }
-    ws.onopen = () => { wsBackoff = 1000; $("conn-badge").className = "badge ok"; $("conn-badge").textContent = "онлайн"; };
-    ws.onclose = () => { $("conn-badge").className = "badge bad"; $("conn-badge").textContent = "нет связи с ботом"; scheduleWS(); };
+  // ---------- websocket (with polling fallback) ----------
+  let ws = null, wsBackoff = 1000, wsTimer = null, pollTimer = null, pollFailures = 0;
+  function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(async () => {
+      try { await loadStatus(); pollFailures = 0; $("conn-badge").className = "badge warn"; $("conn-badge").textContent = "опрос каждые 3 с"; }
+      catch (e) { if (++pollFailures >= 2) { $("conn-badge").className = "badge bad"; $("conn-badge").textContent = "нет связи с ботом"; } }
+    }, 3000);
+  }
+  function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+  async function connectWS() {
+    let token = "";
+    try { const t = await api("/api/ws-token"); if (t && t.token) token = t.token; } catch (e) { /* the socket may still work with browser credentials */ }
+    const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws" + (token ? "?token=" + encodeURIComponent(token) : "");
+    try { ws = new WebSocket(url); } catch (e) { startPolling(); scheduleWS(); return; }
+    ws.onopen = () => { wsBackoff = 1000; stopPolling(); $("conn-badge").className = "badge ok"; $("conn-badge").textContent = "онлайн"; };
+    ws.onclose = () => { startPolling(); scheduleWS(); };
     ws.onerror = () => { try { ws.close(); } catch (e) { /* ignore */ } };
     ws.onmessage = (m) => {
       let ev; try { ev = JSON.parse(m.data); } catch (e) { return; }
@@ -304,6 +315,6 @@
   window.addEventListener("resize", () => { clearTimeout(window.__rz); window.__rz = setTimeout(renderChart, 150); });
 
   // ---------- boot ----------
-  loadStatus(); loadTrades(); loadNews(); loadSources(); loadEvents(); loadEquity(); connectWS();
+  loadStatus().catch(e => console.warn("status", e)); loadTrades(); loadNews(); loadSources(); loadEvents(); loadEquity(); connectWS();
   setInterval(loadEquity, 15000); setInterval(loadSources, 20000); setInterval(loadTrades, 30000); setInterval(loadNews, 60000);
 })();

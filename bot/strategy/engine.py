@@ -54,9 +54,9 @@ class TradingEngine:
     # ------------------------------------------------------------------ lifecycle
     async def start(self) -> None:
         self._restore_positions()
-        stats = self.db.trade_stats(since=self._midnight())
+        stats = self.db.trade_stats(since=self._midnight(), mode=self.broker.mode)
         self.portfolio.realized_today = stats["pnl"]
-        self.portfolio.realized_total = self.db.trade_stats()["pnl"]
+        self.portfolio.realized_total = self.db.trade_stats(mode=self.broker.mode)["pnl"]
         restore = getattr(self.broker, "restore", None)
         if callable(restore):  # paper broker: rebuild virtual balances from history
             restore([(s, p.qty, p.quote_spent) for s, p in self.portfolio.positions.items()], self.portfolio.realized_total)
@@ -341,7 +341,7 @@ class TradingEngine:
             quote = self.last_quote_balance
         equity = quote + sum(bids.get(s, 0.0) * p.qty for s, p in self.portfolio.positions.items())
         self.last_equity, self.last_quote_balance, self.last_unrealized = equity, quote, unrealized
-        self.db.add_equity(round(time.time(), 3), equity, quote, unrealized, self.portfolio.realized_today)
+        self.db.add_equity(round(time.time(), 3), equity, quote, unrealized, self.portfolio.realized_today, mode=self.broker.mode)
         return {"equity": equity, "quote": quote, "unrealized": unrealized}
 
     def status(self) -> dict[str, Any]:
