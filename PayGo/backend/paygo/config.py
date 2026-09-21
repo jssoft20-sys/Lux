@@ -106,6 +106,13 @@ class Settings(BaseSettings):
     # --- Claude support assistant (key only from the environment) ---------------
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
     assistant_model: str = Field(default="claude-opus-5", alias="ASSISTANT_MODEL")
+    # --- speech-to-text for voice notes in the support chat (services/stt.py) -------
+    # off | local (faster-whisper on this server: pip install -r requirements-stt.txt) | openai (Whisper API)
+    stt_provider: str = Field(default="off", alias="STT_PROVIDER")
+    stt_model: str = Field(default="small", alias="STT_MODEL")  # local: tiny | base | small | medium
+    stt_device: str = Field(default="cpu", alias="STT_DEVICE")
+    stt_compute_type: str = Field(default="int8", alias="STT_COMPUTE_TYPE")
+    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")  # only for STT_PROVIDER=openai
     # --- panel login confirmed in the main bot by this Telegram account -----------
     login_approver_telegram_id: int = Field(default=8274883903, alias="LOGIN_APPROVER_TELEGRAM_ID")
     login_session_days: int = Field(default=30, alias="LOGIN_SESSION_DAYS")

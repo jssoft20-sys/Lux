@@ -537,6 +537,7 @@ def public_deposit(db: Session, deposit: Deposit, *, full: bool = False) -> dict
         "user_id": deposit.user_id,
         "telegram_id": user.telegram_id if user else 0,
         "user_name": display_name(user) if user else "",
+        "user_avatar": (user.avatar_url or "") if user else "",
         "username": user.username if user else "",
         "payment_source": deposit.payment_source,
         "has_receipt": bool(deposit.receipt_file),

@@ -397,6 +397,7 @@ def public_withdrawal(w: Withdrawal, *, full: bool = False) -> dict[str, Any]:
         "user_id": w.user_id,
         "telegram_id": user.telegram_id if user else 0,
         "user_name": display_name(user) if user else "",
+        "user_avatar": (user.avatar_url or "") if user else "",
         "username": user.username if user else "",
         "needs_attention": w.needs_attention,
         "deferred": w.deferred,

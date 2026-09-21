@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Deposit, PaymentCash, QrRecord, ReferralPayout, ReferralReward, SavedPlayerId, User, Withdrawal
 from ..utils import as_utc, money, new_public_id, sha256_hex, utcnow
-from . import settings_store
+from . import avatars, settings_store
 from .logs import log_event
 from .notifications import notify_user
 
@@ -51,6 +51,7 @@ def get_or_create(db: Session, tg_user: dict[str, Any]) -> User:
         db.add(user)
         db.flush()
         log_event(db, "Новый пользователь", f"{first_name} @{username} • {telegram_id}", category="users", entity_type="user", entity_id=user.id)
+        avatars.refresh_if_stale(db, user)  # profile photo for the panel, fetched in the background at most daily
         return user
     changed = False
     if username != user.username:
@@ -68,11 +69,21 @@ def get_or_create(db: Session, tg_user: dict[str, Any]) -> User:
         changed = True
     if changed:
         db.flush()
+    avatars.refresh_if_stale(db, user)
     return user
 
 
 def display_name(user: User) -> str:
     return user.first_name or (("@" + user.username) if user.username else f"ID {user.telegram_id}")
+
+
+def set_language(db: Session, user: User, lang: str) -> str:
+    """The client's bot language chosen with /lang: ``ru`` or ``kg`` (``ky`` counts as Kyrgyz, anything else is Russian)."""
+    lang = "kg" if str(lang or "").strip().lower() in {"kg", "ky"} else "ru"
+    if user.language != lang:
+        user.language = lang
+        db.flush()
+    return lang
 
 
 def bind_referral(db: Session, user: User, code: str) -> str:
@@ -269,6 +280,7 @@ def public_user(user: User, summary: dict[str, Any] | None = None) -> dict[str, 
         "last_seen_at": iso(user.last_seen_at),
         "deposits_count": user.deposits_count,
         "withdrawals_count": user.withdrawals_count,
+        "avatar_url": user.avatar_url or "",
     }
     if summary:
         out.update(summary)

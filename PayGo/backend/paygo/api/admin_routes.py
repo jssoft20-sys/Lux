@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -139,6 +140,37 @@ def ack_all(principal: Principal = Depends(current_principal), db: Session = Dep
     return {"ok": True, "count": len(rows)}
 
 
+def _amount_filter(stmt, column, amount: str, amount_min: str, amount_max: str, alt=None):
+    """History filters: an exact amount (tiyins included) or a range; ``alt`` is a second column that also counts as a match."""
+    def _num(value: str):
+        try:
+            return money(Decimal(str(value).replace(",", ".").replace(" ", "")))
+        except Exception:
+            return None
+
+    exact = _num(amount) if amount else None
+    if exact is not None:
+        stmt = stmt.where(or_(column == exact, alt == exact) if alt is not None else column == exact)
+    low, high = (_num(amount_min) if amount_min else None), (_num(amount_max) if amount_max else None)
+    if low is not None:
+        stmt = stmt.where(column >= low)
+    if high is not None:
+        stmt = stmt.where(column <= high)
+    return stmt
+
+
+def _requisite_bank(requisite: PaymentRequisite | None) -> dict[str, str]:
+    """Bank mark for a deposit row: the wallet (requisite) the client paid to."""
+    if requisite is None:
+        return {"key": "bank", "name": "", "logo": "brand/banks/bank.svg"}
+    return elqr.detect_bank(f"{requisite.bank_type} {requisite.bank_name}")
+
+
+def _withdrawal_bank(w: Withdrawal) -> dict[str, str]:
+    """Bank mark for a withdrawal row: recognised from the client's QR / link."""
+    return elqr.detect_bank(w.qr_payload or w.qr_file_url or w.generated_qr_payload or "")
+
+
 # -------------------------------------------------------------------------- deposits
 
 @router.get("/deposits")
@@ -148,6 +180,9 @@ def list_deposits(
     cash: str = "",
     date_from: str = "",
     date_to: str = "",
+    amount: str = "",
+    amount_min: str = "",
+    amount_max: str = "",
     user_id: int = 0,
     page: int = 1,
     size: int = 0,
@@ -178,10 +213,13 @@ def list_deposits(
         stmt = stmt.where(Deposit.created_at >= start)
     if end:
         stmt = stmt.where(Deposit.created_at < end)
+    stmt = _amount_filter(stmt, Deposit.pay_amount, amount, amount_min, amount_max, alt=Deposit.amount)
     total = db.execute(select(func.count()).select_from(stmt.order_by(None).subquery())).scalar() or 0
     rows = db.execute(stmt.order_by(Deposit.id.desc()).offset((page - 1) * size).limit(size)).scalars().all()
     hints = deposit_service.payment_hints(db, rows)
-    return {"ok": True, "items": [{**deposit_service.public_deposit(db, d), "payment": hints.get(d.id)} for d in rows], "total": int(total), "page": page, "size": size}
+    req_ids = [d.requisite_id for d in rows if d.requisite_id]
+    reqs = {r.id: r for r in db.execute(select(PaymentRequisite).where(PaymentRequisite.id.in_(req_ids))).scalars().all()} if req_ids else {}
+    return {"ok": True, "items": [{**deposit_service.public_deposit(db, d), "payment": hints.get(d.id), "bank": _requisite_bank(reqs.get(d.requisite_id))} for d in rows], "total": int(total), "page": page, "size": size}
 
 
 @router.get("/deposits/{deposit_id}")
@@ -317,6 +355,9 @@ def list_withdrawals(
     cash: str = "",
     date_from: str = "",
     date_to: str = "",
+    amount: str = "",
+    amount_min: str = "",
+    amount_max: str = "",
     user_id: int = 0,
     page: int = 1,
     size: int = 0,
@@ -349,9 +390,10 @@ def list_withdrawals(
         stmt = stmt.where(Withdrawal.created_at >= start)
     if end:
         stmt = stmt.where(Withdrawal.created_at < end)
+    stmt = _amount_filter(stmt, Withdrawal.amount, amount, amount_min, amount_max)
     total = db.execute(select(func.count()).select_from(stmt.order_by(None).subquery())).scalar() or 0
     rows = db.execute(stmt.order_by(Withdrawal.id.desc()).offset((page - 1) * size).limit(size)).scalars().all()
-    return {"ok": True, "items": [withdrawal_service.public_withdrawal(w) for w in rows], "total": int(total), "page": page, "size": size}
+    return {"ok": True, "items": [{**withdrawal_service.public_withdrawal(w), "bank": _withdrawal_bank(w)} for w in rows], "total": int(total), "page": page, "size": size}
 
 
 @router.get("/withdrawals/{withdrawal_id}")
@@ -633,8 +675,8 @@ def get_user(user_id: int, principal: Principal = Depends(current_principal), db
         "ok": True,
         "item": public_user(user, user_summary(db, user)),
         "inviter": public_user(inviter) if inviter else None,
-        "deposits": [deposit_service.public_deposit(db, d) for d in deposits],
-        "withdrawals": [withdrawal_service.public_withdrawal(w) for w in withdrawals],
+        "deposits": [{**deposit_service.public_deposit(db, d), "bank": _requisite_bank(db.get(PaymentRequisite, d.requisite_id) if d.requisite_id else None)} for d in deposits],
+        "withdrawals": [{**withdrawal_service.public_withdrawal(w), "bank": _withdrawal_bank(w)} for w in withdrawals],
         "conversations": [support_service.public_conversation(c) for c in convs],
     }
 
@@ -998,7 +1040,14 @@ def list_conversations(status: str = "open", q: str = "", category: str = "", pa
     rows = db.execute(stmt.order_by(*order).offset((page - 1) * size).limit(size)).scalars().all()
     queues = stats.queues(db, max_age=0)
     counts = {"open": queues["support_open"], "waiting": queues["support_waiting"], "closed": queues["support_closed"], "deposit": queues["support_deposit"], "withdrawal": queues["support_withdrawal"]}
-    return {"ok": True, "items": [support_service.public_conversation(c) for c in rows], "total": int(total), "page": page, "size": size, "counts": counts}
+    items = []
+    for c in rows:
+        item = support_service.public_conversation(c)
+        last = db.execute(select(SupportMessage).where(SupportMessage.conversation_id == c.id, SupportMessage.deleted_at.is_(None)).order_by(SupportMessage.id.desc()).limit(1)).scalar_one_or_none()
+        item["last_text"] = (((last.text or "").strip() or support_service.media_label(last.kind)) if last else "")[:160]
+        item["last_sender"] = last.sender if last else ""
+        items.append(item)
+    return {"ok": True, "items": items, "total": int(total), "page": page, "size": size, "counts": counts}
 
 
 @router.get("/support/conversations/{conv_id}")
@@ -1292,7 +1341,7 @@ def _remove_file(rel: str) -> None:
 
 @router.get("/files/{path:path}")
 def serve_file(path: str, principal: Principal = Depends(current_principal)):
-    """Uploads (support photos, receipts, cash desk instruction photos) — only for signed-in staff."""
+    """Uploads (support photos, receipts, cash desk instruction photos, client avatars) — only for signed-in staff."""
     base = get_settings().uploads_dir().resolve()
     target = (base / path.lstrip("/")).resolve()
     if base not in target.parents or not target.is_file():

@@ -7,7 +7,8 @@ admin panel. Every screen of a flow is one editable message; nothing the client
 sent is ever deleted. When a payment request ends (paid / cancelled / expired)
 its QR picture and bank buttons are replaced by a status card, so payment data
 of a closed request never stays in the chat. All state is persisted in the
-database, every button press is acknowledged immediately and processed once.
+database, every button press is acknowledged immediately and processed once. Every
+screen comes in the client's language — Russian or Kyrgyz (``/lang``).
 """
 from __future__ import annotations
 
@@ -25,7 +26,7 @@ from typing import Any
 
 from paygo.config import get_settings
 from paygo.db import transaction
-from paygo.models import BotSession, Deposit, Notification, PaymentCash, QrRecord, SupportMessage, User
+from paygo.models import BotSession, Deposit, Notification, PaymentCash, QrRecord, SupportMessage, User, Withdrawal
 from paygo.services import auth as auth_service
 from paygo.services import bot_state, bot_texts, elqr, settings_store
 from paygo.services import cashes as cash_service
@@ -57,7 +58,7 @@ from .telegram import (
     strip_button_extras,
     url_buttons,
 )
-from .texts import t
+from .texts import LANG_BUTTONS, norm_lang, t
 
 logger = logging.getLogger("paygobot.main")
 BOT = "main"
@@ -68,6 +69,12 @@ OUTBOX_PRIORITY_LIMIT = 40  # deposit/withdrawal notices, operator replies, edit
 OUTBOX_BROADCAST_LIMIT = 10  # mass messages per round (≈25/s with the 0.4 s loop; Telegram allows ~30/s)
 OUTBOX_LOCK_WAIT = 6.0  # seconds to wait for a busy chat before leaving the row for the next round
 PERSIST_KEYS = ("name", "panel_kind")
+# outbox notices the backend renders in Russian → the settings text behind each one (a Kyrgyz client gets it re-rendered on delivery)
+OUTBOX_TEXTS = {
+    "deposit_expired": "text_deposit_cancelled", "deposit_success": "text_deposit_success", "deposit_rejected": "text_deposit_rejected",
+    "withdrawal_processing": "text_withdraw_processing", "withdrawal_success": "text_withdraw_done", "withdrawal_failed": "text_withdraw_failed", "withdrawal_cancelled": "text_withdraw_failed",
+}
+NO_REASON = {"Отклонено оператором", "Отменено", "Ошибка"}  # the services' stand-in error when the operator gave no reason
 DEPOSIT_KEYS = ("request_id", "deposit_id", "deadline", "cash_id", "cash_name", "cash_emoji", "player_id", "pay_amount", "currency", "minutes", "methods", "receipt_prompt_id", "receipt_note_id", "notice_id")
 
 
@@ -97,6 +104,7 @@ class Ctx:
             user = user_service.get_or_create(db, {**self.tg_user, "id": self.chat_id})
             self.user_id = user.id
             self.name = user_service.display_name(user)
+            self.lang = norm_lang(user.language)
             self.blocked = user.is_blocked
             self.state, self.data, self.panel_id = bot_state.get_state(db, BOT, self.chat_id)
 
@@ -364,22 +372,32 @@ class MainBot:
             return self.client.edit_caption(chat_id, message_id, bot_texts.strip_html(caption), markup=strip_button_extras(markup))
 
     # ------------------------------------------------------------ keyboards & texts
-    def menu_kb(self) -> dict:
-        """Persistent keyboard. Reply buttons cannot carry premium emoji, so their labels keep the plain ones."""
+    def menu_kb(self, lang: str = "ru") -> dict:
+        """Persistent keyboard in the client's language. Reply buttons cannot carry premium emoji, so their labels keep the plain ones."""
         with transaction() as db:
-            labels = bot_texts.menu_labels(db)
+            labels = bot_texts.menu_labels(db, lang)
             styled = settings_store.get_bool(db, "button_styles_enabled", True)
         return reply_keyboard(
             [button(labels["deposit"], style="primary" if styled else ""), button(labels["withdraw"], style="primary" if styled else "")],
             [button(labels["help"])],
         )
 
-    def text(self, key: str, **values: Any) -> str:
+    def text(self, key: str, lang: str = "ru", **values: Any) -> str:
+        """A screen text from settings in the client's language (``ctx.lang``)."""
         with transaction() as db:
-            return bot_texts.render(db, key, **values)
+            return bot_texts.render(db, key, lang=lang, **values)
+
+    def lang_of(self, chat_id: int) -> str:
+        """The client's language outside a handler (best effort: Russian when the database is unavailable)."""
+        try:
+            with transaction() as db:
+                user = user_service.get_by_telegram(db, chat_id)
+                return norm_lang(user.language if user else "")
+        except Exception:
+            return "ru"
 
     def greeting(self, ctx: Ctx, note: str = "") -> str:
-        text = self.text("greeting_text", name=ctx.name or "друг")
+        text = self.text("greeting_text", ctx.lang, name=ctx.name or ctx.T("friend"))
         return text + ("\n\n" + note if note else "")
 
     def site_button(self, cash: dict[str, Any], premium: bool) -> dict[str, Any]:
@@ -423,7 +441,7 @@ class MainBot:
         try:
             chat_id = int(((payload.get("message") or payload).get("chat") or {}).get("id") or (payload.get("from") or {}).get("id") or 0)
             if chat_id:
-                self.safe_send(chat_id, t("ru", "error_generic"), None, protect=False)
+                self.safe_send(chat_id, t(self.lang_of(chat_id), "error_generic"), None, protect=False)
         except Exception:
             pass
 
@@ -456,12 +474,14 @@ class MainBot:
             command = text.split()[0].lower().split("@")[0]
             if command == "/help":
                 self.show_help(ctx)
+            elif command == "/lang":
+                self.show_lang(ctx)
             else:
                 self.show_menu(ctx)
             return
         if not text:
             if ctx.state == "wait_qr":
-                ctx.panel(self.text("text_send_qr") + "\n\n❌ " + ctx.T("qr_photo_only"), self.cancel_kb(ctx))
+                ctx.panel(self.text("text_send_qr", ctx.lang) + "\n\n❌ " + ctx.T("qr_photo_only"), self.cancel_kb(ctx))
             return
         handlers = {
             "choose_id": self.on_id,
@@ -473,7 +493,7 @@ class MainBot:
         if handler:
             handler(ctx, text)
         elif ctx.state == "wait_qr":
-            ctx.panel(self.text("text_send_qr") + "\n\n❌ " + ctx.T("qr_photo_only"), self.cancel_kb(ctx))
+            ctx.panel(self.text("text_send_qr", ctx.lang) + "\n\n❌ " + ctx.T("qr_photo_only"), self.cancel_kb(ctx))
         elif ctx.state == "wait_payment":
             pass  # the card stays on screen; stray text is left in the chat
         elif self.support_inbox(ctx, message, text):
@@ -493,7 +513,7 @@ class MainBot:
             return
         if ctx.state in FLOW_STATES or ctx.state == "wait_payment":
             if ctx.state == "wait_qr":
-                ctx.panel(self.text("text_send_qr") + "\n\n❌ " + ctx.T("qr_photo_only"), self.cancel_kb(ctx))
+                ctx.panel(self.text("text_send_qr", ctx.lang) + "\n\n❌ " + ctx.T("qr_photo_only"), self.cancel_kb(ctx))
             return
         self.support_inbox(ctx, message, str(message.get("caption") or "").strip(), kind, create=True)
 
@@ -518,6 +538,12 @@ class MainBot:
             return
         if data.startswith("login:"):
             self.on_login_decision(query, chat_id, pressed, callback_id, data)
+            return
+        if data.startswith("lang:"):  # the chooser is a separate message, never the flow screen
+            self.on_lang(ctx, pressed, data.split(":", 1)[1])
+            return
+        if data == "lang":
+            self.show_lang(ctx)
             return
         if pressed and ctx.panel_id and pressed != ctx.panel_id and not data.startswith(("noop", "instr", "menu", "act:", "open_active", "help", "dep:", "cancel:")):
             self.strip_buttons_later(chat_id, pressed)  # button on an old screen
@@ -561,7 +587,7 @@ class MainBot:
                 self.use_last_qr(ctx)
         elif data == "qr:new":
             if ctx.state == "wait_qr_choice":
-                ctx.panel(self.text("text_send_qr"), self.cancel_kb(ctx), state="wait_qr")
+                ctx.panel(self.text("text_send_qr", ctx.lang), self.cancel_kb(ctx), state="wait_qr")
         elif data == "open_active":
             self.show_active_deposit(ctx)
         elif data == "help":
@@ -607,7 +633,7 @@ class MainBot:
         if message_id:
             self.strip_buttons_later(ctx.chat_id, message_id)
         if ok:
-            self.safe_send(ctx.chat_id, "Спасибо за оценку!", None, protect=False)
+            self.safe_send(ctx.chat_id, ctx.T("rating_thanks"), None, protect=False)
 
     # ------------------------------------------------------------ start / menu / help
     def start(self, ctx: Ctx, arg: str = "") -> None:
@@ -617,7 +643,7 @@ class MainBot:
                 user = db.get(User, ctx.user_id)
                 status = user_service.bind_referral(db, user, arg[4:])
             if status == "ok":
-                note = "🎁 Вы присоединились по приглашению"
+                note = ctx.T("ref_joined")
         if not self.subscribed(ctx):
             self.show_subscribe(ctx)
             return
@@ -632,7 +658,7 @@ class MainBot:
         active = self.active_deposit_id(ctx)
         old, old_kind = ctx.panel_id, str(ctx.data.get("panel_kind") or "text")
         self.send_greeting_sticker(ctx)
-        self.safe_send(ctx.chat_id, self.greeting(ctx, note), self.menu_kb(), protect=True)
+        self.safe_send(ctx.chat_id, self.greeting(ctx, note), self.menu_kb(ctx.lang), protect=True)
         if active:
             if ctx.state == "wait_payment" and int(ctx.data.get("deposit_id") or 0) == active and old:
                 data = {**ctx.idle_data(), **{k: ctx.data[k] for k in DEPOSIT_KEYS if k in ctx.data}}
@@ -669,7 +695,30 @@ class MainBot:
 
     def show_help(self, ctx: Ctx) -> None:
         """«Помощь» = только контакт оператора (как в образце)."""
-        self.safe_send(ctx.chat_id, self.text("text_help"), None, protect=False)
+        self.safe_send(ctx.chat_id, self.text("text_help", ctx.lang), None, protect=False)
+
+    # ------------------------------------------------------------ language (/lang, the 🌐 button)
+    def show_lang(self, ctx: Ctx) -> None:
+        """«🇷🇺 Русский / 🇰🇬 Кыргызча» as a separate message — an open flow screen or payment card stays as it is."""
+        kb = inline_keyboard([button(label, f"lang:{code}") for code, label in LANG_BUTTONS])
+        self.safe_send(ctx.chat_id, ctx.T("lang_choose"), kb, protect=False)
+
+    def on_lang(self, ctx: Ctx, pressed: int, choice: str) -> None:
+        """Persist the choice, confirm it on the chooser message and show the main menu (greeting + reply keyboard) in the new language."""
+        lang = norm_lang(choice)
+        with transaction() as db:
+            user_service.set_language(db, db.get(User, ctx.user_id), lang)
+        ctx.lang = lang
+        if pressed:
+            try:
+                self.safe_edit(ctx.chat_id, pressed, ctx.T("lang_switched"), None)
+            except TelegramError as exc:
+                if exc.fatal_for_chat:
+                    raise
+                self.strip_buttons_later(ctx.chat_id, pressed)
+        else:
+            self.safe_send(ctx.chat_id, ctx.T("lang_switched"), None, protect=False)
+        self.show_menu(ctx)
 
     def cancel_flow(self, ctx: Ctx) -> None:
         if ctx.state == "wait_payment":
@@ -714,13 +763,13 @@ class MainBot:
         ctx.panel(ctx.T("subscribe"), inline_keyboard(*rows), state="idle", data=ctx.idle_data())
 
     def request_phone(self, ctx: Ctx) -> None:
-        sent = self.client.call("sendMessage", {"chat_id": ctx.chat_id, "text": "📱 Подтвердите номер телефона кнопкой ниже", "reply_markup": {"keyboard": [[{"text": "Подтвердить номер", "request_contact": True}]], "resize_keyboard": True, "one_time_keyboard": True}})
+        sent = self.client.call("sendMessage", {"chat_id": ctx.chat_id, "text": ctx.T("phone_prompt"), "reply_markup": {"keyboard": [[{"text": ctx.T("phone_button"), "request_contact": True}]], "resize_keyboard": True, "one_time_keyboard": True}})
         ctx.save("wait_phone", ctx.idle_data(), int(sent.get("message_id") or 0))
 
     def on_contact(self, ctx: Ctx, message: dict[str, Any]) -> None:
         contact = message.get("contact") or {}
         if int(contact.get("user_id") or 0) != ctx.chat_id:
-            self.client.send_message(ctx.chat_id, "❌ Отправьте именно свой контакт")
+            self.client.send_message(ctx.chat_id, ctx.T("phone_own_only"))
             return
         with transaction() as db:
             user = db.get(User, ctx.user_id)
@@ -745,10 +794,10 @@ class MainBot:
             paused = settings_store.get_bool(db, "bot_paused")
             premium = settings_store.get_bool(db, "premium_emoji_enabled")
         if paused:
-            self.client.send_message(ctx.chat_id, bot_texts.strip_html(self.text("text_paused")))
+            self.client.send_message(ctx.chat_id, bot_texts.strip_html(self.text("text_paused", ctx.lang)))
             return
         if ctx.blocked:
-            self.safe_send(ctx.chat_id, self.text("text_blocked"), None)
+            self.safe_send(ctx.chat_id, self.text("text_blocked", ctx.lang), None)
             return
         active = self.active_deposit_id(ctx)
         if active:
@@ -771,7 +820,7 @@ class MainBot:
             return
         rows = [[self.site_button(c, premium)] for c in cashes]
         rows.append([button(ctx.T("cancel"), "cancel")])
-        ctx.panel(self.text("text_choose_site_deposit" if action == "deposit" else "text_choose_site_withdraw"), inline_keyboard(*rows), state="choose_cash", data=data)
+        ctx.panel(self.text("text_choose_site_deposit" if action == "deposit" else "text_choose_site_withdraw", ctx.lang), inline_keyboard(*rows), state="choose_cash", data=data)
 
     def _cash_info(self, cash: PaymentCash) -> dict[str, Any]:
         return {
@@ -795,12 +844,13 @@ class MainBot:
         else:
             self.ask_qr(ctx, data)
 
-    def _step_text(self, data: dict[str, Any], custom_key: str, setting_key: str, **values: Any) -> str:
-        custom = str(data.get(custom_key) or "").strip()
+    def _step_text(self, lang: str, data: dict[str, Any], custom_key: str, setting_key: str, **values: Any) -> str:
+        """Step text: the cash desk's own wording (written in Russian — Russian clients only) or the settings text in the client's language."""
+        custom = str(data.get(custom_key) or "").strip() if lang == "ru" else ""
         with transaction() as db:
             if custom:
-                return bot_texts.render_template(custom, premium=settings_store.get_bool(db, "premium_emoji_enabled"), **{**bot_texts.common_values(db), **values})
-            return bot_texts.render(db, setting_key, **values)
+                return bot_texts.render_template(custom, premium=settings_store.get_bool(db, "premium_emoji_enabled"), **{**bot_texts.common_values(db, lang), **values})
+            return bot_texts.render(db, setting_key, lang=lang, **values)
 
     def ask_id(self, ctx: Ctx, data: dict[str, Any], saved: list[tuple[str, str]] | None = None, error: str = "") -> None:
         if saved is None:
@@ -812,9 +862,9 @@ class MainBot:
         rows = [[button(f"🆔 {pid}" + (f" · {name[:18]}" if name else ""), f"id:{pid}")] for pid, name in saved[:5]]
         rows.append([button(ctx.T("cancel"), "cancel")])
         values = {"cash": data.get("cash_name", ""), "emoji": data.get("cash_emoji", "")}
-        text = self._step_text(data, "deposit_photo_text" if deposit else "withdraw_photo_text", "text_enter_id_deposit" if deposit else "text_enter_id_withdraw", **values)
+        text = self._step_text(ctx.lang, data, "deposit_photo_text" if deposit else "withdraw_photo_text", "text_enter_id_deposit" if deposit else "text_enter_id_withdraw", **values)
         if saved:
-            text += "\n\nВыберите сохранённый ID или введите новый"
+            text += "\n\n" + ctx.T("choose_saved_id")
         if error:
             text += "\n\n❌ " + esc(error)
         photo = self.local_file(str(data.get("deposit_photo" if deposit else "withdraw_photo") or ""))
@@ -846,12 +896,12 @@ class MainBot:
         if not result.ok:
             with transaction() as db:
                 user_service.forget_player_id(db, db.get(User, ctx.user_id), db.get(PaymentCash, cash_id), pid)
-            self.ask_id(ctx, ctx.data, error=result.message or bot_texts.strip_html(self.text("text_id_not_found")))
+            self.ask_id(ctx, ctx.data, error=result.message or bot_texts.strip_html(self.text("text_id_not_found", ctx.lang)))
             return
         with transaction() as db:
             cash = db.get(PaymentCash, cash_id)
             if not cash_service.currency_matches(cash, result.currency):
-                self.ask_id(ctx, {**ctx.data, "player_id": ""}, error=bot_texts.strip_html(self.text("text_currency_mismatch", have=result.currency or "?", need=cash.currency)))
+                self.ask_id(ctx, {**ctx.data, "player_id": ""}, error=bot_texts.strip_html(self.text("text_currency_mismatch", ctx.lang, have=result.currency or "?", need=cash.currency)))
                 return
             user_service.remember_player_id(db, db.get(User, ctx.user_id), cash, pid, result.player_name, result.currency)
         data = {**ctx.data, "player_id": pid, "player_name": result.player_name or "", "player_currency": result.currency or ""}
@@ -879,7 +929,7 @@ class MainBot:
     def ask_amount(self, ctx: Ctx, data: dict[str, Any], error: str = "") -> None:
         low = Decimal(str(data.get("dep_min") or 0)).quantize(Decimal(1))
         high = Decimal(str(data.get("dep_max") or 0)).quantize(Decimal(1))
-        text = self.text("text_enter_amount", min=f"{low:,}".replace(",", " "), max=f"{high:,}".replace(",", " "), cur=data.get("currency", "KGS"), cash=data.get("cash_name", ""), emoji=data.get("cash_emoji", ""), player=data.get("player_id", ""))
+        text = self.text("text_enter_amount", ctx.lang, min=f"{low:,}".replace(",", " "), max=f"{high:,}".replace(",", " "), cur=data.get("currency", "KGS"), cash=data.get("cash_name", ""), emoji=data.get("cash_emoji", ""), player=data.get("player_id", ""))
         if error:
             text += "\n\n❌ " + esc(error)
         ctx.panel(text, self.amount_kb(ctx, data), state="wait_amount", data=data)
@@ -939,7 +989,7 @@ class MainBot:
         return f"{left // 60}:{left % 60:02d}"
 
     def card_text(self, ctx: Ctx, info: dict[str, Any]) -> str:
-        return self.text("text_pay_card", player=info.get("player_id"), cash=info.get("cash_name"), emoji=info.get("cash_emoji"), amount=info.get("pay_amount"), cur=info.get("currency"), minutes=info.get("minutes") or 5, left=self._left(info.get("deadline") or 0))
+        return self.text("text_pay_card", ctx.lang, player=info.get("player_id"), cash=info.get("cash_name"), emoji=info.get("cash_emoji"), amount=info.get("pay_amount"), cur=info.get("currency"), minutes=info.get("minutes") or 5, left=self._left(info.get("deadline") or 0))
 
     def card_kb(self, ctx: Ctx, info: dict[str, Any]) -> dict:
         rows = []
@@ -973,7 +1023,7 @@ class MainBot:
         if not enabled or ctx.state != "wait_payment":
             return
         try:
-            sent = self.safe_send(ctx.chat_id, self.text("text_send_receipt"), None, protect=False)
+            sent = self.safe_send(ctx.chat_id, self.text("text_send_receipt", ctx.lang), None, protect=False)
         except TelegramError as exc:
             logger.info("receipt prompt failed: %s", exc)
             return
@@ -1005,7 +1055,7 @@ class MainBot:
         old = int(ctx.data.get("notice_id") or 0)
         if old:
             self.strip_buttons_later(ctx.chat_id, old)
-        text = f"⏳ У вас есть активная заявка на пополнение <b>{esc(public_id)}</b> на {esc(str(amount))} {esc(cur)}" + (f" (осталось {left} мин)" if left else "") + ".\nСначала оплатите её или отмените — потом можно оформить вывод."
+        text = ctx.T("active_deposit_notice", request=esc(public_id), amount=esc(str(amount)), cur=esc(cur), left=ctx.T("minutes_left", left=left) if left else "")
         kb = inline_keyboard([button(ctx.T("show_request"), "dep:show")], [button(ctx.T("cancel_request"), f"cancel:{public_id}")], [button(ctx.T("close"), "dep:close")])
         sent = self.safe_send(ctx.chat_id, text, kb, protect=False)
         ctx.save(data={**ctx.data, "deposit_id": deposit_id, "notice_id": int(sent.get("message_id") or 0)})
@@ -1015,7 +1065,7 @@ class MainBot:
             deposit = db.execute(select(Deposit).where(Deposit.public_id == public_id, Deposit.user_id == ctx.user_id)).scalar_one_or_none()
             if deposit and deposit.status == "created":
                 deposit_service.cancel_deposit(db, deposit, reason="user_cancelled", actor="user")
-        ctx.receipt(self.text("text_deposit_cancelled"), final="cancelled")
+        ctx.receipt(self.text("text_deposit_cancelled", ctx.lang), final="cancelled")
         self.show_menu(ctx)
 
     def save_receipt(self, ctx: Ctx, message: dict[str, Any]) -> None:
@@ -1046,7 +1096,7 @@ class MainBot:
             admin_event(db, "deposit_receipt", f"deposit_receipt:{deposit.id}:{int(time.time())}", "🧾 Чек к пополнению", f"{deposit.public_id} • {money(deposit.pay_amount)} {deposit.currency} • ID {deposit.player_id} • {ctx.name}", {"deposit_id": deposit.id, "url": f"#/deposits/{deposit.id}"})
         if int(ctx.data.get("receipt_note_id") or 0):
             return  # the client already got «чек получен» for this request — a second screenshot needs no second notice
-        sent = self.safe_send(ctx.chat_id, self.text("text_receipt_ok"), None, protect=False)
+        sent = self.safe_send(ctx.chat_id, self.text("text_receipt_ok", ctx.lang), None, protect=False)
         ctx.save(data={**ctx.data, "receipt_prompt_id": 0, "receipt_note_id": int(sent.get("message_id") or 0)})
 
     def tick_timers(self) -> None:
@@ -1087,17 +1137,17 @@ class MainBot:
             qr = user_service.last_qr(db, db.get(User, ctx.user_id))
             last = {"id": qr.id, "bank": qr.bank_name, "at": fmt_local(qr.last_used_at)} if qr else None
         if last:
-            text = self.text("text_send_qr") + f"\n\n🗺 {esc(ctx.T('use_last_qr_q'))}\n{esc(last['bank'] or 'QR банка')} · {esc(last['at'])}"
+            text = self.text("text_send_qr", ctx.lang) + f"\n\n🗺 {esc(ctx.T('use_last_qr_q'))}\n{esc(last['bank'] or ctx.T('bank_qr'))} · {esc(last['at'])}"
             ctx.panel(text, inline_keyboard([button(ctx.T("use_last_qr"), "qr:last")], [button(ctx.T("new_qr"), "qr:new")], [button(ctx.T("cancel"), "cancel")]), state="wait_qr_choice", data={**data, "last_qr_id": last["id"]})
         else:
-            ctx.panel(self.text("text_send_qr"), self.cancel_kb(ctx), state="wait_qr", data=data)
+            ctx.panel(self.text("text_send_qr", ctx.lang), self.cancel_kb(ctx), state="wait_qr", data=data)
 
     def use_last_qr(self, ctx: Ctx) -> None:
         qr_id = int(ctx.data.get("last_qr_id") or 0)
         with transaction() as db:
             qr = db.get(QrRecord, qr_id)
             if qr is None or qr.user_id != ctx.user_id:
-                ctx.panel(self.text("text_send_qr"), self.cancel_kb(ctx), state="wait_qr")
+                ctx.panel(self.text("text_send_qr", ctx.lang), self.cancel_kb(ctx), state="wait_qr")
                 return
             data = {**ctx.data, "qr_record_id": qr.id, "qr_file_url": qr.file_url}
         self.ask_id(ctx, data)
@@ -1131,7 +1181,7 @@ class MainBot:
         self.ask_id(ctx, {**ctx.data, "qr_record_id": qr_id, "qr_file_url": qr_url})
 
     def ask_code(self, ctx: Ctx, data: dict[str, Any], error: str = "") -> None:
-        text = self._step_text(data, "code_photo_text", "text_enter_code", cash=data.get("cash_name", ""), emoji=data.get("cash_emoji", ""), player=data.get("player_id", ""))
+        text = self._step_text(ctx.lang, data, "code_photo_text", "text_enter_code", cash=data.get("cash_name", ""), emoji=data.get("cash_emoji", ""), player=data.get("player_id", ""))
         if error:
             text += "\n\n" + error
         with transaction() as db:
@@ -1144,7 +1194,7 @@ class MainBot:
     def show_instruction(self, ctx: Ctx, callback_id: str) -> None:
         with transaction() as db:
             cash = db.get(PaymentCash, int(ctx.data.get("cash_id") or 0)) if ctx.data.get("cash_id") else None
-            text = bot_texts.instruction(db, cash)
+            text = bot_texts.instruction(db, cash, ctx.lang)
             global_photo = str(settings_store.get(db, "instruction_photo") or "")
         if ctx.state == "wait_code":
             plain = bot_texts.strip_html(text)
@@ -1177,14 +1227,32 @@ class MainBot:
             )
         except withdrawal_service.WithdrawalError as exc:
             if exc.code in {"BAD_CODE", "BAD_PLAYER_ID"}:
-                self.ask_code(ctx, ctx.data, error=self.text("text_bad_withdraw"))
+                self.ask_code(ctx, ctx.data, error=self.text("text_bad_withdraw", ctx.lang))
             else:
                 ctx.receipt("❌ " + esc(exc.message))
             return
         if not result.get("ok"):
-            self.ask_code(ctx, ctx.data, error=self.text("text_bad_withdraw"))
+            self.ask_code(ctx, ctx.data, error=self.text("text_bad_withdraw", ctx.lang))
             return
-        ctx.receipt(str(result.get("message") or self.text("text_withdraw_accepted", player=ctx.data.get("player_id"), amount="", cur="", queue="")))
+        ctx.receipt(self.withdrawal_receipt(ctx, result))
+
+    def withdrawal_receipt(self, ctx: Ctx, result: dict[str, Any]) -> str:
+        """«Заявка принята» / «сумма не получена». The service renders the Russian text; a Kyrgyz
+        client gets the same screen from the Kyrgyz templates (queue place and SLA included)."""
+        message = str(result.get("message") or "")
+        if ctx.lang == "ru" and message:
+            return message
+        info = dict(result.get("withdrawal") or {})
+        values = {"player": info.get("player_id") or ctx.data.get("player_id", ""), "cash": ctx.data.get("cash_name", ""), "emoji": ctx.data.get("cash_emoji", "")}
+        if result.get("problem"):
+            return self.text("text_withdraw_problem", ctx.lang, **values)
+        queue = ""
+        with transaction() as db:
+            row = db.get(Withdrawal, int(info.get("id") or 0)) if info.get("id") else None
+            pos = withdrawal_service.queue_position(db, row) if row is not None else 0
+            if pos:
+                queue = ctx.T("queue_line", pos=pos, size=withdrawal_service.queue_size(db))
+        return self.text("text_withdraw_accepted", ctx.lang, amount=info.get("amount", ""), cur=info.get("currency", ""), queue=queue, **values)
 
     # ------------------------------------------------------------ outbox (messages created by the backend / worker)
     def _fetch_outbox(self) -> list[tuple[int, int, str, str, dict[str, Any], int]]:
@@ -1237,9 +1305,33 @@ class MainBot:
             if retry_in:
                 row.next_attempt_at = utcnow() + timedelta(seconds=retry_in)
 
+    def localize_outbox(self, ctx: Ctx, event: str, body: str, data: dict[str, Any]) -> str:
+        """Status notices come from the backend rendered in Russian. A Kyrgyz client gets the same
+        notice from the Kyrgyz template, filled from the request itself; anything else is sent as it is."""
+        request_id = str(data.get("request_id") or "")
+        if ctx.lang == "ru" or not request_id or (event not in OUTBOX_TEXTS and event != "deposit_updated"):
+            return body
+        try:
+            with transaction() as db:
+                model = Withdrawal if event.startswith("withdrawal") else Deposit
+                row = db.execute(select(model).where(model.public_id == request_id)).scalar_one_or_none()
+                if row is None or row.user_id != ctx.user_id:
+                    return body
+                amount = str(money(row.amount if model is Withdrawal else row.pay_amount))
+                cur, player, error = row.currency, row.player_id, str(row.error or "")
+                cash_name, cash_emoji = (row.cash.name, bot_texts.cash_emoji(row.cash)) if row.cash else ("", "")
+        except Exception as exc:
+            logger.info("outbox notice left in Russian: %s", exc)
+            return body
+        if event == "deposit_updated":
+            return ctx.T("deposit_updated", amount=esc(amount), cur=esc(cur))
+        reason = ctx.T("reason_line", reason=error) if error and error not in NO_REASON else ctx.T("reason_none")
+        return self.text(OUTBOX_TEXTS[event], ctx.lang, player=player, amount=amount, cur=cur, cash=cash_name, emoji=cash_emoji, reason=reason)
+
     def _deliver_one(self, chat_id: int, event: str, body: str, data: dict[str, Any]) -> None:
         ctx = Ctx(self, chat_id, {"id": chat_id})
         ctx.load()
+        body = self.localize_outbox(ctx, event, body, data)
         request_id = str(data.get("request_id") or "")
         same_request = bool(request_id) and str(ctx.data.get("request_id") or "") == request_id
         if data.get("refresh_card") and ctx.state == "wait_payment" and same_request:
@@ -1298,7 +1390,7 @@ class MainBot:
         if me.get("username"):
             self.username = str(me["username"])
         self.client.delete_webhook()
-        self.client.set_commands([("start", "Главное меню"), ("help", "Оператор")])
+        self.client.set_commands([("start", "Главное меню"), ("lang", "Язык / Тил"), ("help", "Оператор")])
         logger.info("main bot @%s started", self.username)
         warm_up_qr()
         self.warm_up()

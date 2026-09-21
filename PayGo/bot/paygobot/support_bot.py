@@ -20,7 +20,7 @@ from typing import Any
 from paygo.config import get_settings
 from paygo.db import transaction
 from paygo.models import BotSession, Notification, SupportMessage, User
-from paygo.services import settings_store
+from paygo.services import settings_store, stt
 from paygo.services import support as support_service
 from paygo.services import users as user_service
 from paygo.utils import utcnow
@@ -35,6 +35,7 @@ logger = logging.getLogger("paygobot.support")
 STOP = threading.Event()
 OUTBOX_PRIORITY_LIMIT = 40  # replies, status notices, edits, deletes per round
 OUTBOX_BROADCAST_LIMIT = 10  # mass messages per round (≈25/s with the 0.4 s loop; Telegram allows ~30/s)
+VOICE_KINDS = ("voice", "audio", "video_note")  # media that goes through speech-to-text when it is enabled
 
 
 class SupportBot:
@@ -155,6 +156,38 @@ class SupportBot:
             reply = support_service.respond(db, user, text, media_kind=media_kind, file_url=file_url, file_name=file_name, telegram_message_id=int(message.get("message_id") or 0))
         if reply:
             self._send(chat_id, reply.text, reply.buttons)
+        self._transcribe_later(chat_id, user_id, int(message.get("message_id") or 0), media_kind, file_url, _lang)
+
+    # ------------------------------------------------------------ voice notes
+    def _transcribe_later(self, chat_id: int, user_id: int, telegram_message_id: int, media_kind: str, file_url: str, language: str) -> threading.Thread | None:
+        """Speech → text on a daemon thread, so the dispatcher never waits for Whisper; the words are then
+        answered as if the client had typed them. Returns the thread, ``None`` when there is nothing to do."""
+        if media_kind not in VOICE_KINDS or not file_url or not stt.enabled():
+            return None
+        thread = threading.Thread(target=self._voice_to_text, args=(chat_id, user_id, telegram_message_id, file_url, language), name="support-stt", daemon=True)
+        thread.start()
+        return thread
+
+    def _voice_to_text(self, chat_id: int, user_id: int, telegram_message_id: int, file_url: str, language: str) -> None:
+        try:
+            with transaction() as db:  # a note the flood guard dropped was never stored: nothing to listen to
+                user = db.get(User, user_id)
+                if user is None or support_service.find_inbound(db, user, telegram_message_id=telegram_message_id, file_url=file_url) is None:
+                    return
+            self.client.send_chat_action(chat_id)  # «печатает…» while the note is being listened to
+            # only a Kyrgyz Telegram is worth forcing; everyone else is auto-detected (Russian or Kyrgyz)
+            text = stt.transcribe(Path(self.settings.data_dir) / file_url.lstrip("/"), language_hint="kg" if language == "kg" else "")
+            if not text:
+                return
+            with self.chat_lock(chat_id):  # in order with the client's other messages, like handle_update
+                reply = transcript_reply(user_id, telegram_message_id, file_url, text)
+                if reply:
+                    self._send(chat_id, reply.text, reply.buttons)
+        except TelegramError as exc:
+            if not exc.fatal_for_chat:
+                logger.warning("telegram error: %s", exc)
+        except Exception:
+            logger.exception("voice transcript failed")
 
     # ------------------------------------------------------------ outbox
     def _fetch_outbox(self) -> list[tuple[int, int, str, str, dict[str, Any], int]]:
@@ -282,6 +315,18 @@ def _chunks(text: str, size: int) -> list[str]:
     if current:
         out.append(current)
     return out
+
+
+def transcript_reply(user_id: int, telegram_message_id: int, file_url: str, text: str) -> support_service.Reply | None:
+    """The bot's half of a finished transcription, in one transaction: find the stored voice note, keep
+    the words on it and let the support engine answer them (no second inbound message is created)."""
+    with transaction() as db:
+        user = db.get(User, user_id)
+        msg = support_service.find_inbound(db, user, telegram_message_id=telegram_message_id, file_url=file_url) if user else None
+        if msg is None:
+            logger.warning("voice note not found for its transcript (user %s, message %s)", user_id, telegram_message_id)
+            return None
+        return support_service.answer_transcript(db, user, msg, text)
 
 
 def main() -> None:

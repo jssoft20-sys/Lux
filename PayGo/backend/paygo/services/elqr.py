@@ -277,13 +277,13 @@ def detect_bank(text: str) -> dict[str, str]:
     low = str(text or "").lower()
     for key, name, markers in BANKS:
         if any(m in low for m in markers):
-            return {"key": key, "name": name, "logo": f"brand/banks/{key}.png"}
+            return {"key": key, "name": name, "logo": f"brand/banks/{key}.svg"}
     try:
         meta = bank_meta(text)
         blob = (str(meta.get("domain", "")) + " " + str(meta.get("bank_name", ""))).lower()
         for key, name, markers in BANKS:
             if any(m in blob for m in markers):
-                return {"key": key, "name": name, "logo": f"brand/banks/{key}.png"}
+                return {"key": key, "name": name, "logo": f"brand/banks/{key}.svg"}
         if meta.get("bank_name") and meta["bank_name"] != "Банк":
             return {"key": "bank", "name": str(meta["bank_name"]), "logo": ""}
     except Exception:

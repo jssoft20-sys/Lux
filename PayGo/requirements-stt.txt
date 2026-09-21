@@ -1,0 +1,2 @@
+# Speech-to-text for voice notes in the support chat (STT_PROVIDER=local). Optional: not part of requirements.txt.
+faster-whisper>=1.0

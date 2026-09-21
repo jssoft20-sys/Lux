@@ -67,6 +67,9 @@ class User(TimestampMixin, Base):
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deposits_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     withdrawals_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # compressed copy of the client's Telegram profile photo (uploads/avatars/…), refreshed at most daily
+    avatar_url: Mapped[str] = mapped_column(String(300), default="", nullable=False)
+    avatar_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         # verified e-mails are unique; the empty string (no e-mail) is excluded from the index
@@ -413,6 +416,7 @@ class SupportMessage(Base):
     text: Mapped[str] = mapped_column(Text, default="", nullable=False)
     file_url: Mapped[str] = mapped_column(Text, default="", nullable=False)
     file_name: Mapped[str] = mapped_column(String(200), default="", nullable=False)
+    transcript: Mapped[str] = mapped_column(Text, default="", nullable=False)  # voice note → text (services.stt), empty until transcribed
     via: Mapped[str] = mapped_column(String(8), default="support", nullable=False)  # bot that carried the message: support | main
     reply_to_id: Mapped[int | None] = mapped_column(ForeignKey("support_messages.id", ondelete="SET NULL"))
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

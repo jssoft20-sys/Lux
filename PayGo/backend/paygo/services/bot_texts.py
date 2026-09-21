@@ -7,6 +7,11 @@ emoji tokens ``[emoji:5247144889640056462:😎]`` — the token becomes a
 ``<tg-emoji>`` entity when ``premium_emoji_enabled`` is on, otherwise the plain
 emoji after the second colon is shown. Placeholder values are HTML-escaped, the
 template itself is trusted (edited by administrators only).
+
+Languages: the settings hold the Russian texts; ``KG_TEXTS`` is the built-in Kyrgyz
+version of every client-facing text (same placeholders, same premium-emoji tokens).
+A client with ``language == "kg"`` gets the Kyrgyz text — the owner's own Kyrgyz
+wording can be stored under ``<key>__kg`` — so a Kyrgyz client never sees a mix.
 """
 from __future__ import annotations
 
@@ -21,7 +26,51 @@ from . import settings_store
 PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
 EMOJI_TOKEN = re.compile(r"\[emoji:(\d{3,40}):([^\]]{1,16})\]")
 TAG = re.compile(r"<[^>]+>")
-NON_LETTERS = re.compile(r"[^0-9a-zа-яё]+", re.IGNORECASE)
+NON_LETTERS = re.compile(r"[^0-9a-zа-яёңөү]+", re.IGNORECASE)
+LANGS = ("ru", "kg")
+# Kyrgyz versions of the client texts from settings_store.DEFAULTS (placeholders and [emoji:ID:x] tokens match the Russian ones)
+KG_TEXTS: dict[str, str] = {
+    "greeting_text": "[emoji:5199885118214255386:👋] Салам, {name}! PayGo-го кош келиңиз!\n\n[emoji:5258203794772085854:⚡️] Толуктоо: 1-5 секунд\n[emoji:5278467510604160626:💰] Тез чыгаруу\n[emoji:5269617636001460986:👩‍💻] Иштейбиз: 24/7\n\n<blockquote>[emoji:5409015472517553802:🔝] Толуктоо жана чыгаруу үчүн эң мыкты кызмат</blockquote>\n\n[emoji:5443038326535759644:💬] Оператор: {support}",
+    "text_help": "[emoji:5443038326535759644:💬] Оператор менен байланыш: {support}",
+    "text_paused": "Бот убактылуу өчүрүлгөн",
+    "text_blocked": "⛔ Аккаунт бөгөттөлгөн. Операторго жазыңыз: {support}",
+    "menu_deposit_label": "📥 Толуктоо",
+    "menu_withdraw_label": "📤 Чыгаруу",
+    "menu_help_label": "✉️ Жардам",
+    "text_choose_site_deposit": "[emoji:5375410291184002717:👍] Толуктоо үчүн сайтты тандаңыз:",
+    "text_choose_site_withdraw": "[emoji:5375410291184002717:👍] Чыгаруу үчүн сайтты тандаңыз:",
+    "text_enter_id_deposit": "{emoji} {cash} боюнча ID-иңизди киргизиңиз",
+    "text_enter_amount": "Толуктоо суммасын киргизиңиз:\nМинимум: {min} сом\nМаксимум: {max} сом",
+    "text_pay_card": "[emoji:5397782960512444700:📌] Сиздин ID: {player}\n[emoji:5255981634527704754:💵] Төлөнүүчү сумма: {amount}\n[emoji:5370844655049008958:⏰] {minutes} мүнөттүн ичинде төлөңүз",
+    "text_send_receipt": "Төлөгөндөн кийин чектин скриншотун жөнөтүңүз 🖼",
+    "text_receipt_ok": "✅ Чек алынды. Төлөм келип түшкөндөн кийин акча автоматтык түрдө эсепке чегерилет.",
+    "text_deposit_cancelled": "[emoji:5384234898494088007:❌] Толуктоо жокко чыгарылды\n[emoji:5879785854284599288:ℹ️] Эски реквизиттерге акча которбоңуз. «Толуктоо» баскычын басып, жаңы өтүнмө түзүңүз.",
+    "text_deposit_success": "✅ Толукталды\n💸 {amount} {cur}\n🆔 {player}",
+    "text_deposit_rejected": "❌ Толуктоо өтүнмөсү четке кагылды.\n{reason}",
+    "text_send_qr": "Капчыгыңыздын QR-кодун жөнөтүңүз",
+    "text_enter_id_withdraw": "Чыгаруу үчүн ID-иңизди киргизиңиз",
+    "text_enter_code": "Чыгаруу кодун киргизиңиз",
+    "text_bad_withdraw": "💬 Чыгаруу үчүн туура эмес маалымат киргизилди",
+    "text_withdraw_accepted": "✅ Чыгаруу өтүнмөсү кабыл алынды\n💸 {amount} {cur}\n🆔 {player}\n{queue}\n{sla}",
+    "text_withdraw_problem": "⚠️ Кодду касса кабыл алды, бирок сумма алынган жок. Өтүнмө операторго өткөрүлдү — кодду кайра жөнөтүүнүн кереги жок.\n🆔 {player}",
+    "text_withdraw_processing": "⏳ Сиздин {amount} {cur} чыгарууңузду оператор иштетүүгө алды.",
+    "text_withdraw_done": "✅ Чыгаруу аткарылды\n💸 {amount} {cur}\n🆔 {player}\n\nАкча капчыгыңызга жөнөтүлдү.",
+    "text_withdraw_failed": "❌ Чыгаруу өтүнмөсү четке кагылды.\n{reason}",
+    "text_id_not_found": "ID табылган жок. Номерди текшерип, кайра киргизиңиз",
+    "text_currency_mismatch": "❌ Аккаунттун валютасы ({have}) кассанын валютасына ({need}) дал келбейт.\nБашка ID киргизиңиз — эсеп {need} валютасында болушу керек.",
+    "instruction_text": (
+        "📌 Чыгаруу боюнча көрсөтмө\n\n"
+        "1. Букмекердин кассасын ачып, «Эсептен чыгаруу» («Вывести со счёта») дегенди тандаңыз\n"
+        "2. Чыгаруу суммасын көрсөтүңүз\n"
+        "3. Шаар: {city}\n"
+        "4. Дарек: {address}\n"
+        "5. Операцияны ырастап, кодду алыңыз\n"
+        "6. Кодду бул жерге жөнөтүңүз\n\n"
+        "⛔️ Код бир жолку — жаңысын гана колдонуңуз."
+    ),
+    "withdraw_sla_text": "Чыгаруу адатта 5 мүнөттөн 24 саатка чейин созулат.",
+    "support_greeting": "Саламатсызбы! Бул PayGo колдоо кызматы. Суроону бир билдирүү менен жазыңыз — көпчүлүк суроолор автоматтык түрдө чечилет.",
+}
 # one emoji: flags, symbols/pictographs with skin tones, variation selectors and ZWJ sequences
 EMOJI_RE = re.compile(
     "(?:[\U0001F1E6-\U0001F1FF]{2}"
@@ -165,34 +214,51 @@ def strip_html(text: str) -> str:
     return html.unescape(TAG.sub("", str(text or "")))
 
 
-def common_values(db: Session) -> dict[str, Any]:
+def template(db: Session, key: str, lang: str = "ru", default: str = "") -> str:
+    """The template of a client text in the client's language.
+
+    Russian — the stored text, else the built-in default. Kyrgyz — the owner's override
+    ``<key>__kg`` when there is one, else the built-in Kyrgyz text (also when the owner
+    customised the Russian one: a Kyrgyz client never gets a Russian screen in between),
+    else the Russian text for a key without a translation."""
+    if lang == "kg":
+        custom = settings_store.get(db, key + settings_store.KG_SUFFIX)
+        if custom not in (None, ""):
+            return str(custom)
+        if key in KG_TEXTS:
+            return KG_TEXTS[key]
+    value = settings_store.get(db, key)
+    if value in (None, ""):
+        value = default or settings_store.DEFAULTS.get(key, "")
+    return str(value or "")
+
+
+def common_values(db: Session, lang: str = "ru") -> dict[str, Any]:
     return {
         "support": str(settings_store.get(db, "support_username") or ""),
         "brand": str(settings_store.get(db, "brand_name") or "PayGo"),
         "city": str(settings_store.get(db, "withdraw_city") or ""),
         "address": str(settings_store.get(db, "withdraw_address") or ""),
-        "sla": str(settings_store.get(db, "withdraw_sla_text") or ""),
+        "sla": template(db, "withdraw_sla_text", lang),
     }
 
 
-def render(db: Session, key: str, *, default: str = "", **values: Any) -> str:
-    template = settings_store.get(db, key)
-    if template in (None, ""):
-        template = default or settings_store.DEFAULTS.get(key, "")
-    merged = {**common_values(db), **values}
-    return render_template(str(template), premium=settings_store.get_bool(db, "premium_emoji_enabled"), **merged)
+def render(db: Session, key: str, *, default: str = "", lang: str = "ru", **values: Any) -> str:
+    merged = {**common_values(db, lang), **values}
+    return render_template(template(db, key, lang, default), premium=settings_store.get_bool(db, "premium_emoji_enabled"), **merged)
 
 
-def instruction(db: Session, cash: Any = None) -> str:
-    """Withdrawal instruction: the cash desk's own text or the global one, with city/address substituted."""
-    template = (getattr(cash, "instructions_text", "") or "").strip() or str(settings_store.get(db, "instruction_text") or "")
-    values = common_values(db)
+def instruction(db: Session, cash: Any = None, lang: str = "ru") -> str:
+    """Withdrawal instruction: the cash desk's own text (Russian clients) or the global one, with city/address substituted."""
+    own = (getattr(cash, "instructions_text", "") or "").strip() if lang == "ru" else ""
+    template_text = own or template(db, "instruction_text", lang)
+    values = common_values(db, lang)
     if cash is not None:
         values["city"] = (getattr(cash, "withdraw_city", "") or "").strip() or values["city"]
         values["address"] = (getattr(cash, "withdraw_address", "") or "").strip() or values["address"]
         values["cash"] = getattr(cash, "name", "")
         values["emoji"] = getattr(cash, "emoji", "")
-    return render_template(template, premium=settings_store.get_bool(db, "premium_emoji_enabled"), **values)
+    return render_template(template_text, premium=settings_store.get_bool(db, "premium_emoji_enabled"), **values)
 
 
 def label_key(text: str) -> str:
@@ -200,22 +266,23 @@ def label_key(text: str) -> str:
     return NON_LETTERS.sub("", str(text or "")).lower()
 
 
-def menu_labels(db: Session) -> dict[str, str]:
+def menu_labels(db: Session, lang: str = "ru") -> dict[str, str]:
     return {
-        "deposit": str(settings_store.get(db, "menu_deposit_label") or "📥 Пополнить"),
-        "withdraw": str(settings_store.get(db, "menu_withdraw_label") or "📤 Вывести"),
-        "help": str(settings_store.get(db, "menu_help_label") or "✉️ Помощь"),
+        "deposit": template(db, "menu_deposit_label", lang) or "📥 Пополнить",
+        "withdraw": template(db, "menu_withdraw_label", lang) or "📤 Вывести",
+        "help": template(db, "menu_help_label", lang) or "✉️ Помощь",
     }
 
 
 def match_menu(db: Session, text: str) -> str:
-    """Return the menu action for a reply-keyboard press (or a bare word like «пополнить»)."""
+    """Return the menu action for a reply-keyboard press in either language (or a bare word like «пополнить»)."""
     key = label_key(text)
     if not key:
         return ""
-    for action, label in menu_labels(db).items():
-        if key == label_key(label):
-            return action
+    for lang in LANGS:  # a client who just switched still has the old keyboard on screen
+        for action, label in menu_labels(db, lang).items():
+            if key == label_key(label):
+                return action
     aliases = {"deposit": {"пополнить", "пополнение", "deposit", "толуктоо"}, "withdraw": {"вывести", "вывод", "withdraw", "чыгаруу"}, "help": {"помощь", "поддержка", "оператор", "help", "жардам"}}
     for action, words in aliases.items():
         if key in words:

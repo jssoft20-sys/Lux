@@ -190,13 +190,23 @@ _CACHE: dict[str, Any] = {}
 _CACHE_AT = 0.0
 _CACHE_TTL = 3.0
 _LOCK = threading.Lock()
+# «<text key>__kg» — the owner's own Kyrgyz version of a bot text (the built-in translation is
+# ``bot_texts.KG_TEXTS``); it is stored without a DEFAULTS entry so the settings page stays short
+KG_SUFFIX = "__kg"
+
+
+def is_known_key(key: str) -> bool:
+    """A stored key: a default, an operator value ``custom_*`` or a Kyrgyz override of a text key."""
+    if key in DEFAULTS or key.startswith("custom_"):
+        return True
+    return key.endswith(KG_SUFFIX) and isinstance(DEFAULTS.get(key[: -len(KG_SUFFIX)]), str)
 
 
 def _load(db: Session) -> dict[str, Any]:
     rows = db.execute(select(SystemSetting)).scalars().all()
     data = dict(DEFAULTS)
     for row in rows:
-        if row.key in DEFAULTS or row.key.startswith("custom_"):
+        if is_known_key(row.key):
             data[row.key] = row.value
     return data
 
@@ -246,10 +256,12 @@ def set_many(db: Session, values: dict[str, Any], actor: str = "") -> dict[str, 
     global _CACHE_AT
     changed: dict[str, Any] = {}
     for key, value in values.items():
-        if key not in DEFAULTS and not key.startswith("custom_"):
+        if not is_known_key(key):
             continue
         default = DEFAULTS.get(key)
-        if isinstance(default, bool):
+        if key.endswith(KG_SUFFIX):
+            value = str(value if value is not None else "")
+        elif isinstance(default, bool):
             value = bool(value) if not isinstance(value, str) else value.lower() in {"1", "true", "yes", "on"}
         elif isinstance(default, int) and not isinstance(default, bool):
             value = int(float(value))
@@ -278,14 +290,15 @@ def invalidate() -> None:
 
 
 def reset_keys(db: Session, keys: list[str]) -> list[str]:
-    """Drop stored overrides so the built-in defaults apply again."""
+    """Drop stored overrides so the built-in defaults apply again (a text's Kyrgyz override goes with it)."""
     global _CACHE_AT
     removed: list[str] = []
     for key in keys:
-        row = db.get(SystemSetting, key)
-        if row is not None:
-            db.delete(row)
-            removed.append(key)
+        for stored in (key, key + KG_SUFFIX) if not key.endswith(KG_SUFFIX) else (key,):
+            row = db.get(SystemSetting, stored)
+            if row is not None:
+                db.delete(row)
+                removed.append(stored)
     db.flush()
     with _LOCK:
         _CACHE_AT = 0.0

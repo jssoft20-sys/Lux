@@ -519,6 +519,12 @@ def respond(
         conv.status = "operator"
         db.flush()
         return None
+    return _reply(db, user, conv, intent, text, media_kind, callback=callback)
+
+
+def _reply(db: Session, user: User, conv: SupportConversation, intent: Intent, text: str, media_kind: str, *, callback: str = "") -> Reply:
+    """The answer to an already stored client message: Claude when enabled (never for button taps),
+    otherwise the rules; escalates when the answer says so and records the bot's message."""
     reply = None
     if not callback:
         reply = _assistant_reply(db, user, conv, text, media_kind)
@@ -526,15 +532,47 @@ def respond(
         reply = _answer(db, user, conv, intent, text, media_kind)
     if reply.escalate:
         _escalate(db, user, conv, reply, text)
-    elif conv.status == "waiting_operator":
-        # already queued — do not spam the operator with duplicates, still answer from data
-        pass
+    # else, when already waiting for the operator: no duplicate hand-off, still answered from data
     conv.category = intent.category if intent.category != "faq" or conv.category == "faq" else conv.category
     add_message(db, conv, direction="out", sender="bot", text=reply.text, intent=intent if reply.source != "ai" else Intent("ai", ("ai/" + ",".join(reply.tools))[:20] if reply.tools else "ai", 1.0, intent.language))
-    if reply.resolved and conv.status == "auto":
-        pass
     db.flush()
     return reply
+
+
+def find_inbound(db: Session, user: User, *, telegram_message_id: int = 0, file_url: str = "") -> SupportMessage | None:
+    """The client's stored message: by its Telegram id in the support bot (unique per chat), else the
+    latest one carrying ``file_url``."""
+    if telegram_message_id:
+        row = db.execute(select(SupportMessage).where(SupportMessage.dedupe_key == f"tg:{user.telegram_id}:{int(telegram_message_id)}")).scalar_one_or_none()
+        if row is not None:
+            return row
+    if file_url:
+        return db.execute(
+            select(SupportMessage).join(SupportConversation, SupportConversation.id == SupportMessage.conversation_id).where(
+                SupportConversation.user_id == user.id, SupportMessage.direction == "in", SupportMessage.file_url == file_url
+            ).order_by(SupportMessage.id.desc())
+        ).scalars().first()
+    return None
+
+
+def answer_transcript(db: Session, user: User, msg: SupportMessage, text: str) -> Reply | None:
+    """A voice note came back from speech-to-text: keep the words on the stored note and answer them
+    exactly as a typed message — same classifier, same Claude/rules path, same hand-off to the operator.
+    No second inbound row is created. ``None`` when nothing must be sent (empty text, operator owns the dialog)."""
+    text = (text or "").strip()
+    conv = db.get(SupportConversation, msg.conversation_id)
+    if not text or conv is None:
+        return None
+    intent = classify(text)
+    msg.transcript = text
+    msg.intent = f"{intent.category}/{intent.name}"[:32]
+    msg.confidence = intent.confidence
+    db.flush()
+    if user.support_blocked or conv.status == "operator":
+        return None
+    if conv.status in CLOSED_STATUSES:  # closed by the operator while the note was being transcribed
+        reopen(conv, "auto", category=intent.category)
+    return _reply(db, user, conv, intent, text, "")
 
 
 def _assistant_reply(db: Session, user: User, conv: SupportConversation, text: str, media_kind: str) -> Reply | None:
@@ -885,6 +923,7 @@ def public_conversation(conv: SupportConversation, *, with_context: bool = False
         "user_id": conv.user_id,
         "telegram_id": user.telegram_id if user else 0,
         "user_name": display_name(user) if user else "",
+        "user_avatar": (user.avatar_url or "") if user else "",
         "username": user.username if user else "",
         "unread_count": conv.unread_count,
         "assigned_admin_id": conv.assigned_admin_id,
@@ -913,6 +952,7 @@ def public_message(msg: SupportMessage, reply: SupportMessage | None = None) -> 
         "text": "" if msg.deleted_at else msg.text,
         "file_url": "" if msg.deleted_at else msg.file_url,
         "file_name": msg.file_name,
+        "transcript": "" if msg.deleted_at else (msg.transcript or ""),
         "via": msg.via,
         "telegram_message_id": int(msg.telegram_message_id or 0),
         "reply_to_id": msg.reply_to_id,
