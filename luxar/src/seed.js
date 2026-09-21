@@ -1,0 +1,34 @@
+import { store } from './store.js';
+import { uuid } from './utils/ids.js';
+
+/* Стартовый автопарк по прайсу Luxar (City / Business / Executive). Фото и описания заменяются в админке. */
+const D = { d3: 5, d7: 10, d30: 20 };
+const CARS = [
+  // ---- City class ----
+  { slug: 'toyota-camry-70', name: 'Toyota Camry 70', brand: 'Toyota', model: 'Camry XV70', class: 'city', year: 2020, engine: '2.5', power: 181, transmission: 'automatic', fuel: 'petrol', drive: 'front', seats: 5, color: 'Чёрный', pricePerDay: 105, deposit: 200, description: 'Надёжный седан для города и поездок по стране.', features: ['Климат-контроль', 'Камера заднего вида', 'Apple CarPlay', 'Подогрев сидений'], photos: ['/seed/toyota-camry-70.jpg'], rating: 4.9, reviewsCount: 41 },
+  { slug: 'lexus-es', name: 'Lexus ES', brand: 'Lexus', model: 'ES 250', class: 'city', year: 2021, engine: '2.5', power: 207, transmission: 'automatic', fuel: 'petrol', drive: 'front', seats: 5, color: 'Чёрный', pricePerDay: 160, deposit: 300, description: 'Тихий и мягкий седан для комфортных поездок.', features: ['Кожаный салон', 'Mark Levinson', 'Вентиляция сидений', 'Камера 360°'], photos: ['/seed/lexus-es.jpg'], rating: 4.9, reviewsCount: 18 },
+  { slug: 'mercedes-e-class', name: 'Mercedes E-Class', brand: 'Mercedes-Benz', model: 'E-Class W213', class: 'city', year: 2021, engine: '2.0', power: 197, transmission: 'automatic', fuel: 'petrol', drive: 'rear', seats: 5, color: 'Чёрный', pricePerDay: 180, deposit: 400, description: 'Элегантный автомобиль для вечера, встречи и трассы.', features: ['Кожаный салон', 'Панорамная крыша', 'Burmester', 'Ассистент парковки'], photos: ['/seed/mercedes-e-class.jpg'], rating: 4.8, reviewsCount: 27 },
+  { slug: 'bmw-g30', name: 'BMW G30', brand: 'BMW', model: '5 серии G30', class: 'city', year: 2020, engine: '2.0', power: 252, transmission: 'automatic', fuel: 'petrol', drive: 'awd', seats: 5, color: 'Белый', pricePerDay: 180, deposit: 400, description: 'Динамичный седан для тех, кто любит уверенную езду.', features: ['xDrive', 'M-пакет', 'Harman Kardon', 'Проекция на лобовое стекло'], photos: ['/seed/bmw-g30.jpg'], rating: 4.9, reviewsCount: 33 },
+  // ---- Business class ----
+  { slug: 'toyota-camry-80', name: 'Toyota Camry 80', brand: 'Toyota', model: 'Camry XV80', class: 'business', year: 2024, engine: '2.5', power: 209, transmission: 'automatic', fuel: 'hybrid', drive: 'front', seats: 5, color: 'Чёрный', pricePerDay: 180, deposit: 400, description: 'Новое поколение Camry: тише, экономичнее, современнее.', features: ['Гибрид', 'Панорамная крыша', 'JBL', 'Беспроводная зарядка'], photos: ['/seed/toyota-camry-80.jpg'], rating: 5, reviewsCount: 11 },
+  { slug: 'bmw-g11', name: 'BMW G11', brand: 'BMW', model: '7 серии G11', class: 'business', year: 2019, engine: '3.0', power: 340, transmission: 'automatic', fuel: 'petrol', drive: 'awd', seats: 5, color: 'Чёрный', pricePerDay: 200, deposit: 500, description: 'Представительский седан с простором на заднем ряду.', features: ['Задний диван с подогревом', 'Пневмоподвеска', 'Bowers & Wilkins', 'Массаж сидений'], photos: ['/seed/bmw-g11.jpg'], rating: 4.9, reviewsCount: 22 },
+  { slug: 'lexus-gx', name: 'Lexus GX', brand: 'Lexus', model: 'GX 460', class: 'business', year: 2021, engine: '4.6', power: 296, transmission: 'automatic', fuel: 'petrol', drive: 'awd', seats: 7, color: 'Чёрный', pricePerDay: 210, deposit: 500, description: 'Рамный внедорожник для гор и дальних маршрутов.', features: ['7 мест', 'Полный привод', 'Кожаный салон', 'Камера 360°'], photos: ['/seed/lexus-gx.jpg'], rating: 5, reviewsCount: 15 },
+  { slug: 'bmw-x5', name: 'BMW X5', brand: 'BMW', model: 'X5 G05', class: 'business', year: 2022, engine: '3.0', power: 340, transmission: 'automatic', fuel: 'petrol', drive: 'awd', seats: 5, color: 'Белый', pricePerDay: 240, deposit: 600, description: 'Премиальный SUV для города, гор и поездок с семьёй.', features: ['Пневмоподвеска', 'Панорамная крыша', 'Массаж сидений', 'Камеры 360°'], photos: ['/seed/bmw-x5.jpg'], rating: 5, reviewsCount: 19 },
+  { slug: 'lixiang-l8', name: 'Lixiang L8', brand: 'Li Auto', model: 'L8', class: 'business', year: 2024, engine: '1.5 гибрид', power: 449, transmission: 'automatic', fuel: 'hybrid', drive: 'awd', seats: 6, color: 'Чёрный', pricePerDay: 250, deposit: 600, description: 'Шесть отдельных кресел, экраны и тишина электромобиля.', features: ['6 мест', 'Холодильник', 'Экраны для пассажиров', 'Массаж сидений'], photos: ['/seed/lixiang-l8.jpg'], rating: 5, reviewsCount: 8 },
+  // ---- Executive class ----
+  { slug: 'mercedes-s-class', name: 'Mercedes S-Class', brand: 'Mercedes-Benz', model: 'S-Class W223', class: 'executive', year: 2022, engine: '3.0', power: 435, transmission: 'automatic', fuel: 'petrol', drive: 'awd', seats: 5, color: 'Чёрный', pricePerDay: 260, deposit: 1000, description: 'Максимальный комфорт для важных встреч и VIP-поездок.', features: ['Задние сиденья с массажем', 'Burmester 4D', 'Шумоизоляция', 'Холодильник'], photos: ['/seed/mercedes-s-class.jpg'], rating: 5, reviewsCount: 12 },
+  { slug: 'bmw-x7', name: 'BMW X7', brand: 'BMW', model: 'X7 G07', class: 'executive', year: 2022, engine: '3.0', power: 381, transmission: 'automatic', fuel: 'petrol', drive: 'awd', seats: 7, color: 'Белый', pricePerDay: 270, deposit: 1000, description: 'Семь мест, простор и тишина. Для семьи и делегаций.', features: ['7 мест', 'Пневмоподвеска', 'Bowers & Wilkins', 'Панорамная крыша'], photos: ['/seed/bmw-x7.jpg'], rating: 5, reviewsCount: 9 },
+  { slug: 'land-cruiser', name: 'Land Cruiser', brand: 'Toyota', model: 'Land Cruiser 300', class: 'executive', year: 2023, engine: '3.5', power: 415, transmission: 'automatic', fuel: 'petrol', drive: 'awd', seats: 7, color: 'Чёрный', pricePerDay: 290, deposit: 1000, description: 'Легенда для гор, трассы и любой погоды.', features: ['7 мест', 'Полный привод', 'Кожаный салон', 'JBL'], photos: ['/seed/land-cruiser.jpg'], rating: 5, reviewsCount: 14 },
+  { slug: 'lexus-lx-600', name: 'Lexus LX 600', brand: 'Lexus', model: 'LX 600', class: 'executive', year: 2023, engine: '3.5', power: 415, transmission: 'automatic', fuel: 'petrol', drive: 'awd', seats: 7, color: 'Чёрный', pricePerDay: 350, deposit: 1500, description: 'Флагманский внедорожник. Статус в каждой детали.', features: ['7 мест', 'Mark Levinson', 'Массаж сидений', 'Пневмоподвеска'], photos: ['/seed/lexus-lx-600.jpg'], rating: 5, reviewsCount: 7 },
+];
+
+export function seedIfEmpty() {
+  if (store.list('cars').length > 0) return false;
+  const now = new Date().toISOString();
+  CARS.forEach((c, i) => {
+    store.insert('cars', { id: uuid(), status: 'active', minDays: 1, plate: '', discounts: { ...D }, order: i + 1, createdAt: now, updatedAt: now, ...c });
+  });
+  store.log('seed', 'Добавлен стартовый автопарк');
+  store.flush();
+  return true;
+}

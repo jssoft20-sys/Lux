@@ -1,0 +1,15 @@
+[Unit]
+Description=Luxar Autorent
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/luxar
+ExecStart=/usr/bin/env node server.js
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+EnvironmentFile=-/home/luxar/.env
+
+[Install]
+WantedBy=multi-user.target

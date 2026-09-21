@@ -1,0 +1,25 @@
+{
+  "name": "luxar-autorent",
+  "version": "1.0.0",
+  "description": "Luxar Autorent — платформа аренды автомобилей с оплатой ELQR (Optima Bank) и USDT",
+  "private": true,
+  "type": "module",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "reset-admin": "node scripts/reset-admin.js"
+  },
+  "dependencies": {
+    "compression": "^1.7.5",
+    "express": "^4.21.2",
+    "imapflow": "^1.0.190",
+    "mailparser": "^3.7.3",
+    "multer": "^2.0.1",
+    "nodemailer": "^7.0.6",
+    "qrcode": "^1.5.4"
+  }
+}

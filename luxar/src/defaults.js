@@ -1,0 +1,128 @@
+/* Настройки по умолчанию. Всё редактируется в админке → Настройки. */
+
+export const MAIL_PRESETS = {
+  gmail: { label: 'Gmail', imapHost: 'imap.gmail.com', imapPort: 993, smtpHost: 'smtp.gmail.com', smtpPort: 465, hint: 'Включите двухэтапную проверку и создайте «Пароль приложения» (Google Аккаунт → Безопасность → Пароли приложений).' },
+  yandex: { label: 'Яндекс', imapHost: 'imap.yandex.ru', imapPort: 993, smtpHost: 'smtp.yandex.ru', smtpPort: 465, hint: 'В настройках Яндекс Почты включите IMAP и создайте «Пароль приложения» (ID Яндекса → Безопасность).' },
+  timeweb: { label: 'Timeweb', imapHost: 'imap.timeweb.ru', imapPort: 993, smtpHost: 'smtp.timeweb.ru', smtpPort: 465, hint: 'Используйте почтовый ящик, созданный в панели Timeweb, и его обычный пароль.' },
+  mailru: { label: 'Mail.ru', imapHost: 'imap.mail.ru', imapPort: 993, smtpHost: 'smtp.mail.ru', smtpPort: 465, hint: 'Создайте «Пароль для внешних приложений» в настройках Mail.ru.' },
+  custom: { label: 'Другой сервер', imapHost: '', imapPort: 993, smtpHost: '', smtpPort: 465, hint: 'Укажите адреса IMAP и SMTP серверов вашего провайдера.' },
+};
+
+export const USDT_NETWORKS = [
+  { id: 'TRC20', label: 'TRC20 · Tron', note: 'Самая популярная сеть, низкая комиссия' },
+  { id: 'BEP20', label: 'BEP20 · BNB Smart Chain', note: 'Низкая комиссия' },
+  { id: 'ERC20', label: 'ERC20 · Ethereum', note: 'Высокая комиссия сети' },
+  { id: 'TON', label: 'TON', note: 'Быстро и дёшево' },
+  { id: 'POLYGON', label: 'Polygon', note: '' },
+  { id: 'SOL', label: 'Solana', note: '' },
+  { id: 'ARBITRUM', label: 'Arbitrum One', note: '' },
+  { id: 'APTOS', label: 'Aptos', note: '' },
+];
+
+export function defaultSettings() {
+  return {
+    company: {
+      name: 'Luxar Autorent',
+      phone: '+996 555 000 000',
+      whatsapp: '996555000000',
+      address: 'Бишкек',
+      hours: 'Ежедневно 09:00–21:00',
+      instagram: 'luxar_autorent',
+      telegram: '',
+    },
+    site: {
+      baseUrl: '',
+      timezone: 'Asia/Bishkek',
+      currencySymbol: '$',
+      workStart: '09:00',
+      workEnd: '21:00',
+      timeStepMinutes: 30,
+      minDays: 1,
+      maxDays: 60,
+      holdMinutes: 30,
+      deliveryEnabled: true,
+      deliveryFeeUsd: 10,
+      extendEnabled: true,
+      conditions: [
+        'Возраст от 21 года, стаж от 2 лет',
+        'Паспорт и водительское удостоверение',
+        'Автомобиль выдаётся с полным баком',
+        'Лимит 300 км в сутки',
+      ],
+    },
+    rates: {
+      kgsPerUsd: 87.5,
+      usdtPerUsd: 1.0,
+      updatedAt: null,
+    },
+    optima: {
+      enabled: false,
+      baseUrl: 'https://api.optimabusiness.kg',
+      legalPartyId: '',
+      apiKey: '',
+      account: '',
+      salePointCode: null,
+      cashCode: null,
+      salePointName: '',
+      salePoints: [],
+      qrGenerateType: 'DEEP_LINKS_BY_SALE_POINT',
+      qrSize: 300,
+      qrTtlMinutes: 20,
+      payerClientType: '',
+      callbackLogin: '',
+      callbackPassword: '',
+      lastCheck: null,
+    },
+    crypto: {
+      enabled: true,
+      networks: USDT_NETWORKS.map((n) => ({ id: n.id, label: n.label, address: '', memo: '', enabled: false })),
+      binancePayId: '',
+      uniqueCents: true,
+      paymentWindowMinutes: 60,
+      autoConfirmByEmail: true,
+      instructions: 'Отправьте точную сумму на адрес в выбранной сети. После поступления средств бронирование подтвердится автоматически.',
+    },
+    mail: {
+      enabled: false,
+      preset: 'gmail',
+      email: '',
+      password: '',
+      imapHost: 'imap.gmail.com',
+      imapPort: 993,
+      imapSecure: true,
+      smtpHost: 'smtp.gmail.com',
+      smtpPort: 465,
+      smtpSecure: true,
+      fromName: 'Luxar Autorent',
+      adminEmail: '',
+      pollSeconds: 60,
+      senderFilter: 'binance',
+      folder: 'INBOX',
+      lastUid: 0,
+      lastCheck: null,
+      lastPollAt: null,
+    },
+    whatsapp: {
+      enabled: false,
+      profileId: '',
+      token: '',
+      adminPhone: '',
+      reminderHours: 3,
+      notifyAdmin: true,
+      notifyClient: true,
+      lastCheck: null,
+      templates: {
+        bookingConfirmed: 'Luxar Autorent: бронирование {code} подтверждено.\n{car}\nС {start} по {end}\n{pickup}\nСумма: {total}\n\nВаша страница брони: {link}',
+        reminder: 'Luxar Autorent: аренда {car} заканчивается {end}.\nПродлить можно по ссылке: {link}\n\nЕсли планируете вернуть автомобиль — просто приезжайте к {endTime}.',
+        extensionConfirmed: 'Luxar Autorent: продление на {days} дн. подтверждено.\n{car} теперь до {end}.\nСтраница брони: {link}',
+        adminNewBooking: 'Новая бронь {code}\n{car}\n{name}, {phone}\n{start} — {end}\n{pickup}\nОплата: {method} {total}',
+        adminExtension: 'Продление {code}\n{car}\n{name}, {phone}\n+{days} дн. → до {end}\nОплата: {method} {total}',
+        adminPaymentCheck: 'Клиент {name} ({phone}) сообщил об оплате USDT {amount} по брони {code}.\nПроверьте поступление и подтвердите в админке: {adminLink}',
+        adminEndingSoon: 'Через {hours} ч заканчивается аренда {car}\n{code}, {name}, {phone}\nДо {end}',
+      },
+    },
+  };
+}
+
+/* Список полей настроек, которые нельзя отдавать на публичный сайт */
+export const SECRET_SETTING_PATHS = ['optima.apiKey', 'optima.callbackPassword', 'mail.password', 'whatsapp.token'];
