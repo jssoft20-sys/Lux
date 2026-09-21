@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_INLINE_COMMENT = re.compile(r"\s+#.*$")
 
 DEFAULT_SYMBOLS = (
     "BTCUSDT,ETHUSDT,BNBUSDT,ADAUSDT,AVAXUSDT,AAVEUSDT,BCHUSDT,ALGOUSDT,AXSUSDT,"
@@ -75,6 +78,19 @@ class Settings(BaseSettings):
     dashboard_user: str = "lux"
     db_path: str = "data/lux.db"
     log_level: str = "INFO"
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _strip_inline_comment(cls, v: object) -> object:
+        """Tolerate ``KEY=value   # comment`` lines from .env files and docker env_file."""
+        if isinstance(v, str):
+            v = v.strip()
+            if v.startswith("#"):
+                return ""
+            v = _INLINE_COMMENT.sub("", v).strip()
+            if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+                v = v[1:-1]
+        return v
 
     @field_validator("trading_mode")
     @classmethod

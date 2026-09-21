@@ -62,6 +62,7 @@ def build_snapshot(ctx: AppContext) -> dict[str, Any]:
             "in_book": len(ctx.book.items),
         },
         "llm": ctx.llm.status() if ctx.llm else {"enabled": False, "model": ctx.cfg.llm_model},
+        "account": {k: v for k, v in ctx.account_info.items() if k in ("mode", "quote_free", "real_quote_free", "real_checked_ts", "real_error", "tradable", "blocked")},
         "positions": eng.portfolio.snapshot(bids),
         "signals": signals,
         "warnings": ctx.warnings,

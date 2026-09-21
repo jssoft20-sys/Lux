@@ -63,7 +63,11 @@
     money("t-unrealized", fmtSigned(st.unrealized), cls(st.unrealized));
     setText("t-unrealized-sub", `${st.open_positions} откр. позиций · в рынке ${fmtMoney(st.exposure)} ${q}`);
     money("t-free", fmtMoney(st.quote_balance));
-    setText("t-free-sub", st.mode === "paper" ? "виртуальный баланс" : "свободно на счёте Binance");
+    const acc = snap.account || {};
+    if (st.mode !== "paper") setText("t-free-sub", "свободно на счёте Binance");
+    else if (acc.real_quote_free !== undefined && acc.real_quote_free !== null) setText("t-free-sub", `виртуальный баланс · на счёте Binance ${fmtMoney(acc.real_quote_free)} ${q}`);
+    else if (acc.real_error) { setText("t-free-sub", "виртуальный баланс · ключ Binance: ошибка"); $("t-free-sub").title = acc.real_error; }
+    else setText("t-free-sub", "виртуальный баланс");
     if (state.tradeStats) {
       const t = state.tradeStats.today, a = state.tradeStats.all;
       setText("t-trades-today", String(t.closed));

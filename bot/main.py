@@ -122,6 +122,9 @@ async def build_context(cfg: Settings) -> AppContext:
     else:
         broker = PaperBroker(stream.states, {s: rules[s] for s in symbols}, cfg.quote_asset, cfg.paper_start_balance, cfg.fee_rate, cfg.paper_slippage_bps)
         account_info = {"mode": "paper", "start_balance": cfg.paper_start_balance}
+        if cfg.binance_api_key and cfg.binance_api_secret:
+            # read-only: lets the dashboard prove the key works before anyone switches to live
+            await refresh_real_account(cfg, rest, account_info, warnings, first=True)
 
     risk = RiskManager(cfg)
     engine = TradingEngine(cfg, broker, stream.states, {s: rules[s] for s in symbols}, book, db, risk, bus)
@@ -130,6 +133,40 @@ async def build_context(cfg: Settings) -> AppContext:
             if s in account_info.get("blocked", {}):
                 risk.blocked[s] = (float("inf"), account_info["blocked"][s])
     return AppContext(cfg=cfg, db=db, bus=bus, rest=rest, rules=rules, stream=stream, book=book, collector=collector, broker=broker, engine=engine, llm=llm, account_info=account_info, warnings=warnings)
+
+
+async def refresh_real_account(cfg: Settings, rest: BinanceREST, info: dict[str, Any], warnings: list[str], first: bool = False) -> None:
+    """Paper mode with a key configured: read the real balances (no orders) for the dashboard."""
+    try:
+        if first:
+            await rest.sync_time()
+        bal = await rest.balances()
+        info["real_balances"] = {a: f for a, (f, _l) in bal.items() if f > 0}
+        info["real_quote_free"] = bal.get(cfg.quote_asset, (0.0, 0.0))[0]
+        info["real_checked_ts"] = time.time()
+        info["real_error"] = ""
+        if first:
+            log.info("Binance key OK (read-only check): %.4f %s free on the real account", info["real_quote_free"], cfg.quote_asset)
+    except BinanceError as e:
+        info["real_error"] = e.msg
+        if first:
+            warnings.append(f"Ключ Binance задан, но аккаунт прочитать не удалось: {e.msg}")
+
+
+async def account_watch(ctx: AppContext) -> None:
+    """Keeps the real-account figures in the dashboard fresh (every 2 minutes)."""
+    while True:
+        await asyncio.sleep(120)
+        try:
+            if ctx.cfg.live:
+                ctx.account_info["balances"] = await ctx.broker.balances()
+                ctx.account_info["quote_free"] = ctx.account_info["balances"].get(ctx.cfg.quote_asset, 0.0)
+            else:
+                await refresh_real_account(ctx.cfg, ctx.rest, ctx.account_info, ctx.warnings)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            log.warning("account watch: %s", e)
 
 
 async def verify_live_account(cfg: Settings, rest: BinanceREST, symbols: list[str], rules: dict, warnings: list[str]) -> dict[str, Any]:
@@ -221,6 +258,8 @@ def create_application(cfg: Settings | None = None) -> FastAPI:
         if ctx.llm is not None:
             await ctx.llm.start()
         await ctx.engine.start()
+        if cfg.binance_api_key and cfg.binance_api_secret:
+            tasks.append(asyncio.create_task(account_watch(ctx), name="account-watch"))
         for w in ctx.warnings:
             ctx.bus.log(w, level="warn")
         ctx.bus.log(f"Lux {__version__} готов: http://{cfg.host}:{cfg.port}  режим={cfg.trading_mode.upper()}  пар={len(ctx.engine.symbols)}  источников новостей={len(ctx.collector.sources)}  ИИ={'вкл' if ctx.llm else 'выкл'}")
