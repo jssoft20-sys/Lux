@@ -74,8 +74,12 @@ async def build_context(cfg: Settings) -> AppContext:
     extractor = EntityExtractor(set(bases) | {"BTC", "ETH"})
     book = SentimentBook(symbols, base_of, cfg.news_half_life_minutes)
     # rebuild the news memory from the database so a restart does not blank the signal
+    from .news.collector import JUNK_TERMS
+
     restored = 0
     for r in db.news_since(time.time() - book.max_age):
+        if any(j in r["title"].lower() for j in JUNK_TERMS):
+            continue  # junk collected before the filter existed
         book.add(NewsItem(
             id=r["id"], ts=float(r["ts"]), fetched=float(r["ts"]), source=r["source"], title=r["title"], summary=r.get("summary") or "",
             url=r.get("url") or "", tickers=r["tickers"], market_wide=bool(r.get("market_wide")), score=float(r.get("score") or 0.0),
