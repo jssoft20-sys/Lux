@@ -47,7 +47,7 @@ DEFAULTS: dict[str, Any] = {
     "text_enter_id_withdraw": "Введите ваш ID для вывода",
     "text_enter_code": "Введите код для вывода",
     "text_bad_withdraw": "💬 Введены неверные данные для вывода",
-    "text_withdraw_accepted": "✅ Заявка на вывод принята\n💸 {amount} {cur}\n🆔 {player}\n\n{sla}",
+    "text_withdraw_accepted": "✅ Заявка на вывод принята\n💸 {amount} {cur}\n🆔 {player}\n{queue}\n{sla}",
     "text_withdraw_problem": "⚠️ Код принят кассой, но сумма не получена. Заявка передана оператору — повторно код отправлять не нужно.\n🆔 {player}",
     "text_withdraw_processing": "⏳ Ваш вывод {amount} {cur} взят в обработку оператором.",
     "text_withdraw_done": "✅ Вывод выполнен\n💸 {amount} {cur}\n🆔 {player}\n\nДеньги отправлены на ваш кошелёк.",

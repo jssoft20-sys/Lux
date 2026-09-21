@@ -72,3 +72,18 @@ def test_currency_check():
     assert not currency_matches(C(), "USD")
     C.accepted_currency_ids = ""
     assert currency_matches(C(), "USD")
+
+
+def test_queue_position(user, fake_provider):
+    r1 = withdrawals.create_withdrawal(user_id=user, cash_id=_cash_id(), player_id="123456", code="Q1CODE", idempotency_key="q1")
+    r2 = withdrawals.create_withdrawal(user_id=user, cash_id=_cash_id(), player_id="123456", code="Q2CODE", idempotency_key="q2")
+    with transaction() as db:
+        w1 = db.get(Withdrawal, r1["withdrawal"]["id"])
+        w2 = db.get(Withdrawal, r2["withdrawal"]["id"])
+        assert withdrawals.queue_position(db, w1) == 1
+        assert withdrawals.queue_position(db, w2) == 2
+        assert withdrawals.queue_size(db) == 2
+        # a finished one is no longer in the queue
+        withdrawals.complete(db, w1, None)
+        assert withdrawals.queue_position(db, w1) == 0
+        assert withdrawals.queue_position(db, w2) == 1

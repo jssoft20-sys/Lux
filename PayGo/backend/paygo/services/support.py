@@ -31,6 +31,7 @@ from .logs import log_event
 from .notifications import admin_event, notify_user
 from .users import display_name, last_qr, user_summary
 from .withdrawals import STATUS_LABELS as WITHDRAWAL_LABELS
+from .withdrawals import queue_position, queue_size
 
 CATEGORIES = ("deposit", "withdrawal", "payment", "verification", "account", "qr", "currency", "technical", "faq", "operator")
 
@@ -92,6 +93,55 @@ def detect_language(text: str) -> str:
     return "kg" if _KG_MARKERS.search(text or "") else "ru"
 
 
+# canonical keyword -> (category, intent); used for typo-tolerant matching ("выод", "пополннение")
+_KEYWORDS: dict[str, tuple[str, str]] = {
+    "вывод": ("withdrawal", "withdrawal_status"), "вывести": ("withdrawal", "withdrawal_howto"),
+    "выплата": ("withdrawal", "withdrawal_delay"), "снять": ("withdrawal", "withdrawal_howto"),
+    "чыгаруу": ("withdrawal", "withdrawal_status"), "код": ("withdrawal", "withdrawal_code"),
+    "пополнить": ("deposit", "deposit_howto"), "пополнение": ("deposit", "deposit_status"),
+    "депозит": ("deposit", "deposit_status"), "оплатил": ("deposit", "deposit_delay"),
+    "толуктоо": ("deposit", "deposit_status"), "закинуть": ("deposit", "deposit_howto"),
+    "чек": ("payment", "receipt"), "квитанция": ("payment", "receipt"), "скриншот": ("payment", "receipt"),
+    "куар": ("qr", "qr_howto"), "оператор": ("operator", "operator"), "человек": ("operator", "operator"),
+    "менеджер": ("operator", "operator"), "адам": ("operator", "operator"),
+    "мошенник": ("operator", "complaint"), "обман": ("operator", "complaint"), "жалоба": ("operator", "complaint"),
+    "комиссия": ("faq", "commission"), "процент": ("faq", "commission"),
+    "лимит": ("faq", "limits"), "минимум": ("faq", "limits"), "максимум": ("faq", "limits"),
+    "реферал": ("faq", "referral"), "бонус": ("faq", "referral"), "пригласить": ("faq", "referral"),
+    "график": ("faq", "schedule"), "работаете": ("faq", "schedule"),
+    "заблокировали": ("account", "blocked"), "блокировка": ("account", "blocked"),
+    "айди": ("account", "id_problem"), "аккаунт": ("account", "profile"),
+    "привет": ("faq", "greeting"), "салам": ("faq", "greeting"), "здравствуйте": ("faq", "greeting"),
+    "спасибо": ("faq", "thanks"), "рахмат": ("faq", "thanks"), "инструкция": ("faq", "instructions"),
+}
+_VOCAB = list(_KEYWORDS)
+
+
+def _fuzz_normalize(text: str) -> str:
+    # collapse 3+ repeats («выыывод» → «выывод») and drop punctuation so typos still tokenize
+    return re.sub(r"(.)\1{2,}", r"\1\1", re.sub(r"[^\w ]+", " ", (text or "").lower()))
+
+
+def fuzzy_classify(text: str) -> Intent | None:
+    """Typo-tolerant fallback: match each word against the keyword vocabulary (like «did you mean»)."""
+    import difflib
+
+    tokens = [t for t in _fuzz_normalize(text).split() if len(t) >= 3]
+    if not tokens:
+        return None
+    votes: dict[tuple[str, str], float] = {}
+    for token in tokens[:40]:
+        near = difflib.get_close_matches(token, _VOCAB, n=1, cutoff=0.78)
+        if near:
+            key = _KEYWORDS[near[0]]
+            ratio = difflib.SequenceMatcher(None, token, near[0]).ratio()
+            votes[key] = votes.get(key, 0.0) + ratio
+    if not votes:
+        return None
+    (category, name), score = max(votes.items(), key=lambda kv: kv[1])
+    return Intent(category, name, round(min(0.75, 0.45 + 0.15 * score), 3), detect_language(text), ["fuzzy"])
+
+
 def classify(text: str) -> Intent:
     clean = (text or "").strip().lower()
     language = detect_language(clean)
@@ -107,6 +157,11 @@ def classify(text: str) -> Intent:
             confidence -= 0.1
         if best is None or confidence > best.confidence:
             best = Intent(category, name, round(min(1.0, confidence), 3), language, [match.group(0)[:40]])
+    # typo-tolerant fallback when the regexes found nothing solid (misspelled «выод», «пополнне»)
+    if best is None or best.confidence < 0.6:
+        fuzzy = fuzzy_classify(clean)
+        if fuzzy is not None and (best is None or fuzzy.confidence > best.confidence):
+            best = fuzzy
     if best is None:
         return Intent("faq", "unknown", 0.2, language)
     return best
@@ -392,10 +447,12 @@ def withdrawal_status_text(db: Session, w: Withdrawal | None, lang: str = "ru") 
     head = f"Заявка {w.public_id} • {cash} • ID {w.player_id}\nСумма: {amount}\nСоздана: {fmt_local(w.created_at)}\n\n"
     if w.status == "created" and w.needs_attention:
         return head + "⚠️ Заявка требует проверки оператором (касса не вернула сумму). Оператор уведомлён, повторно отправлять код не нужно."
+    pos = queue_position(db, w)
+    queue_line = f"\n📊 Вы {pos}-й в очереди на вывод (в работе: {queue_size(db)})." if pos else ""
     if w.status == "created":
-        return head + f"⏳ Заявка создана и ожидает обработки. {sla} Точное время зависит от очереди — как только оператор выполнит перевод, придёт уведомление."
+        return head + f"⏳ Заявка создана и ожидает обработки.{queue_line} {sla} Как только оператор выполнит перевод, придёт уведомление."
     if w.status == "processing":
-        return head + f"⚙️ Заявка в обработке у оператора. {sla} Уведомление придёт сразу после перевода."
+        return head + f"⚙️ Заявка в обработке у оператора.{queue_line} {sla} Уведомление придёт сразу после перевода."
     if w.status == "success":
         return head + f"✅ Вывод выполнен {fmt_local(w.completed_at)}. Деньги отправлены на ваш банковский счёт (по QR из заявки). Если перевод не отображается в банке через 30 минут — сообщите, проверим."
     if w.status == "failed":

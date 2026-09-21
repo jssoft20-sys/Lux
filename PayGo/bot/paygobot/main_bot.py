@@ -1184,7 +1184,7 @@ class MainBot:
         if not result.get("ok"):
             self.ask_code(ctx, ctx.data, error=self.text("text_bad_withdraw"))
             return
-        ctx.receipt(str(result.get("message") or self.text("text_withdraw_accepted", player=ctx.data.get("player_id"), amount="", cur="")))
+        ctx.receipt(str(result.get("message") or self.text("text_withdraw_accepted", player=ctx.data.get("player_id"), amount="", cur="", queue="")))
 
     # ------------------------------------------------------------ outbox (messages created by the backend / worker)
     def _fetch_outbox(self) -> list[tuple[int, int, str, str, dict[str, Any], int]]:

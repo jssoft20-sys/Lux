@@ -165,7 +165,9 @@ def create_withdrawal(
             level="critical" if not result.ok else None,
         )
         if result.ok:
-            message = render_text(db, "text_withdraw_accepted", player=player_id, amount=money(row.amount), cur=row.currency, cash=cash_snapshot.name, emoji=cash_snapshot.emoji)
+            qpos = queue_position(db, row)
+            queue_line = f"📊 Вы {qpos}-й в очереди на вывод (в работе: {queue_size(db)})" if qpos else ""
+            message = render_text(db, "text_withdraw_accepted", player=player_id, amount=money(row.amount), cur=row.currency, cash=cash_snapshot.name, emoji=cash_snapshot.emoji, queue=queue_line)
         else:
             message = render_text(db, "text_withdraw_problem", player=player_id, cash=cash_snapshot.name, emoji=cash_snapshot.emoji)
         return {"ok": True, "withdrawal": public_withdrawal(row), "message": message, "problem": not result.ok}
@@ -348,6 +350,32 @@ STATUS_LABELS = {
     "failed": "Ошибка",
     "cancelled": "Отменён",
 }
+
+
+def queue_position(db: Session, w: Withdrawal) -> int:
+    """1-based place of this withdrawal in the live payout queue (open, oldest first).
+
+    0 means it is not queued (already done/cancelled or deferred)."""
+    from sqlalchemy import func
+
+    if w.status not in {"created", "processing"} or w.deferred:
+        return 0
+    ahead = db.execute(
+        select(func.count(Withdrawal.id)).where(
+            Withdrawal.status.in_(("created", "processing")),
+            Withdrawal.deferred.is_(False),
+            Withdrawal.id < w.id,
+        )
+    ).scalar() or 0
+    return int(ahead) + 1
+
+
+def queue_size(db: Session) -> int:
+    from sqlalchemy import func
+
+    return int(db.execute(
+        select(func.count(Withdrawal.id)).where(Withdrawal.status.in_(("created", "processing")), Withdrawal.deferred.is_(False))
+    ).scalar() or 0)
 
 
 def public_withdrawal(w: Withdrawal, *, full: bool = False) -> dict[str, Any]:

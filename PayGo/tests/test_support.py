@@ -119,3 +119,22 @@ def test_resolve_notice_goes_through_the_carrier_bot(user, fake_provider, admin)
         support.resolve_conversation(db, conv, admin["id"])
         note = db.query(Notification).filter_by(event="support_resolved").one()
         assert note.bot == "main" and note.data["rating_prompt"] is True
+
+
+def test_fuzzy_classify_handles_typos():
+    from paygo.services import support
+
+    # misspelled words still land on the right intent (like «did you mean»)
+    assert support.classify("хочу выод денег").category == "withdrawal"  # «выод» → вывод
+    assert support.classify("пополннение не пришло").category in ("deposit",)  # doubled letter
+    assert support.classify("акча чыгаруу").category == "withdrawal"  # kyrgyz
+    assert support.classify("оператор").category == "operator"  # exact regex still wins
+    # gibberish → not forced into a wrong intent
+    assert support.classify("asdqwe zzz").name in ("unknown", "empty")
+
+
+def test_classify_returns_tuple_like():
+    from paygo.services.support import Intent, classify
+
+    intent = classify("как вывести деньги")
+    assert isinstance(intent, Intent) and intent.category == "withdrawal"
