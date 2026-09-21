@@ -43,6 +43,24 @@ class Settings(BaseSettings):
     trailing_activation_pct: float = 0.5
     max_hold_minutes: int = 45
     min_hold_seconds: float = 90.0  # anti-churn: hold at least this long before a soft exit (SL/TP still fire)
+    # ---- strategy profile ----
+    # scalp  — news/momentum entries with fee-based targets (fast)
+    # smc    — only Smart-Money setups from the playbook: liquidity sweep → structure shift → POI in discount, RR ≥ smc_min_rr
+    # hybrid — both: SMC setups get structure-based stop/targets, everything else trades as a scalp
+    strategy: str = "hybrid"
+    w_smc: float = 0.30
+    smc_min_rr: float = 3.0
+    smc_sweep_lookback: int = 60  # 1-minute candles
+    smc_max_hold_minutes: int = 180
+    partial_tp_pct: float = 50.0  # share of the position sold at TP1 (rest runs to TP2 with stop at break-even)
+    risk_per_trade_pct: float = 1.0  # of equity, for SMC setups (position = risk / stop distance)
+    risk_reduced_pct: float = 0.5  # after a loss, on reduced-risk days, on new instruments
+    daily_drawdown_pct: float = 2.0  # stop trading for the day (0 = off; the USDT limit still applies)
+    weekly_drawdown_pct: float = 4.0  # stop trading for the week (0 = off)
+    stop_after_loss_in_session: bool = True  # playbook: a loss ends the session (SMC strategy only)
+    ott_windows: str = "04:00-09:30,11:45-14:45"  # optimal trading time, UTC (07:00-12:30 & 14:45-17:45 MSK)
+    ott_only: bool = False  # True = no entries outside the windows (the playbook's "no OTT = no trade")
+    reduced_risk_days: str = ""  # e.g. "mon,fri" — trade with risk_reduced_pct on those days
     # ---- scalp mode: targets derived from Binance fees instead of fixed percentages ----
     scalp_mode: bool = True
     fee_multiple: float = 2.5  # take-profit = round-trip commission × this (0.2 % × 2.5 = 0.5 %)
@@ -58,10 +76,10 @@ class Settings(BaseSettings):
     news_half_life_minutes: float = 20.0
     fee_rate: float = 0.001
     paper_slippage_bps: float = 2.0
-    w_news: float = 0.55
-    w_momentum: float = 0.25
-    w_orderbook: float = 0.10
-    w_flow: float = 0.10
+    w_news: float = 0.35
+    w_momentum: float = 0.20
+    w_orderbook: float = 0.075
+    w_flow: float = 0.075
     min_quote_reserve: float = 0.0
 
     # ---- News ----
@@ -109,6 +127,14 @@ class Settings(BaseSettings):
         v = (v or "paper").strip().lower()
         if v not in ("paper", "live"):
             raise ValueError("TRADING_MODE must be 'paper' or 'live'")
+        return v
+
+    @field_validator("strategy")
+    @classmethod
+    def _strategy(cls, v: str) -> str:
+        v = (v or "hybrid").strip().lower()
+        if v not in ("scalp", "smc", "hybrid"):
+            raise ValueError("STRATEGY must be 'scalp', 'smc' or 'hybrid'")
         return v
 
     @property

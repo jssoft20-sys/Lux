@@ -116,7 +116,9 @@ CONFIG_KEYS = (
     "trading_mode", "quote_asset", "position_size_usdt", "max_position_pct", "max_positions", "take_profit_pct",
     "stop_loss_pct", "trailing_stop_pct", "trailing_activation_pct", "max_hold_minutes", "min_hold_seconds", "buy_threshold", "exit_threshold", "min_news_score",
     "daily_loss_limit_usdt", "max_spread_bps", "decision_interval_ms", "news_half_life_minutes", "w_news", "w_momentum",
-    "w_orderbook", "w_flow", "llm_model", "openai_model", "news_poll_seconds", "scalp_mode", "fee_multiple", "scalp_max_hold_minutes", "fee_rate",
+    "w_orderbook", "w_flow", "w_smc", "llm_model", "openai_model", "news_poll_seconds", "scalp_mode", "fee_multiple", "scalp_max_hold_minutes", "fee_rate",
+    "strategy", "smc_min_rr", "smc_max_hold_minutes", "partial_tp_pct", "risk_per_trade_pct", "risk_reduced_pct", "daily_drawdown_pct", "weekly_drawdown_pct",
+    "stop_after_loss_in_session", "ott_windows", "ott_only",
 )
 
 

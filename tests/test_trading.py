@@ -60,9 +60,12 @@ def test_signal_combines_news_and_momentum():
     flat = compute_signal(_state(), {"score": 0.0, "count": 0, "strength": 0, "top": []}, 0.0, w)
     assert abs(flat.composite) < 0.05
     bullish = compute_signal(_state(trend_pct=0.6), {"score": 0.8, "count": 3, "strength": 1, "top": []}, 0.2, w)
-    assert bullish.composite > 0.5
+    assert bullish.composite > 0.4
     bearish = compute_signal(_state(trend_pct=-0.6), {"score": -0.8, "count": 3, "strength": 1, "top": []}, -0.2, w)
-    assert bearish.composite < -0.5
+    assert bearish.composite < -0.4
+    # a full SMC setup lifts the composite; structure data only counts when present
+    with_smc = compute_signal(_state(trend_pct=0.6), {"score": 0.8, "count": 3, "strength": 1, "top": []}, 0.2, w, {"score": 0.9, "setup": {"rr": 3}, "candles": 200})
+    assert with_smc.smc_setup and with_smc.composite > bullish.composite
 
 
 @pytest.mark.asyncio

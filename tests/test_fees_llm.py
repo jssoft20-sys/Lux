@@ -55,7 +55,7 @@ def _noisy_state(symbol="ADAUSDT", price=0.5, vol=0.0018, seed=7):
 
 @pytest.mark.asyncio
 async def test_scalp_targets_come_from_fees(tmp_path):
-    cfg = Settings(trading_mode="paper", symbols="ADAUSDT", position_size_usdt=10, paper_start_balance=50, buy_threshold=0.3, scalp_mode=True, fee_multiple=2.5, fee_rate=0.001, db_path=str(tmp_path / "t.db"), _env_file=None)
+    cfg = Settings(trading_mode="paper", symbols="ADAUSDT", position_size_usdt=10, paper_start_balance=50, buy_threshold=0.25, strategy="scalp", scalp_mode=True, fee_multiple=2.5, fee_rate=0.001, db_path=str(tmp_path / "t.db"), _env_file=None)
     r = rules()
     states = {"ADAUSDT": _noisy_state()}
     rm = RiskManager(cfg)

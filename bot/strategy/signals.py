@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from ..exchange.binance import MarketState
@@ -12,16 +12,17 @@ from ..exchange.binance import MarketState
 
 @dataclass
 class Weights:
-    news: float = 0.55
-    momentum: float = 0.25
-    orderbook: float = 0.10
-    flow: float = 0.10
+    news: float = 0.35
+    momentum: float = 0.20
+    orderbook: float = 0.075
+    flow: float = 0.075
+    smc: float = 0.30
 
     def normalised(self) -> "Weights":
-        tot = self.news + self.momentum + self.orderbook + self.flow
+        tot = self.news + self.momentum + self.orderbook + self.flow + self.smc
         if tot <= 0:
             return Weights()
-        return Weights(self.news / tot, self.momentum / tot, self.orderbook / tot, self.flow / tot)
+        return Weights(self.news / tot, self.momentum / tot, self.orderbook / tot, self.flow / tot, self.smc / tot)
 
 
 @dataclass
@@ -50,6 +51,9 @@ class SymbolSignal:
     composite: float
     data_age_ms: float
     top_news: list[dict[str, Any]]
+    smc_score: float = 0.0
+    smc_setup: bool = False
+    smc: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -59,7 +63,7 @@ class SymbolSignal:
         return d
 
 
-def compute_signal(state: MarketState, news: dict[str, Any], market_score: float, weights: Weights) -> SymbolSignal:
+def compute_signal(state: MarketState, news: dict[str, Any], market_score: float, weights: Weights, smc: dict[str, Any] | None = None) -> SymbolSignal:
     mom_1 = state.momentum_pct(60)
     mom_5 = state.momentum_pct(300)
     mom_15 = state.momentum_pct(900)
@@ -70,11 +74,13 @@ def compute_signal(state: MarketState, news: dict[str, Any], market_score: float
     liquidity = min(1.0, vol_5m / 5000.0)
     imbalance = state.imbalance() * liquidity
     flow = state.flow(60) * liquidity
-    w = weights.normalised()
+    # without structure data the SMC weight must not dilute the others
+    w = weights.normalised() if smc else Weights(weights.news, weights.momentum, weights.orderbook, weights.flow, 0.0).normalised()
     news_score = float(news.get("score", 0.0))
     # BTC-led market tone adds a small tilt so alts do not fight the tape
     tilt = 0.15 * market_score if news.get("count", 0) == 0 else 0.0
-    composite = w.news * (news_score + tilt) + w.momentum * momentum_score + w.orderbook * imbalance + w.flow * flow
+    smc_score = float(smc.get("score", 0.0)) if smc else 0.0
+    composite = w.news * (news_score + tilt) + w.momentum * momentum_score + w.orderbook * imbalance + w.flow * flow + w.smc * smc_score
     composite = max(-1.0, min(1.0, composite))
     return SymbolSignal(
         symbol=state.symbol,
@@ -101,4 +107,7 @@ def compute_signal(state: MarketState, news: dict[str, Any], market_score: float
         composite=composite,
         data_age_ms=state.age_ms,
         top_news=news.get("top", [])[:3],
+        smc_score=smc_score,
+        smc_setup=bool(smc and smc.get("setup")),
+        smc=smc or {},
     )

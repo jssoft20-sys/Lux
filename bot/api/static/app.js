@@ -141,7 +141,8 @@
     const l = snap.llm;
     if (!l.enabled) chips.appendChild(chip("ИИ выкл", "off", l.disabled_reason || ""));
     else chips.appendChild(chip(`ИИ ×${l.active || 1} · ${l.items}`, l.errors && !l.calls ? "warn" : "ok", l.model));
-    if (snap.config && snap.config.scalp_mode) chips.appendChild(chip(`Скальп ${sgn(snap.config.scalp_target_pct, 2)}%`, "", `цель = комиссия ${snap.config.fee_round_trip_pct}% × ${snap.config.fee_multiple}`));
+    if (snap.config && snap.config.strategy) chips.appendChild(chip({ scalp: "Скальп", smc: "SMC", hybrid: "Гибрид" }[snap.config.strategy] + (st.smc && st.smc.setups && st.smc.setups.length ? ` · ${st.smc.setups.length} сетап` : ""), st.smc && st.smc.enabled ? "ok" : "", `стратегия ${snap.config.strategy}`));
+    if (st.risk && st.risk.session) chips.appendChild(chip(st.risk.session.in_ott ? `OTT ${st.risk.session.window}` : "вне OTT", st.risk.session.in_ott ? "ok" : "", `окна UTC: ${(st.risk.session.windows || []).join(", ")}`));
     chips.appendChild(chip(`${dur(st.uptime_s)} · ${st.tick_ms} мс`, "", "аптайм · длительность тика"));
     const w = snap.warnings || []; const dot = $("sys-dot"); dot.className = "sysdot" + (w.length ? (st.halted ? " bad" : " warn") : "");
     const tb = $("tab-pos-n"); if (st.open_positions) { tb.hidden = false; tb.textContent = st.open_positions; } else tb.hidden = true;
@@ -183,16 +184,17 @@
   function posNode() { return el("div", { class: "row pos" }); }
   function posUpdate(node, p) {
     node.innerHTML = "";
+    const isSmc = p.extra && p.extra.strategy === "smc";
     const top = el("div", { class: "pos-top" },
-      el("div", {}, el("div", { class: "sym" }, pair(p.symbol), el("span", { class: "side buy" }, "LONG")), el("div", { class: "sub" }, p.entry_reason || "")),
+      el("div", {}, el("div", { class: "sym" }, pair(p.symbol), el("span", { class: "side buy" }, isSmc ? "SMC" : "LONG")), el("div", { class: "sub" }, p.entry_reason || "")),
       el("div", { class: "pos-pnl" }, el("div", { class: "big " + cls(p.pnl) }, sgn(p.pnl, 3) + " " + S.quote), el("div", { class: "sub " + cls(p.pnl_pct) }, pct(p.pnl_pct))));
     node.appendChild(top);
     node.appendChild(el("div", { class: "pos-grid" },
       el("div", {}, "Объём", el("b", {}, qty(p.qty))), el("div", {}, "Вход", el("b", {}, px(p.entry_price))), el("div", {}, "Марк", el("b", {}, px(p.current)))));
     const lo = p.stop_loss, hi = p.take_profit, cur = p.current || p.entry_price; const k = hi > lo ? Math.max(0, Math.min(1, (cur - lo) / (hi - lo))) : 0.5;
     const ex = p.extra || {};
-    const stopLbl = p.trailing_active ? `Трейл ${px(p.trailing_stop)}` : `SL ${px(lo)}${ex.sl_pct ? ` (−${ex.sl_pct}%)` : ""}`;
-    const tpLbl = `TP ${px(hi)}${ex.tp_pct ? ` (+${ex.tp_pct}%)` : ""}`;
+    const stopLbl = ex.be_moved ? `БУ ${px(lo)}` : p.trailing_active ? `Трейл ${px(p.trailing_stop)}` : `SL ${px(lo)}${ex.sl_pct ? ` (−${ex.sl_pct}%)` : ""}`;
+    const tpLbl = isSmc ? `${ex.tp1_done ? "TP2 " + px(ex.tp2) : "TP1 " + px(ex.tp1)} · RR ${ex.rr}` : `TP ${px(hi)}${ex.tp_pct ? ` (+${ex.tp_pct}%)` : ""}`;
     node.appendChild(el("div", { class: "range" }, el("div", { class: "lbl" }, el("span", {}, stopLbl), el("span", {}, tpLbl)), el("div", { class: "trk" }, el("i", { class: "mk", style: `left:${(k * 100).toFixed(1)}%` }))));
     if (ex.max_hold_min) node.appendChild(el("div", { class: "sub muted", style: "margin-top:6px" }, `лимит ${ex.max_hold_min} мин · комиссия за круг ${ex.fee_rt_pct}%`));
     const b = el("button", { class: "btn danger sm", on: { click: () => confirmSheet("Закрыть позицию", `${pair(p.symbol)} · ${qty(p.qty)} по рынку. PnL сейчас ${sgn(p.pnl, 3)} ${S.quote}.`, "Закрыть по рынку", async () => { const r = await post(`/api/control/close/${p.symbol}`); toast(r && r.ok ? `Закрыто ${pair(p.symbol)}` : "Не удалось закрыть", r && r.ok ? "up" : "down"); await loadTrades(); }, true) } }, "Закрыть");
@@ -231,7 +233,7 @@
   function sigUpdate(node, s) {
     node.classList.toggle("inpos", !!s.in_position); node.classList.toggle("open", S.openSig === s.symbol);
     const l = node.children[0], r = node.children[1], d = node.children[2]; l.innerHTML = ""; r.innerHTML = ""; d.innerHTML = "";
-    l.appendChild(el("div", { class: "sym" }, pair(s.symbol), s.in_position ? el("span", { class: "side buy" }, "LONG") : null));
+    l.appendChild(el("div", { class: "sym" }, pair(s.symbol), s.in_position ? el("span", { class: "side buy" }, "LONG") : null, s.smc_setup && !s.in_position ? el("span", { class: "side buy" }, "SMC") : null));
     l.appendChild(el("div", { class: "sub" }, `${px(s.price)} · `, el("span", { class: cls(s.mom_5m) }, `${pct(s.mom_5m)} 5м`)));
     l.appendChild(bars(s.composite));
     const thr = S.snap && S.snap.config ? S.snap.config.buy_threshold : 0.35;
@@ -243,6 +245,11 @@
     d.appendChild(cell("Поток", sgn(s.flow, 2), cls(s.flow)));
     d.appendChild(cell("Спред", isFinite(s.spread_bps) ? s.spread_bps.toFixed(1) + " б.п." : "—"));
     d.appendChild(cell("1м / 15м", `${pct(s.mom_1m)} / ${pct(s.mom_15m)}`));
+    if (s.smc && s.smc.candles) {
+      const m = s.smc; const setup = m.setup;
+      d.appendChild(cell("Структура", `${sgn(m.score, 2)}${setup ? " · СЕТАП" : ""}`, cls(m.score)));
+      d.appendChild(el("div", { class: "why" }, "SMC: " + ((m.notes || []).join(" · ") || "нет сигналов структуры") + (setup ? ` · вход ${px(setup.entry)} · стоп ${px(setup.sl)} · TP1 ${px(setup.tp1)} (${setup.tp1_label}) · RR ${setup.rr}` : "")));
+    }
     d.appendChild(el("div", { class: "why" }, s.in_position ? "В позиции" : (s.decision || "—"), s.top_news && s.top_news[0] ? ` · ${s.top_news[0].title.slice(0, 90)}` : ""));
   }
   function renderSignals(snap) {
@@ -290,6 +297,9 @@
       el("div", {}, "Лента", el("b", {}, `${n.sources_ok}/${n.sources} источников · ${n.items}`)),
       el("div", {}, "ИИ", el("b", {}, l.enabled ? `${l.model} · ${l.items} оценок` : "выкл")),
       el("div", {}, "Скальп", el("b", {}, snap.config && snap.config.scalp_mode ? `цель +${snap.config.scalp_target_pct}% · стоп −${snap.config.scalp_stop_pct}% · ${snap.config.scalp_max_hold_minutes} мин` : "выкл")),
+      el("div", {}, "SMC", el("b", {}, st.smc && st.smc.enabled ? `${st.smc.analysed} пар · RR ≥ ${snap.config ? snap.config.smc_min_rr : "—"} · риск ${st.risk ? st.risk.risk_pct : "—"}%` : "выкл")),
+      el("div", {}, "Сессия", el("b", {}, st.risk && st.risk.session ? `${st.risk.session.in_ott ? st.risk.session.window : "вне OTT"}${st.risk.loss_in_session ? " · убыток в сессии" : ""}${st.risk.after_loss ? " · риск ½" : ""}` : "—")),
+      el("div", {}, "Просадка", el("b", {}, snap.config ? `день ${snap.config.daily_drawdown_pct}% · неделя ${snap.config.weekly_drawdown_pct}% · неделя сейчас ${sgn(st.realized_week, 2)}` : "—")),
       el("div", {}, "Страх/жадность", el("b", {}, n.fng === null || n.fng === undefined ? "—" : String(n.fng))),
       el("div", {}, "Тон рынка", el("b", { class: cls(n.market_score) }, sgn(n.market_score, 2))));
     body.appendChild(kv);

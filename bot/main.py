@@ -24,6 +24,7 @@ from .news.collector import NewsCollector
 from .news.entities import EntityExtractor
 from .news.sources import default_sources
 from .storage.db import Database
+from .strategy.candles import CandleStore
 from .strategy.engine import TradingEngine
 from .strategy.risk import RiskManager
 
@@ -139,7 +140,8 @@ async def build_context(cfg: Settings) -> AppContext:
             await refresh_real_account(cfg, rest, account_info, warnings, first=True)
 
     risk = RiskManager(cfg)
-    engine = TradingEngine(cfg, broker, stream.states, {s: rules[s] for s in symbols}, book, db, risk, bus)
+    candles = CandleStore(rest, symbols) if cfg.strategy in ("smc", "hybrid") else None
+    engine = TradingEngine(cfg, broker, stream.states, {s: rules[s] for s in symbols}, book, db, risk, bus, candles=candles)
     if cfg.live:
         for s in symbols:
             if s in account_info.get("blocked", {}):
@@ -259,6 +261,8 @@ def create_application(cfg: Settings | None = None) -> FastAPI:
         ctx = await build_context(cfg)
         holder["ctx"] = ctx
         tasks = [asyncio.create_task(ctx.stream.run(), name="market-stream")]
+        if ctx.engine.candles is not None:
+            tasks.append(asyncio.create_task(ctx.engine.candles.run(), name="candles"))
         await seed_history(ctx)
         # wait (briefly) for the first order-book updates so paper fills have prices
         for _ in range(50):
@@ -275,10 +279,12 @@ def create_application(cfg: Settings | None = None) -> FastAPI:
         for w in ctx.warnings:
             ctx.bus.log(w, level="warn")
         ai = f"{len(ctx.llm.providers)} провайдер(а)" if ctx.llm else "выкл"
-        ctx.bus.log(f"Continental BOT {__version__} готов: http://{cfg.host}:{cfg.port}  режим={cfg.trading_mode.upper()}  пар={len(ctx.engine.symbols)}  источников={len(ctx.collector.sources)}  ИИ={ai}  скальп={'вкл' if cfg.scalp_mode else 'выкл'}")
+        ctx.bus.log(f"Continental BOT {__version__} готов: http://{cfg.host}:{cfg.port}  режим={cfg.trading_mode.upper()}  стратегия={cfg.strategy}  пар={len(ctx.engine.symbols)}  источников={len(ctx.collector.sources)}  ИИ={ai}")
         try:
             yield
         finally:
+            if ctx.engine.candles is not None:
+                ctx.engine.candles.stop()
             await ctx.engine.stop()
             if ctx.llm is not None:
                 await ctx.llm.stop()
