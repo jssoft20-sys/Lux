@@ -8,12 +8,14 @@ from typing import Any
 
 from ..config import Settings
 from ..exchange.binance import SymbolRules
+from .fees import FeeCalculator
 from .signals import SymbolSignal
 
 
 class RiskManager:
     def __init__(self, cfg: Settings):
         self.cfg = cfg
+        self.fees = FeeCalculator(cfg.fee_rate, cfg.fee_multiple)
         self.cooldown_until: dict[str, float] = {}
         self.blocked: dict[str, tuple[float, str]] = {}  # symbol -> (until_ts or inf, reason)
         self.failures: dict[str, int] = {}
@@ -52,6 +54,13 @@ class RiskManager:
             return False, f"спред {signal.spread_bps:.0f} б.п."
         if signal.volatility_bps > 250:
             return False, "волатильность"
+        if cfg.scalp_mode:
+            target = self.fees.target_pct(signal.spread_bps)
+            if signal.spread_bps > target * 100 / 4:
+                return False, f"спред {signal.spread_bps:.0f} б.п. > ¼ цели"
+            need = self.fees.min_volatility_bps(target, cfg.scalp_min_volatility_ratio)
+            if signal.volatility_bps < need:
+                return False, f"вола {signal.volatility_bps:.0f} < {need:.0f} б.п."
         if rules.status != "TRADING":
             return False, f"статус {rules.status}"
         if self.position_size(free_quote, rules, open_positions) <= 0:

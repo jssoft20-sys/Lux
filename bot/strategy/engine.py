@@ -143,10 +143,13 @@ class TradingEngine:
             bid = st.bid
             pos.highest = max(pos.highest, bid)
             gain_pct = (bid / pos.entry_price - 1) * 100
-            if not pos.trailing_active and gain_pct >= cfg.trailing_activation_pct:
+            trail_act = float(pos.extra.get("trail_act", cfg.trailing_activation_pct))
+            trail = float(pos.extra.get("trail", cfg.trailing_stop_pct))
+            max_hold_s = float(pos.extra.get("max_hold_min", cfg.max_hold_minutes)) * 60
+            if not pos.trailing_active and gain_pct >= trail_act:
                 pos.trailing_active = True
             if pos.trailing_active:
-                pos.trailing_stop = pos.highest * (1 - cfg.trailing_stop_pct / 100)
+                pos.trailing_stop = pos.highest * (1 - trail / 100)
             reason = None
             # hard protective exits always fire, even in the first seconds
             if bid <= pos.stop_loss:
@@ -158,7 +161,7 @@ class TradingEngine:
             elif pos.age_s < cfg.min_hold_seconds:
                 # too fresh for a soft exit — do not churn a position on a momentary signal dip
                 reason = None
-            elif pos.age_s > cfg.max_hold_minutes * 60:
+            elif pos.age_s > max_hold_s:
                 reason = "выход по времени"
             elif sig is not None and sig.news_score <= -0.45 and sig.news_count > 0:
                 reason = "негативные новости"
@@ -201,6 +204,14 @@ class TradingEngine:
             self.bus.log(f"ошибка покупки {sym}: {e.msg}", level="error", symbol=sym)
             return
         self.risk.record_success(sym)
+        if cfg.scalp_mode:
+            # fee-aware targets: the move must pay the round trip several times over, fast
+            tp_pct = self.risk.fees.target_pct(sig.spread_bps)
+            sl_pct = self.risk.fees.stop_pct(tp_pct)
+            trail_act, trail = self.risk.fees.trailing(tp_pct)
+            max_hold = cfg.scalp_max_hold_minutes
+        else:
+            tp_pct, sl_pct, trail_act, trail, max_hold = cfg.take_profit_pct, cfg.stop_loss_pct, cfg.trailing_activation_pct, cfg.trailing_stop_pct, cfg.max_hold_minutes
         pos = Position(
             symbol=sym,
             qty=fill.qty,
@@ -208,14 +219,15 @@ class TradingEngine:
             entry_ts=fill.ts,
             quote_spent=fill.quote_qty,
             fee_paid=fill.fee_quote,
-            stop_loss=fill.price * (1 - cfg.stop_loss_pct / 100),
-            take_profit=fill.price * (1 + cfg.take_profit_pct / 100),
+            stop_loss=fill.price * (1 - sl_pct / 100),
+            take_profit=fill.price * (1 + tp_pct / 100),
             highest=fill.price,
             entry_signal=sig.composite,
             entry_reason=self._explain(sig),
             order_id=fill.order_id,
             mode=self.broker.mode,
         )
+        pos.extra.update({"tp_pct": round(tp_pct, 3), "sl_pct": round(sl_pct, 3), "trail_act": round(trail_act, 3), "trail": round(trail, 3), "max_hold_min": max_hold, "fee_rt_pct": round(self.risk.fees.round_trip_pct, 3)})
         if sig.top_news:
             pos.extra["headline"] = sig.top_news[0]["title"][:120]
         self.portfolio.positions[sym] = pos

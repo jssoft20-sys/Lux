@@ -60,11 +60,14 @@ def dynamic_warnings(ctx: AppContext) -> list[str]:
     out = list(ctx.warnings)
     now = time.time()
     if ctx.llm is not None:
-        if ctx.llm.disabled_reason:
-            short = "регион сервера не поддерживается Anthropic" if "403" in ctx.llm.disabled_reason else ctx.llm.disabled_reason
-            out.append(f"ИИ отключён: {short}. Торговля идёт по лексическому анализу новостей")
-        elif ctx.llm.last_error and (ctx.llm.calls == 0 or now - ctx.llm.last_error_ts < 900):
-            out.append(f"ИИ: {ctx.llm.last_error}")
+        for p in ctx.llm.providers:
+            if p.disabled_reason:
+                short = "регион сервера не поддерживается" if "403" in p.disabled_reason else p.disabled_reason
+                out.append(f"ИИ {p.name} ({p.model}) отключён: {short}")
+            elif p.last_error and (p.calls == 0 or now - p.last_error_ts < 900):
+                out.append(f"ИИ {p.name}: {p.last_error}")
+        if all(p.disabled_reason for p in ctx.llm.providers):
+            out.append("Все ИИ отключены — торговля идёт по лексическому анализу новостей")
     if not ctx.stream.connected:
         out.append("Нет потока Binance: " + (ctx.stream.last_error or "переподключение…"))
     eng = ctx.engine
@@ -113,13 +116,13 @@ CONFIG_KEYS = (
     "trading_mode", "quote_asset", "position_size_usdt", "max_position_pct", "max_positions", "take_profit_pct",
     "stop_loss_pct", "trailing_stop_pct", "trailing_activation_pct", "max_hold_minutes", "min_hold_seconds", "buy_threshold", "exit_threshold", "min_news_score",
     "daily_loss_limit_usdt", "max_spread_bps", "decision_interval_ms", "news_half_life_minutes", "w_news", "w_momentum",
-    "w_orderbook", "w_flow", "llm_model", "news_poll_seconds",
+    "w_orderbook", "w_flow", "llm_model", "openai_model", "news_poll_seconds", "scalp_mode", "fee_multiple", "scalp_max_hold_minutes", "fee_rate",
 )
 
 
 def create_app(cfg: Settings, get_ctx: Callable[[], AppContext]) -> FastAPI:
     """``get_ctx`` is resolved lazily: the context is built inside the server's event loop (lifespan)."""
-    app = FastAPI(title="Lux Trading Bot", version=__version__, docs_url=None, redoc_url=None)
+    app = FastAPI(title="Continental BOT", version=__version__, docs_url=None, redoc_url=None)
 
     def ctx() -> AppContext:
         c = get_ctx()
@@ -132,7 +135,7 @@ def create_app(cfg: Settings, get_ctx: Callable[[], AppContext]) -> FastAPI:
         if request.url.path.startswith("/api/health"):
             return await call_next(request)
         if not _auth_ok(cfg, request.headers.get("authorization")):
-            return Response("Требуется авторизация", status_code=401, headers={"WWW-Authenticate": 'Basic realm="Lux bot"'})
+            return Response("Требуется авторизация", status_code=401, headers={"WWW-Authenticate": 'Basic realm="Continental BOT"'})
         resp = await call_next(request)
         # never let a phone cache a stale dashboard build after an update
         if request.url.path.startswith("/static") or request.url.path == "/":
@@ -156,6 +159,8 @@ def create_app(cfg: Settings, get_ctx: Callable[[], AppContext]) -> FastAPI:
         snap = build_snapshot(c)
         snap["account"] = c.account_info
         snap["config"] = {k: getattr(cfg, k) for k in CONFIG_KEYS}
+        fees = c.engine.risk.fees
+        snap["config"].update({"fee_round_trip_pct": round(fees.round_trip_pct, 3), "scalp_target_pct": round(fees.target_pct(0), 3), "scalp_stop_pct": round(fees.stop_pct(fees.target_pct(0)), 3)})
         snap["version"] = __version__
         return snap
 

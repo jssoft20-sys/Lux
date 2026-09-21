@@ -67,7 +67,7 @@ def test_signal_combines_news_and_momentum():
 
 @pytest.mark.asyncio
 async def test_paper_round_trip(tmp_path):
-    cfg = Settings(trading_mode="paper", symbols="ADAUSDT", position_size_usdt=10, paper_start_balance=50, buy_threshold=0.3, take_profit_pct=1.0, stop_loss_pct=0.8, decision_interval_ms=50, db_path=str(tmp_path / "t.db"), _env_file=None)
+    cfg = Settings(trading_mode="paper", symbols="ADAUSDT", position_size_usdt=10, paper_start_balance=50, buy_threshold=0.3, take_profit_pct=1.0, stop_loss_pct=0.8, decision_interval_ms=50, scalp_mode=False, db_path=str(tmp_path / "t.db"), _env_file=None)
     r = rules()
     states = {"ADAUSDT": _state(trend_pct=0.6)}
     broker = PaperBroker(states, {"ADAUSDT": r}, "USDT", 50, fee_rate=0.001, slippage_bps=0)
@@ -99,7 +99,7 @@ async def test_paper_round_trip(tmp_path):
 
 @pytest.mark.asyncio
 async def test_stop_loss_and_daily_halt(tmp_path):
-    cfg = Settings(trading_mode="paper", symbols="ADAUSDT", position_size_usdt=10, paper_start_balance=50, buy_threshold=0.3, stop_loss_pct=0.8, daily_loss_limit_usdt=0.05, symbol_cooldown_minutes=0, db_path=str(tmp_path / "t.db"), _env_file=None)
+    cfg = Settings(trading_mode="paper", symbols="ADAUSDT", position_size_usdt=10, paper_start_balance=50, buy_threshold=0.3, stop_loss_pct=0.8, daily_loss_limit_usdt=0.05, symbol_cooldown_minutes=0, scalp_mode=False, db_path=str(tmp_path / "t.db"), _env_file=None)
     r = rules()
     states = {"ADAUSDT": _state(trend_pct=0.6)}
     broker = PaperBroker(states, {"ADAUSDT": r}, "USDT", 50, fee_rate=0.001, slippage_bps=0)
@@ -122,7 +122,7 @@ async def test_stop_loss_and_daily_halt(tmp_path):
 
 @pytest.mark.asyncio
 async def test_min_hold_prevents_churn_but_stop_loss_still_fires(tmp_path):
-    cfg = Settings(trading_mode="paper", symbols="ADAUSDT", position_size_usdt=10, paper_start_balance=50, buy_threshold=0.3, exit_threshold=-0.25, stop_loss_pct=0.8, min_hold_seconds=90, symbol_cooldown_minutes=0, db_path=str(tmp_path / "t.db"), _env_file=None)
+    cfg = Settings(trading_mode="paper", symbols="ADAUSDT", position_size_usdt=10, paper_start_balance=50, buy_threshold=0.3, exit_threshold=-0.25, stop_loss_pct=0.8, min_hold_seconds=90, symbol_cooldown_minutes=0, scalp_mode=False, db_path=str(tmp_path / "t.db"), _env_file=None)
     r = rules()
     states = {"ADAUSDT": _state(trend_pct=0.6)}
     broker = PaperBroker(states, {"ADAUSDT": r}, "USDT", 50, fee_rate=0.001, slippage_bps=0)

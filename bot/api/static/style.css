@@ -65,7 +65,8 @@ em { font-style: normal; color: var(--muted); font-weight: 500; }
 /* ---------- header ---------- */
 .hdr { padding: calc(10px + env(safe-area-inset-top)) 16px 12px; background: linear-gradient(180deg, var(--bg2), var(--bg)); position: relative; }
 .hdr-top { display: flex; align-items: center; justify-content: space-between; }
-.brand { font-weight: 800; letter-spacing: .12em; font-size: 17px; display: flex; align-items: center; gap: 10px; }
+.brand { font-weight: 800; letter-spacing: .1em; font-size: 15px; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.brand small { font-size: 10px; font-weight: 800; letter-spacing: .12em; padding: 2px 5px; border-radius: 4px; background: var(--accent); color: var(--accent-ink); }
 .pill { font-size: 11px; letter-spacing: .04em; padding: 3px 8px; border-radius: 6px; font-weight: 700; background: var(--card2); color: var(--text2); }
 .pill.live { background: var(--down-bg); color: var(--down); }
 .pill.paper { background: var(--acc-bg); color: var(--accent2); }

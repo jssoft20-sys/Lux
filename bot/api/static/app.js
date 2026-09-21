@@ -140,7 +140,8 @@
     const n = snap.news; chips.appendChild(chip(`Лента ${n.sources_ok}/${n.sources}`, n.sources_ok ? (n.sources_ok >= n.sources * 0.6 ? "ok" : "warn") : "bad", `материалов: ${n.items}`));
     const l = snap.llm;
     if (!l.enabled) chips.appendChild(chip("ИИ выкл", "off", l.disabled_reason || ""));
-    else chips.appendChild(chip(`ИИ ${l.items}`, l.errors && !l.calls ? "bad" : "ok", l.model));
+    else chips.appendChild(chip(`ИИ ×${l.active || 1} · ${l.items}`, l.errors && !l.calls ? "warn" : "ok", l.model));
+    if (snap.config && snap.config.scalp_mode) chips.appendChild(chip(`Скальп ${sgn(snap.config.scalp_target_pct, 2)}%`, "", `цель = комиссия ${snap.config.fee_round_trip_pct}% × ${snap.config.fee_multiple}`));
     chips.appendChild(chip(`${dur(st.uptime_s)} · ${st.tick_ms} мс`, "", "аптайм · длительность тика"));
     const w = snap.warnings || []; const dot = $("sys-dot"); dot.className = "sysdot" + (w.length ? (st.halted ? " bad" : " warn") : "");
     const tb = $("tab-pos-n"); if (st.open_positions) { tb.hidden = false; tb.textContent = st.open_positions; } else tb.hidden = true;
@@ -189,8 +190,11 @@
     node.appendChild(el("div", { class: "pos-grid" },
       el("div", {}, "Объём", el("b", {}, qty(p.qty))), el("div", {}, "Вход", el("b", {}, px(p.entry_price))), el("div", {}, "Марк", el("b", {}, px(p.current)))));
     const lo = p.stop_loss, hi = p.take_profit, cur = p.current || p.entry_price; const k = hi > lo ? Math.max(0, Math.min(1, (cur - lo) / (hi - lo))) : 0.5;
-    const stopLbl = p.trailing_active ? `Трейл ${px(p.trailing_stop)}` : `SL ${px(lo)}`;
-    node.appendChild(el("div", { class: "range" }, el("div", { class: "lbl" }, el("span", {}, stopLbl), el("span", {}, `TP ${px(hi)}`)), el("div", { class: "trk" }, el("i", { class: "mk", style: `left:${(k * 100).toFixed(1)}%` }))));
+    const ex = p.extra || {};
+    const stopLbl = p.trailing_active ? `Трейл ${px(p.trailing_stop)}` : `SL ${px(lo)}${ex.sl_pct ? ` (−${ex.sl_pct}%)` : ""}`;
+    const tpLbl = `TP ${px(hi)}${ex.tp_pct ? ` (+${ex.tp_pct}%)` : ""}`;
+    node.appendChild(el("div", { class: "range" }, el("div", { class: "lbl" }, el("span", {}, stopLbl), el("span", {}, tpLbl)), el("div", { class: "trk" }, el("i", { class: "mk", style: `left:${(k * 100).toFixed(1)}%` }))));
+    if (ex.max_hold_min) node.appendChild(el("div", { class: "sub muted", style: "margin-top:6px" }, `лимит ${ex.max_hold_min} мин · комиссия за круг ${ex.fee_rt_pct}%`));
     const b = el("button", { class: "btn danger sm", on: { click: () => confirmSheet("Закрыть позицию", `${pair(p.symbol)} · ${qty(p.qty)} по рынку. PnL сейчас ${sgn(p.pnl, 3)} ${S.quote}.`, "Закрыть по рынку", async () => { const r = await post(`/api/control/close/${p.symbol}`); toast(r && r.ok ? `Закрыто ${pair(p.symbol)}` : "Не удалось закрыть", r && r.ok ? "up" : "down"); await loadTrades(); }, true) } }, "Закрыть");
     node.appendChild(el("div", { class: "pos-foot" }, el("div", { class: "sub" }, `${dur(p.age_s)} · ${nf(p.quote_spent)} ${S.quote}${p.extra && p.extra.headline ? " · " + p.extra.headline.slice(0, 60) : ""}`), b));
   }
@@ -285,9 +289,15 @@
       el("div", {}, "Рынок", el("b", {}, m.connected ? `${m.last_msg_age_ms} мс · ${m.messages.toLocaleString("ru-RU")} сообщ.` : "офлайн")),
       el("div", {}, "Лента", el("b", {}, `${n.sources_ok}/${n.sources} источников · ${n.items}`)),
       el("div", {}, "ИИ", el("b", {}, l.enabled ? `${l.model} · ${l.items} оценок` : "выкл")),
+      el("div", {}, "Скальп", el("b", {}, snap.config && snap.config.scalp_mode ? `цель +${snap.config.scalp_target_pct}% · стоп −${snap.config.scalp_stop_pct}% · ${snap.config.scalp_max_hold_minutes} мин` : "выкл")),
       el("div", {}, "Страх/жадность", el("b", {}, n.fng === null || n.fng === undefined ? "—" : String(n.fng))),
       el("div", {}, "Тон рынка", el("b", { class: cls(n.market_score) }, sgn(n.market_score, 2))));
     body.appendChild(kv);
+    if (l.providers && l.providers.length) {
+      const ps = el("div", { class: "sh-sec" }, el("h4", {}, "ИИ-провайдеры")); const pl = el("div", { class: "srcs" });
+      l.providers.forEach((p) => pl.appendChild(el("div", { class: p.disabled_reason ? "err" : "" }, el("span", {}, `${p.name} · ${p.model}`), el("span", {}, p.disabled_reason ? "выкл" : p.healthy ? `${p.items} · ${p.latency_ms} мс` : "пауза"))));
+      ps.appendChild(pl); body.appendChild(ps);
+    }
     const ctr = el("div", { class: "sh-sec" }, el("h4", {}, "Управление"));
     const cr = el("div", { class: "ctrls" });
     cr.appendChild(st.paused ? el("button", { class: "btn primary", on: { click: () => post("/api/control/resume").then(() => { toast("Торговля возобновлена", "up"); closeSheet(); }) } }, "Продолжить")

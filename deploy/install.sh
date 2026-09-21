@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Установка Lux на сервер Ubuntu/Debian как systemd-сервис (порт 7066).
+# Установка Continental BOT на сервер Ubuntu/Debian как systemd-сервис (порт 7066).
 # Запуск от root в распакованной папке архива:  sudo bash deploy/install.sh
 set -euo pipefail
 
@@ -51,7 +51,7 @@ sleep 4
 IP="$(curl -s --max-time 4 https://api.ipify.org || hostname -I | awk '{print $1}')"
 echo
 echo "================================================================"
-echo "  Lux установлен и запущен."
+echo "  Continental BOT установлен и запущен."
 echo "  Дашборд:   http://${IP}:${PORT}/"
 echo "  Логи:      journalctl -u lux-bot -f"
 echo "  Настройки: $APP_DIR/.env   (после правки: systemctl restart lux-bot)"

@@ -91,7 +91,7 @@ async def build_context(cfg: Settings) -> AppContext:
         log.info("news memory restored: %d items", restored)
     llm = None
     if cfg.llm_active:
-        from .news.llm import ClaudeAnalyzer
+        from .news.llm import AnalyzerPool, ClaudeAnalyzer, OpenAIAnalyzer
 
         async def on_llm(item_id: str, r: dict[str, Any]) -> None:
             it = book.update_llm(item_id, r["score"], r["confidence"], r["reason"], r["impact"], r["tickers"], r["market_wide"])
@@ -99,9 +99,17 @@ async def build_context(cfg: Settings) -> AppContext:
                 db.update_news_llm(item_id, r["score"], r["confidence"], r["reason"], r["impact"], it.tickers)
                 bus.publish("news_update", it.to_dict())
 
-        llm = ClaudeAnalyzer(cfg.anthropic_api_key, cfg.llm_model, set(bases) | {"BTC", "ETH"}, on_llm, cfg.llm_batch_size, cfg.llm_min_interval_seconds, max_age_minutes=cfg.llm_max_age_minutes)
+        known = set(bases) | {"BTC", "ETH"}
+        providers: list[Any] = []
+        for name in cfg.provider_list:
+            if name == "anthropic":
+                providers.append(ClaudeAnalyzer(cfg.anthropic_api_key, cfg.llm_model, known))
+            elif name == "openai":
+                providers.append(OpenAIAnalyzer(cfg.openai_api_key, cfg.openai_model, known))
+        llm = AnalyzerPool(providers, on_llm, cfg.llm_batch_size, cfg.llm_min_interval_seconds, cfg.llm_max_batch_wait_seconds, cfg.llm_max_age_minutes)
+        log.info("LLM providers: %s", ", ".join(f"{p.name}={p.model}" for p in providers))
     else:
-        warnings.append("ANTHROPIC_API_KEY не задан — работает только быстрый лексический анализ новостей")
+        warnings.append("Ключи ИИ не заданы (ANTHROPIC_API_KEY / OPENAI_API_KEY) — работает только лексический анализ новостей")
 
     def on_item(item: NewsItem) -> None:
         book.add(item)
@@ -266,7 +274,8 @@ def create_application(cfg: Settings | None = None) -> FastAPI:
             tasks.append(asyncio.create_task(account_watch(ctx), name="account-watch"))
         for w in ctx.warnings:
             ctx.bus.log(w, level="warn")
-        ctx.bus.log(f"Lux {__version__} готов: http://{cfg.host}:{cfg.port}  режим={cfg.trading_mode.upper()}  пар={len(ctx.engine.symbols)}  источников новостей={len(ctx.collector.sources)}  ИИ={'вкл' if ctx.llm else 'выкл'}")
+        ai = f"{len(ctx.llm.providers)} провайдер(а)" if ctx.llm else "выкл"
+        ctx.bus.log(f"Continental BOT {__version__} готов: http://{cfg.host}:{cfg.port}  режим={cfg.trading_mode.upper()}  пар={len(ctx.engine.symbols)}  источников={len(ctx.collector.sources)}  ИИ={ai}  скальп={'вкл' if cfg.scalp_mode else 'выкл'}")
         try:
             yield
         finally:
