@@ -492,6 +492,8 @@ class MainBot:
         handler = handlers.get(ctx.state)
         if handler:
             handler(ctx, text)
+        elif ctx.state == "wait_qr" and self.looks_like_qr_link(text):
+            self.on_qr_link(ctx, text)
         elif ctx.state == "wait_qr":
             ctx.panel(self.text("text_send_qr", ctx.lang) + "\n\n❌ " + ctx.T("qr_photo_only"), self.cancel_kb(ctx))
         elif ctx.state == "wait_payment":
@@ -1152,6 +1154,39 @@ class MainBot:
             data = {**ctx.data, "qr_record_id": qr.id, "qr_file_url": qr.file_url}
         self.ask_id(ctx, data)
 
+    @staticmethod
+    def looks_like_qr_link(text: str) -> bool:
+        """A payout target sent as text: a bank deep link (qr.finik.kg, app.mbank.kg, …) or a raw ELQR payload."""
+        t = str(text or "").strip().lower()
+        return t.startswith(("http://", "https://", "000201")) and " " not in t and len(t) >= 12
+
+    def bank_switched_off(self, ctx: Ctx, payload: str) -> bool:
+        """The owner can switch a bank off for payouts (Настройки → Выводы); the client is asked for another QR."""
+        with transaction() as db:
+            disabled = str(settings_store.get(db, "withdraw_banks_disabled") or "")
+        name = elqr.bank_disabled(payload, disabled) if disabled else ""
+        if not name:
+            return False
+        ctx.panel(self.text("text_send_qr", ctx.lang) + "\n\n" + esc(ctx.T("qr_bank_off").format(bank=name)), self.cancel_kb(ctx), state="wait_qr")
+        return True
+
+    def on_qr_link(self, ctx: Ctx, text: str) -> None:
+        """Withdrawal target sent as a link: recognised bank (Finik, MBank, Optima…) → stored like a scanned QR."""
+        link = str(text or "").strip()
+        if self.bank_switched_off(ctx, link):
+            return
+        bank = elqr.detect_bank(link)
+        payload = link
+        if link.startswith("000201"):
+            try:
+                payload = elqr.bank_meta(link)["payload"]
+            except Exception:
+                payload = link
+        with transaction() as db:
+            qr = user_service.save_qr(db, db.get(User, ctx.user_id), payload=payload, bank_name=bank["name"] if bank["key"] != "bank" else "")
+            qr_id = qr.id
+        self.ask_id(ctx, {**ctx.data, "qr_record_id": qr_id, "qr_file_url": ""})
+
     def on_photo(self, ctx: Ctx, message: dict[str, Any]) -> None:
         if ctx.state == "wait_payment":
             self.save_receipt(ctx, message)
@@ -1175,6 +1210,8 @@ class MainBot:
                     payload, bank = meta["payload"], meta["bank_name"]
             except Exception as exc:
                 logger.info("qr decode skipped: %s", exc)
+        if payload and self.bank_switched_off(ctx, payload):
+            return
         with transaction() as db:
             qr = user_service.save_qr(db, db.get(User, ctx.user_id), file_id=file_id, file_url=url, payload=payload, bank_name=bank)
             qr_id, qr_url = qr.id, qr.file_url

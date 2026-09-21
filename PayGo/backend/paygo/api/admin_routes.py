@@ -100,7 +100,8 @@ def dashboard(principal: Principal = Depends(current_principal), db: Session = D
 def stats_endpoint(date_from: str = "", date_to: str = "", principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
     start = _parse_day(date_from) or (utcnow().astimezone(local_tz()).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=6))
     end = _parse_day(date_to, end=True) or (utcnow() + timedelta(seconds=1))
-    return {"ok": True, "from": iso(start), "to": iso(end), **stats.stats_range(db, start, end)}
+    usd_rate = float(settings_store.get(db, "usd_rate") or 87.5)
+    return {"ok": True, "from": iso(start), "to": iso(end), "usd_rate": usd_rate, **stats.stats_range(db, start, end)}
 
 
 @router.get("/live")
@@ -110,13 +111,10 @@ def live(principal: Principal = Depends(current_principal), db: Session = Depend
     latest = db.execute(
         select(Notification).where(Notification.channel == "admin_push", Notification.status != "expired").order_by(Notification.id.desc()).limit(15)
     ).scalars().all()
-    season = settings_store.current_season(db)
     return {
         "ok": True,
         "revision": revision,
         "queues": data,
-        "season": season["season"],
-        "season_effects": season["effects"],
         "notifications": [
             {"id": n.id, "event": n.event, "level": n.level, "title": n.title, "body": n.body, "data": n.data, "created_at": iso(n.created_at), "acknowledged": n.acknowledged_at is not None}
             for n in latest
@@ -162,7 +160,7 @@ def _amount_filter(stmt, column, amount: str, amount_min: str, amount_max: str, 
 def _requisite_bank(requisite: PaymentRequisite | None) -> dict[str, str]:
     """Bank mark for a deposit row: the wallet (requisite) the client paid to."""
     if requisite is None:
-        return {"key": "bank", "name": "", "logo": "brand/banks/bank.svg"}
+        return {"key": "bank", "name": "", "logo": elqr.FALLBACK_LOGO}
     return elqr.detect_bank(f"{requisite.bank_type} {requisite.bank_name}")
 
 
@@ -606,11 +604,12 @@ def withdrawal_photo(withdrawal_id: int, principal: Principal = Depends(current_
 # -------------------------------------------------------------------------- payments
 
 @router.get("/payment-events")
-def list_events(status: str = "", page: int = 1, size: int = 0, principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+def list_events(status: str = "", amount: str = "", amount_min: str = "", amount_max: str = "", page: int = 1, size: int = 0, principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
     page, size = _page(page, size, db)
     stmt = select(PaymentEvent)
     if status:
         stmt = stmt.where(PaymentEvent.status.in_(status.split(",")))
+    stmt = _amount_filter(stmt, PaymentEvent.amount, amount, amount_min, amount_max)
     total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar() or 0
     rows = db.execute(stmt.order_by(PaymentEvent.id.desc()).offset((page - 1) * size).limit(size)).scalars().all()
     return {"ok": True, "items": [payments.public_event(e) for e in rows], "total": int(total), "page": page, "size": size}
@@ -1048,6 +1047,33 @@ def list_conversations(status: str = "open", q: str = "", category: str = "", pa
         item["last_sender"] = last.sender if last else ""
         items.append(item)
     return {"ok": True, "items": items, "total": int(total), "page": page, "size": size, "counts": counts}
+
+
+@router.get("/support/search")
+def support_search(q: str = "", principal: Principal = Depends(require("support")), db: Session = Depends(get_db)):
+    """Search box of the Чат tab: dialogs by client name / @username / Telegram ID and the messages
+    whose text contains the query (both open and closed dialogs, like the reference panel)."""
+    term = q.strip().lstrip("@")
+    if not term:
+        return {"ok": True, "chats": [], "messages": []}
+    needle = f"%{term}%"
+    cond = [User.username.ilike(needle), User.first_name.ilike(needle), User.last_name.ilike(needle), SupportConversation.subject.ilike(needle)]
+    if term.isdigit():
+        cond.append(User.telegram_id == int(term))
+    chats = db.execute(
+        select(SupportConversation).join(User, User.id == SupportConversation.user_id).where(or_(*cond)).order_by(SupportConversation.last_message_at.desc().nullslast()).limit(30)
+    ).scalars().all()
+    msgs = db.execute(
+        select(SupportMessage).where(SupportMessage.text.ilike(needle), SupportMessage.deleted_at.is_(None)).order_by(SupportMessage.id.desc()).limit(40)
+    ).scalars().all()
+    conv_ids = {m.conversation_id for m in msgs}
+    convs = {c.id: c for c in db.execute(select(SupportConversation).where(SupportConversation.id.in_(conv_ids))).scalars().all()} if conv_ids else {}
+    messages = []
+    for m in msgs:
+        c = convs.get(m.conversation_id)
+        pc = support_service.public_conversation(c) if c else {}
+        messages.append({"id": m.id, "conversation_id": m.conversation_id, "text": (m.text or "")[:300], "sender": m.sender, "created_at": iso(m.created_at), "user_name": pc.get("user_name", ""), "user_avatar": pc.get("user_avatar", ""), "status": pc.get("status", "")})
+    return {"ok": True, "chats": [support_service.public_conversation(c) for c in chats], "messages": messages}
 
 
 @router.get("/support/conversations/{conv_id}")

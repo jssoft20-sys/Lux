@@ -314,6 +314,18 @@ def test_chat_open_from_profile_reply_edit_delete(logged, user):
     assert msgs[msg_id]["deleted_at"] and msgs[msg_id]["text"] == ""
 
 
+def test_support_search_finds_chats_and_messages(logged, user):
+    conv_id = logged.post(P + f"/users/{user}/conversation").json()["item"]["id"]
+    assert logged.post(P + f"/support/conversations/{conv_id}/reply", json={"text": "Ваш вывод отправлен, проверьте баланс"}).status_code == 200
+    body = logged.get(P + "/support/search?q=вывод").json()
+    assert body["ok"] and [m["conversation_id"] for m in body["messages"]] == [conv_id]
+    assert body["messages"][0]["sender"] == "operator" and body["messages"][0]["user_name"]
+    first_name = body["messages"][0]["user_name"].split()[0]
+    assert [c["id"] for c in logged.get(P + "/support/search?q=" + first_name).json()["chats"]] == [conv_id]
+    assert logged.get(P + "/support/search?q=").json() == {"ok": True, "chats": [], "messages": []}
+    assert logged.get(P + "/support/search?q=nobody-has-this-name").json()["chats"] == []
+
+
 def test_broadcast_audiences_buttons_and_test_send(logged, user):
     from paygo.models import Notification
 
@@ -606,25 +618,33 @@ def test_cli_revoke_sessions_signs_everybody_out(logged, admin):
         assert db.query(AuditLog).filter_by(action="auth.sessions_revoked_all").count() == 1
 
 
-def test_live_reports_season(logged):
-    r = logged.get(P + "/live")
-    assert r.status_code == 200
-    body = r.json()
-    assert body["season"] in {"winter", "spring", "summer", "autumn", "off"}
-    assert isinstance(body["season_effects"], bool)
+def test_live_has_no_season_fields(logged):
+    body = logged.get(P + "/live").json()
+    assert body["ok"] is True and "season" not in body and "queues" in body
 
 
-def test_season_setting_override(logged):
-    from paygo.services import settings_store
+def test_bank_detection_uses_official_marks():
+    from paygo.services import elqr
+
+    finik = elqr.detect_bank("https://qr.finik.kg/f36e0f6a-1f22-4f34-a177-71444f6c91aa?type=t")
+    assert finik["key"] == "finik" and finik["logo"] == "brand/banks/finik.png"
+    assert elqr.detect_bank("https://app.mbank.kg/qr/#000201")["key"] == "mbank"
+    assert elqr.detect_bank("")["logo"] == elqr.FALLBACK_LOGO
+    assert elqr.bank_disabled("https://qr.finik.kg/x", "finik, mbank") == "Finik"
+    assert elqr.bank_disabled("https://qr.finik.kg/x", "") == ""
+    assert elqr.bank_disabled("https://app.mbank.kg/qr/#0002", "finik") == ""
+
+
+def test_payment_events_amount_filter(logged):
+    from paygo.services import payments
 
     with transaction() as db:
-        settings_store.set_many(db, {"site_season": "winter", "site_season_effects": True})
-    body = logged.get(P + "/live").json()
-    assert body["season"] == "winter" and body["season_effects"] is True
-    with transaction() as db:
-        settings_store.set_many(db, {"site_season": "off"})
-    body = logged.get(P + "/live").json()
-    assert body["season"] == "off" and body["season_effects"] is False
+        payments.ingest_event(db, source="webhook", amount="1500.37", raw_text="MBank: +1500.37 с", event_key="amt-1")
+        payments.ingest_event(db, source="webhook", amount="99.10", raw_text="MBank: +99.10 с", event_key="amt-2")
+    body = logged.get(P + "/payment-events?amount=1500.37").json()
+    assert [str(e["amount"]) for e in body["items"]] == ["1500.37"]
+    body = logged.get(P + "/payment-events?amount_min=50&amount_max=100").json()
+    assert [str(e["amount"]) for e in body["items"]] == ["99.10"]
 
 
 def test_statement_import_endpoint(logged, user, fake_provider):

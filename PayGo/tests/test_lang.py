@@ -222,7 +222,7 @@ def test_kyrgyz_withdraw_flow_and_operator_notices(bot, fake_provider):
     pick_cash(bot)
     assert "Капчыгыңыздын QR-кодун жөнөтүңүз" in bot.client.last[1]
     text(bot, "not a photo")
-    assert "QR-коддун сүрөтү керек" in bot.client.last[1]
+    assert "QR-коддун сүрөтү же банктын шилтемеси керек" in bot.client.last[1]
     photo(bot)
     assert "Чыгаруу үчүн ID-иңизди киргизиңиз" in bot.client.last[1]
     text(bot, "123456")

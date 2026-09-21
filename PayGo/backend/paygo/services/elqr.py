@@ -254,21 +254,36 @@ def qr_image_value(payload: str) -> str:
     return "https://api.dengi.o.kg/#" + urllib.parse.quote(clean, safe="")
 
 
-# bank recognition for a withdrawal QR/link → name + logo (logo files live in frontend/admin/brand/banks/)
+# bank recognition for a withdrawal QR/link → name + logo. The marks are the official ones the
+# Finik QR page uses (frontend/admin/brand/banks/<key>.png); the order matters — the first match wins.
 BANKS: list[tuple[str, str, tuple[str, ...]]] = [
+    ("mbank", "MBank", ("mbank", "mbank.kg", "mbusiness")),
     ("optima", "Optima Bank", ("optima",)),
-    ("mbank", "MBank", ("mbank", "mbank.kg")),
     ("bakai", "Bakai Bank", ("bakai",)),
-    ("dengi", "О!Деньги", ("dengi", "o.kg", "odengi", "o!")),
-    ("balance", "Balance", ("balance.kg", "balance_",)),
+    ("dengi", "О!Деньги", ("dengi", "o.kg", "odengi", "o!", "о!деньги")),
+    ("balance", "Balance", ("balance.kg", "balance_", "balance")),
     ("megapay", "MegaPay", ("megapay",)),
     ("demir", "Demir Bank", ("demir", "dcard")),
-    ("kompanion", "Kompanion", ("companion", "kompanion")),
+    ("kompanion", "Компаньон", ("companion", "kompanion", "компаньон")),
     ("finik", "Finik", ("finik",)),
-    ("rsk", "RSK Bank", ("rsk",)),
+    ("rsk", "РСК Банк", ("rsk", "рск")),
+    ("eldik", "Элдик Банк", ("eldik", "элдик")),
+    ("kicb", "KICB", ("kicb",)),
+    ("aiyl", "Айыл Банк", ("aiyl", "ayil", "ab.kg", "айыл")),
+    ("nambaone", "Namba One", ("nambaone", "namba")),
+    ("simbank", "Simbank", ("simbank",)),
+    ("dantepay", "DantePay", ("dantepay",)),
     ("keremet", "Keremet Bank", ("keremet",)),
-    ("elcart", "Элкарт", ("elcart", "elqr")),
+    ("elcart", "Элкарт", ("elcart", "payqr", "elqr")),
 ]
+BANK_KEYS = tuple(k for k, _n, _m in BANKS)
+_LOGO_FILES = {"mbank", "optima", "bakai", "dengi", "balance", "megapay", "demir", "kompanion", "finik", "rsk", "eldik", "kicb", "aiyl", "nambaone", "simbank", "dantepay", "elcart"}
+FALLBACK_LOGO = "brand/banks/bank.png"
+
+
+def bank_logo(key: str) -> str:
+    """Path of the mark for a bank key (a neutral mark when the bank has no logo file)."""
+    return f"brand/banks/{key}.png" if key in _LOGO_FILES else FALLBACK_LOGO
 
 
 def detect_bank(text: str) -> dict[str, str]:
@@ -277,18 +292,27 @@ def detect_bank(text: str) -> dict[str, str]:
     low = str(text or "").lower()
     for key, name, markers in BANKS:
         if any(m in low for m in markers):
-            return {"key": key, "name": name, "logo": f"brand/banks/{key}.svg"}
+            return {"key": key, "name": name, "logo": bank_logo(key)}
     try:
         meta = bank_meta(text)
         blob = (str(meta.get("domain", "")) + " " + str(meta.get("bank_name", ""))).lower()
         for key, name, markers in BANKS:
             if any(m in blob for m in markers):
-                return {"key": key, "name": name, "logo": f"brand/banks/{key}.svg"}
+                return {"key": key, "name": name, "logo": bank_logo(key)}
         if meta.get("bank_name") and meta["bank_name"] != "Банк":
-            return {"key": "bank", "name": str(meta["bank_name"]), "logo": ""}
+            return {"key": "bank", "name": str(meta["bank_name"]), "logo": FALLBACK_LOGO}
     except Exception:
         pass
-    return {"key": "bank", "name": "Банк", "logo": ""}
+    return {"key": "bank", "name": "Банк", "logo": FALLBACK_LOGO}
+
+
+def bank_disabled(text: str, disabled: str) -> str:
+    """Name of the client's bank when the owner switched that bank off for payouts, else ''."""
+    keys = {k.strip().lower() for k in str(disabled or "").replace(";", ",").split(",") if k.strip()}
+    if not keys:
+        return ""
+    bank = detect_bank(text)
+    return bank["name"] if bank["key"] in keys else ""
 
 
 OPTIMA_PAY_LINK_BASE = "https://mobile.optima24.kg/my-qr/confirm-screen?url=#"

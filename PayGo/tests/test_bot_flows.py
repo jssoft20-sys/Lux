@@ -232,6 +232,35 @@ def test_receipt_photo_is_stored_for_active_deposit(bot, fake_provider):
     assert state_of()[0] == "wait_payment"
 
 
+def test_withdraw_by_bank_link_and_switched_off_bank(bot, fake_provider):
+    """A payout target may be a bank link (Finik / MBank / Optima…) instead of a QR photo; a bank the
+    owner switched off in Настройки → Выводы is refused with a request for another QR."""
+    from paygo.models import QrRecord
+    from paygo.services import settings_store
+
+    link = "https://qr.finik.kg/f36e0f6a-1f22-4f34-a177-71444f6c91aa?type=t"
+    text(bot, "/start")
+    text(bot, "Вывести")
+    pick_cash(bot)
+    text(bot, "just words")
+    assert "ссылка из банка" in bot.client.last[1] and state_of()[0] == "wait_qr"
+    with transaction() as db:
+        settings_store.set_many(db, {"withdraw_banks_disabled": "finik"})
+    text(bot, link)
+    assert "Finik" in bot.client.last[1] and "не переводим" in bot.client.last[1] and state_of()[0] == "wait_qr"
+    with transaction() as db:
+        settings_store.set_many(db, {"withdraw_banks_disabled": ""})
+    text(bot, link)
+    assert "Введите ваш ID для вывода" in bot.client.last[1]
+    text(bot, "123456")
+    text(bot, "CODE1234")
+    assert "Заявка на вывод принята" in bot.client.last[1]
+    with transaction() as db:
+        w = db.query(Withdrawal).one()
+        assert w.qr_payload == link and w.qr_file_url == "" and w.generated_qr_payload == ""
+        assert db.query(QrRecord).one().bank_name == "Finik"
+
+
 def test_withdraw_flow_qr_then_id_then_code(bot, fake_provider):
     text(bot, "/start")
     text(bot, "Вывести")
