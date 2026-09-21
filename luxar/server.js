@@ -41,7 +41,7 @@ app.use('/api', publicRouter);
 app.use(callbackRouter);
 
 /* Статика */
-const staticOpts = { index: false, maxAge: '7d', setHeaders: (res, filePath) => { if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache'); } };
+const staticOpts = { index: false, redirect: false, maxAge: '7d', setHeaders: (res, filePath) => { if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache'); } };
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '30d', index: false }));
 app.use(express.static(PUBLIC_DIR, staticOpts));
 
