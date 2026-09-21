@@ -29,10 +29,13 @@ chmod +x "$APP_DIR"/deploy/*.sh "$APP_DIR"/scripts/*.sh "$APP_DIR"/run.sh 2>/dev
 id -u lux >/dev/null 2>&1 && chown -R lux:lux "$APP_DIR" || true
 chmod 600 "$APP_DIR/.env" 2>/dev/null || true
 
-if systemctl list-unit-files lux-bot.service >/dev/null 2>&1; then
-  systemctl restart lux-bot
-  echo "==> lux-bot перезапущен. Версия: $("$APP_DIR/.venv/bin/python" -c 'import sys; sys.path.insert(0, "'"$APP_DIR"'"); import bot; print(bot.__version__)')"
-  echo "    Логи: journalctl -u lux-bot -f"
+VERSION="$(cd "$APP_DIR" && "$APP_DIR/.venv/bin/python" -c 'import bot; print(bot.__version__)' 2>/dev/null || echo '?')"
+if command -v systemctl >/dev/null 2>&1 && systemctl cat lux-bot.service >/dev/null 2>&1; then
+  if systemctl restart lux-bot; then
+    echo "==> lux-bot перезапущен, версия ${VERSION}. Логи: journalctl -u lux-bot -f"
+  else
+    echo "==> Код обновлён (версия ${VERSION}), но перезапуск не удался: systemctl status lux-bot"
+  fi
 else
-  echo "==> Код обновлён (сервис lux-bot не найден, перезапустите бот вручную)"
+  echo "==> Код обновлён (версия ${VERSION}); сервис lux-bot не найден, перезапустите бот вручную"
 fi
