@@ -107,7 +107,7 @@ def build_snapshot(ctx: AppContext) -> dict[str, Any]:
 
 CONFIG_KEYS = (
     "trading_mode", "quote_asset", "position_size_usdt", "max_position_pct", "max_positions", "take_profit_pct",
-    "stop_loss_pct", "trailing_stop_pct", "trailing_activation_pct", "max_hold_minutes", "buy_threshold", "exit_threshold", "min_news_score",
+    "stop_loss_pct", "trailing_stop_pct", "trailing_activation_pct", "max_hold_minutes", "min_hold_seconds", "buy_threshold", "exit_threshold", "min_news_score",
     "daily_loss_limit_usdt", "max_spread_bps", "decision_interval_ms", "news_half_life_minutes", "w_news", "w_momentum",
     "w_orderbook", "w_flow", "llm_model", "news_poll_seconds",
 )
@@ -129,7 +129,11 @@ def create_app(cfg: Settings, get_ctx: Callable[[], AppContext]) -> FastAPI:
             return await call_next(request)
         if not _auth_ok(cfg, request.headers.get("authorization")):
             return Response("Требуется авторизация", status_code=401, headers={"WWW-Authenticate": 'Basic realm="Lux bot"'})
-        return await call_next(request)
+        resp = await call_next(request)
+        # never let a phone cache a stale dashboard build after an update
+        if request.url.path.startswith("/static") or request.url.path == "/":
+            resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return resp
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 

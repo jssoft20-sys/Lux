@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     trailing_stop_pct: float = 0.5
     trailing_activation_pct: float = 0.5
     max_hold_minutes: int = 45
+    min_hold_seconds: float = 90.0  # anti-churn: hold at least this long before a soft exit (SL/TP still fire)
     buy_threshold: float = 0.35
     exit_threshold: float = -0.25
     min_news_score: float = 0.05  # entries need at least mildly positive news tone

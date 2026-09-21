@@ -279,10 +279,14 @@
   let ws = null, wsBackoff = 1000, wsTimer = null, pollTimer = null, pollFailures = 0;
   function startPolling() {
     if (pollTimer) return;
+    let n = 0;
     pollTimer = setInterval(async () => {
-      try { await loadStatus(); pollFailures = 0; $("conn-badge").className = "badge warn"; $("conn-badge").textContent = "опрос каждые 3 с"; }
-      catch (e) { if (++pollFailures >= 2) { $("conn-badge").className = "badge bad"; $("conn-badge").textContent = "нет связи с ботом"; } }
-    }, 3000);
+      try {
+        await loadStatus(); pollFailures = 0; n++;
+        $("conn-badge").className = "badge warn"; $("conn-badge").textContent = "обновление 1 с";
+        if (n % 4 === 0) loadTrades();  // trades/positions refresh a bit slower to stay light
+      } catch (e) { if (++pollFailures >= 3) { $("conn-badge").className = "badge bad"; $("conn-badge").textContent = "нет связи с ботом"; } }
+    }, 1000);
   }
   function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
   async function connectWS() {

@@ -120,6 +120,33 @@ async def test_stop_loss_and_daily_halt(tmp_path):
     assert "ADAUSDT" not in engine.portfolio.positions
 
 
+@pytest.mark.asyncio
+async def test_min_hold_prevents_churn_but_stop_loss_still_fires(tmp_path):
+    cfg = Settings(trading_mode="paper", symbols="ADAUSDT", position_size_usdt=10, paper_start_balance=50, buy_threshold=0.3, exit_threshold=-0.25, stop_loss_pct=0.8, min_hold_seconds=90, symbol_cooldown_minutes=0, db_path=str(tmp_path / "t.db"), _env_file=None)
+    r = rules()
+    states = {"ADAUSDT": _state(trend_pct=0.6)}
+    broker = PaperBroker(states, {"ADAUSDT": r}, "USDT", 50, fee_rate=0.001, slippage_bps=0)
+    book = SentimentBook(["ADAUSDT"], {"ADAUSDT": "ADA"})
+    now = time.time()
+    book.add(NewsItem(id="n1", ts=now, fetched=now, source="t", title="good", summary="", url="", tickers=["ADA"], market_wide=False, score=0.9, importance=1.0, confidence=1.0))
+    db = Database(str(tmp_path / "t.db"))
+    engine = TradingEngine(cfg, broker, states, {"ADAUSDT": r}, book, db, RiskManager(cfg), EventBus(db))
+    engine.running = True
+    await engine.tick()
+    assert "ADAUSDT" in engine.portfolio.positions
+    pos = engine.portfolio.positions["ADAUSDT"]
+    # signal collapses immediately, but the position is younger than min_hold -> no reversal churn
+    book.add(NewsItem(id="n2", ts=now, fetched=now, source="t", title="bad crash dump", summary="", url="", tickers=["ADA"], market_wide=False, score=-0.9, importance=1.0, confidence=1.0))
+    states["ADAUSDT"].on_book(pos.entry_price * 1.001, pos.entry_price * 1.0012, 1000, 1000)
+    await engine.tick()
+    assert "ADAUSDT" in engine.portfolio.positions  # held, not churned
+    # but a real stop-loss breach still exits instantly regardless of min_hold
+    states["ADAUSDT"].on_book(pos.entry_price * 0.985, pos.entry_price * 0.9852, 1000, 1000)
+    await engine.tick()
+    assert "ADAUSDT" not in engine.portfolio.positions
+    assert db.trades()[0]["reason"] == "стоп-лосс"
+
+
 def test_paper_broker_rejects_overspend():
     st = _state()
     broker = PaperBroker({"ADAUSDT": st}, {"ADAUSDT": rules()}, "USDT", 8)

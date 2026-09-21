@@ -148,12 +148,16 @@ class TradingEngine:
             if pos.trailing_active:
                 pos.trailing_stop = pos.highest * (1 - cfg.trailing_stop_pct / 100)
             reason = None
+            # hard protective exits always fire, even in the first seconds
             if bid <= pos.stop_loss:
                 reason = "стоп-лосс"
             elif bid >= pos.take_profit:
                 reason = "тейк-профит"
             elif pos.trailing_active and bid <= pos.trailing_stop:
                 reason = "трейлинг-стоп"
+            elif pos.age_s < cfg.min_hold_seconds:
+                # too fresh for a soft exit — do not churn a position on a momentary signal dip
+                reason = None
             elif pos.age_s > cfg.max_hold_minutes * 60:
                 reason = "выход по времени"
             elif sig is not None and sig.news_score <= -0.45 and sig.news_count > 0:
