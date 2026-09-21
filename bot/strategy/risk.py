@@ -28,11 +28,18 @@ class RiskManager:
         self.after_loss = False  # playbook: re-enter at half risk after a stop-out
 
     # ---- sizing ----
-    def position_size(self, free_quote: float, rules: SymbolRules, open_positions: int) -> float:
+    @staticmethod
+    def min_order_quote(rules: SymbolRules, price: float = 0.0) -> float:
+        """Smallest position that can still be SOLD later: exchange minimum + 10 % for the fee and price
+        drift + one lot step (Binance rounds the quantity down to the step on both legs)."""
+        step_quote = float(rules.step_size) * price if price > 0 else 0.0
+        return float(rules.min_notional) * 1.10 + step_quote
+
+    def position_size(self, free_quote: float, rules: SymbolRules, open_positions: int, price: float = 0.0) -> float:
         cfg = self.cfg
         usable = max(0.0, free_quote - cfg.min_quote_reserve)
         size = min(cfg.position_size_usdt, usable * cfg.max_position_pct, usable)
-        min_needed = float(rules.min_notional) * 1.05  # buffer: price may move before the fill
+        min_needed = self.min_order_quote(rules, price)
         if size < min_needed:
             size = min_needed if usable >= min_needed else 0.0
         return math.floor(size * 100) / 100.0
@@ -43,7 +50,7 @@ class RiskManager:
             return min(cfg.risk_per_trade_pct, cfg.risk_reduced_pct)
         return cfg.risk_per_trade_pct
 
-    def size_by_risk(self, equity: float, free_quote: float, stop_pct: float, rules: SymbolRules) -> float:
+    def size_by_risk(self, equity: float, free_quote: float, stop_pct: float, rules: SymbolRules, price: float = 0.0) -> float:
         """Playbook sizing: notional = (equity × risk%) / stop distance, within the usual caps."""
         cfg = self.cfg
         if stop_pct <= 0 or equity <= 0:
@@ -52,7 +59,7 @@ class RiskManager:
         size = risk_amount / (stop_pct / 100.0)
         usable = max(0.0, free_quote - cfg.min_quote_reserve)
         size = min(size, usable * cfg.max_position_pct, usable)
-        min_needed = float(rules.min_notional) * 1.05
+        min_needed = self.min_order_quote(rules, price)
         if size < min_needed:
             size = min_needed if usable >= min_needed else 0.0
         return math.floor(size * 100) / 100.0
@@ -92,8 +99,8 @@ class RiskManager:
                 return False, f"вола {signal.volatility_bps:.0f} < {need:.0f} б.п."
         if rules.status != "TRADING":
             return False, f"статус {rules.status}"
-        if self.position_size(free_quote, rules, open_positions) <= 0:
-            return False, f"мало {cfg.quote_asset} (< {float(rules.min_notional) * 1.05:.2f})"
+        if self.position_size(free_quote, rules, open_positions, signal.price) <= 0:
+            return False, f"мало {cfg.quote_asset} (< {self.min_order_quote(rules, signal.price):.2f})"
         return True, "ok"
 
     # ---- bookkeeping ----

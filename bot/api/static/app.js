@@ -65,9 +65,14 @@
   const post = (p) => api(p, { method: "POST" });
 
   // ---------- toasts ----------
+  const recentToasts = new Map();
   function toast(text, kind) {
+    const now = Date.now(); const last = recentToasts.get(text);
+    if (last && now - last < 60000) return;  // the same message once a minute, never a flood
+    recentToasts.set(text, now); if (recentToasts.size > 50) recentToasts.delete(recentToasts.keys().next().value);
+    const box = $("toasts"); while (box.children.length >= 3) box.firstChild.remove();
     const t = el("div", { class: "toast " + (kind || "") }, text);
-    $("toasts").appendChild(t);
+    box.appendChild(t);
     setTimeout(() => t.remove(), 4200);
   }
 
@@ -197,6 +202,7 @@
     const tpLbl = isSmc ? `${ex.tp1_done ? "TP2 " + px(ex.tp2) : "TP1 " + px(ex.tp1)} · RR ${ex.rr}` : `TP ${px(hi)}${ex.tp_pct ? ` (+${ex.tp_pct}%)` : ""}`;
     node.appendChild(el("div", { class: "range" }, el("div", { class: "lbl" }, el("span", {}, stopLbl), el("span", {}, tpLbl)), el("div", { class: "trk" }, el("i", { class: "mk", style: `left:${(k * 100).toFixed(1)}%` }))));
     if (ex.max_hold_min) node.appendChild(el("div", { class: "sub muted", style: "margin-top:6px" }, `лимит ${ex.max_hold_min} мин · комиссия за круг ${ex.fee_rt_pct}%`));
+    if (ex.unsellable) node.appendChild(el("div", { class: "sub down", style: "margin-top:6px" }, `⚠ ${ex.unsellable} — бот докупит до минимума и закроет, когда будет свободный ${S.quote}`));
     const b = el("button", { class: "btn danger sm", on: { click: () => confirmSheet("Закрыть позицию", `${pair(p.symbol)} · ${qty(p.qty)} по рынку. PnL сейчас ${sgn(p.pnl, 3)} ${S.quote}.`, "Закрыть по рынку", async () => { const r = await post(`/api/control/close/${p.symbol}`); toast(r && r.ok ? `Закрыто ${pair(p.symbol)}` : "Не удалось закрыть", r && r.ok ? "up" : "down"); await loadTrades(); }, true) } }, "Закрыть");
     node.appendChild(el("div", { class: "pos-foot" }, el("div", { class: "sub" }, `${dur(p.age_s)} · ${nf(p.quote_spent)} ${S.quote}${p.extra && p.extra.headline ? " · " + p.extra.headline.slice(0, 60) : ""}`), b));
   }

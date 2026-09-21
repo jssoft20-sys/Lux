@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from typing import Any
 
@@ -216,7 +217,7 @@ class TradingEngine:
                 tp2 = float(pos.extra.get("tp2", pos.take_profit))
                 if not pos.extra.get("tp1_done") and bid >= tp1:
                     part = pos.qty * cfg.partial_tp_pct / 100.0
-                    min_notional = float(self.rules[sym].min_notional) * 1.05
+                    min_notional = self.risk.min_order_quote(self.rules[sym], bid)
                     if part * bid >= min_notional and (pos.qty - part) * bid >= min_notional:
                         await self._partial_close(sym, part, "TP1 · частичная фиксация")
                         pos = self.portfolio.positions.get(sym)
@@ -309,13 +310,13 @@ class TradingEngine:
                 continue
             if smc_trade and setup is not None:
                 stop_pct = (setup.entry - setup.sl) / setup.entry * 100
-                size = self.risk.size_by_risk(max(self.last_equity, free), free, stop_pct, self.rules[sig.symbol])
+                size = self.risk.size_by_risk(max(self.last_equity, free), free, stop_pct, self.rules[sig.symbol], sig.price)
                 if size <= 0:
                     self.decisions[sig.symbol] = "риск-сайзинг: мало средств"
                     continue
                 await self._open(sig, size, setup)
             else:
-                size = self.risk.position_size(free, self.rules[sig.symbol], open_n)
+                size = self.risk.position_size(free, self.rules[sig.symbol], open_n, sig.price)
                 await self._open(sig, size)
 
     def _setup_of(self, sig: SymbolSignal) -> Setup | None:
@@ -376,7 +377,11 @@ class TradingEngine:
         if pos is None:
             return
         qty = self.rules[sym].round_qty(min(qty, pos.qty))
-        if qty <= 0:
+        st = self.states.get(sym)
+        price = st.bid if st and st.bid > 0 else pos.entry_price
+        # both the part and the remainder must stay sellable (exchange minimum + lot rounding)
+        min_q = self.risk.min_order_quote(self.rules[sym], price)
+        if qty <= 0 or qty * price < min_q or (pos.qty - qty) * price < min_q:
             return
         try:
             fill = await self.broker.sell(sym, qty)
@@ -400,20 +405,35 @@ class TradingEngine:
         self.bus.log(f"SELL {sym} {fill.qty:g} @ {fill.price:g} · {sign}{pnl:.3f} {self.cfg.quote_asset} · {reason}", symbol=sym, side="SELL", price=fill.price, qty=fill.qty, pnl=pnl)
         self.bus.publish("trade", {"side": "SELL", "symbol": sym, "price": fill.price, "qty": fill.qty, "quote": fill.quote_qty, "pnl": pnl, "pnl_pct": pnl / cost * 100 if cost else 0.0, "reason": reason})
 
-    async def _close(self, sym: str, reason: str) -> None:
+    DUST_RETRY_S = 600  # after a failed sell, do not hammer the exchange every tick
+
+    async def _close(self, sym: str, reason: str, manual: bool = False) -> None:
         pos = self.portfolio.positions.get(sym)
         if pos is None:
             return
+        now = time.time()
+        if not manual and now - float(pos.extra.get("sell_fail_ts", 0)) < self.DUST_RETRY_S:
+            return  # a recent sell attempt failed (dust); wait before retrying
         try:
             fill = await self.broker.sell(sym, pos.qty)
         except BinanceError as e:
+            msg = e.msg.upper()
+            if "NOTIONAL" in msg or "LOT_SIZE" in msg:
+                await self._handle_dust(sym, pos, reason, e.msg)
+                return
             self.risk.record_failure(sym, e.msg, permanent=e.symbol_blocked)
-            self.bus.log(f"ошибка продажи {sym}: {e.msg}", level="error", symbol=sym)
+            if pos.extra.get("sell_error") != e.msg:  # log each distinct failure once, not every tick
+                self.bus.log(f"ошибка продажи {sym}: {e.msg}", level="error", symbol=sym)
+            pos.extra["sell_error"] = e.msg
+            pos.extra["sell_fail_ts"] = now
+            self.db.save_position(sym, pos.to_dict())
             if "nothing to sell" in e.msg or e.code == -2010 and "insufficient" in e.msg.lower():
                 # the asset is gone (sold manually / dust) — stop tracking it
                 self.portfolio.positions.pop(sym, None)
                 self.db.delete_position(sym)
             return
+        pos.extra.pop("sell_error", None)
+        pos.extra.pop("unsellable", None)
         pnl = fill.quote_qty - pos.quote_spent
         pnl_pct = pnl / pos.quote_spent * 100 if pos.quote_spent else 0.0
         self.portfolio.positions.pop(sym, None)
@@ -429,6 +449,50 @@ class TradingEngine:
         )
         self.bus.publish("trade", {"side": "SELL", "symbol": sym, "price": fill.price, "qty": fill.qty, "quote": fill.quote_qty, "pnl": pnl, "pnl_pct": pnl_pct, "reason": reason})
         self._check_drawdowns()
+
+    async def _handle_dust(self, sym: str, pos: Position, reason: str, err: str) -> None:
+        """The position is worth less than the exchange minimum (fees + lot rounding). Top it up to a
+        sellable size with one small buy, then close everything; otherwise mark it and retry later."""
+        now = time.time()
+        rules = self.rules[sym]
+        st = self.states.get(sym)
+        price = st.bid if st and st.bid > 0 else pos.entry_price
+        pos.extra["sell_fail_ts"] = now
+        pos.extra["unsellable"] = "объём ниже минимума биржи"
+        first_time = pos.extra.get("sell_error") != err
+        pos.extra["sell_error"] = err
+        try:
+            free = await self.broker.free_balance(self.cfg.quote_asset)
+        except BinanceError:
+            free = 0.0
+        target_notional = float(rules.min_notional) * 1.15 + float(rules.step_size) * price
+        topup = max(self.risk.min_order_quote(rules, price), target_notional - pos.qty * price)
+        topup = math.ceil(topup * 100) / 100
+        # one top-up per retry window: if the exchange still refuses after it, wait instead of buying again
+        topped_recently = now - float(pos.extra.get("topup_ts", 0)) < self.DUST_RETRY_S * 3
+        if free >= topup and not topped_recently:
+            try:
+                fill = await self.broker.buy(sym, topup)
+            except BinanceError as e:
+                self.bus.log(f"{sym}: докупка для закрытия не удалась: {e.msg}", level="error", symbol=sym)
+                self.db.save_position(sym, pos.to_dict())
+                return
+            pos.qty += fill.qty
+            pos.quote_spent += fill.quote_qty
+            pos.fee_paid += fill.fee_quote
+            pos.extra["topup_ts"] = now
+            self._record_trade(fill, reason="докупка до минимума для закрытия")
+            self.bus.log(f"{sym}: объём был ниже минимума биржи — докуплено на {fill.quote_qty:.2f} {self.cfg.quote_asset}, закрываю целиком", level="warn", symbol=sym)
+            pos.extra.pop("sell_fail_ts", None)
+            self.db.save_position(sym, pos.to_dict())
+            await self._close(sym, reason, manual=True)
+            return
+        if first_time:
+            self.bus.log(
+                f"{sym}: не могу продать {pos.qty:g} (≈{pos.qty * price:.2f} {self.cfg.quote_asset}) — ниже минимума биржи; нужно ≥{topup:.2f} {self.cfg.quote_asset} свободных для докупки, повтор через {self.DUST_RETRY_S // 60} мин",
+                level="warn", symbol=sym,
+            )
+        self.db.save_position(sym, pos.to_dict())
 
     def _check_drawdowns(self) -> None:
         day_start = max(0.0, self.last_equity - self.portfolio.realized_today - self.last_unrealized)
@@ -462,14 +526,14 @@ class TradingEngine:
         async with self._lock:
             if sym not in self.portfolio.positions:
                 return False
-            await self._close(sym, reason)
+            await self._close(sym, reason, manual=True)
             return sym not in self.portfolio.positions
 
     async def close_all(self, reason: str = "закрыто вручную") -> int:
         n = 0
         async with self._lock:
             for sym in list(self.portfolio.positions):
-                await self._close(sym, reason)
+                await self._close(sym, reason, manual=True)
                 if sym not in self.portfolio.positions:
                     n += 1
         return n

@@ -32,8 +32,13 @@ def test_position_size_respects_min_notional_and_balance():
     rm = RiskManager(cfg)
     assert rm.position_size(50, rules(), 0) == 10.0
     assert rm.position_size(20, rules(), 0) == 7.0
-    assert rm.position_size(6, rules(), 0) == 5.25  # below 35% but the exchange minimum still fits
+    assert rm.position_size(6, rules(), 0) == 5.5  # below 35% but the exchange minimum (+10 %) still fits
     assert rm.position_size(4, rules(), 0) == 0.0
+    # one lot step is added so the lot-rounded quantity can still be sold: BTC step 0.00001 at 80 000 = 0.8 USDT
+    btc = rules(symbol="BTCUSDT", base="BTC", step="0.00001000")
+    assert rm.position_size(50, btc, 0, price=80000) == 10.0
+    assert rm.position_size(6.3, btc, 0, price=80000) == pytest.approx(6.3)
+    assert rm.position_size(6.0, btc, 0, price=80000) == 0.0
 
 
 def test_daily_loss_halts():
