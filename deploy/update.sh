@@ -26,7 +26,7 @@ find "$APP_DIR/bot" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/
 echo "==> Зависимости"
 "$APP_DIR/.venv/bin/pip" install --quiet -r "$APP_DIR/requirements.txt"
 chmod +x "$APP_DIR"/deploy/*.sh "$APP_DIR"/scripts/*.sh "$APP_DIR"/run.sh 2>/dev/null || true
-chown -R lux:lux "$APP_DIR"
+id -u lux >/dev/null 2>&1 && chown -R lux:lux "$APP_DIR" || true
 chmod 600 "$APP_DIR/.env" 2>/dev/null || true
 
 if systemctl list-unit-files lux-bot.service >/dev/null 2>&1; then
