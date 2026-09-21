@@ -254,6 +254,43 @@ def qr_image_value(payload: str) -> str:
     return "https://api.dengi.o.kg/#" + urllib.parse.quote(clean, safe="")
 
 
+# bank recognition for a withdrawal QR/link → name + logo (logo files live in frontend/admin/brand/banks/)
+BANKS: list[tuple[str, str, tuple[str, ...]]] = [
+    ("optima", "Optima Bank", ("optima",)),
+    ("mbank", "MBank", ("mbank", "mbank.kg")),
+    ("bakai", "Bakai Bank", ("bakai",)),
+    ("dengi", "О!Деньги", ("dengi", "o.kg", "odengi", "o!")),
+    ("balance", "Balance", ("balance.kg", "balance_",)),
+    ("megapay", "MegaPay", ("megapay",)),
+    ("demir", "Demir Bank", ("demir", "dcard")),
+    ("kompanion", "Kompanion", ("companion", "kompanion")),
+    ("finik", "Finik", ("finik",)),
+    ("rsk", "RSK Bank", ("rsk",)),
+    ("keremet", "Keremet Bank", ("keremet",)),
+    ("elcart", "Элкарт", ("elcart", "elqr")),
+]
+
+
+def detect_bank(text: str) -> dict[str, str]:
+    """Recognise the client's bank from a withdrawal QR payload or a bank link (mbank, finik,
+    optima, …) and return its key, display name and logo path. Falls back to a neutral badge."""
+    low = str(text or "").lower()
+    for key, name, markers in BANKS:
+        if any(m in low for m in markers):
+            return {"key": key, "name": name, "logo": f"brand/banks/{key}.png"}
+    try:
+        meta = bank_meta(text)
+        blob = (str(meta.get("domain", "")) + " " + str(meta.get("bank_name", ""))).lower()
+        for key, name, markers in BANKS:
+            if any(m in blob for m in markers):
+                return {"key": key, "name": name, "logo": f"brand/banks/{key}.png"}
+        if meta.get("bank_name") and meta["bank_name"] != "Банк":
+            return {"key": "bank", "name": str(meta["bank_name"]), "logo": ""}
+    except Exception:
+        pass
+    return {"key": "bank", "name": "Банк", "logo": ""}
+
+
 OPTIMA_PAY_LINK_BASE = "https://mobile.optima24.kg/my-qr/confirm-screen?url=#"
 
 

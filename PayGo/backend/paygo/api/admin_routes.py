@@ -357,7 +357,7 @@ def get_withdrawal(withdrawal_id: int, principal: Principal = Depends(current_pr
         raise HTTPException(404, "NOT_FOUND")
     return {
         "ok": True,
-        "item": {**withdrawal_service.public_withdrawal(w, full=True), "operator_name": _operator_name(db, w.operator_id), "receipt_required": withdrawal_service.receipt_required(db, w), "autopay_active": autopay_service.is_active(db), "optima_pay_link": elqr.optima_confirm_link(w.generated_qr_payload, settings_store.get(db, "optima_pay_link_base")) if w.generated_qr_payload else ""},
+        "item": {**withdrawal_service.public_withdrawal(w, full=True), "operator_name": _operator_name(db, w.operator_id), "receipt_required": withdrawal_service.receipt_required(db, w), "autopay_active": autopay_service.is_active(db), "optima_pay_link": elqr.optima_confirm_link(w.generated_qr_payload, settings_store.get(db, "optima_pay_link_base")) if w.generated_qr_payload else "", "bank": elqr.detect_bank(w.qr_payload or w.qr_file_url or w.generated_qr_payload)},
         "history": support_service.recent_events(db, "withdrawal", w.public_id, limit=30),
         "user": public_user(w.user, user_summary(db, w.user)),
         "payment_links": elqr.bank_links(w.generated_qr_payload, deposit_service.bank_link_rows(db)) if w.generated_qr_payload else [],

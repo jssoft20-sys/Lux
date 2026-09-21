@@ -626,6 +626,7 @@
       !dep ? ['Выполнена', tx.completed_at ? fmtDate(tx.completed_at) : '—'] : null,
       ['Обработал', tx.operator_id ? (tx.operator_name || '—') : '—'],
       dep ? ['Чек', tx.has_receipt ? h('span', { class: 'pill green' }, 'получен') : 'нет'] : ['QR клиента', tx.has_qr ? h('span', { class: 'pill ' + (tx.qr_decoded ? 'green' : 'amber') }, tx.qr_decoded ? 'распознан' : 'не распознан') : 'нет'],
+      (!dep && tx.bank && tx.bank.name && tx.bank.name !== 'Банк') ? ['Банк клиента', h('span', { class: 'bank-badge' }, tx.bank.logo ? h('img', { class: 'bank-logo', src: tx.bank.logo, onerror: function () { this.style.display = 'none'; } }) : null, tx.bank.name)] : null,
       !dep ? ['Чек перевода', tx.has_receipt ? h('span', { class: 'pill green' }, 'прикреплён') : (tx.receipt_required ? h('span', { class: 'pill amber' }, 'нужен') : '—')] : null,
       tx.error ? ['Комментарий', h('span', { class: 'err-text' }, reasonText(tx.error))] : null,
     ];

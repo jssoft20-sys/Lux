@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from ..db import transaction
 from ..models import Deposit, PaymentEvent
-from ..utils import iso, money, stable_hash, utcnow
+from ..utils import as_utc, iso, money, stable_hash, utcnow
 from . import settings_store
 from .deposits import credit_deposit
 from .logs import log_event
@@ -145,12 +145,38 @@ def ingest_event(
     return event, True
 
 
-def _find_deposit_for_amount(db: Session, amount: Decimal) -> Deposit | None:
+def _payment_in_window(db: Session, deposit: Deposit, event_time: Any) -> bool:
+    """Second safety check: the payment time must fall inside the request's own window.
+
+    A payment cannot belong to a request created *after* it, nor to one that closed long before
+    it — so a fresh, unrelated payment that happens to carry the same amount can never confirm the
+    wrong request. ``event_time`` None (unknown) skips the check to preserve old behaviour."""
+    if event_time is None:
+        return True
+    when = as_utc(event_time)
+    skew = timedelta(minutes=settings_store.get_int(db, "deposit_match_time_skew_minutes", 3))
+    grace = timedelta(minutes=settings_store.get_int(db, "payment_event_max_age_minutes", 15))
+    created = as_utc(deposit.created_at) if deposit.created_at else None
+    if created is not None and when < created - skew:
+        return False  # money moved before the request even existed → not this request
+    end = None
+    if deposit.expires_at:
+        end = as_utc(deposit.expires_at) + grace
+    elif deposit.closed_at:
+        end = as_utc(deposit.closed_at) + grace
+    elif created is not None:
+        end = created + grace
+    if end is not None and when > end:
+        return False  # arrived long after the request's window → not this request
+    return True
+
+
+def _find_deposit_for_amount(db: Session, amount: Decimal, event_time: Any = None) -> Deposit | None:
     now = utcnow()
     row = db.execute(
         select(Deposit).where(Deposit.status == "created", Deposit.pay_amount == amount).order_by(Deposit.id.asc())
     ).scalars().first()
-    if row:
+    if row and _payment_in_window(db, row, event_time):
         return row
     grace = settings_store.get_int(db, "payment_event_max_age_minutes", 15)
     cutoff = now - timedelta(minutes=grace)
@@ -160,14 +186,14 @@ def _find_deposit_for_amount(db: Session, amount: Decimal) -> Deposit | None:
         .where(Deposit.status.in_(("expired", "failed")), Deposit.pay_amount == amount, Deposit.closed_at.is_not(None), Deposit.closed_at >= cutoff)
         .order_by(Deposit.id.desc())
     ).scalars().first()
-    if row:
+    if row and _payment_in_window(db, row, event_time):
         return row
     # the client paid the whole soms but not the tiyins (or paid a little more): when exactly one
     # open request has the same whole amount, it is that request — it gets credited with what was paid
     whole = int(amount)
     candidates = [
         d for d in db.execute(select(Deposit).where(Deposit.status == "created")).scalars().all()
-        if int(money(d.pay_amount)) == whole and abs(money(d.pay_amount) - amount) < Decimal("1")
+        if int(money(d.pay_amount)) == whole and abs(money(d.pay_amount) - amount) < Decimal("1") and _payment_in_window(db, d, event_time)
     ]
     if len(candidates) == 1:
         return candidates[0]
@@ -185,7 +211,7 @@ def process_event(event_id: int) -> dict[str, Any]:
         if event.status == "processing" and event.deposit_id:
             deposit_id = event.deposit_id
         else:
-            deposit = _find_deposit_for_amount(db, money(event.amount))
+            deposit = _find_deposit_for_amount(db, money(event.amount), event_time=event.received_at)
             event.attempts = int(event.attempts or 0) + 1
             if deposit is None:
                 max_age = settings_store.get_int(db, "payment_event_max_age_minutes", 15)

@@ -99,3 +99,12 @@ def test_optima_confirm_link():
     assert " " not in link  # spaces encoded
     assert elqr.optima_confirm_link("not-a-qr") == ""
     assert elqr.optima_confirm_link(full, base="https://x/#").startswith("https://x/#000201")
+
+
+def test_detect_bank_from_link_and_qr():
+    from paygo.services import elqr
+
+    assert elqr.detect_bank("https://qr.finik.kg/cea3a572-4b24-4eef-add4-91a1a0545434?type=t")["key"] == "finik"
+    assert elqr.detect_bank("00020101021132710013QR.Optima.C2B01...")["key"] == "optima"
+    assert elqr.detect_bank("something mbank.kg transfer")["key"] == "mbank"
+    assert elqr.detect_bank("")["name"] == "Банк"

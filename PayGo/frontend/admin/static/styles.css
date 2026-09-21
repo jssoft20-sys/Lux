@@ -436,3 +436,7 @@ html{-webkit-text-size-adjust:100%}
 .cash-toggles{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:8px;align-items:center;padding:9px 0;border-top:1px solid #edf1f5}
 .cash-toggles-name{min-width:0}.cash-toggles-name b{display:block;font-size:14px}.cash-toggles-name small{color:var(--muted);font-size:11px}
 .cash-toggles label{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:800;color:#5b6a7d;letter-spacing:.3px}
+
+/* bank badge in the withdrawal card (logo optional, name always shown) */
+.bank-badge{display:inline-flex;align-items:center;gap:6px;font-weight:600}
+.bank-logo{width:20px;height:20px;border-radius:5px;object-fit:contain;background:#fff}

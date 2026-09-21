@@ -96,6 +96,9 @@ DEFAULTS: dict[str, Any] = {
     "amount_reuse_cooldown_seconds": 120,
     "payment_event_max_age_minutes": 15,
     "deposit_max_active_per_user": 1,
+    # second safety check: a payment only credits a request whose own time window it falls into,
+    # so a fresh payment with the same amount can never confirm the wrong/old request
+    "deposit_match_time_skew_minutes": 3,
     # withdrawals
     "withdraw_code_min_length": 4,
     "withdraw_receipt_min": 10000,
@@ -157,7 +160,7 @@ DEFAULTS: dict[str, Any] = {
     "assistant_enabled": True,
     # subscription gate
     "subscription_enabled": False,
-    "subscription_channel": "",
+    "subscription_channel": "@PayGoX",
     "phone_required": False,
 }
 

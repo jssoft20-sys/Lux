@@ -162,3 +162,28 @@ def test_amount_extraction_picks_the_payment_not_phones_masks_balances_or_dates(
     for text in ("Заявка 2260918", "Пароль 1234", ""):
         with pytest.raises(ValueError):
             payments.extract_amount(text)
+
+
+def test_payment_before_request_window_is_not_matched(user, fake_provider):
+    """A fresh payment that arrived before the request existed must not confirm it (2nd check)."""
+    from datetime import timedelta
+
+    from paygo.utils import utcnow
+
+    dep_id, pub, pay, _ = _create(user, amount="1234", key="win1")
+    with transaction() as db:
+        event, _ = payments.ingest_event(db, source="webhook", amount=pay, raw_text=f"Зачислено {pay} KGS")
+        event.received_at = utcnow() - timedelta(minutes=30)  # money moved long before the request
+        event_id = event.id
+    result = payments.process_event(event_id)
+    assert result["processed"] is False and result["message"] == "transaction_not_found"
+    with transaction() as db:
+        assert db.get(Deposit, dep_id).status == "created"  # untouched — not wrongly credited
+
+
+def test_payment_inside_window_still_matches(user, fake_provider):
+    dep_id, pub, pay, _ = _create(user, amount="1235", key="win2")
+    with transaction() as db:
+        event, _ = payments.ingest_event(db, source="webhook", amount=pay, raw_text=f"Зачислено {pay} KGS")
+        event_id = event.id
+    assert payments.process_event(event_id)["ok"] is True
