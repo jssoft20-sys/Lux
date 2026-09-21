@@ -1,0 +1,107 @@
+"""Runtime configuration, loaded from environment / .env (see .env.example)."""
+
+from __future__ import annotations
+
+from functools import lru_cache
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_SYMBOLS = (
+    "BTCUSDT,ETHUSDT,BNBUSDT,ADAUSDT,AVAXUSDT,AAVEUSDT,BCHUSDT,ALGOUSDT,AXSUSDT,"
+    "1INCHUSDT,BATUSDT,BANDUSDT,BELUSDT,BNTUSDT,C98USDT,ACMUSDT,ALICEUSDT,AVAUSDT,"
+    "LINKUSDT,LTCUSDT,ETCUSDT"
+)
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore", case_sensitive=False
+    )
+
+    # ---- Binance ----
+    binance_api_key: str = ""
+    binance_api_secret: str = ""
+    binance_api_url: str = "https://api.binance.com"
+    binance_data_url: str = "https://data-api.binance.vision"
+    binance_ws_url: str = "wss://data-stream.binance.vision"
+    trading_mode: str = "paper"  # paper | live
+    quote_asset: str = "USDT"
+    symbols: str = DEFAULT_SYMBOLS
+    paper_start_balance: float = 50.0
+
+    # ---- Strategy / risk ----
+    position_size_usdt: float = 10.0
+    max_position_pct: float = 0.35
+    max_positions: int = 3
+    take_profit_pct: float = 1.2
+    stop_loss_pct: float = 0.8
+    trailing_stop_pct: float = 0.5
+    trailing_activation_pct: float = 0.5
+    max_hold_minutes: int = 45
+    buy_threshold: float = 0.35
+    exit_threshold: float = -0.25
+    min_news_score: float = 0.05  # entries need at least mildly positive news tone
+    daily_loss_limit_usdt: float = 8.0
+    max_spread_bps: float = 15.0
+    symbol_cooldown_minutes: float = 10.0
+    decision_interval_ms: int = 100
+    news_half_life_minutes: float = 20.0
+    fee_rate: float = 0.001
+    paper_slippage_bps: float = 2.0
+    w_news: float = 0.55
+    w_momentum: float = 0.25
+    w_orderbook: float = 0.10
+    w_flow: float = 0.10
+    min_quote_reserve: float = 0.0
+
+    # ---- News ----
+    news_poll_seconds: int = 15
+    cryptopanic_token: str = ""
+    newsapi_key: str = ""
+    extra_rss: str = ""
+
+    # ---- LLM ----
+    anthropic_api_key: str = ""
+    llm_model: str = "claude-opus-5"
+    llm_enabled: bool = True
+    llm_batch_size: int = 12
+    llm_min_interval_seconds: float = 3.0
+
+    # ---- Server ----
+    host: str = "0.0.0.0"
+    port: int = 7066
+    dashboard_password: str = ""
+    dashboard_user: str = "lux"
+    db_path: str = "data/lux.db"
+    log_level: str = "INFO"
+
+    @field_validator("trading_mode")
+    @classmethod
+    def _mode(cls, v: str) -> str:
+        v = (v or "paper").strip().lower()
+        if v not in ("paper", "live"):
+            raise ValueError("TRADING_MODE must be 'paper' or 'live'")
+        return v
+
+    @property
+    def symbol_list(self) -> list[str]:
+        out: list[str] = []
+        for s in self.symbols.replace(";", ",").split(","):
+            s = s.strip().upper().replace("/", "")
+            if s and s not in out:
+                out.append(s)
+        return out
+
+    @property
+    def live(self) -> bool:
+        return self.trading_mode == "live"
+
+    @property
+    def llm_active(self) -> bool:
+        return bool(self.llm_enabled and self.anthropic_api_key)
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

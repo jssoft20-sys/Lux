@@ -1,0 +1,22 @@
+services:
+  lux-bot:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    image: lux-bot:latest
+    container_name: lux-bot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 7066
+      DB_PATH: /app/data/lux.db
+    ports:
+      - "7066:7066"
+    volumes:
+      - ./data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"

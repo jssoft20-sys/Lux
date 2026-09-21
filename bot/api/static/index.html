@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lux · торговый бот</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23f0b90b'/%3E%3Cpath d='M9 8h4v12h9v4H9z' fill='%23111'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">LUX <span class="sub">новостной торговый бот · Binance Spot</span></div>
+  <div class="badges">
+    <span id="mode-badge" class="badge">—</span>
+    <span id="state-badge" class="badge">—</span>
+    <span id="conn-badge" class="badge off">подключение…</span>
+    <span id="feed-badge" class="badge off" title="рыночные данные Binance WebSocket">рынок</span>
+    <span id="news-badge" class="badge off" title="новостные источники">новости</span>
+    <span id="llm-badge" class="badge off" title="ИИ-анализ новостей (Claude)">ИИ</span>
+    <span id="uptime" class="muted"></span>
+  </div>
+  <div class="controls">
+    <button id="btn-pause" class="btn">Пауза</button>
+    <button id="btn-resume" class="btn primary" hidden>Продолжить</button>
+    <button id="btn-reset-halt" class="btn warn" hidden>Снять дневной стоп</button>
+    <button id="btn-close-all" class="btn danger">Закрыть все позиции</button>
+    <button id="btn-theme" class="btn ghost" title="Светлая / тёмная тема">◐</button>
+  </div>
+</header>
+
+<div id="warnings" class="warnings" hidden></div>
+
+<main>
+  <section class="tiles" aria-label="Ключевые показатели">
+    <div class="tile hero">
+      <div class="label">Эквити</div>
+      <div class="value" id="t-equity">—</div>
+      <div class="delta" id="t-equity-delta"></div>
+    </div>
+    <div class="tile">
+      <div class="label">P&amp;L сегодня (UTC)</div>
+      <div class="value" id="t-pnl-today">—</div>
+      <div class="delta" id="t-pnl-today-sub"></div>
+    </div>
+    <div class="tile">
+      <div class="label">P&amp;L за всё время</div>
+      <div class="value" id="t-pnl-total">—</div>
+      <div class="delta" id="t-pnl-total-sub"></div>
+    </div>
+    <div class="tile">
+      <div class="label">Нереализованный</div>
+      <div class="value" id="t-unrealized">—</div>
+      <div class="delta" id="t-unrealized-sub"></div>
+    </div>
+    <div class="tile">
+      <div class="label">Свободно</div>
+      <div class="value" id="t-free">—</div>
+      <div class="delta" id="t-free-sub"></div>
+    </div>
+    <div class="tile">
+      <div class="label">Сделок сегодня</div>
+      <div class="value" id="t-trades-today">—</div>
+      <div class="delta" id="t-trades-sub"></div>
+    </div>
+  </section>
+
+  <section class="filters" aria-label="Фильтры">
+    <span class="muted">Период графика:</span>
+    <div class="seg" id="range-seg" role="group">
+      <button data-h="1">1 ч</button>
+      <button data-h="6" class="on">6 ч</button>
+      <button data-h="24">24 ч</button>
+      <button data-h="0">всё</button>
+    </div>
+    <span class="muted" id="tick-note"></span>
+  </section>
+
+  <section class="card chart-card">
+    <div class="card-head">
+      <h2>Кривая эквити</h2>
+      <span class="muted" id="chart-note"></span>
+      <button class="link" id="btn-table" type="button">таблица</button>
+    </div>
+    <div id="equity-chart" class="chart" role="img" aria-label="Кривая эквити"></div>
+    <div id="equity-table" class="table-wrap compact" hidden></div>
+  </section>
+
+  <section class="grid2">
+    <div class="card">
+      <div class="card-head"><h2>Открытые позиции</h2><span class="muted" id="positions-note"></span></div>
+      <div class="table-wrap">
+        <table id="positions">
+          <thead><tr><th>Пара</th><th class="num">Объём</th><th class="num">Вход</th><th class="num">Сейчас</th><th class="num">P&amp;L</th><th class="num">Стоп / Тейк</th><th class="num">Время</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Сделки</h2><span class="muted" id="trades-note"></span></div>
+      <div class="table-wrap">
+        <table id="trades">
+          <thead><tr><th>Время</th><th>Пара</th><th>Сторона</th><th class="num">Цена</th><th class="num">Сумма</th><th class="num">P&amp;L</th><th>Причина</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Сигналы по парам</h2><span class="muted" id="signals-note"></span></div>
+    <div class="table-wrap">
+      <table id="signals">
+        <thead><tr>
+          <th>Пара</th><th class="num">Цена</th><th class="num">Δ 1 мин</th><th class="num">Δ 5 мин</th>
+          <th class="num" title="Новостной сигнал (−1…+1) и число учтённых новостей">Новости</th>
+          <th class="num" title="Импульс цены за 1/5/15 минут">Импульс</th>
+          <th class="num" title="Дисбаланс лучших заявок стакана (с поправкой на ликвидность)">Стакан</th>
+          <th class="num" title="Перевес покупок/продаж по рынку за 60 с">Поток</th>
+          <th class="num" title="Спред между лучшими заявками, базисные пункты">Спред</th>
+          <th title="Композитный сигнал: вход при значении ≥ порога">Сигнал</th><th>Решение</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="grid2">
+    <div class="card">
+      <div class="card-head"><h2>Новости и оценка</h2><span class="muted" id="news-note"></span></div>
+      <ul id="news" class="news"></ul>
+    </div>
+    <div class="col">
+      <div class="card">
+        <div class="card-head"><h2>Источники</h2><span class="muted" id="sources-note"></span></div>
+        <div class="table-wrap compact">
+          <table id="sources">
+            <thead><tr><th>Источник</th><th class="num">Материалов</th><th class="num">Опрос</th><th>Статус</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Журнал</h2></div>
+        <ul id="log" class="log"></ul>
+      </div>
+    </div>
+  </section>
+
+  <footer class="muted">
+    Сигнал = <span id="f-weights">0.55·новости + 0.25·импульс + 0.10·стакан + 0.10·поток</span>. Вход, когда сигнал ≥ <span id="f-buy">0.35</span>;
+    выход по тейк-профиту <span id="f-tp">+1.2%</span>, стоп-лоссу <span id="f-sl">−0.8%</span>, трейлингу, времени (<span id="f-hold">45 мин</span>) или развороту сигнала.
+    Дневной стоп: <span id="f-daily">8 USDT</span>. Торговля криптовалютой может привести к потере всех вложенных средств.
+  </footer>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

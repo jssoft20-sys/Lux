@@ -1,0 +1,32 @@
+# Secrets — never commit real keys
+.env
+.env.*
+!.env.example
+
+# Runtime data
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Archives built by scripts/make_archive.sh
+*.tar.gz
+*.zip
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
