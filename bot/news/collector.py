@@ -16,6 +16,12 @@ from .sources import Source, fetch_source
 
 log = logging.getLogger("lux.news")
 
+STALE_AFTER_S = 2 * 86400  # anything older than two days is history, not news
+JUNK_TERMS = (
+    "casino", "casinos", "sportsbook", "betting site", "gambling", "crypto.com arena", "arena,", "defeat", "defeats",
+    "vs.", " vs ", "giveaway", "sweepstake", "lottery", "poker", "slot machine", "slots",
+)
+
 
 class NewsCollector:
     def __init__(self, sources: list[Source], extractor: EntityExtractor, on_item: Callable[[NewsItem], None], seen: set[str] | None = None):
@@ -77,8 +83,13 @@ class NewsCollector:
         is_exchange_feed = "binance" in r["source"].lower()
         if not macro and not is_exchange_feed and not self.extractor.is_crypto_related(text, tickers):
             return None  # not about crypto at all (e.g. a general-news feed item)
-        s = analyse(r["title"] if not r.get("summary") else f"{r['title']}. {r['summary'][:200]}")
+        low = r["title"].lower()
+        if not macro and any(j in low for j in JUNK_TERMS):
+            return None  # casinos, sports venues, giveaways — "crypto" in the title but no market meaning
         published = r.get("published")
+        if not macro and published and now - published > STALE_AFTER_S:
+            return None  # ancient items some feeds keep re-publishing (old exchange announcements etc.)
+        s = analyse(r["title"] if not r.get("summary") else f"{r['title']}. {r['summary'][:200]}")
         if published and published > now + 600:  # broken clocks in feeds
             published = now
         if first_pass:

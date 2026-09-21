@@ -35,27 +35,27 @@ class RiskManager:
         now = now or time.time()
         cfg = self.cfg
         if self.halted:
-            return False, f"остановлен: {self.halt_reason}"
+            return False, f"стоп: {self.halt_reason}"
         blk = self.blocked.get(signal.symbol)
         if blk and blk[0] > now:
-            return False, f"пара заблокирована: {blk[1]}"
+            return False, f"заблокирована: {blk[1]}"
         if open_positions >= cfg.max_positions:
-            return False, "достигнут лимит открытых позиций"
+            return False, "лимит позиций"
         cd = self.cooldown_until.get(signal.symbol, 0)
         if cd > now:
-            return False, f"пауза по паре ещё {int(cd - now)}с"
+            return False, f"пауза {int(cd - now)}с"
         if signal.data_age_ms > 5000:
-            return False, "рыночные данные устарели"
+            return False, "нет данных"
         if signal.price <= 0 or signal.bid <= 0:
             return False, "нет цены"
         if signal.spread_bps > cfg.max_spread_bps:
-            return False, f"спред {signal.spread_bps:.1f} б.п. слишком широкий"
+            return False, f"спред {signal.spread_bps:.0f} б.п."
         if signal.volatility_bps > 250:
-            return False, "экстремальная волатильность"
+            return False, "волатильность"
         if rules.status != "TRADING":
-            return False, f"статус пары {rules.status}"
+            return False, f"статус {rules.status}"
         if self.position_size(free_quote, rules, open_positions) <= 0:
-            return False, f"недостаточно {cfg.quote_asset} (нужно ≥ {float(rules.min_notional) * 1.05:.2f})"
+            return False, f"мало {cfg.quote_asset} (< {float(rules.min_notional) * 1.05:.2f})"
         return True, "ok"
 
     # ---- bookkeeping ----
@@ -80,7 +80,7 @@ class RiskManager:
     def check_daily_loss(self, realized_today: float) -> bool:
         if not self.halted and self.cfg.daily_loss_limit_usdt > 0 and realized_today <= -abs(self.cfg.daily_loss_limit_usdt):
             self.halted = True
-            self.halt_reason = f"дневной убыток {realized_today:.2f} {self.cfg.quote_asset} превысил лимит {self.cfg.daily_loss_limit_usdt:.2f}"
+            self.halt_reason = f"дневной лимит убытка {self.cfg.daily_loss_limit_usdt:.2f} {self.cfg.quote_asset} (сейчас {realized_today:.2f})"
             return True
         return False
 

@@ -187,9 +187,9 @@ async def verify_live_account(cfg: Settings, rest: BinanceREST, symbols: list[st
         if not restr.get("enableSpotAndMarginTrading"):
             raise SystemExit("У API-ключа выключена спотовая торговля (Enable Spot & Margin Trading)")
         if restr.get("enableWithdrawals"):
-            warnings.append("У ключа включён ВЫВОД средств — отключите его в настройках Binance, боту он не нужен")
+            warnings.append("У ключа включён вывод средств — отключите его в настройках Binance")
         if not restr.get("ipRestrict"):
-            warnings.append("Ключ без ограничения по IP — рекомендуется разрешить только IP сервера")
+            log.warning("API key has no IP restriction; consider allowing only this server's IP")
     except BinanceError as e:
         warnings.append(f"не удалось прочитать ограничения ключа: {e.msg}")
     # test orders: detect symbols outside the key's whitelist without spending anything

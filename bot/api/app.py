@@ -59,15 +59,19 @@ def check_ws_token(token: str | None) -> bool:
 def dynamic_warnings(ctx: AppContext) -> list[str]:
     out = list(ctx.warnings)
     now = time.time()
-    if ctx.llm is not None and ctx.llm.last_error and (ctx.llm.calls == 0 or now - ctx.llm.last_error_ts < 900):
-        out.append(f"ИИ-анализ не работает: {ctx.llm.last_error} (бот продолжает торговать по лексическому анализу)")
+    if ctx.llm is not None:
+        if ctx.llm.disabled_reason:
+            short = "регион сервера не поддерживается Anthropic" if "403" in ctx.llm.disabled_reason else ctx.llm.disabled_reason
+            out.append(f"ИИ отключён: {short}. Торговля идёт по лексическому анализу новостей")
+        elif ctx.llm.last_error and (ctx.llm.calls == 0 or now - ctx.llm.last_error_ts < 900):
+            out.append(f"ИИ: {ctx.llm.last_error}")
     if not ctx.stream.connected:
-        out.append("Нет связи с Binance WebSocket: " + (ctx.stream.last_error or "переподключение…"))
+        out.append("Нет потока Binance: " + (ctx.stream.last_error or "переподключение…"))
     eng = ctx.engine
     if eng.broker.mode == "live" and eng.last_quote_balance and not eng.portfolio.positions:
         min_needed = max((float(r.min_notional) for s, r in ctx.rules.items() if s in eng.symbols), default=5.0) * 1.05
         if eng.last_quote_balance < min_needed:
-            out.append(f"На счёте {eng.last_quote_balance:.2f} {ctx.cfg.quote_asset} — меньше минимума для одной сделки ({min_needed:.2f}); пополните спотовый кошелёк")
+            out.append(f"Свободно {eng.last_quote_balance:.2f} {ctx.cfg.quote_asset} — меньше минимума сделки {min_needed:.2f}")
     return out
 
 

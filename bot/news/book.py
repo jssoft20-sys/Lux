@@ -108,10 +108,13 @@ class SentimentBook:
         return it
 
     def _prune(self) -> None:
+        # items are inserted in fetch order, not time order, so scan instead of popping from the left
         cutoff = time.time() - self.max_age
-        while self.items and self.items[0].ts < cutoff:
-            old = self.items.popleft()
-            self.by_id.pop(old.id, None)
+        if any(it.ts < cutoff for it in self.items):
+            keep = [it for it in self.items if it.ts >= cutoff]
+            self.items.clear()
+            self.items.extend(keep)
+            self.by_id = {it.id: it for it in keep}
 
     # ---- scoring ----
     def _decay(self, item: NewsItem, now: float) -> float:
@@ -172,4 +175,5 @@ class SentimentBook:
         return round(weighted / (norm + 0.6), 4) if norm > 0 else 0.0
 
     def recent(self, limit: int = 60) -> list[dict[str, Any]]:
-        return [it.to_dict() for it in list(self.items)[-limit:]][::-1]
+        newest = sorted(self.items, key=lambda it: it.ts, reverse=True)[:limit]
+        return [it.to_dict() for it in newest]

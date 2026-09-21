@@ -177,10 +177,10 @@ class TradingEngine:
         )
         for sig in candidates:
             if sig.composite < cfg.buy_threshold:
-                self.decisions[sig.symbol] = f"сигнал {sig.composite:+.2f} < порог {cfg.buy_threshold:.2f}"
+                self.decisions[sig.symbol] = f"сигнал {sig.composite:+.2f} < {cfg.buy_threshold:.2f}"
                 continue
             if sig.news_score < cfg.min_news_score:
-                self.decisions[sig.symbol] = f"новостной фон {sig.news_score:+.2f} ниже {cfg.min_news_score:.2f}"
+                self.decisions[sig.symbol] = f"новости {sig.news_score:+.2f} < {cfg.min_news_score:.2f}"
                 continue
             open_n = len(self.portfolio.positions)
             free = await self.broker.free_balance(cfg.quote_asset)
@@ -216,11 +216,13 @@ class TradingEngine:
             order_id=fill.order_id,
             mode=self.broker.mode,
         )
+        if sig.top_news:
+            pos.extra["headline"] = sig.top_news[0]["title"][:120]
         self.portfolio.positions[sym] = pos
         self.db.save_position(sym, pos.to_dict())
         self._record_trade(fill, reason=pos.entry_reason, signal=sig.composite)
         self.bus.log(
-            f"ПОКУПКА {sym}: {fill.qty:g} по {fill.price:g} на {fill.quote_qty:.2f} {cfg.quote_asset} (сигнал {sig.composite:+.2f}; {pos.entry_reason})",
+            f"BUY {sym} {fill.qty:g} @ {fill.price:g} · {fill.quote_qty:.2f} {cfg.quote_asset} · сигнал {sig.composite:+.2f}",
             symbol=sym, side="BUY", price=fill.price, qty=fill.qty, quote=fill.quote_qty,
         )
         self.bus.publish("trade", {"side": "BUY", "symbol": sym, "price": fill.price, "qty": fill.qty, "quote": fill.quote_qty, "reason": pos.entry_reason})
@@ -248,7 +250,7 @@ class TradingEngine:
         self._record_trade(fill, reason=reason, pnl=pnl, pnl_pct=pnl_pct, signal=self.signals.get(sym).composite if sym in self.signals else None)
         sign = "+" if pnl >= 0 else ""
         self.bus.log(
-            f"ПРОДАЖА {sym}: {fill.qty:g} по {fill.price:g} → {sign}{pnl:.4f} {self.cfg.quote_asset} ({sign}{pnl_pct:.2f}%) — {reason}",
+            f"SELL {sym} {fill.qty:g} @ {fill.price:g} · {sign}{pnl:.3f} {self.cfg.quote_asset} ({sign}{pnl_pct:.2f}%) · {reason}",
             level="info" if pnl >= 0 else "warn", symbol=sym, side="SELL", price=fill.price, qty=fill.qty, pnl=pnl,
         )
         self.bus.publish("trade", {"side": "SELL", "symbol": sym, "price": fill.price, "qty": fill.qty, "quote": fill.quote_qty, "pnl": pnl, "pnl_pct": pnl_pct, "reason": reason})
@@ -265,16 +267,14 @@ class TradingEngine:
     def _explain(sig: SymbolSignal) -> str:
         parts = []
         if abs(sig.news_score) >= 0.1:
-            parts.append(f"новости {sig.news_score:+.2f} ({sig.news_count})")
+            parts.append(f"новости {sig.news_score:+.2f}")
         if abs(sig.momentum_score) >= 0.1:
             parts.append(f"импульс {sig.momentum_score:+.2f}")
         if abs(sig.imbalance) >= 0.15:
             parts.append(f"стакан {sig.imbalance:+.2f}")
         if abs(sig.flow) >= 0.15:
             parts.append(f"поток {sig.flow:+.2f}")
-        if sig.top_news:
-            parts.append("«" + sig.top_news[0]["title"][:70] + "»")
-        return ", ".join(parts) or "композитный сигнал"
+        return " · ".join(parts) or f"сигнал {sig.composite:+.2f}"
 
     # ------------------------------------------------------------------ manual controls
     async def close_position(self, sym: str, reason: str = "закрыто вручную") -> bool:

@@ -82,6 +82,7 @@ class ClaudeAnalyzer:
         self.max_batch_wait = max_batch_wait
         self.max_age_s = max_age_minutes * 60.0
         self.skipped_old = 0
+        self.disabled_reason = ""
         self.queue: asyncio.Queue[NewsItem] = asyncio.Queue(maxsize=500)
         self._stop = asyncio.Event()
         self._task: asyncio.Task | None = None
@@ -99,7 +100,7 @@ class ClaudeAnalyzer:
         self.output_tokens = 0
 
     def submit(self, item: NewsItem) -> None:
-        if item.macro:
+        if item.macro or self.disabled_reason:
             return
         if self.max_age_s > 0 and time.time() - item.ts > self.max_age_s:
             self.skipped_old += 1  # its decayed weight is negligible; the lexicon score is enough
@@ -143,7 +144,13 @@ class ClaudeAnalyzer:
                 self.consecutive_errors += 1
                 self.last_error = str(e)[:200]
                 self.last_error_ts = time.time()
-                # a dead key / unsupported region / no credits keeps failing: back off up to 5 minutes
+                permanent = self.calls == 0 and any(code in self.last_error for code in ("401", "403", "404"))
+                if permanent and self.consecutive_errors >= 3:
+                    # wrong key, unsupported region or unknown model: it will not fix itself — stop spending retries
+                    self.disabled_reason = self.last_error
+                    log.warning("LLM analysis disabled: %s", self.last_error)
+                    return
+                # transient problems (rate limit, network): back off up to 5 minutes
                 delay = min(5 * 2 ** (self.consecutive_errors - 1), 300)
                 log.warning("LLM analysis failed: %s (next attempt in %ds)", self.last_error, delay)
                 await asyncio.sleep(delay)
@@ -245,7 +252,8 @@ class ClaudeAnalyzer:
 
     def status(self) -> dict[str, Any]:
         return {
-            "enabled": True,
+            "enabled": not self.disabled_reason,
+            "disabled_reason": self.disabled_reason,
             "model": self.model,
             "calls": self.calls,
             "items": self.items_done,
