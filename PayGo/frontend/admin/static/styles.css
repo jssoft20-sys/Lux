@@ -190,8 +190,9 @@ html.chat-open .shell{min-height:0;padding-bottom:0}
 .copy{cursor:pointer;border-bottom:1px dashed #b7c1cb}
 .pager{display:flex;gap:8px;align-items:center;justify-content:center;padding:12px}
 .toasts{position:fixed;top:12px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:90;width:min(calc(var(--shell) - 24px),92vw);pointer-events:none}
-.toast{background:#0e1728;color:#fff;padding:10px 14px;border-radius:14px;box-shadow:var(--shadow);font-weight:650;font-size:12.5px;animation:fade .15s;pointer-events:auto}
+.toast{display:flex;align-items:center;gap:9px;background:#0e1728;color:#fff;padding:10px 14px 10px 11px;border-radius:14px;box-shadow:0 12px 30px rgba(14,23,40,.28);font-weight:650;font-size:12.5px;animation:fade .15s;pointer-events:auto}
 .toast.ok{background:#08a96f}.toast.err{background:#df2d2d}.toast.crit{background:#1769ed}
+.toast-ico{flex:none;width:24px;height:24px;border-radius:8px;display:grid;place-items:center;background:rgba(255,255,255,.16)}.toast-msg{min-width:0;line-height:1.3}
 .notification-banner{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:10px;align-items:center;margin:0 0 10px;padding:10px 11px;border-radius:16px;background:#fff;border:1px solid #dde7eb;box-shadow:0 7px 20px rgba(20,39,56,.055)}
 .notification-banner>span{width:40px;height:40px;border-radius:13px;background:#fff8ec;color:#e8a01e;display:grid;place-items:center}
 .notification-banner b{display:block;font-size:12.5px}.notification-banner small{color:#8b98a8;font-size:10.5px}
@@ -440,3 +441,29 @@ html{-webkit-text-size-adjust:100%}
 /* bank badge in the withdrawal card (logo optional, name always shown) */
 .bank-badge{display:inline-flex;align-items:center;gap:6px;font-weight:600}
 .bank-logo{width:20px;height:20px;border-radius:5px;object-fit:contain;background:#fff}
+
+/* statement upload drop-zone */
+.drop-zone{width:100%;display:flex;flex-direction:column;align-items:center;gap:6px;padding:22px 16px;border:1.6px dashed var(--line);border-radius:16px;background:#fbfdfe;color:var(--muted);cursor:pointer;transition:border-color .15s,background .15s,transform .1s;margin-bottom:10px}
+.drop-zone:hover,.drop-zone.over{border-color:var(--blue);background:#f0f6ff;color:var(--blue)}
+.drop-zone:active{transform:scale(.99)}
+.drop-zone .icon{color:var(--blue)}
+.drop-zone b{color:var(--ink);font-size:13.5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drop-zone small{color:var(--muted2);font-size:11px}
+
+/* ---------------------------------------------------------------- seasonal look */
+body[data-season=winter]{background:linear-gradient(180deg,#e9f2fb,#edf2f4 240px)}
+body[data-season=spring]{background:linear-gradient(180deg,#fbecf3,#edf2f4 240px)}
+body[data-season=summer]{background:linear-gradient(180deg,#fff5e2,#edf2f4 240px)}
+body[data-season=autumn]{background:linear-gradient(180deg,#fbebdb,#edf2f4 240px)}
+#season-fx{position:fixed;inset:0;pointer-events:none;z-index:60;overflow:hidden;contain:strict}
+.fx{position:fixed;top:-7vh;pointer-events:none;line-height:1;opacity:.62;will-change:transform;animation-name:fxfall;animation-timing-function:linear;animation-iteration-count:infinite}
+.fx.leaf,.fx.petal{opacity:.8}.fx.spark{opacity:.5}
+@keyframes fxfall{0%{transform:translate(0,-7vh) rotate(0)}100%{transform:translate(var(--sway,12px),108vh) rotate(300deg)}}
+.garland{position:fixed;top:0;left:0;right:0;height:24px;display:flex;justify-content:space-around;align-items:flex-start;pointer-events:none;z-index:61}
+.garland::before{content:"";position:absolute;top:4px;left:-2%;right:-2%;height:2px;border-radius:2px;background:#2c3b4e;opacity:.55}
+.garland i{position:relative;width:9px;height:9px;margin-top:7px;border-radius:50%;background:#ff5a5a;box-shadow:0 0 9px 2px rgba(255,90,90,.75);animation:bulb 1.5s ease-in-out infinite}
+.garland i:nth-child(4n+2){background:#ffd23f;box-shadow:0 0 9px 2px rgba(255,210,63,.75)}
+.garland i:nth-child(4n+3){background:#49d0ff;box-shadow:0 0 9px 2px rgba(73,208,255,.75)}
+.garland i:nth-child(4n){background:#5aff8f;box-shadow:0 0 9px 2px rgba(90,255,143,.75)}
+@keyframes bulb{0%,100%{opacity:1;filter:brightness(1.15)}50%{opacity:.32;filter:brightness(.7)}}
+@media (prefers-reduced-motion:reduce){#season-fx{display:none!important}}

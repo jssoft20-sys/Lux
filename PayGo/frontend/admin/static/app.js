@@ -44,7 +44,7 @@
     return data;
   }
   function fileUrl(u) { u = String(u || ''); if (u.startsWith('/uploads/')) return API + '/files/' + u.slice(9); if (u.startsWith('uploads/')) return API + '/files/' + u.slice(8); if (u.startsWith('/')) return BASE + u; return u; }
-  function toast(text, kind, ms) { const el = h('div', { class: 'toast ' + (kind || '') }, text); $('#toasts').appendChild(el); setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .2s'; setTimeout(() => el.remove(), 220); }, ms || (kind === 'err' ? 4200 : 2400)); return el; }
+  function toast(text, kind, ms) { const ic = kind === 'ok' ? 'check' : kind === 'err' ? 'close' : kind === 'crit' ? 'bolt' : 'bell'; const el = h('div', { class: 'toast ' + (kind || '') }, h('span', { class: 'toast-ico' }, svg(ic, 15)), h('span', { class: 'toast-msg' }, text)); $('#toasts').appendChild(el); setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .2s'; setTimeout(() => el.remove(), 220); }, ms || (kind === 'err' ? 4200 : 2400)); return el; }
   const err = (e) => toast(e && e.message ? e.message : String(e), 'err');
   function copy(text) { navigator.clipboard && navigator.clipboard.writeText(String(text)).then(() => toast('Скопировано', 'ok', 1200)).catch(() => {}); }
   function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
@@ -244,7 +244,7 @@
     const shell = h('div', { class: 'shell page-in ' + (noNav ? 'no-nav' : '') });
     document.documentElement.classList.toggle('chat-open', noNav);
     app.appendChild(shell);
-    const views = { home: homeView, history: historyView, chats: chatsView, search: searchView, menu: menuView, manage: manageView, stats: statsView, cashes: cashesView, events: eventsView, wallets: walletsView, broadcast: broadcastView, security: securityView, quick: quickView, logs: logsView, settings: settingsView, macrodroid: macrodroidView, deposits: (m) => txDeepLink(m, 'deposit', state.route.id), withdrawals: (m) => txDeepLink(m, 'withdraw', state.route.id), users: (m) => userDetailView(m, state.route.id), push: pushView, env: envView };
+    const views = { home: homeView, history: historyView, chats: chatsView, search: searchView, menu: menuView, manage: manageView, stats: statsView, cashes: cashesView, events: eventsView, wallets: walletsView, broadcast: broadcastView, security: securityView, quick: quickView, logs: logsView, settings: settingsView, macrodroid: macrodroidView, statements: statementsView, deposits: (m) => txDeepLink(m, 'deposit', state.route.id), withdrawals: (m) => txDeepLink(m, 'withdraw', state.route.id), users: (m) => userDetailView(m, state.route.id), push: pushView, env: envView };
     (views[page] || homeView)(shell);
     if (!noNav) shell.appendChild(bottomNav(page));
   }
@@ -299,6 +299,7 @@
     const tick = async () => {
       try {
         const r = await api('/live'); const prev = state.live; state.live = r; updateBadges();
+        if (r.season) applySeason(r.season, r.season_effects);
         const first = !state.lastNotifId;
         for (const n of r.notifications.slice().reverse()) { if (n.id > (state.lastNotifId > 0 ? state.lastNotifId : 0)) { if (!first && !n.acknowledged) { toast(n.title + (n.body ? ' — ' + n.body.split('\n')[0] : ''), n.level === 'critical' ? 'crit' : '', 5000); beep(n.level === 'critical'); } state.lastNotifId = Math.max(state.lastNotifId, n.id); } }
         if (first && !state.lastNotifId) state.lastNotifId = -1;
@@ -316,6 +317,24 @@
   navigator.serviceWorker && navigator.serviceWorker.addEventListener('message', (e) => { const d = e.data || {}; if (d.type === 'PAYGO_OPEN' && d.url) { const hash = String(d.url).split('#')[1]; if (hash) go('#' + hash); } if (d.type === 'PAYGO_PUSH' && d.payload) toast(d.payload.title + ' — ' + (d.payload.body || ''), d.payload.channel === 'critical' ? 'crit' : '', 5000); });
   function watchLive(root, fn) { const handler = () => { if (!document.body.contains(root)) return document.removeEventListener('paygo:live', handler); fn(); }; document.addEventListener('paygo:live', handler); }
   function watchChanges(root, fn) { const handler = () => { if (!document.body.contains(root)) return document.removeEventListener('paygo:changed', handler); fn(); }; document.addEventListener('paygo:changed', handler); }
+  /* seasonal decor: a light DOM particle layer + (winter) a garland strip; idempotent, motion-safe */
+  const SEASON_GLYPH = { winter: ['❄', '❅', '❆', '•'], autumn: ['🍂', '🍁', '🍃'], spring: ['🌸', '🌼', '🌷', '✿'], summer: ['✦', '·', '✧'] };
+  const SEASON_KIND = { winter: 'flake', autumn: 'leaf', spring: 'petal', summer: 'spark' };
+  function applySeason(season, effects) {
+    season = season || 'off';
+    const on = effects !== false && season !== 'off';
+    if (document.body.dataset.season === season && (document.body.dataset.fx === '1') === on) return;
+    document.body.dataset.season = season; document.body.dataset.fx = on ? '1' : '0';
+    try { localStorage.setItem('paygo_season', season + ':' + (on ? 1 : 0)); } catch (e) {}
+    const old = document.getElementById('season-fx'); if (old) old.remove();
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!on || reduce) return;
+    const layer = h('div', { id: 'season-fx', 'aria-hidden': 'true' });
+    if (season === 'winter') { const g = h('div', { class: 'garland' }); for (let i = 0; i < 24; i++) g.appendChild(h('i', { style: { animationDelay: (i % 6) * 0.25 + 's' } })); layer.appendChild(g); }
+    const kind = SEASON_KIND[season], set = SEASON_GLYPH[season];
+    if (kind && set) { const n = season === 'summer' ? 14 : 26; for (let i = 0; i < n; i++) { const dur = 6 + Math.random() * 9; layer.appendChild(h('span', { class: 'fx ' + kind, style: { left: (Math.random() * 100).toFixed(2) + 'vw', animationDuration: dur.toFixed(2) + 's', animationDelay: (-Math.random() * dur).toFixed(2) + 's', fontSize: (10 + Math.random() * 14).toFixed(1) + 'px', '--sway': (6 + Math.random() * 18).toFixed(1) + 'px' } }, set[i % set.length])); } }
+    document.body.appendChild(layer);
+  }
 
   /* ------------------------------------------------------------- home (Главная) */
   function homeView(shell) {
@@ -797,7 +816,7 @@
   }
 
   /* ------------------------------------------------------------- menu */
-  const MENU = [['manage', 'shield', 'Управление PayGo', 'green', 'view'], ['stats', 'stats', 'Статистика', 'blue', 'view'], ['cashes', 'wallet', 'Кассы', 'green', 'cashes'], ['wallets', 'qr', 'Кошельки', 'purple', 'settings'], ['broadcast', 'send', 'Рассылка', 'teal', 'settings'], ['security', 'shield', 'Безопасность', 'teal', 'view'], ['quick', 'bolt', 'Быстрые ответы', 'yellow', 'support'], ['logs', 'terminal', 'Логи', 'red', 'logs'], ['settings', 'settings', 'Настройки', 'gray', 'settings'], ['macrodroid', 'bolt', 'MacroDroid', 'yellow', 'settings']];
+  const MENU = [['manage', 'shield', 'Управление PayGo', 'green', 'view'], ['stats', 'stats', 'Статистика', 'blue', 'view'], ['cashes', 'wallet', 'Кассы', 'green', 'cashes'], ['wallets', 'qr', 'Кошельки', 'purple', 'settings'], ['broadcast', 'send', 'Рассылка', 'teal', 'settings'], ['security', 'shield', 'Безопасность', 'teal', 'view'], ['quick', 'bolt', 'Быстрые ответы', 'yellow', 'support'], ['logs', 'terminal', 'Логи', 'red', 'logs'], ['settings', 'settings', 'Настройки', 'gray', 'settings'], ['macrodroid', 'bolt', 'MacroDroid', 'yellow', 'settings'], ['statements', 'note', 'Выписки', 'blue', 'operations']];
   function menuView(shell) {
     const screen = h('section', { class: 'screen' }); shell.appendChild(screen);
     screen.appendChild(h('div', { class: 'card account-card', style: { marginTop: '18px' } }, h('span', null, svg('user', 22)), h('div', null, h('b', null, 'Мой аккаунт'), h('small', null, (state.admin.name || state.admin.username) + ' · ' + ({ owner: 'Владелец', admin: 'Администратор платформы', operator: 'Оператор', viewer: 'Просмотр' }[state.admin.role] || state.admin.role)))));
@@ -964,6 +983,52 @@
     draw(); watchChanges(box, draw);
   }
 
+  /* ------------------------------------------------------------- statements (Выписки) */
+  async function statementsView(shell) {
+    const box = page(shell, 'Выписки');
+    const st = { file: null, auto: true };
+    box.innerHTML = '';
+    box.appendChild(h('div', { class: 'card section-card' }, h('h2', null, 'Импорт выписки'),
+      h('small', { class: 'muted', style: { display: 'block' } }, 'Резерв на случай, когда MacroDroid не прислал платёж. Загрузите выписку из банка (PDF, XML, CSV). Совпадение ищется по точной сумме и по дате-времени — две проверки, деньги не уйдут на чужую заявку.')));
+    const file = h('input', { type: 'file', accept: '.pdf,.xml,.csv,.txt,application/pdf,text/xml,text/csv,text/plain', style: { display: 'none' } });
+    const drop = h('button', { class: 'drop-zone', type: 'button', onclick: () => file.click() });
+    const drawDrop = () => { drop.innerHTML = ''; drop.appendChild(svg(st.file ? 'note' : 'plus', 26)); drop.appendChild(h('b', null, st.file ? st.file.name : 'Выбрать файл выписки')); drop.appendChild(h('small', null, st.file ? (Math.round(st.file.size / 1024) + ' КБ · нажмите, чтобы заменить') : 'PDF · XML · CSV')); };
+    file.onchange = () => { st.file = file.files[0] || null; drawDrop(); };
+    drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+    drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+    drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) { st.file = e.dataTransfer.files[0]; drawDrop(); } });
+    drawDrop();
+    const autoRow = h('div', { class: 'setting-row' }, h('div', null, h('b', null, 'Автозачисление'), h('small', null, 'Найденные заявки зачисляются сразу. Выключите — только показать совпадения.')), switchEl(st.auto, (v) => { st.auto = v; }));
+    const report = h('div');
+    const submit = h('button', { class: 'primary-btn' }, svg('check', 16), 'Загрузить и проверить');
+    const chip = (v, l, cls) => h('div', { class: 'card stat-card ' + (cls || '') }, h('div', { class: 'v' }, v), h('div', { class: 'l' }, l));
+    const renderReport = (rep) => {
+      report.innerHTML = '';
+      const okN = (rep.credited || []).filter((x) => x.ok).length;
+      report.appendChild(h('div', { class: 'stat-grid', style: { marginTop: '8px' } }, chip(rep.rows, 'строк в выписке'), chip(rep.incoming, 'поступлений', 'green'), chip(okN, 'зачислено', 'blue'), chip((rep.review || []).length + (rep.unmatched || []).length, 'на проверку', (rep.review || []).length ? 'red' : '')));
+      const credited = rep.credited || [];
+      if (credited.length) { const c = h('div', { class: 'card section-card' }, h('h2', null, 'Зачислено')); credited.forEach((x) => c.appendChild(h('div', { class: 'row-card', style: { cursor: 'default' } }, h('span', { class: 'dot ' + (x.ok ? 'green' : 'red') }), h('div', null, h('b', null, 'Заявка ' + x.request_id), h('small', null, x.ok ? 'зачислено автоматически' : (x.message || 'не удалось')))))); report.appendChild(c); }
+      const pend = [].concat((rep.review || []).map((x) => ['review', x]), (rep.unmatched || []).map((x) => ['none', x]));
+      if (pend.length) { const c = h('div', { class: 'card section-card' }, h('h2', null, 'Не зачислено — проверьте вручную')); pend.forEach((pair) => { const t = pair[0], x = pair[1]; c.appendChild(h('div', { class: 'row-card', style: { cursor: 'default' } }, h('span', { class: 'dot ' + (t === 'review' ? 'amber' : '') }), h('div', null, h('b', null, money(Number(x.amount)) + ' KGS · ' + (x.dt || 'без даты')), h('small', null, t === 'review' ? 'несколько подходящих заявок — зачислите вручную' : 'заявка не найдена: ' + (x.details || ''))))); }); report.appendChild(c); }
+      if (rep.duplicates) report.appendChild(h('div', { class: 'card', style: { padding: '10px 14px' } }, h('small', { class: 'muted' }, 'Повторных строк (уже обработаны ранее): ' + rep.duplicates)));
+      if (!credited.length && !pend.length && !rep.duplicates) report.appendChild(empty('Поступлений в выписке нет', 'В файле только исходящие платежи', 'calendar'));
+    };
+    submit.onclick = async () => {
+      if (!st.file) return toast('Выберите файл выписки', 'err');
+      busy(submit, true); report.innerHTML = ''; report.appendChild(loader(2));
+      try {
+        const fd = new FormData(); fd.append('file', st.file);
+        const r = await api('/statements/import?auto_credit=' + (st.auto ? 'true' : 'false'), { method: 'POST', body: fd });
+        renderReport(r.report);
+        const okN = (r.report.credited || []).filter((x) => x.ok).length;
+        toast(okN ? ('Зачислено заявок: ' + okN) : 'Готово — совпадений для зачисления нет', okN ? 'ok' : '', 3500);
+        if (okN) document.dispatchEvent(new CustomEvent('paygo:changed', {}));
+      } catch (ex) { report.innerHTML = ''; err(ex); }
+      busy(submit, false);
+    };
+    box.appendChild(h('div', { class: 'card section-card' }, drop, autoRow, h('div', { class: 'btn-row' }, submit), file));
+    box.appendChild(report);
+  }
 
 
   /* ------------------------------------------------------------- broadcast (Рассылка) */
@@ -1197,6 +1262,13 @@
           row('Пауза бота', 'Клиенты видят «Бот временно выключен»', switchEl(!!v.bot_paused, (on) => save('bot_paused', on))),
           row('Пополнения', 'Кнопка «Пополнить» во всех кассах', switchEl(!!v.deposits_enabled, (on) => save('deposits_enabled', on))),
           row('Выводы', 'Кнопка «Вывести» во всех кассах', switchEl(!!v.withdrawals_enabled, (on) => save('withdrawals_enabled', on)))));
+        const seasonResolve = (c) => (['winter', 'spring', 'summer', 'autumn', 'off'].indexOf(c) >= 0 ? c : ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'][new Date().getMonth()]);
+        const seasons = [['auto', 'Авто (по календарю)'], ['off', 'Выключено'], ['winter', '❄️ Зима'], ['spring', '🌸 Весна'], ['summer', '☀️ Лето'], ['autumn', '🍂 Осень']];
+        const seasonSel = h('select', { class: 'select' }, seasons.map(([val, l]) => h('option', { value: val, selected: (v.site_season || 'auto') === val }, l)));
+        seasonSel.onchange = async () => { await save('site_season', seasonSel.value); applySeason(seasonResolve(seasonSel.value), v.site_season_effects !== false); };
+        box.appendChild(h('div', { class: 'card section-card' }, h('h2', null, 'Оформление панели'),
+          h('label', { class: 'field' }, h('span', null, 'Сезон'), seasonSel),
+          row('Эффекты сезона', 'Снег, листья, лепестки, новогодняя гирлянда', switchEl(v.site_season_effects !== false, (on) => { save('site_season_effects', on); applySeason(seasonResolve(seasonSel.value), on); }))));
         const cashCard = h('div', { class: 'card section-card' }, h('h2', null, 'Кассы'));
         if (!cashes.items.length) cashCard.appendChild(h('small', { class: 'muted' }, 'Касс нет — добавьте в разделе «Кассы»'));
         cashes.items.forEach((c) => { const patch = (body) => api('/cashes/' + c.id, { method: 'PATCH', body }).then(() => toast('Сохранено', 'ok', 1200)); cashCard.appendChild(h('div', { class: 'cash-toggles' }, h('div', { class: 'cash-toggles-name' }, h('b', null, c.name), h('small', null, (c.provider_label || c.provider_type) + (c.auto_disabled ? ' · автостоп' : ''))), h('label', null, h('span', null, 'Вкл'), switchEl(!!c.enabled, (on) => patch({ enabled: on }))), h('label', null, h('span', null, 'ПП'), switchEl(!!c.deposit_enabled, (on) => patch({ deposit_enabled: on }))), h('label', null, h('span', null, 'ВВ'), switchEl(!!c.withdraw_enabled, (on) => patch({ withdraw_enabled: on }))))); });
@@ -1267,6 +1339,7 @@
   /* ------------------------------------------------------------- boot */
   (async function boot() {
     state.route = parseHash();
+    try { const cached = (localStorage.getItem('paygo_season') || '').split(':'); if (cached[0]) applySeason(cached[0], cached[1] !== '0'); } catch (e) {}
     try { const r = await api('/auth/me'); state.admin = r.admin; startLive(); } catch (e) { state.admin = null; }
     render();
     if ('serviceWorker' in navigator) navigator.serviceWorker.register(BASE + '/sw.js', { scope: BASE + '/' }).catch(() => {});

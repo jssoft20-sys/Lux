@@ -604,3 +604,47 @@ def test_cli_revoke_sessions_signs_everybody_out(logged, admin):
 
         assert all(s.revoked_at is not None and s.revoked_reason == "revoked_by_cli" for s in db.query(AdminSession).all())
         assert db.query(AuditLog).filter_by(action="auth.sessions_revoked_all").count() == 1
+
+
+def test_live_reports_season(logged):
+    r = logged.get(P + "/live")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["season"] in {"winter", "spring", "summer", "autumn", "off"}
+    assert isinstance(body["season_effects"], bool)
+
+
+def test_season_setting_override(logged):
+    from paygo.services import settings_store
+
+    with transaction() as db:
+        settings_store.set_many(db, {"site_season": "winter", "site_season_effects": True})
+    body = logged.get(P + "/live").json()
+    assert body["season"] == "winter" and body["season_effects"] is True
+    with transaction() as db:
+        settings_store.set_many(db, {"site_season": "off"})
+    body = logged.get(P + "/live").json()
+    assert body["season"] == "off" and body["season_effects"] is False
+
+
+def test_statement_import_endpoint(logged, user, fake_provider):
+    from paygo.utils import money, utcnow
+
+    with transaction() as db:
+        u = db.get(User, user)
+        cash = get_cash(db, "1xbet")
+        dep, _ = deposits.create_deposit(db, user=u, cash=cash, player_id="123456", amount="700", idempotency_key="stapi1")
+        pay = money(dep.pay_amount)
+        dep_id = dep.id
+    when = utcnow()
+    amt = f"{pay:.2f}".replace(".", ",")
+    text = (f"Выписка\n{when:%Y-%m-%d}\n     {when:%H:%M}\nПеревод по QR: Тест К. {amt}\nKGS\n1090145006806590\n").encode()
+    r = logged.post(P + "/statements/import", files={"file": ("vypiska.txt", text, "text/plain")})
+    assert r.status_code == 200, r.text
+    rep = r.json()["report"]
+    assert rep["incoming"] == 1 and len(rep["credited"]) == 1 and rep["credited"][0]["ok"] is True
+    with transaction() as db:
+        assert db.get(Deposit, dep_id).status == "success"
+    # the same file again never double-credits
+    r2 = logged.post(P + "/statements/import", files={"file": ("vypiska.txt", text, "text/plain")})
+    assert r2.json()["report"]["duplicates"] == 1

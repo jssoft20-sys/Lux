@@ -11,6 +11,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..db import transaction
 from ..models import (
     AuditLog,
     BankLink,
@@ -40,7 +41,7 @@ from ..services.notifications import acknowledge, notify_user
 from ..services.qr import render_qr_png
 from ..services.users import public_user, user_summary
 from ..utils import iso, local_tz, money, sha256_hex, utcnow
-from .deps import Principal, client_ip, current_principal, get_db, require
+from .deps import ActorRef, Principal, authorize, client_ip, current_principal, get_db, require
 from .schemas import (
     ActionBody,
     BankLinkBody,
@@ -108,10 +109,13 @@ def live(principal: Principal = Depends(current_principal), db: Session = Depend
     latest = db.execute(
         select(Notification).where(Notification.channel == "admin_push", Notification.status != "expired").order_by(Notification.id.desc()).limit(15)
     ).scalars().all()
+    season = settings_store.current_season(db)
     return {
         "ok": True,
         "revision": revision,
         "queues": data,
+        "season": season["season"],
+        "season_effects": season["effects"],
         "notifications": [
             {"id": n.id, "event": n.event, "level": n.level, "title": n.title, "body": n.body, "data": n.data, "created_at": iso(n.created_at), "acknowledged": n.acknowledged_at is not None}
             for n in latest
@@ -435,6 +439,29 @@ def withdrawal_edit(withdrawal_id: int, body: EditBody, request: Request, princi
 def autopay_status(principal: Principal = Depends(require("operations")), db: Session = Depends(get_db)):
     """State of the automatic-payout engine: channel, balance, limits, pending count."""
     return {"ok": True, "autopay": autopay_service.status(db)}
+
+
+@router.post("/statements/import")
+async def statements_import(request: Request, file: UploadFile = File(...), auto_credit: bool = True, actor: ActorRef = Depends(authorize("operations"))):
+    """Upload a bank statement (PDF/CSV/XML) and auto-credit the deposits it confirms (two checks).
+
+    No request-scoped DB session is held: import_statement (and the crediting it triggers) opens its
+    own short transactions, so the panel and the importer never contend for the same SQLite lock.
+    """
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Пустой файл")
+    if len(data) > 15_000_000:
+        raise HTTPException(400, "Файл слишком большой (макс. 15 МБ)")
+    from ..services import statements
+
+    try:
+        report = statements.import_statement(file.filename or "statement", data, auto_credit=bool(auto_credit), actor=actor.username)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    with transaction() as db:
+        audit(db, "statements.import", admin_id=actor.id, actor=actor.username, ip=client_ip(request), details={"file": file.filename, "rows": report.get("rows"), "credited": len(report.get("credited", []))})
+    return {"ok": True, "report": report}
 
 
 @router.get("/withdrawals/{withdrawal_id}/qr.png")

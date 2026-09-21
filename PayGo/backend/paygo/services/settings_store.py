@@ -162,7 +162,29 @@ DEFAULTS: dict[str, Any] = {
     "subscription_enabled": False,
     "subscription_channel": "@PayGoX",
     "phone_required": False,
+    # seasonal look of the admin panel: auto (by calendar month), off, winter, spring, summer, autumn
+    "site_season": "auto",
+    # decorative effects for the chosen season (snow / falling leaves / petals / garland)
+    "site_season_effects": True,
 }
+
+_SEASON_BY_MONTH = (
+    "winter", "winter", "spring", "spring", "spring", "summer",
+    "summer", "summer", "autumn", "autumn", "autumn", "winter",
+)
+
+
+def current_season(db: Session) -> dict[str, Any]:
+    """Resolve the season the admin panel should render (northern hemisphere / Kyrgyzstan)."""
+    import datetime as _dt
+
+    choice = str(get(db, "site_season", "auto") or "auto").strip().lower()
+    if choice in {"winter", "spring", "summer", "autumn", "off"}:
+        season = choice
+    else:
+        season = _SEASON_BY_MONTH[_dt.datetime.utcnow().month - 1]
+    effects = get_bool(db, "site_season_effects", True) and season != "off"
+    return {"season": season, "effects": bool(effects)}
 
 _CACHE: dict[str, Any] = {}
 _CACHE_AT = 0.0

@@ -8,7 +8,7 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..db import session_factory
+from ..db import session_factory, transaction
 from ..models import Admin, AdminSession
 from ..services import auth as auth_service
 
@@ -130,5 +130,39 @@ def require(permission: str):
         if not principal.can(permission):
             raise HTTPException(status_code=403, detail="FORBIDDEN")
         return principal
+
+    return _dep
+
+
+@dataclass
+class ActorRef:
+    """A detached snapshot of the caller: enough to attribute an action once the auth session closed."""
+
+    id: int
+    username: str
+    name: str
+
+
+def authorize(permission: str):
+    """Like require(), but resolves and validates the caller inside a short session that is
+    committed and closed *before* the route body runs. A route that opens its own transaction
+    (e.g. statement import, which then credits deposits in further transactions) therefore never
+    contends with a still-open auth session — which on SQLite would raise "database is locked"."""
+
+    def _dep(request: Request) -> ActorRef:
+        enforce_admin_allowlist(request)
+        with transaction() as db:
+            principal = _principal_from_request(request, db)
+            if principal is None:
+                raise HTTPException(status_code=401, detail="UNAUTHORIZED")
+            if principal.via == "cookie" and request.method not in {"GET", "HEAD", "OPTIONS"}:
+                header = request.headers.get(CSRF_HEADER, "")
+                cookie = request.cookies.get(CSRF_COOKIE, "")
+                expected = principal.session.csrf_token if principal.session else ""
+                if not header or not expected or header != expected or cookie != expected:
+                    raise HTTPException(status_code=403, detail="CSRF_FAILED")
+            if not principal.can(permission):
+                raise HTTPException(status_code=403, detail="FORBIDDEN")
+            return ActorRef(id=principal.admin.id, username=principal.admin.username, name=principal.admin.name or principal.admin.username)
 
     return _dep
