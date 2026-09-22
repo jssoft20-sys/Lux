@@ -8,7 +8,7 @@ from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -259,3 +259,87 @@ def public_event(event: PaymentEvent) -> dict[str, Any]:
         "processed_at": iso(event.processed_at),
         "sender_ip": event.sender_ip,
     }
+
+
+# ------------------------------------------------------------------ инбокс платежей без заявки
+
+INBOX_STATUSES = ("unmatched", "received", "failed")
+
+
+def _candidates(db: Session, event: PaymentEvent, limit: int = 3) -> list[dict[str, Any]]:
+    """Заявки, на которые похож этот платёж: та же сумма, та же сумма без тыйынов, близкая сумма."""
+    amount = money(event.amount)
+    whole = int(amount)
+    since = as_utc(event.received_at) - timedelta(hours=48) if event.received_at else utcnow() - timedelta(hours=48)
+    rows = db.execute(
+        select(Deposit).where(Deposit.status.in_(("created", "expired", "failed")), Deposit.created_at >= since).order_by(Deposit.id.desc()).limit(120)
+    ).scalars().all()
+    scored: list[tuple[int, str, Deposit]] = []
+    for d in rows:
+        pay = money(d.pay_amount)
+        if pay == amount:
+            scored.append((0, "сумма совпадает точно", d))
+        elif int(pay) == whole and abs(pay - amount) < Decimal("1"):
+            scored.append((1, "совпадают сомы, отличаются тыйыны", d))
+        elif abs(pay - amount) <= Decimal("2"):
+            scored.append((2, "сумма отличается на копейки", d))
+    scored.sort(key=lambda x: (x[0], -x[2].id))
+    out: list[dict[str, Any]] = []
+    for _score, why, d in scored[:limit]:
+        user = d.user
+        out.append({
+            "deposit_id": d.id,
+            "public_id": d.public_id,
+            "player_id": d.player_id,
+            "amount": str(money(d.pay_amount)),
+            "status": d.status,
+            "created_at": iso(d.created_at),
+            "client": (getattr(user, "first_name", "") or "").strip() or (getattr(user, "username", "") or "") or "Клиент",
+            "why": why,
+        })
+    return out
+
+
+def inbox(db: Session, limit: int = 50) -> list[dict[str, Any]]:
+    """Поступления, которые система не смогла привязать к заявке (с подсказками, к чему они подходят)."""
+    rows = db.execute(
+        select(PaymentEvent).where(PaymentEvent.status.in_(INBOX_STATUSES), PaymentEvent.deposit_id.is_(None)).order_by(PaymentEvent.id.desc()).limit(limit)
+    ).scalars().all()
+    return [{**public_event(e), "candidates": _candidates(db, e)} for e in rows]
+
+
+def inbox_count(db: Session) -> int:
+    return int(db.execute(
+        select(func.count(PaymentEvent.id)).where(PaymentEvent.status.in_(INBOX_STATUSES), PaymentEvent.deposit_id.is_(None))
+    ).scalar() or 0)
+
+
+def bind(event_id: int, deposit_id: int, actor: str = "operator") -> dict[str, Any]:
+    """Привязать платёж к заявке и зачислить её (кнопка «Это она» в инбоксе)."""
+    with transaction() as db:
+        event = db.get(PaymentEvent, event_id)
+        deposit = db.get(Deposit, deposit_id)
+        if event is None or deposit is None:
+            return {"ok": False, "message": "Платёж или заявка не найдены"}
+        if event.deposit_id and event.deposit_id != deposit.id:
+            return {"ok": False, "message": "Платёж уже привязан к другой заявке"}
+        if deposit.status == "success":
+            return {"ok": False, "message": "Заявка уже зачислена"}
+        event.status = "processing"
+        event.deposit_id = deposit.id
+        event.error = ""
+        log_event(db, "Платёж привязан вручную", f"{money(event.amount)} → {deposit.public_id} ({actor})", category="payments", entity_type="deposit", entity_id=deposit.public_id)
+        source = event.source
+    return credit_deposit(deposit_id, source=source, event_id=event_id, actor=actor)
+
+
+def ignore(db: Session, event_id: int, actor: str = "operator") -> bool:
+    """Платёж не относится к сервису (личный перевод) — убрать из инбокса."""
+    event = db.get(PaymentEvent, event_id)
+    if event is None or event.deposit_id:
+        return False
+    event.status = "ignored"
+    event.processed_at = utcnow()
+    event.error = f"скрыт оператором ({actor})"
+    log_event(db, "Платёж помечен как не наш", f"{money(event.amount)} • {event.source}", category="payments")
+    return True

@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import Deposit, Notification, PaymentCash, SupportConversation, User, Withdrawal
+from ..models import Deposit, Notification, PaymentCash, PaymentEvent, SupportConversation, User, Withdrawal
 from ..utils import local_tz, money, utcnow
 from .cashes import public_cash
 
@@ -48,6 +48,7 @@ def queues(db: Session, max_age: float = 2.5) -> dict[str, Any]:
         "withdrawals_pending": wd_pending,
         "withdrawals_attention": wd_attention,
         "withdrawals_deferred": wd_deferred,
+        "payments_unmatched": int(db.execute(select(func.count(PaymentEvent.id)).where(PaymentEvent.status.in_(("unmatched", "received", "failed")), PaymentEvent.deposit_id.is_(None))).scalar() or 0),
         "support_waiting": sum(int(n) for st, _c, n in sup if st == "waiting_operator"),
         "support_open": sum(int(n) for st, _c, n in sup if st in open_states),
         "support_closed": sum(int(n) for st, _c, n in sup if st in ("resolved", "closed")),

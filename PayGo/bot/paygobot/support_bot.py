@@ -28,7 +28,7 @@ from sqlalchemy import select
 
 from . import media as media_lib
 from .dispatcher import Dispatcher
-from .runtime import SidePool, fan_out, start_db_keepalive, start_periodic, start_watchdog
+from .runtime import SidePool, fan_out, start_db_keepalive, start_heartbeat, start_periodic, start_watchdog
 from .telegram import TelegramClient, TelegramError, inline_keyboard, rating_keyboard, url_buttons
 
 logger = logging.getLogger("paygobot.support")
@@ -91,10 +91,12 @@ class SupportBot:
             user = user_service.get_or_create(db, tg_user)
             return user.id, user.language
 
-    def greeting(self) -> tuple[str, list[list[dict[str, str]]]]:
+    def greeting(self, lang: str = "ru") -> tuple[str, list[list[dict[str, str]]]]:
         with transaction() as db:
             text = str(settings_store.get(db, "support_greeting") or "")
-        return text, support_service._menu_buttons()
+        if lang == "kg":
+            text = "Саламатсызбы! Бул PayGo колдоо кызматы. Сурооңузду бир билдирүү менен жазыңыз — көпчүлүк суроолор автоматтык чечилет."
+        return text, support_service._menu_buttons(lang)
 
     # ------------------------------------------------------------ updates
     def handle_update(self, update: dict[str, Any]) -> None:
@@ -116,9 +118,9 @@ class SupportBot:
         data = str(query.get("data") or "")
         if self._rating_callback(query):
             return
-        user_id, _lang = self._user({**(query.get("from") or {}), "id": chat_id})
+        user_id, lang = self._user({**(query.get("from") or {}), "id": chat_id})
         if data == "sup:home":
-            text, buttons = self.greeting()
+            text, buttons = self.greeting(lang)
             self._send(chat_id, text, buttons)
             return
         with transaction() as db:
@@ -133,7 +135,7 @@ class SupportBot:
         text = str(message.get("text") or message.get("caption") or "").strip()
         user_id, _lang = self._user({**tg_user, "id": chat_id})
         if text.startswith("/start") or text == "/menu":
-            greeting, buttons = self.greeting()
+            greeting, buttons = self.greeting(_lang)
             self._send(chat_id, greeting, buttons)
             return
         # rating "1".."5" right after a resolved conversation
@@ -290,6 +292,7 @@ class SupportBot:
         threading.Thread(target=self._loop, args=(self.deliver_outbox, 0.4), daemon=True).start()
         start_periodic("support-typing", self.dispatcher.keep_typing, 1.0, stop=STOP)  # «печатает…» while Claude / the rules answer
         start_db_keepalive("support", stop=STOP)
+        start_heartbeat("support", stop=STOP)  # пульс для «сторожа тишины» в панели
         start_watchdog("support", lambda: self.dispatcher.last_poll_at, stop=STOP, before_exit=self.dispatcher.flush_offset)
         self.dispatcher.run_polling()
 

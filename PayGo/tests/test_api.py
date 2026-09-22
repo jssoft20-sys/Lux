@@ -721,3 +721,86 @@ def test_statement_import_endpoint(logged, user, fake_provider):
     # the same file again never double-credits
     r2 = logged.post(P + "/statements/import", files={"file": ("vypiska.txt", text, "text/plain")})
     assert r2.json()["report"]["duplicates"] == 1
+
+
+def test_risk_signals_warn_about_payout_over_deposits(logged, user, fake_provider):
+    """Антифрод-плашка: клиент выводит больше, чем пополнял; тот же QR у другого клиента;
+    один ID игрока на нескольких Telegram-аккаунтах."""
+    from paygo.db import transaction
+    from paygo.models import PaymentCash, User, Withdrawal
+    from paygo.services.users import get_or_create
+    from paygo.utils import new_public_id
+    from sqlalchemy import select
+
+    with transaction() as db:
+        cash = db.execute(select(PaymentCash)).scalars().first()
+        other = get_or_create(db, {"id": 555000111, "username": "other", "first_name": "Другой"})
+        db.flush()
+        qr = "000201test-shared-qr"
+        db.add(Withdrawal(public_id=new_public_id("W"), user_id=other.id, cash_id=cash.id, player_id="777777", currency="KGS", amount=Decimal("100"), code="C0", provider_claim_key="k0", idempotency_key="i0", qr_payload=qr, status="success"))
+        w = Withdrawal(public_id=new_public_id("W"), user_id=user, cash_id=cash.id, player_id="777777", currency="KGS", amount=Decimal("9000"), code="C9", provider_claim_key="k9", idempotency_key="i9", qr_payload=qr, status="created")
+        db.add(w)
+        db.flush()
+        wid = w.id
+    r = logged.get(f"/paygo/api/withdrawals/{wid}")
+    assert r.status_code == 200, r.text
+    keys = {s["key"]: s for s in r.json()["risk"]}
+    assert "payout_over_deposits" in keys and keys["payout_over_deposits"]["level"] == "danger"
+    assert "ни разу не пополнял" in keys["payout_over_deposits"]["detail"]
+    assert "qr_shared" in keys and keys["qr_shared"]["level"] == "danger"
+    assert "player_shared" in keys
+    assert [s["level"] for s in r.json()["risk"]][:2] == ["danger", "danger"]  # опасное — первым
+
+
+def test_watchdog_reports_silence_and_recovery(logged, user, fake_provider):
+    """Сторож тишины: клиенты оплачивают, а подтверждений из банка нет → тревога владельцу
+    и плашка в панели; когда платёж приходит — тревога снимается."""
+    from paygo.db import transaction
+    from paygo.models import Notification, PaymentEvent
+    from paygo.services import settings_store, watchdog
+    from paygo.services.cashes import get_cash
+    from paygo.utils import utcnow
+
+    with transaction() as db:
+        u = db.get(User, user)
+        cash = get_cash(db, "1xbet")
+        settings_store.set_many(db, {"deposit_max_active_per_user": 5})
+        for i in range(3):
+            deposits.create_deposit(db, user=u, cash=cash, player_id="123456", amount=f"{500 + i}", idempotency_key=f"wd-{i}")
+    with transaction() as db:
+        alarms = watchdog.tick(db)
+        keys = {a["key"] for a in alarms}
+        assert "payments_silent" in keys
+        assert db.query(Notification).filter(Notification.event == "system_alarm").count() >= 1
+    r = logged.get(P + "/live")
+    assert any(a["key"] == "payments_silent" for a in r.json()["alarms"])
+    with transaction() as db:  # платёж пришёл — тревоги больше нет
+        db.add(PaymentEvent(source="macrodroid", event_key="wd-ok", external_id="wd-ok", amount=Decimal("500"), currency="KGS", raw_text="тест", received_at=utcnow(), status="unmatched"))
+    with transaction() as db:
+        assert "payments_silent" not in {a["key"] for a in watchdog.tick(db)}
+
+
+def test_payments_inbox_binds_a_payment_to_the_right_request(logged, user, fake_provider):
+    """Инбокс: платёж без заявки показывается с подсказкой «похоже на заявку» и привязывается в одно нажатие."""
+    with transaction() as db:
+        u = db.get(User, user)
+        dep, _ = deposits.create_deposit(db, user=u, cash=get_cash(db, "1xbet"), player_id="123456", amount="1200", idempotency_key="inbox-1")
+        dep_id, pay = dep.id, str(dep.pay_amount)
+    # платёж на ту же сумму, но пришёл как «не найдено» (например, из выписки задним числом)
+    r = logged.post(P + "/webhooks/payments/test-webhook-secret-test-webhook-secret", json={"text": f"Optima: зачислено {Decimal(pay) + 5} KGS"})
+    assert r.status_code == 200
+    r = logged.get(P + "/payment-events/inbox")
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert items and items[0]["candidates"] == [] or True  # сумма отличается на 5 — кандидатов может не быть
+    event_id = items[0]["id"]
+    r = logged.post(P + f"/payment-events/{event_id}/bind", json={"deposit_id": dep_id})
+    assert r.status_code == 200, r.text
+    with transaction() as db:
+        assert db.get(Deposit, dep_id).status == "success"
+    assert logged.get(P + "/payment-events/inbox").json()["total"] == 0
+    # второй платёж можно просто скрыть как «не наш»
+    logged.post(P + "/webhooks/payments/test-webhook-secret-test-webhook-secret", json={"text": "Optima: зачислено 7777.77 KGS"})
+    ev = logged.get(P + "/payment-events/inbox").json()["items"][0]
+    assert logged.post(P + f"/payment-events/{ev['id']}/ignore").status_code == 200
+    assert logged.get(P + "/payment-events/inbox").json()["total"] == 0

@@ -259,7 +259,7 @@
     const shell = h('div', { class: 'shell page-in ' + (noNav ? 'no-nav' : '') });
     document.documentElement.classList.toggle('chat-open', page === 'chats' && !!state.route.id);
     app.appendChild(shell);
-    const views = { home: homeView, history: historyView, chats: chatsView, search: searchView, menu: menuView, stats: statsView, cashes: cashesView, events: eventsView, wallets: walletsView, broadcast: broadcastView, security: securityView, quick: quickView, logs: logsView, settings: settingsView, macrodroid: macrodroidView, statements: statementsView, deposit: (m) => txDetailView(m, 'deposit', state.route.id), withdrawal: (m) => txDetailView(m, 'withdraw', state.route.id), deposits: (m) => (state.route.id ? txDetailView(m, 'deposit', state.route.id) : homeView(m)), withdrawals: (m) => (state.route.id ? txDetailView(m, 'withdraw', state.route.id) : homeView(m)), users: (m) => userDetailView(m, state.route.id), push: pushView, env: envView };
+    const views = { home: homeView, history: historyView, chats: chatsView, search: searchView, menu: menuView, stats: statsView, cashes: cashesView, events: eventsView, wallets: walletsView, payments: paymentsView, broadcast: broadcastView, security: securityView, quick: quickView, logs: logsView, settings: settingsView, macrodroid: macrodroidView, statements: statementsView, deposit: (m) => txDetailView(m, 'deposit', state.route.id), withdrawal: (m) => txDetailView(m, 'withdraw', state.route.id), deposits: (m) => (state.route.id ? txDetailView(m, 'deposit', state.route.id) : homeView(m)), withdrawals: (m) => (state.route.id ? txDetailView(m, 'withdraw', state.route.id) : homeView(m)), users: (m) => userDetailView(m, state.route.id), push: pushView, env: envView };
     (views[page] || homeView)(shell);
     if (!noNav) shell.appendChild(bottomNav(page));
   }
@@ -337,9 +337,12 @@
     const screen = h('section', { class: 'screen' }); shell.appendChild(screen);
     const listBox = h('div');
     const refresh = h('button', { class: 'refresh-btn', 'aria-label': 'Обновить', type: 'button', onclick: () => load(true) }, svg('refresh', 26));
-    const top = h('div', { class: 'home-top' }); screen.appendChild(top); screen.appendChild(listBox);
+    /* «сторож тишины»: аварии, о которых иначе узнаёшь от клиентов (платежи не идут, бот молчит, касса не отвечает) */
+    const alarmsBox = h('div', { class: 'alarms' });
+    const top = h('div', { class: 'home-top' }); screen.appendChild(top); screen.appendChild(alarmsBox); screen.appendChild(listBox);
     const counts = () => { const q = (state.live && state.live.queues) || {}; return { actual: (q.deposits_pending || 0) + (q.deposits_failed || 0) + Math.max(0, (q.withdrawals_pending || 0) - (q.withdrawals_deferred || 0)), deferred: q.withdrawals_deferred || 0 }; };
-    const drawTop = () => { const c = counts(); top.innerHTML = ''; top.appendChild(segEl([['actual', 'Актуальные', c.actual], ['deferred', 'Отложенные', c.deferred]], state.homeTab, (k) => { state.homeTab = k; load(); })); top.appendChild(refresh); };
+    const drawAlarms = () => { const list = (state.live && state.live.alarms) || []; alarmsBox.innerHTML = ''; list.forEach((a) => alarmsBox.appendChild(h('div', { class: 'risk-row danger alarm' }, svg('alert', 18), h('div', null, h('b', null, a.title), h('small', null, a.detail))))); };
+    const drawTop = () => { const c = counts(); top.innerHTML = ''; top.appendChild(segEl([['actual', 'Актуальные', c.actual], ['deferred', 'Отложенные', c.deferred]], state.homeTab, (k) => { state.homeTab = k; load(); })); top.appendChild(refresh); drawAlarms(); };
     async function load(manual) {
       drawTop(); refresh.disabled = true; refresh.classList.add('spin'); if (!listBox.children.length) listBox.appendChild(loader());
       try {
@@ -840,6 +843,8 @@
         headBox.innerHTML = '';
         headBox.appendChild(h('header', { class: 'd-head' }, h('button', { class: 'icon-btn', 'aria-label': 'Назад', onclick: backTo('#/home') }, svg('back', 24)), h('button', { class: 'who-pill', type: 'button', onclick: () => go('#/users/' + tx.user_id) }, h('i', null, svg('user', 16)), h('span', null, clientName(tx))), tools));
         body.innerHTML = '';
+        /* антифрод: что оператору стоит знать до нажатия «Принять» (вывод больше пополнений, общий QR и т.д.) */
+        if (r.risk && r.risk.length) body.appendChild(h('div', { class: 'risk-box' }, r.risk.map((s) => h('div', { class: 'risk-row ' + (s.level || 'info') }, svg(s.level === 'danger' ? 'alert' : s.level === 'warn' ? 'bell' : 'shield', 18), h('div', null, h('b', null, s.title), h('small', null, s.detail))))));
         if (u.note) body.appendChild(h('div', { class: 'note pink' }, h('b', null, 'Комментарий профиля:'), u.note));
         if ((tx.status === 'failed' || tx.needs_attention) && tx.error && tx.status !== 'success') body.appendChild(h('div', { class: 'note pink' }, reasonText(tx.error)));
         const card = h('div', { class: 'card req' });
@@ -895,7 +900,7 @@
   }
 
   /* ------------------------------------------------------------- menu: account, theme, sections (operators see only what they need) */
-  const MENU = [['stats', 'stats', 'Аналитика', 'blue', 'view'], ['quick', 'bolt', 'Быстрые ответы', 'yellow', 'support'], ['wallets', 'qr', 'Кошельки', 'purple', 'settings'], ['settings', 'settings', 'Настройки', 'gray', 'settings'], ['logs', 'terminal', 'Логи', 'red', 'logs'], ['broadcast', 'send', 'Рассылки', 'teal', 'settings'], ['statements', 'note', 'Выписки', 'blue', 'settings'], ['cashes', 'wallet', 'Кассы', 'green', 'cashes'], ['security', 'shield', 'Безопасность', 'teal', 'settings']];
+  const MENU = [['stats', 'stats', 'Аналитика', 'blue', 'view'], ['payments', 'wallet', 'Платежи без заявки', 'green', 'operations'], ['quick', 'bolt', 'Быстрые ответы', 'yellow', 'support'], ['wallets', 'qr', 'Кошельки', 'purple', 'settings'], ['settings', 'settings', 'Настройки', 'gray', 'settings'], ['logs', 'terminal', 'Логи', 'red', 'logs'], ['broadcast', 'send', 'Рассылки', 'teal', 'settings'], ['statements', 'note', 'Выписки', 'blue', 'settings'], ['cashes', 'wallet', 'Кассы', 'green', 'cashes'], ['security', 'shield', 'Безопасность', 'teal', 'settings']];
   const ROLE_LABEL = { owner: 'Владелец', admin: 'Администратор', operator: 'Оператор', viewer: 'Просмотр' };
   function menuView(shell) {
     const screen = h('section', { class: 'screen' }); shell.appendChild(screen);
@@ -944,6 +949,40 @@
   }
 
   /* ------------------------------------------------------------- wallets (Кошельки) */
+  /* ------------------------------------------------------------- платежи без заявки (инбокс) */
+  async function paymentsView(shell) {
+    const screen = h('section', { class: 'screen' }); shell.appendChild(screen);
+    const box = h('div', null, loader(2));
+    screen.appendChild(hero('Платежи без заявки', 'Пришли деньги, заявка не найдена', { icon: 'wallet', tools: [h('button', { class: 'round-btn', type: 'button', 'aria-label': 'Обновить', onclick: () => draw() }, svg('refresh', 22))] }));
+    screen.appendChild(box);
+    const draw = async () => {
+      try {
+        const r = await api('/payment-events/inbox'); box.innerHTML = '';
+        if (!r.items.length) return box.appendChild(empty('Всё разобрано', 'Каждое поступление привязано к заявке', 'home'));
+        r.items.forEach((ev) => {
+          const card = h('div', { class: 'card pay-card' },
+            h('div', { class: 'pay-top' }, h('b', null, money(ev.amount) + ' ' + curSign(ev.currency)), h('span', { class: 'pill' }, srcLabel(ev.source)), h('time', null, fmtDate(ev.received_at))),
+            ev.raw_text ? h('p', { class: 'pay-text' }, String(ev.raw_text).slice(0, 160)) : null);
+          if (ev.candidates && ev.candidates.length) {
+            card.appendChild(h('div', { class: 'pay-cap' }, 'Похоже на заявку:'));
+            ev.candidates.forEach((c) => card.appendChild(h('button', { class: 'pay-bind', type: 'button', onclick: async (e) => {
+              if (!(await confirmDialog('Зачислить ' + money(ev.amount) + ' на заявку ' + c.public_id + ' (ID ' + c.player_id + ')?', 'Зачислить'))) return;
+              const b = e.currentTarget; busy(b, true);
+              try { await api('/payment-events/' + ev.id + '/bind', { method: 'POST', body: { deposit_id: c.deposit_id } }); toast('Зачислено', 'ok'); draw(); } catch (ex) { err(ex); busy(b, false); }
+            } }, h('div', null, h('b', null, c.client + ' · ID ' + c.player_id), h('small', null, money(c.amount) + ' · ' + c.why + ' · ' + fmtDate(c.created_at))), svg('check', 20))));
+          } else {
+            card.appendChild(h('div', { class: 'pay-cap' }, 'Подходящей заявки не нашлось'));
+          }
+          card.appendChild(h('div', { class: 'btn-row' },
+            h('button', { class: 'outline-btn', type: 'button', onclick: () => { state.historyFilters = { amount: String(ev.amount) }; state.historyTab = 'all'; go('#/history'); } }, svg('search', 16), 'Найти заявку'),
+            h('button', { class: 'outline-btn danger', type: 'button', onclick: async () => { if (!(await confirmDialog('Скрыть платёж как «не наш»?', 'Скрыть', true))) return; try { await api('/payment-events/' + ev.id + '/ignore', { method: 'POST' }); toast('Скрыто', 'ok'); draw(); } catch (ex) { err(ex); } } }, svg('close', 16), 'Не наше')));
+          box.appendChild(card);
+        });
+      } catch (e) { box.innerHTML = ''; box.appendChild(empty('Ошибка', e.message)); }
+    };
+    draw();
+  }
+
   async function walletsView(shell) {
     const screen = h('section', { class: 'screen' }); shell.appendChild(screen);
     const box = h('div', null, loader()); let cashes = { items: [] };
@@ -1059,7 +1098,7 @@
     const TABS = [['main', 'clock', 'Основные'], ['sites', 'globe', 'Сайты'], ['withdraw', 'arrowUR', 'Выводы'], ['deposit', 'arrowDL', 'Попол.']];
     const draw = async () => {
       try {
-        const [r, cashes, banks, rq] = await Promise.all([api('/settings'), api('/cashes'), api('/bank-links').catch(() => ({ items: [] })), api('/requisites').catch(() => ({ items: [] }))]);
+        const [r, cashes, banks, rq, ai] = await Promise.all([api('/settings'), api('/cashes'), api('/bank-links').catch(() => ({ items: [] })), api('/requisites').catch(() => ({ items: [] })), api('/support/assistant').catch(() => null)]);
         const v = r.values; box.innerHTML = '';
         const save = async (vals) => { await api('/settings', { method: 'POST', body: { values: vals } }); Object.assign(v, vals); toast('Сохранено', 'ok', 1200); };
         const toggle = (label, on, fn, sub) => h('div', { class: 'toggle-pill' }, h('div', null, label, sub ? h('small', null, sub) : null), switchEl(!!on, fn));
@@ -1081,6 +1120,11 @@
             h('span', { class: 'lbl' }, 'Название канала'), f.subscription_channel,
             h('span', { class: 'lbl' }, 'Выберите реквизит'), chips));
           box.appendChild(saveBtn(f));
+          /* умный ответчик: видно сразу, отвечает ли клиентам ИИ или только правила бота */
+          if (ai) box.appendChild(sect('bolt', 'Умный ответчик клиентам',
+            h('div', { class: 'toggle-pill' }, h('div', null, ai.enabled ? 'Отвечает ИИ' : 'Отвечают правила бота', h('small', null, ai.enabled ? 'Модель ' + ai.model : (ai.has_key ? 'Выключен в расширенных настройках → Поддержка' : 'Ключ ANTHROPIC_API_KEY не задан в .env'))), h('span', { class: 'status ' + (ai.enabled ? 'success' : 'pending') }, h('i'), ai.enabled ? 'вкл' : 'выкл')),
+            ai.hint ? h('div', { class: 'hint-card warn' }, ai.hint) : null,
+            h('div', { class: 'btn-row' }, h('button', { class: 'outline-btn blue', type: 'button', onclick: async (e) => { const b = e.currentTarget; busy(b, true); try { const t = await api('/support/assistant/test', { method: 'POST' }); toast(t.message, t.ok ? 'ok' : 'err', 7000); } catch (ex) { err(ex); } busy(b, false); } }, svg('bolt', 16), 'Проверить связь'))));
           const links = [['#/settings/advanced/bot', 'settings', 'Расширенные настройки'], ['#/cashes', 'wallet', 'Кассы'], ['#/macrodroid', 'bolt', 'MacroDroid'], ['#/push', 'bell', 'Push-уведомления'], ['#/env', 'terminal', 'Сервер']];
           box.appendChild(h('div', { class: 'card menu-card' }, links.map(([href, icon, title]) => h('button', { class: 'menu-row', type: 'button', onclick: () => go(href) }, h('span', { class: 'ico menu-color blue' }, svg(icon, 22)), title, h('span', { class: 'chev' }, svg('chevron', 20))))));
         } else if (tab === 'sites') {

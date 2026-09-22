@@ -83,6 +83,11 @@ _RULES: list[tuple[str, str, float, str]] = [
     ("faq", "cash_info", 0.8, r"\b(касс\w*|букмекер\w*|1xbet|1хбет|xbet|1win|1вин|бк)\b"),
     ("faq", "schedule", 0.8, r"\b(график\w*|режим работы|часы работы|работаете|круглосуточно|24/7|выходн\w*|качан иштей\w*)\b"),
     ("faq", "instructions", 0.7, r"\b(инструкци\w*|как пользоваться|как работает|что делать|помощь|help|жардам)\b"),
+    ("account", "requests", 0.95, r"^\s*\d{5,12}\s*$"),  # клиент прислал один ID счёта — показываем его заявки
+    ("account", "requests", 0.8, r"\b(мои заявк\w*|все заявк\w*|что по заявк\w*|статус заявк\w*|менин билдирүү\w*)\b"),
+    ("withdrawal", "withdrawal_delay", 0.9, r"\bгде\s+(мои\s+)?(деньги|средства|акча)\b|\bакча\w*\s+кайда\b|\bденьги\s+где\b"),
+    ("qr", "qr_change", 0.9, r"(смен\w+|помен\w+|измен\w+|нов\w+|другой|башка|жаңы)[^.\n]{0,25}(qr|куар|кюар|реквизит\w*|карт\w*|счет\w*|счёт\w*)|(qr|куар)[^.\n]{0,20}(смен\w+|помен\w+|измен\w+)"),
+    ("faq", "balance", 0.8, r"\b(баланс\w*|остаток|сколько (на|у меня)\s+(счет\w*|счёт\w*|деньг\w*)|канча акча)\b"),
     ("faq", "greeting", 0.6, r"^\s*(привет\w*|здравствуй\w*|добрый (день|вечер|утро)|салам\w*|саламатсызбы|hi|hello|хай|доброго времени)\W*$"),
     ("faq", "thanks", 0.7, r"\b(спасибо|благодар\w*|рахмат|ырахмат|thanks|thank you|спс|сяп)\b"),
 ]
@@ -111,6 +116,8 @@ _KEYWORDS: dict[str, tuple[str, str]] = {
     "график": ("faq", "schedule"), "работаете": ("faq", "schedule"),
     "заблокировали": ("account", "blocked"), "блокировка": ("account", "blocked"),
     "айди": ("account", "id_problem"), "аккаунт": ("account", "profile"),
+    "заявка": ("account", "requests"), "статус": ("account", "requests"), "деньги": ("withdrawal", "withdrawal_delay"),
+    "баланс": ("faq", "balance"), "акча": ("withdrawal", "withdrawal_delay"),
     "привет": ("faq", "greeting"), "салам": ("faq", "greeting"), "здравствуйте": ("faq", "greeting"),
     "спасибо": ("faq", "thanks"), "рахмат": ("faq", "thanks"), "инструкция": ("faq", "instructions"),
 }
@@ -406,91 +413,129 @@ class Reply:
     tools: list[str] = field(default_factory=list)
 
 
+def L(lang: str, ru: str, kg: str) -> str:
+    """Ответ на языке клиента: кыргызский, если он пишет по-кыргызски, иначе русский."""
+    return kg if lang == "kg" else ru
+
+
 def _btn(text: str, data: str) -> dict[str, str]:
     return {"text": text, "callback_data": data}
 
 
-def _menu_buttons() -> list[list[dict[str, str]]]:
+def _menu_buttons(lang: str = "ru") -> list[list[dict[str, str]]]:
     return [
-        [_btn("💳 Статус пополнения", "sup:dep"), _btn("💸 Статус вывода", "sup:wd")],
-        [_btn("❓ Частые вопросы", "sup:faq"), _btn("👤 Позвать оператора", "sup:op")],
+        [_btn(L(lang, "💳 Статус пополнения", "💳 Толуктоо абалы"), "sup:dep"), _btn(L(lang, "💸 Статус вывода", "💸 Чыгаруу абалы"), "sup:wd")],
+        [_btn(L(lang, "❓ Частые вопросы", "❓ Көп берилүүчү суроолор"), "sup:faq"), _btn(L(lang, "👤 Позвать оператора", "👤 Операторду чакыруу"), "sup:op")],
     ]
 
 
 def deposit_status_text(db: Session, deposit: Deposit | None, lang: str = "ru") -> str:
     if deposit is None:
-        return "У вас пока нет заявок на пополнение. Нажмите «Пополнить» в основном боте — заявка создаётся за минуту."
+        return L(lang, "У вас пока нет заявок на пополнение. Нажмите «Пополнить» в основном боте — заявка создаётся за минуту.",
+                 "Сизде толуктоо табылган жок. Негизги ботто «Толуктоо» баскычын басыңыз — билдирүү бир мүнөттө түзүлөт.")
     cash = deposit.cash.name if deposit.cash else ""
-    head = f"Заявка {deposit.public_id} • {cash} • ID {deposit.player_id}\nСумма: {money(deposit.pay_amount)} {deposit.currency}\nСоздана: {fmt_local(deposit.created_at)}\n\n"
+    head = L(lang,
+             f"Заявка {deposit.public_id} • {cash} • ID {deposit.player_id}\nСумма: {money(deposit.pay_amount)} {deposit.currency}\nСоздана: {fmt_local(deposit.created_at)}\n\n",
+             f"Билдирүү {deposit.public_id} • {cash} • ID {deposit.player_id}\nСумма: {money(deposit.pay_amount)} {deposit.currency}\nТүзүлдү: {fmt_local(deposit.created_at)}\n\n")
     if deposit.status == "created":
         left = _minutes_left(deposit)
-        return head + (f"⏳ Ожидает оплаты. Оплатите ровно {money(deposit.pay_amount)} {deposit.currency} по QR из заявки — осталось {left} мин. Зачисление происходит автоматически сразу после поступления платежа." if left else "⏳ Время оплаты почти истекло. Если вы уже перевели деньги — не создавайте новую заявку, платёж будет найден автоматически.")
+        if left:
+            return head + L(lang,
+                            f"⏳ Ожидает оплаты. Оплатите ровно {money(deposit.pay_amount)} {deposit.currency} по QR из заявки — осталось {left} мин. Зачисление происходит автоматически сразу после поступления платежа.",
+                            f"⏳ Төлөм күтүлүүдө. QR боюнча так {money(deposit.pay_amount)} {deposit.currency} төлөңүз — {left} мүнөт калды. Акча келгенден кийин эсепке автоматтык түрдө түшөт.")
+        return head + L(lang, "⏳ Время оплаты почти истекло. Если вы уже перевели деньги — не создавайте новую заявку, платёж будет найден автоматически.",
+                        "⏳ Төлөө убактысы бүтүп калды. Эгер акчаны которгон болсоңуз — жаңы билдирүү түзбөңүз, төлөм автоматтык табылат.")
     if deposit.status == "processing":
-        return head + "⚡ Платёж получен, деньги зачисляются в кассу. Обычно это занимает несколько секунд."
+        return head + L(lang, "⚡ Платёж получен, деньги зачисляются в кассу. Обычно это занимает несколько секунд.",
+                        "⚡ Төлөм кабыл алынды, акча кассага түшүрүлүүдө. Адатта бир нече секунд.")
     if deposit.status == "success":
-        return head + f"✅ Зачислено {fmt_local(deposit.credited_at)}. Проверьте баланс игрового счёта."
+        return head + L(lang, f"✅ Зачислено {fmt_local(deposit.credited_at)}. Проверьте баланс игрового счёта.",
+                        f"✅ {fmt_local(deposit.credited_at)} эсепке түштү. Оюн эсебиңиздин балансын текшериңиз.")
     if deposit.status == "failed":
-        return head + "⚠️ Платёж получен, но зачисление в кассу не прошло. Оператор уже уведомлён и зачислит вручную — повторно платить не нужно."
+        return head + L(lang, "⚠️ Платёж получен, но зачисление в кассу не прошло. Оператор уже уведомлён и зачислит вручную — повторно платить не нужно.",
+                        "⚠️ Төлөм келди, бирок кассага түшпөй калды. Оператор кабардар, кол менен түшүрөт — кайра төлөөнүн кереги жок.")
     if deposit.status == "expired":
-        return head + "⌛ Время оплаты истекло, заявка закрыта. Если вы всё же перевели деньги по этому QR — напишите «оплатил», оператор проверит платёж. Если нет — просто создайте новую заявку."
+        return head + L(lang, "⌛ Время оплаты истекло, заявка закрыта. Если вы всё же перевели деньги по этому QR — напишите «оплатил», оператор проверит платёж. Если нет — просто создайте новую заявку.",
+                        "⌛ Төлөө убактысы бүттү, билдирүү жабылды. Эгер ушул QR боюнча акча жөнөткөн болсоңуз — «төлөдүм» деп жазыңыз, оператор текшерет. Жок болсо — жаңы билдирүү түзүңүз.")
     if deposit.status == "cancelled":
-        return head + "❌ Заявка отменена." + (f" Причина: {deposit.error}" if deposit.error else "")
+        return head + L(lang, "❌ Заявка отменена.", "❌ Билдирүү жокко чыгарылды.") + (f" {L(lang, 'Причина', 'Себеби')}: {deposit.error}" if deposit.error else "")
     return head + DEPOSIT_LABELS.get(deposit.status, deposit.status)
 
 
 def withdrawal_status_text(db: Session, w: Withdrawal | None, lang: str = "ru") -> str:
     sla = str(settings_store.get(db, "withdraw_sla_text") or "")
     if w is None:
-        return "У вас пока нет заявок на вывод. Чтобы вывести деньги: в кассе букмекера закажите вывод (город Бишкек, адрес ул. PayGo 24/7), получите код и отправьте его в основном боте."
+        return L(lang, "У вас пока нет заявок на вывод. Чтобы вывести деньги: в кассе букмекера закажите вывод (город Бишкек, адрес ул. PayGo 24/7), получите код и отправьте его в основном боте.",
+                 "Сизде чыгаруу билдирүүсү жок. Акча чыгаруу үчүн: букмекердин кассасынан чыгарууга буйрутма бериңиз, кодду алып, негизги ботко жөнөтүңүз.")
     cash = w.cash.name if w.cash else ""
-    amount = f"{money(w.amount)} {w.currency}" if money(w.amount) > 0 else "сумма уточняется"
-    head = f"Заявка {w.public_id} • {cash} • ID {w.player_id}\nСумма: {amount}\nСоздана: {fmt_local(w.created_at)}\n\n"
+    amount = f"{money(w.amount)} {w.currency}" if money(w.amount) > 0 else L(lang, "сумма уточняется", "сумма такталууда")
+    head = L(lang,
+             f"Заявка {w.public_id} • {cash} • ID {w.player_id}\nСумма: {amount}\nСоздана: {fmt_local(w.created_at)}\n\n",
+             f"Билдирүү {w.public_id} • {cash} • ID {w.player_id}\nСумма: {amount}\nТүзүлдү: {fmt_local(w.created_at)}\n\n")
     if w.status == "created" and w.needs_attention:
-        return head + "⚠️ Заявка требует проверки оператором (касса не вернула сумму). Оператор уведомлён, повторно отправлять код не нужно."
+        return head + L(lang, "⚠️ Заявка требует проверки оператором (касса не вернула сумму). Оператор уведомлён, повторно отправлять код не нужно.",
+                        "⚠️ Билдирүүнү оператор текшериши керек (касса сумманы бербеди). Оператор кабардар, кодду кайра жөнөтүүнүн кереги жок.")
     pos = queue_position(db, w)
-    queue_line = f"\n📊 Вы {pos}-й в очереди на вывод (в работе: {queue_size(db)})." if pos else ""
+    queue_line = L(lang, f"\n📊 Вы {pos}-й в очереди на вывод (в работе: {queue_size(db)}).", f"\n📊 Сиз кезекте {pos}-орундасыз (иштеп жатабыз: {queue_size(db)}).") if pos else ""
     if w.status == "created":
-        return head + f"⏳ Заявка создана и ожидает обработки.{queue_line} {sla} Как только оператор выполнит перевод, придёт уведомление."
+        return head + L(lang, f"⏳ Заявка создана и ожидает обработки.{queue_line} {sla} Как только оператор выполнит перевод, придёт уведомление.",
+                        f"⏳ Билдирүү түзүлдү жана кезекте.{queue_line} {sla} Оператор которгондо кабар келет.")
     if w.status == "processing":
-        return head + f"⚙️ Заявка в обработке у оператора.{queue_line} {sla} Уведомление придёт сразу после перевода."
+        return head + L(lang, f"⚙️ Заявка в обработке у оператора.{queue_line} {sla} Уведомление придёт сразу после перевода.",
+                        f"⚙️ Билдирүү оператордо иштелүүдө.{queue_line} {sla} Которулгандан кийин кабар келет.")
     if w.status == "success":
-        return head + f"✅ Вывод выполнен {fmt_local(w.completed_at)}. Деньги отправлены на ваш банковский счёт (по QR из заявки). Если перевод не отображается в банке через 30 минут — сообщите, проверим."
+        return head + L(lang, f"✅ Вывод выполнен {fmt_local(w.completed_at)}. Деньги отправлены на ваш банковский счёт (по QR из заявки). Если перевод не отображается в банке через 30 минут — сообщите, проверим.",
+                        f"✅ Чыгаруу аткарылды {fmt_local(w.completed_at)}. Акча банк эсебиңизге жөнөтүлдү (билдирүүдөгү QR боюнча). 30 мүнөттөн кийин келбесе — жазыңыз, текшеребиз.")
     if w.status == "failed":
-        return head + f"⚠️ Вывод не выполнен. {('Причина: ' + w.error) if w.error else 'Оператор уведомлён.'}"
+        return head + L(lang, f"⚠️ Вывод не выполнен. {('Причина: ' + w.error) if w.error else 'Оператор уведомлён.'}",
+                        f"⚠️ Чыгаруу аткарылган жок. {('Себеби: ' + w.error) if w.error else 'Оператор кабардар.'}")
     if w.status == "cancelled":
-        return head + "❌ Заявка отменена." + (f" Причина: {w.error}" if w.error else "")
+        return head + L(lang, "❌ Заявка отменена.", "❌ Билдирүү жокко чыгарылды.") + (f" {L(lang, 'Причина', 'Себеби')}: {w.error}" if w.error else "")
     return head + WITHDRAWAL_LABELS.get(w.status, w.status)
 
 
 def faq_text(db: Session, name: str, lang: str = "ru") -> str:
     support = str(settings_store.get(db, "support_username") or "")
     if name == "commission":
-        return "💸 Комиссия PayGo — 0% и на пополнение, и на вывод. Вы платите ровно сумму заявки."
+        return L(lang, "💸 Комиссия PayGo — 0% и на пополнение, и на вывод. Вы платите ровно сумму заявки.",
+                 "💸 PayGo комиссиясы — толуктоодо да, чыгарууда да 0%. Сиз билдирүүдөгү сумманы гана төлөйсүз.")
     if name == "limits":
         cashes = db.execute(select(PaymentCash).where(PaymentCash.enabled.is_(True)).order_by(PaymentCash.priority)).scalars().all()
-        lines = [f"{c.name}: пополнение от {money(c.deposit_min):.0f} до {money(c.deposit_max):.0f} {c.currency}" for c in cashes]
-        return "📏 Лимиты:\n" + ("\n".join(lines) if lines else "лимиты уточняйте у оператора") + "\n\nСумма вывода определяется вашим запросом в кассе букмекера."
+        lines = [f"{c.name}: {L(lang, 'пополнение от', 'толуктоо')} {money(c.deposit_min):.0f} {L(lang, 'до', '—')} {money(c.deposit_max):.0f} {c.currency}" for c in cashes]
+        return L(lang, "📏 Лимиты:\n", "📏 Чектөөлөр:\n") + ("\n".join(lines) if lines else L(lang, "лимиты уточняйте у оператора", "чектөөлөрдү оператордон сураңыз")) + L(lang,
+            "\n\nСумма вывода определяется вашим запросом в кассе букмекера.", "\n\nЧыгаруу суммасы букмекердин кассасындагы буйрутмаңыз менен аныкталат.")
     if name == "referral":
         pct = settings_store.get_float(db, "referral_bonus_pct", 1.0)
-        return f"🎁 Реферальная программа: приглашайте друзей по ссылке из раздела «Рефералка» в основном боте и получайте {pct:g}% от каждого их пополнения. Баланс можно вывести на ваш QR."
+        return L(lang, f"🎁 Реферальная программа: приглашайте друзей по ссылке из раздела «Рефералка» в основном боте и получайте {pct:g}% от каждого их пополнения. Баланс можно вывести на ваш QR.",
+                 f"🎁 Реферал программасы: негизги боттогу «Рефералка» бөлүмүнөн шилтеме менен досторуңузду чакырыңыз жана алардын ар бир толуктоосунан {pct:g}% алыңыз. Балансты QR'га чыгарса болот.")
     if name == "cash_info":
         cashes = db.execute(select(PaymentCash).where(PaymentCash.enabled.is_(True)).order_by(PaymentCash.priority)).scalars().all()
-        names = ", ".join(c.name for c in cashes) or "уточняйте у оператора"
-        return f"🎰 Сейчас работают кассы: {names}. Пополнение и вывод доступны в основном боте кнопками «Пополнить» и «Вывести»."
+        names = ", ".join(c.name for c in cashes) or L(lang, "уточняйте у оператора", "оператордон сураңыз")
+        return L(lang, f"🎰 Сейчас работают кассы: {names}. Пополнение и вывод доступны в основном боте кнопками «Пополнить» и «Вывести».",
+                 f"🎰 Иштеп жаткан кассалар: {names}. Толуктоо жана чыгаруу негизги ботто «Толуктоо» жана «Чыгаруу» баскычтары аркылуу.")
+    if name == "balance":
+        return L(lang, "💰 Баланс игрового счёта виден в приложении букмекера — мы его не меняем и не видим. Здесь я показываю статусы ваших пополнений и выводов: нажмите кнопку ниже или пришлите ID счёта.",
+                 "💰 Оюн эсебиңиздин балансы букмекердин тиркемесинде көрүнөт — биз аны өзгөртпөйбүз жана көрбөйбүз. Бул жерде толуктоо жана чыгаруу абалын көрсөтөм: төмөнкү баскычты басыңыз же эсептин ID'син жөнөтүңүз.")
     if name == "schedule":
-        return "🕐 Работаем 24/7. Пополнения зачисляются автоматически, выводы обрабатывают операторы по очереди."
+        return L(lang, "🕐 Работаем 24/7. Пополнения зачисляются автоматически, выводы обрабатывают операторы по очереди.",
+                 "🕐 24/7 иштейбиз. Толуктоо автоматтык эсепке түшөт, чыгарууну операторлор кезек менен иштетет.")
     if name == "greeting":
-        return "Здравствуйте! Чем помочь? Напишите вопрос одним сообщением или выберите кнопку ниже."
+        return L(lang, "Здравствуйте! Чем помочь? Напишите вопрос одним сообщением или выберите кнопку ниже.",
+                 "Саламатсызбы! Кандай жардам керек? Сурооңузду бир билдирүү менен жазыңыз же төмөнкү баскычты тандаңыз.")
     if name == "thanks":
-        return "Рады помочь! Если появятся вопросы — пишите."
+        return L(lang, "Рады помочь! Если появятся вопросы — пишите.", "Жардам бергенибизге кубанычтабыз! Суроо болсо — жазыңыз.")
     if name == "instructions":
-        return (
-            "ℹ️ Кратко:\n"
-            "• Пополнить: основной бот → «Пополнить» → касса → ID → сумма → оплатите QR ровно на указанную сумму.\n"
-            "• Вывести: в кассе букмекера закажите вывод (город Бишкек, адрес ул. PayGo 24/7), получите код → основной бот → «Вывести» → ID → QR банка → код.\n"
-            f"• Вопросы: {support}"
-        )
-    return "Уточните, пожалуйста, вопрос: пополнение, вывод, QR, ID или что-то другое?"
+        return L(lang,
+                 "ℹ️ Кратко:\n"
+                 "• Пополнить: основной бот → «Пополнить» → касса → ID → сумма → оплатите QR ровно на указанную сумму.\n"
+                 "• Вывести: в кассе букмекера закажите вывод (город Бишкек, адрес ул. PayGo 24/7), получите код → основной бот → «Вывести» → ID → QR банка → код.\n"
+                 f"• Вопросы: {support}",
+                 "ℹ️ Кыскача:\n"
+                 "• Толуктоо: негизги бот → «Толуктоо» → касса → ID → сумма → QR боюнча так ошол сумманы төлөңүз.\n"
+                 "• Чыгаруу: букмекердин кассасынан чыгарууга буйрутма → кодду алыңыз → негизги бот → «Чыгаруу» → ID → банктын QR → код.\n"
+                 f"• Суроолор: {support}")
+    return L(lang, "Уточните, пожалуйста, вопрос: пополнение, вывод, QR, ID или что-то другое?",
+             "Сурооңузду тактап бериңиз: толуктоо, чыгаруу, QR, ID же башка нерсеби?")
 
 
 def respond(
@@ -507,11 +552,14 @@ def respond(
     """Full pipeline for one user message. Returns ``None`` when the message must be dropped silently."""
     if user.support_blocked:
         return Reply(f"⛔ Поддержка для вашего аккаунта ограничена.\nПричина: {user.support_block_reason or 'обратитесь к администратору'}", resolved=True)
-    flood = check_flood(db, user.telegram_id, text or callback, media=bool(media_kind))
-    if not flood.allowed:
-        return None if flood.silent else Reply(flood.reply, resolved=True)
+    # Нажатие кнопки — не поток сообщений: оно всегда отвечает. Иначе повторное нажатие попадало
+    # в «дубликат», а несколько нажатий подряд — в тихий кулдаун, и клиент видел «бот молчит».
+    if not callback:
+        flood = check_flood(db, user.telegram_id, text, media=bool(media_kind))
+        if not flood.allowed:
+            return None if flood.silent else Reply(flood.reply, resolved=True)
     conv = get_or_open_conversation(db, user)
-    intent = classify(text) if not callback else Intent(*_callback_intent(callback))
+    intent = classify(text) if not callback else Intent(*_callback_intent(callback, detect_language(text) if text else _user_language(user)))
     dedupe = f"tg:{user.telegram_id}:{telegram_message_id}" if telegram_message_id else None
     add_message(db, conv, direction="in", sender="user", text=text or media_label(media_kind), kind=media_kind or "text", file_url=file_url, file_name=file_name, telegram_message_id=telegram_message_id, intent=intent, dedupe_key=dedupe)
     # The operator owns the dialog: forward silently, no automation.
@@ -530,6 +578,8 @@ def _reply(db: Session, user: User, conv: SupportConversation, intent: Intent, t
         reply = _assistant_reply(db, user, conv, text, media_kind)
     if reply is None:
         reply = _answer(db, user, conv, intent, text, media_kind)
+    if not reply.buttons:
+        reply.buttons = _menu_buttons(intent.language)  # из любого ответа виден следующий шаг
     if reply.escalate:
         _escalate(db, user, conv, reply, text)
     # else, when already waiting for the operator: no duplicate hand-off, still answered from data
@@ -594,21 +644,27 @@ def _assistant_reply(db: Session, user: User, conv: SupportConversation, text: s
     return Reply(outcome.text, escalate=outcome.escalate, category=category if outcome.escalate else "faq", subject=outcome.subject, resolved=not outcome.escalate, source="ai", tools=list(outcome.tools))
 
 
-def _callback_intent(callback: str) -> tuple[str, str, float, str]:
+def _user_language(user: User) -> str:
+    return "kg" if getattr(user, "language", "ru") == "kg" else "ru"
+
+
+def _callback_intent(callback: str, lang: str = "ru") -> tuple[str, str, float, str]:
     mapping = {
-        "sup:dep": ("deposit", "deposit_status", 1.0, "ru"),
-        "sup:wd": ("withdrawal", "withdrawal_status", 1.0, "ru"),
-        "sup:faq": ("faq", "instructions", 1.0, "ru"),
-        "sup:op": ("operator", "operator", 1.0, "ru"),
-        "sup:paid": ("deposit", "deposit_delay", 1.0, "ru"),
-        "sup:limits": ("faq", "limits", 1.0, "ru"),
-        "sup:commission": ("faq", "commission", 1.0, "ru"),
-        "sup:referral": ("faq", "referral", 1.0, "ru"),
-        "sup:qr": ("qr", "qr_howto", 1.0, "ru"),
-        "sup:howdep": ("deposit", "deposit_howto", 1.0, "ru"),
-        "sup:howwd": ("withdrawal", "withdrawal_howto", 1.0, "ru"),
+        "sup:dep": ("deposit", "deposit_status", 1.0),
+        "sup:wd": ("withdrawal", "withdrawal_status", 1.0),
+        "sup:faq": ("faq", "instructions", 1.0),
+        "sup:op": ("operator", "operator", 1.0),
+        "sup:paid": ("deposit", "deposit_delay", 1.0),
+        "sup:limits": ("faq", "limits", 1.0),
+        "sup:commission": ("faq", "commission", 1.0),
+        "sup:referral": ("faq", "referral", 1.0),
+        "sup:qr": ("qr", "qr_howto", 1.0),
+        "sup:howdep": ("deposit", "deposit_howto", 1.0),
+        "sup:howwd": ("withdrawal", "withdrawal_howto", 1.0),
+        "sup:schedule": ("faq", "schedule", 1.0),
     }
-    return mapping.get(callback, ("faq", "unknown", 0.2, "ru"))
+    category, name, weight = mapping.get(callback, ("faq", "unknown", 0.2))
+    return (category, name, weight, lang)
 
 
 def _answer(db: Session, user: User, conv: SupportConversation, intent: Intent, text: str, media_kind: str) -> Reply:
@@ -616,33 +672,42 @@ def _answer(db: Session, user: User, conv: SupportConversation, intent: Intent, 
     deposit = latest_deposit(db, user)
     withdrawal = latest_withdrawal(db, user)
     cat, name = intent.category, intent.name
-    op_button = [[_btn("👤 Позвать оператора", "sup:op")]]
+    op_button = [[_btn(L(lang, "👤 Позвать оператора", "👤 Операторду чакыруу"), "sup:op")]]
 
     if media_kind and not text:
         # A receipt/screenshot without text: attach to the relevant operation and hand over.
         if deposit and deposit.status in {"created", "expired", "failed", "processing"}:
-            return Reply(f"📎 Чек получен и прикреплён к заявке {deposit.public_id}. Оператор проверит платёж и зачислит — повторно платить не нужно.", escalate=True, category="deposit", subject=f"Чек по пополнению {deposit.public_id}")
+            return Reply(L(lang, f"📎 Чек получен и прикреплён к заявке {deposit.public_id}. Оператор проверит платёж и зачислит — повторно платить не нужно.",
+                           f"📎 Чек кабыл алынды жана {deposit.public_id} билдирүүсүнө тиркелди. Оператор төлөмдү текшерип эсепке түшүрөт — кайра төлөөнүн кереги жок."),
+                         escalate=True, category="deposit", subject=f"Чек по пополнению {deposit.public_id}")
         if withdrawal and withdrawal.status in {"created", "processing", "failed"}:
-            return Reply(f"📎 Файл получен и прикреплён к заявке {withdrawal.public_id}. Оператор посмотрит и ответит здесь.", escalate=True, category="withdrawal", subject=f"Файл по выводу {withdrawal.public_id}")
-        return Reply("📎 Файл получен. Напишите одним сообщением, с какой заявкой он связан, и я передам оператору.", buttons=_menu_buttons())
+            return Reply(L(lang, f"📎 Файл получен и прикреплён к заявке {withdrawal.public_id}. Оператор посмотрит и ответит здесь.",
+                           f"📎 Файл кабыл алынды жана {withdrawal.public_id} билдирүүсүнө тиркелди. Оператор карап, ушул жерде жооп берет."),
+                         escalate=True, category="withdrawal", subject=f"Файл по выводу {withdrawal.public_id}")
+        return Reply(L(lang, "📎 Файл получен. Напишите одним сообщением, с какой заявкой он связан, и я передам оператору.",
+                       "📎 Файл кабыл алынды. Кайсы билдирүүгө тиешелүү экенин бир билдирүү менен жазыңыз, операторго өткөрөм."), buttons=_menu_buttons(lang))
 
     if cat == "operator":
         if name == "complaint":
-            return Reply("Понимаю, разберёмся. Передал обращение оператору с историей ваших заявок — ответ придёт в этот чат.", escalate=True, category="operator", subject="Жалоба")
-        return Reply("Передал оператору. Он видит ваши заявки и историю — повторять данные не нужно. Ответ придёт в этот чат.", escalate=True, category="operator", subject="Запрос оператора")
+            return Reply(L(lang, "Понимаю, разберёмся. Передал обращение оператору с историей ваших заявок — ответ придёт в этот чат.",
+                           "Түшүндүм, чечебиз. Билдирүүлөрүңүздүн тарыхы менен операторго өткөрдүм — жооп ушул чатка келет."),
+                         escalate=True, category="operator", subject="Жалоба")
+        return Reply(L(lang, "Передал оператору. Он видит ваши заявки и историю — повторять данные не нужно. Ответ придёт в этот чат.",
+                       "Операторго өткөрдүм. Ал билдирүүлөрүңүздү жана тарыхты көрөт — кайталоонун кереги жок. Жооп ушул чатка келет."),
+                     escalate=True, category="operator", subject="Запрос оператора")
 
     if cat == "withdrawal":
         if name == "withdrawal_howto":
             from .bot_texts import instruction, strip_html
 
-            return Reply(strip_html(instruction(db)), buttons=[[_btn("💸 Статус вывода", "sup:wd")]], resolved=True)
+            return Reply(strip_html(instruction(db, lang=lang)), buttons=[[_btn(L(lang, "💸 Статус вывода", "💸 Чыгаруу абалы"), "sup:wd")]], resolved=True)
         if name == "withdrawal_cancel":
             if withdrawal and withdrawal.status in {"created", "processing"}:
                 return Reply(f"Заявка {withdrawal.public_id} ({money(withdrawal.amount)} {withdrawal.currency}) уже принята кассой — код использован. Отменить её самостоятельно нельзя, передал оператору: он свяжется здесь и решит вопрос.", escalate=True, category="withdrawal", subject=f"Отмена вывода {withdrawal.public_id}")
             return Reply(withdrawal_status_text(db, withdrawal, lang), buttons=op_button)
         if name == "withdrawal_code":
             city, address = str(settings_store.get(db, "withdraw_city") or ""), str(settings_store.get(db, "withdraw_address") or "")
-            return Reply(f"Код вывода одноразовый и действует ограниченное время. Если касса пишет «неверный код» — закажите новый вывод в кассе букмекера (город {city}, адрес {address}) и отправьте свежий код в основном боте. Если код уже был принят — смотрите статус ниже.", buttons=[[_btn("💸 Статус вывода", "sup:wd")], *op_button])
+            return Reply(f"Код вывода одноразовый и действует ограниченное время. Если касса пишет «неверный код» — закажите новый вывод в кассе букмекера (город {city}, адрес {address}) и отправьте свежий код в основном боте. Если код уже был принят — смотрите статус ниже.", buttons=[[_btn(L(lang, "💸 Статус вывода", "💸 Чыгаруу абалы"), "sup:wd")], *op_button])
         status = withdrawal_status_text(db, withdrawal, lang)
         if withdrawal and withdrawal.status in {"created", "processing"}:
             waiting_hours = (utcnow() - as_utc(withdrawal.created_at)).total_seconds() / 3600
@@ -655,18 +720,18 @@ def _answer(db: Session, user: User, conv: SupportConversation, intent: Intent, 
             return Reply(status + "\n\nЕсли деньги не пришли на банк — передаю оператору для проверки перевода.", escalate=True, category="withdrawal", subject=f"Вывод выполнен, деньги не пришли {withdrawal.public_id}")
         if withdrawal and withdrawal.needs_attention:
             return Reply(status, escalate=True, category="withdrawal", subject=f"Проблемный вывод {withdrawal.public_id}")
-        return Reply(status, buttons=op_button if withdrawal else [[_btn("Как вывести", "sup:howwd")]], resolved=True)
+        return Reply(status, buttons=op_button if withdrawal else [[_btn(L(lang, "Как вывести", "Кантип чыгарам"), "sup:howwd")]], resolved=True)
 
     if cat == "deposit":
         if name == "deposit_howto":
-            return Reply(faq_text(db, "instructions", lang), buttons=[[_btn("💳 Статус пополнения", "sup:dep")]], resolved=True)
+            return Reply(faq_text(db, "instructions", lang), buttons=[[_btn(L(lang, "💳 Статус пополнения", "💳 Толуктоо абалы"), "sup:dep")]], resolved=True)
         if name == "deposit_cancel":
             if deposit and deposit.status == "created":
                 return Reply(f"Заявка {deposit.public_id} ожидает оплаты. Если вы не переводили деньги — просто нажмите «Отменить» под заявкой в основном боте или дождитесь окончания таймера. Если перевели — не отменяйте, платёж зачислится автоматически.", resolved=True)
             return Reply(deposit_status_text(db, deposit, lang), resolved=True)
         status = deposit_status_text(db, deposit, lang)
         if deposit is None:
-            return Reply(status, buttons=[[_btn("Как пополнить", "sup:howdep")]], resolved=True)
+            return Reply(status, buttons=[[_btn(L(lang, "Как пополнить", "Кантип толуктайм"), "sup:howdep")]], resolved=True)
         if name in {"deposit_delay", "deposit_error"}:
             if deposit.status == "success":
                 return Reply(status + "\n\nЕсли на игровом счёте суммы нет — обновите приложение букмекера. Если всё равно нет, напишите «нет на счёте», передам оператору.", buttons=op_button, resolved=True)
@@ -690,6 +755,10 @@ def _answer(db: Session, user: User, conv: SupportConversation, intent: Intent, 
         return Reply(deposit_status_text(db, deposit, lang), buttons=op_button, resolved=True)
 
     if cat == "qr":
+        if name == "qr_change":
+            return Reply(L(lang, "Чтобы вывести на другой счёт, просто отправьте новый QR: основной бот → «Вывести» → выберите кассу → пришлите QR нужного банка. Последний QR сохраняется, но вы всегда можете прислать другой — он заменит прежний.",
+                           "Башка эсепке чыгаруу үчүн жаңы QR жөнөтүңүз: негизги бот → «Чыгаруу» → касса → керектүү банктын QR'ын жөнөтүңүз. Акыркы QR сакталат, каалаган учурда башкасын жөнөтсөңүз болот."),
+                         buttons=op_button, resolved=True)
         if name == "qr_problem":
             return Reply(
                 "Если QR не читается:\n• пришлите QR как фото, не файлом, без обрезки и бликов;\n• в банке используйте «Мой QR» для получения денег (не для оплаты);\n• для пополнения сканируйте QR из заявки приложением банка или нажмите кнопку банка под QR.\n\nЕсли не помогло — пришлите QR сюда, оператор проверит.",
@@ -701,12 +770,17 @@ def _answer(db: Session, user: User, conv: SupportConversation, intent: Intent, 
         return Reply("Кассы работают в сомах (KGS). Если валюта вашего игрового аккаунта другая — бот сообщит об этом при вводе ID и попросит другой ID. Заведите аккаунт в KGS или укажите ID счёта в сомах.", buttons=op_button, resolved=True)
 
     if cat == "account":
+        if name == "requests":
+            # «мои заявки» или присланный ID счёта: показываем обе последние заявки сразу
+            parts = [deposit_status_text(db, deposit, lang), withdrawal_status_text(db, withdrawal, lang)]
+            return Reply("\n\n— — —\n\n".join(p for p in parts if p), buttons=op_button, resolved=True)
         if name == "id_problem":
             return Reply("ID — это номер игрового счёта в букмекере (только цифры). Если бот пишет «ID не найден», проверьте, что ID относится к выбранной кассе, и введите его ещё раз. Если ID точно верный — напишите его сюда, оператор проверит.", buttons=op_button, resolved=True)
         if name == "blocked":
             if user.is_blocked:
                 return Reply(f"Ваш аккаунт ограничен. {('Причина: ' + user.block_reason) if user.block_reason else ''} Передал оператору.", escalate=True, category="account", subject="Блокировка аккаунта")
-            return Reply("Ваш аккаунт активен, ограничений нет. Если операции не проходят — уточните, какая именно, и я проверю статус.", buttons=_menu_buttons(), resolved=True)
+            return Reply(L(lang, "Ваш аккаунт активен, ограничений нет. Если операции не проходят — уточните, какая именно, и я проверю статус.",
+                           "Аккаунтуңуз активдүү, чектөө жок. Операция өтпөсө — кайсынысы экенин жазыңыз, абалын текшерем."), buttons=_menu_buttons(lang), resolved=True)
         summary = user_summary(db, user)
         qr = last_qr(db, user)
         return Reply(
@@ -729,8 +803,10 @@ def _answer(db: Session, user: User, conv: SupportConversation, intent: Intent, 
 
     # faq
     if name == "unknown" or name == "empty":
-        return Reply("Не совсем понял вопрос. Выберите тему кнопкой ниже или опишите ситуацию одним сообщением (например: «оплатил, не зачислено» или «когда будет вывод»).", buttons=_menu_buttons())
-    return Reply(faq_text(db, name, lang), buttons=_menu_buttons() if name in {"greeting", "instructions"} else [], resolved=True)
+        return Reply(L(lang, "Не совсем понял вопрос. Выберите тему кнопкой ниже или опишите ситуацию одним сообщением (например: «оплатил, не зачислено» или «когда будет вывод»).",
+                       "Сурооңузду толук түшүнбөдүм. Төмөнкү баскычтан теманы тандаңыз же жагдайды бир билдирүү менен жазыңыз («төлөдүм, эсепке түшкөн жок» же «чыгаруу качан болот»)."),
+                     buttons=_menu_buttons(lang))
+    return Reply(faq_text(db, name, lang), buttons=_menu_buttons(lang) if name in {"greeting", "instructions"} else [], resolved=True)
 
 
 def _escalate(db: Session, user: User, conv: SupportConversation, reply: Reply, text: str) -> None:

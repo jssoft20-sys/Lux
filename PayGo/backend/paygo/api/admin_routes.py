@@ -34,7 +34,7 @@ from ..services import autopay as autopay_service
 from ..services import broadcasts as broadcast_service
 from ..services import cashes as cash_service
 from ..services import deposits as deposit_service
-from ..services import elqr, payments, settings_store, stats
+from ..services import elqr, payments, risk, settings_store, stats, watchdog
 from ..services import support as support_service
 from ..services import withdrawals as withdrawal_service
 from ..services.logs import audit, log_event
@@ -115,6 +115,7 @@ def live(principal: Principal = Depends(current_principal), db: Session = Depend
         "ok": True,
         "revision": revision,
         "queues": data,
+        "alarms": watchdog.stored(db),
         "notifications": [
             {"id": n.id, "event": n.event, "level": n.level, "title": n.title, "body": n.body, "data": n.data, "created_at": iso(n.created_at), "acknowledged": n.acknowledged_at is not None}
             for n in latest
@@ -236,6 +237,7 @@ def get_deposit(deposit_id: int, principal: Principal = Depends(current_principa
         "history": events,
         "payment_event": payments.public_event(payment_event) if payment_event else None,
         "user": public_user(deposit.user, user_summary(db, deposit.user)),
+        "risk": risk.signals(db, deposit),
     }
 
 
@@ -415,6 +417,7 @@ def get_withdrawal(withdrawal_id: int, principal: Principal = Depends(current_pr
         "item": {**withdrawal_service.public_withdrawal(w, full=True), "operator_name": _operator_name(db, w.operator_id), "receipt_required": withdrawal_service.receipt_required(db, w), "autopay_active": autopay_service.is_active(db), "optima_pay_link": elqr.optima_confirm_link(w.generated_qr_payload, settings_store.get(db, "optima_pay_link_base")) if w.generated_qr_payload else "", "bank": elqr.detect_bank(w.qr_payload or w.qr_file_url or w.generated_qr_payload)},
         "history": support_service.recent_events(db, "withdrawal", w.public_id, limit=30),
         "user": public_user(w.user, user_summary(db, w.user)),
+        "risk": risk.signals(db, w),
         "payment_links": elqr.bank_links(w.generated_qr_payload, deposit_service.bank_link_rows(db)) if w.generated_qr_payload else [],
     }
 
@@ -624,6 +627,35 @@ def list_events(status: str = "", amount: str = "", amount_min: str = "", amount
     total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar() or 0
     rows = db.execute(stmt.order_by(PaymentEvent.id.desc()).offset((page - 1) * size).limit(size)).scalars().all()
     return {"ok": True, "items": [payments.public_event(e) for e in rows], "total": int(total), "page": page, "size": size}
+
+
+@router.get("/payment-events/inbox")
+def payments_inbox(principal: Principal = Depends(require("operations")), db: Session = Depends(get_db)):
+    """Поступления без заявки: что пришло из банка и на какую заявку это похоже."""
+    return {"ok": True, "items": payments.inbox(db), "total": payments.inbox_count(db)}
+
+
+@router.post("/payment-events/{event_id}/bind")
+def payments_bind(event_id: int, body: dict, request: Request, principal: Principal = Depends(require("operations")), db: Session = Depends(get_db)):
+    """Привязать платёж к заявке и сразу зачислить её."""
+    deposit_id = int(body.get("deposit_id") or 0)
+    if not deposit_id:
+        raise HTTPException(400, "Не выбрана заявка")
+    audit(db, "payment.bind", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), entity_type="payment_event", entity_id=event_id, details={"deposit_id": deposit_id})
+    db.commit()
+    result = payments.bind(event_id, deposit_id, actor=principal.admin.username)
+    if not result.get("ok"):
+        raise HTTPException(400, str(result.get("message") or "Не удалось зачислить"))
+    return {"ok": True, "result": result}
+
+
+@router.post("/payment-events/{event_id}/ignore")
+def payments_ignore(event_id: int, request: Request, principal: Principal = Depends(require("operations")), db: Session = Depends(get_db)):
+    """Платёж не наш (личный перевод) — убрать из инбокса."""
+    if not payments.ignore(db, event_id, actor=principal.admin.username):
+        raise HTTPException(400, "Платёж уже привязан к заявке")
+    audit(db, "payment.ignore", admin_id=principal.id, actor=principal.admin.username, ip=client_ip(request), entity_type="payment_event", entity_id=event_id)
+    return {"ok": True}
 
 
 @router.post("/payment-events/manual")
@@ -1085,6 +1117,34 @@ def support_search(q: str = "", principal: Principal = Depends(require("support"
         pc = support_service.public_conversation(c) if c else {}
         messages.append({"id": m.id, "conversation_id": m.conversation_id, "text": (m.text or "")[:300], "sender": m.sender, "created_at": iso(m.created_at), "user_name": pc.get("user_name", ""), "user_avatar": pc.get("user_avatar", ""), "status": pc.get("status", "")})
     return {"ok": True, "chats": [support_service.public_conversation(c) for c in chats], "messages": messages}
+
+
+@router.get("/support/assistant")
+def assistant_status(principal: Principal = Depends(require("support")), db: Session = Depends(get_db)):
+    """Умный ответчик: включён ли он, задан ли ключ и какая модель отвечает клиентам."""
+    from ..services import assistant as assistant_service
+
+    settings = get_settings()
+    has_key = bool(settings.anthropic_api_key)
+    switched_on = settings_store.get_bool(db, "assistant_enabled", True)
+    return {
+        "ok": True,
+        "enabled": bool(has_key and switched_on),
+        "has_key": has_key,
+        "switched_on": switched_on,
+        "model": settings.assistant_model or assistant_service.DEFAULT_MODEL,
+        "hint": "" if has_key else "Добавьте ANTHROPIC_API_KEY=… в /home/PayGo/.env и перезапустите ботов — тогда на вопросы клиентов отвечает ИИ, а не только правила.",
+    }
+
+
+@router.post("/support/assistant/test")
+def assistant_test(principal: Principal = Depends(require("settings")), db: Session = Depends(get_db)):
+    """Одно короткое обращение к модели — проверка ключа и связи прямо из панели."""
+    from ..services import assistant as assistant_service
+
+    result = assistant_service.self_test(db)
+    log_event(db, "Проверка умного ответчика", result.get("message", ""), level="info" if result.get("ok") else "warning", category="support")
+    return {"ok": bool(result.get("ok")), "message": result.get("message", ""), "model": result.get("model", "")}
 
 
 @router.get("/support/conversations/{conv_id}")

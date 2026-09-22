@@ -46,7 +46,7 @@ from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from . import media as media_lib
 from .dispatcher import Dispatcher
-from .runtime import SidePool, fan_out, start_db_keepalive, start_periodic, start_watchdog
+from .runtime import SidePool, fan_out, start_db_keepalive, start_heartbeat, start_periodic, start_watchdog
 from .telegram import (
     TelegramClient,
     TelegramError,
@@ -1430,7 +1430,8 @@ class MainBot:
         threading.Thread(target=self._loop, args=(self.deliver_outbox, 0.4, "outbox"), daemon=True).start()
         threading.Thread(target=self._loop, args=(self.tick_timers, 10.0, "timers"), daemon=True).start()
         start_periodic("main-typing", self.dispatcher.keep_typing, 1.0, stop=STOP)  # «печатает…» while a slow step runs
-        start_db_keepalive("main", stop=STOP)  # the database connection never goes cold between clients
+        start_db_keepalive("main", stop=STOP)
+        start_heartbeat("main", stop=STOP)  # пульс для «сторожа тишины» в панели
         start_watchdog("main", lambda: self.dispatcher.last_poll_at, stop=STOP, before_exit=self.dispatcher.flush_offset)
         self.dispatcher.run_polling()
 

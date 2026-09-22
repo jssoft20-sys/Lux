@@ -166,6 +166,17 @@ DEFAULTS: dict[str, Any] = {
     "usd_rate": 87.5,
     # payouts: bank keys (elqr.BANKS) the desk does not pay to right now — the bot asks for another QR
     "withdraw_banks_disabled": "",
+    # «сторож тишины»: пороги аварий и последнее состояние
+    "watchdog_enabled": True,
+    "watchdog_payments_minutes": 30,
+    "watchdog_bot_minutes": 10,
+    "watchdog_queue_minutes": 60,
+    "watchdog_state": "",
+    "notify_system_alarm": True,
+    # антифрод-подсказки оператору в заявке
+    "risk_signals_enabled": True,
+    "risk_new_client_amount": 5000,
+    "risk_spike_factor": 5,
 }
 
 _CACHE: dict[str, Any] = {}

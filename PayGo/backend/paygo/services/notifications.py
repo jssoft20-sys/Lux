@@ -130,6 +130,7 @@ def event_enabled(db: Session, event: str) -> bool:
         "cash_critical": "notify_cash_critical",
         "cash_error": "notify_cash_critical",
         "support_operator": "notify_support_operator",
+        "system_alarm": "notify_system_alarm",
     }
     key = mapping.get(event)
     if not key:

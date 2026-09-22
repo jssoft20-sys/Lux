@@ -25,7 +25,7 @@ from sqlalchemy import select
 from ..config import get_settings
 from ..db import transaction
 from ..models import Deposit, Job, Notification, PushDelivery, PushSubscription
-from ..services import broadcasts, notifications, payments, settings_store
+from ..services import broadcasts, notifications, payments, settings_store, watchdog
 from ..services import cashes as cash_service
 from ..services import support as support_service
 from ..services.deposits import credit_deposit, expire_deposits
@@ -298,6 +298,12 @@ def on_start() -> None:
         log_event(db, "Worker запущен", "фоновые задачи активны", category="system")
 
 
+def tick_watchdog() -> None:
+    """«Сторож тишины»: платежи, боты, кассы, очередь выводов — тревога владельцу при аварии."""
+    with transaction() as db:
+        watchdog.tick(db)
+
+
 def main() -> None:
     settings = get_settings()
     logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -312,6 +318,7 @@ def main() -> None:
         ("jobs", tick_jobs, 2.0),
         ("broadcasts", tick_broadcasts, 1.5),
         ("autopay", tick_autopay, 4.0),
+        ("watchdog", tick_watchdog, 60.0),
     ]
     imap_reader = None
     if settings.imap_enabled and settings.imap_idle:

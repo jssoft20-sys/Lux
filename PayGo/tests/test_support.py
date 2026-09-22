@@ -138,3 +138,41 @@ def test_classify_returns_tuple_like():
 
     intent = classify("как вывести деньги")
     assert isinstance(intent, Intent) and intent.category == "withdrawal"
+
+
+def test_buttons_always_answer_even_when_pressed_many_times(user, fake_provider):
+    """Нажатие кнопки — не «сообщение»: антифлуд и защита от дублей его не глушат.
+    Раньше повторное нажатие уходило в «дубликат», а серия нажатий — в тихий кулдаун,
+    и клиент видел молчащего бота."""
+    with transaction() as db:
+        u = db.get(User, user)
+        for i in range(12):
+            reply = support.respond(db, u, "", callback="sup:dep", telegram_message_id=0)
+            assert reply is not None and reply.text, f"кнопка осталась без ответа на {i + 1}-м нажатии"
+            assert reply.buttons, "в ответе всегда есть следующий шаг"
+        # кнопки остальных тем тоже отвечают сразу после серии нажатий
+        for data in ("sup:wd", "sup:faq", "sup:limits", "sup:commission", "sup:qr"):
+            assert support.respond(db, u, "", callback=data, telegram_message_id=0) is not None
+
+
+def test_bare_player_id_and_my_requests_show_both_statuses(user, fake_provider):
+    with transaction() as db:
+        cash_id = get_cash(db, "1xbet").id
+    withdrawals.create_withdrawal(user_id=user, cash_id=cash_id, player_id="123456", code="OK4321", idempotency_key="s-id")
+    with transaction() as db:
+        u = db.get(User, user)
+        reply = support.respond(db, u, "1234567", telegram_message_id=500)
+        assert reply and "W-" in reply.text and "пополнени" in reply.text.lower()
+        reply = support.respond(db, u, "мои заявки", telegram_message_id=501)
+        assert reply and "W-" in reply.text
+
+
+def test_kyrgyz_client_gets_kyrgyz_answers(user, fake_provider):
+    with transaction() as db:
+        u = db.get(User, user)
+        kg_letters = set("өүң")
+        reply = support.respond(db, u, "саламатсызбы, жардам керек", telegram_message_id=600)
+        assert reply and kg_letters & set(reply.text.lower()), "ответ клиенту на кыргызском должен быть кыргызским"
+        assert any(kg_letters & set(b["text"].lower()) for row in reply.buttons for b in row), "кнопки тоже на кыргызском"
+        reply = support.respond(db, u, "кантип акча чыгарам", telegram_message_id=601)
+        assert reply and kg_letters & set(reply.text.lower())

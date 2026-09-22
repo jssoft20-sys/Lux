@@ -29,6 +29,7 @@ from .withdrawals import STATUS_LABELS as WITHDRAWAL_LABELS
 
 logger = logging.getLogger("paygo.assistant")
 
+DEFAULT_MODEL = "claude-opus-5"
 MAX_HISTORY = 14
 MAX_TOOL_ROUNDS = 5
 MAX_TOKENS = 700
@@ -93,6 +94,29 @@ def reset_client() -> None:
     global _CLIENT
     with _CLIENT_LOCK:
         _CLIENT = None
+
+
+def self_test(db: Session) -> dict[str, Any]:
+    """Одно короткое обращение к модели: проверяет ключ, сеть и модель (кнопка «Проверить» в панели)."""
+    settings = get_settings()
+    model = settings.assistant_model or DEFAULT_MODEL
+    if not settings.anthropic_api_key:
+        return {"ok": False, "message": "Ключ ANTHROPIC_API_KEY не задан в .env — отвечают только правила бота.", "model": model}
+    if not settings_store.get_bool(db, "assistant_enabled", True):
+        return {"ok": False, "message": "Умный ответчик выключен в настройках (Расширенные → Поддержка).", "model": model}
+    try:
+        response = _client().messages.create(
+            model=model,
+            max_tokens=32,
+            system="Ответь одним словом: готов",
+            messages=[{"role": "user", "content": "проверка связи"}],
+            output_config={"effort": "low"},
+        )
+    except Exception as exc:  # ключ, сеть, лимит — показываем причину как есть
+        logger.warning("assistant self-test failed: %s", exc)
+        return {"ok": False, "message": f"Модель не ответила: {str(exc)[:200]}", "model": model}
+    text = " ".join(b.text for b in response.content if getattr(b, "type", "") == "text").strip()
+    return {"ok": True, "message": f"Умный ответчик работает ({model}): {text[:80] or 'ответ получен'}", "model": model}
 
 
 # --------------------------------------------------------------------------- prompt
@@ -261,7 +285,7 @@ def answer(db: Session, user: User, conv: SupportConversation, text: str, *, med
     try:
         for _round in range(MAX_TOOL_ROUNDS):
             response = client.messages.create(
-                model=settings.assistant_model or "claude-opus-5",
+                model=settings.assistant_model or DEFAULT_MODEL,
                 max_tokens=MAX_TOKENS,
                 system=system,
                 messages=messages,

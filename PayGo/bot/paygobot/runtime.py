@@ -75,6 +75,29 @@ def start_periodic(name: str, fn: Callable[[], Any], interval: float, *, stop: t
     return thread
 
 
+def start_heartbeat(name: str, *, interval: float = 60.0, stop: threading.Event | None = None) -> threading.Thread:
+    """Пульс процесса в базе: по нему «сторож тишины» в панели видит, что бот жив, даже
+    когда сообщений нет (при тишине смещение обновлений не пишется, и молчание было неотличимо
+    от упавшего процесса)."""
+    from paygo.db import transaction
+    from paygo.models import BotSession
+    from paygo.utils import utcnow
+    from sqlalchemy import select
+
+    key = f"{name}:beat"[:16]
+
+    def _tick() -> None:
+        with transaction() as db:
+            row = db.execute(select(BotSession).where(BotSession.bot == key, BotSession.telegram_id == 0)).scalar_one_or_none()
+            if row is None:
+                db.add(BotSession(bot=key, telegram_id=0, state="beat", data={"at": utcnow().isoformat()}))
+            else:
+                row.data = {"at": utcnow().isoformat()}
+                row.state = "beat"
+
+    return start_periodic(f"{name}-heartbeat", _tick, interval, stop=stop)
+
+
 def start_db_keepalive(name: str, *, interval: float = 30.0, stop: threading.Event | None = None) -> threading.Thread:
     """Keep one pooled database connection warm and verified, so a handler after a quiet day
     never pays for a reconnect (or discovers a connection the server dropped meanwhile)."""
