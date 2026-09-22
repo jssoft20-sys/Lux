@@ -97,12 +97,25 @@ def _queue_stuck(db: Session, now: Any) -> dict[str, str] | None:
     return _alarm("queue_stuck", "Очередь выводов стоит", f"{int(stuck)} заявк(и) ждут дольше {window} мин. Клиенты уже волнуются — раздайте операторам.")
 
 
+def _paused(db: Session) -> dict[str, str] | None:
+    """Пауза бота включена — клиенты в ответ на любую кнопку видят «Бот временно выключен».
+
+    Это не авария, а забытый переключатель; без напоминания он стоит часами и выглядит как
+    «бот не отвечает»."""
+    if not settings_store.get_bool(db, "bot_paused"):
+        return None
+    return _alarm("bot_paused", "Бот на паузе", "Клиенты получают «Бот временно выключен». Снять: Настройки → Пауза бота.")
+
+
 def check(db: Session) -> list[dict[str, str]]:
     """Активные тревоги прямо сейчас (без побочных эффектов)."""
     if not settings_store.get_bool(db, "watchdog_enabled", True):
         return []
     now = utcnow()
     out: list[dict[str, str]] = []
+    paused = _paused(db)
+    if paused:
+        out.append(paused)
     payments = _payments_silent(db, now)
     if payments:
         out.append(payments)

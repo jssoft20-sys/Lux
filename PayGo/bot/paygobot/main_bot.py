@@ -36,6 +36,7 @@ from paygo.services import users as user_service
 from paygo.services import withdrawals as withdrawal_service
 from paygo.services.logs import log_event
 from paygo.services.notifications import admin_event
+from paygo.services.qr import prewarm as qr_prewarm
 from paygo.services.qr import render_pay_card, render_status_card
 from paygo.services.qr_decode import decode_offloaded
 from paygo.services.qr_decode import warm_up as warm_up_qr
@@ -69,6 +70,21 @@ OUTBOX_PRIORITY_LIMIT = 40  # deposit/withdrawal notices, operator replies, edit
 OUTBOX_BROADCAST_LIMIT = 10  # mass messages per round (≈25/s with the 0.4 s loop; Telegram allows ~30/s)
 OUTBOX_LOCK_WAIT = 6.0  # seconds to wait for a busy chat before leaving the row for the next round
 PERSIST_KEYS = ("name", "panel_kind")
+SLOW_STEP_SECONDS = 1.5  # a step slower than this is logged with its name, so a slow cash desk / network is visible
+
+
+def _step_name(update: dict[str, Any]) -> str:
+    """What the client did, for the slow-step log (never their text — only the kind of step)."""
+    if "callback_query" in update:
+        return "tap " + str((update.get("callback_query") or {}).get("data") or "")[:32]
+    message = update.get("message") or {}
+    text = str(message.get("text") or "")
+    if text:
+        return "command " + text.split()[0][:24] if text.startswith("/") else "text"
+    for key in ("photo", "document", "voice", "video", "contact"):
+        if key in message:
+            return key
+    return "message"
 # outbox notices the backend renders in Russian → the settings text behind each one (a Kyrgyz client gets it re-rendered on delivery)
 OUTBOX_TEXTS = {
     "deposit_expired": "text_deposit_cancelled", "deposit_success": "text_deposit_success", "deposit_rejected": "text_deposit_rejected",
@@ -130,6 +146,7 @@ class Ctx:
 
         ``caption`` — the text is the new caption of the current photo screen (an error or a hint on
         the same step): edited in place, the photo stays, no extra message appears in the chat."""
+        self.bot.settle_notes(self.chat_id)  # a «Проверяем…» note must never land on top of this screen
         current_kind = str(self.data.get("panel_kind") or "text")
         new_data = dict(self.data if data is None else data)
         message_id = self.panel_id
@@ -174,6 +191,7 @@ class Ctx:
         """Final result of a flow. A finished payment request (``final`` = success / cancelled /
         expired) turns its QR card into a status card with the result as the caption — the QR
         and the bank buttons disappear, nothing is deleted."""
+        self.bot.settle_notes(self.chat_id)
         old = self.panel_id
         old_kind = str(self.data.get("panel_kind") or "text")
         notice = int(self.data.get("notice_id") or 0)
@@ -219,7 +237,9 @@ class MainBot:
         self.premium_blocked = False  # set when Telegram rejects custom emoji for this bot (no Fragment username)
         self._premium_cache: dict[str, Any] = {"at": 0.0, "state": None}
         self.dispatcher = Dispatcher(self.client, self.handle_update, name="main", workers=64, offset_store=self._offset_store)
-        self.side = SidePool("main", 12)  # deletes / button strips never spawn unbounded threads
+        self.side = SidePool("main", 12)  # deletes / button strips / screen notes never spawn unbounded threads
+        self._notes: dict[int, Any] = {}  # chat → the screen note still on its way (see settle_notes)
+        self._notes_guard = threading.Lock()
         self.outbox_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="main-outbox")
 
     # ------------------------------------------------------------ infra
@@ -252,29 +272,60 @@ class MainBot:
     def strip_buttons_later(self, chat_id: int, message_id: int) -> None:
         self.side.submit(self.client.edit_markup, chat_id, message_id, None)
 
+    def note_later(self, ctx: Ctx, text: str, markup: dict | None = None) -> None:
+        """«Создаём заявку…» / «Проверяем ID…» on the screen the client is looking at, without
+        waiting for Telegram: the handler goes straight to the real work (a cash-desk lookup, the
+        request and its card) while the note is still travelling.
+
+        Ordering is kept by ``settle_notes``: the next screen waits for a note that is still on its
+        way, and that wait costs nothing because the slow step happened in between."""
+        if not ctx.panel_id:
+            return
+        photo = str(ctx.data.get("panel_kind") or "text") == "photo"
+        task = self.side.submit(self._quiet_markup, ctx.chat_id, ctx.panel_id, text) if photo else self.side.submit(self._quiet_edit, ctx.chat_id, ctx.panel_id, text, markup)
+        if task is not None:
+            with self._notes_guard:
+                self._notes[ctx.chat_id] = task
+
+    def settle_notes(self, chat_id: int, timeout: float = 4.0) -> None:
+        """Let a screen note land before the next screen is sent (never called from the side pool)."""
+        if threading.current_thread().name.startswith(self.side.prefix):
+            return
+        with self._notes_guard:
+            task = self._notes.pop(chat_id, None)
+        if task is None:
+            return
+        try:
+            task.result(timeout)
+        except Exception as exc:  # a note that hangs must not hold the screen behind it
+            logger.debug("note not settled: %s", exc)
+
+    def _quiet_edit(self, chat_id: int, message_id: int, text: str, markup: dict | None = None) -> None:
+        try:
+            self.safe_edit(chat_id, message_id, text, markup)
+        except Exception as exc:  # the screen may already be gone — a note is never worth an error
+            logger.debug("note edit skipped: %s", exc)
+
+    def _quiet_markup(self, chat_id: int, message_id: int, note: str) -> None:
+        """A photo screen keeps its picture and caption; only its buttons carry the note."""
+        try:
+            self.client.edit_markup(chat_id, message_id, bot_texts.premium_markup(inline_keyboard([button(note, "noop")]), self.premium()))
+        except TelegramError as exc:
+            if exc.parse_error:
+                try:
+                    self.client.edit_markup(chat_id, message_id, inline_keyboard([button(bot_texts.strip_html(note), "noop")]))
+                except TelegramError:
+                    pass
+        except Exception as exc:  # a client without editMessageReplyMarkup (tests) — feedback is best effort
+            logger.debug("note markup skipped: %s", exc)
+
     def progress(self, ctx: Ctx, note: str, markup: dict | None = None) -> None:
         """«⚡ Проверяем ID…» right on the current screen while a cash-desk API is answering.
 
         A text screen is edited as usual; a photo screen keeps its picture and caption and only
-        its buttons change (no caption to rebuild, no extra message). The next screen restores
-        the buttons, so nothing is lost when the check ends."""
-        if str(ctx.data.get("panel_kind")) != "photo":
-            ctx.panel(note, markup)
-            return
-        if not ctx.panel_id:
-            return
-        try:
-            self.client.edit_markup(ctx.chat_id, ctx.panel_id, bot_texts.premium_markup(inline_keyboard([button(note, "noop")]), self.premium()))
-        except TelegramError as exc:
-            if exc.parse_error:
-                try:
-                    self.client.edit_markup(ctx.chat_id, ctx.panel_id, inline_keyboard([button(bot_texts.strip_html(note), "noop")]))
-                except TelegramError:
-                    pass
-            elif exc.fatal_for_chat:
-                raise
-        except Exception as exc:  # a client without editMessageReplyMarkup (tests) — feedback is best effort
-            logger.debug("progress markup skipped: %s", exc)
+        its buttons change (no caption to rebuild, no extra message). The note is sent in the
+        background so the check itself starts at once; the next screen restores the buttons."""
+        self.note_later(ctx, note, markup)
 
     def finish_card(self, chat_id: int, message_id: int, kind: str, caption: str, subtitle: str = "", markup: dict | None = None) -> bool:
         """Replace the QR picture of a request card with a status card (ОПЛАЧЕНО / ОТМЕНЕНО / ВРЕМЯ ИСТЕКЛО)."""
@@ -315,8 +366,7 @@ class MainBot:
         now = time.time()
         cache = self._premium_cache
         if cache["state"] is None or now - float(cache["at"]) > 10:
-            with transaction() as db:
-                cache["state"] = bot_texts.premium_state(db)
+            cache["state"] = bot_texts.premium_state()
             cache["at"] = now
         state = dict(cache["state"])
         state["enabled"] = bool(state.get("enabled")) and not self.premium_blocked
@@ -328,6 +378,7 @@ class MainBot:
     # ------------------------------------------------------------ sending with graceful fallback
     def safe_send(self, chat_id: int, text: str, markup: dict | None = None, *, photo: bytes | Path | None = None, protect: bool = True, video: Path | str | None = None, reply_to: int | None = None) -> dict[str, Any]:
         """HTML + premium emoji + button icons/styles first; on a markup rejection resend plain text and plain buttons."""
+        self.settle_notes(chat_id)
         state = self.premium()
         rich, rich_markup = bot_texts.premiumize(text, state), bot_texts.premium_markup(markup, state)
         try:
@@ -374,9 +425,8 @@ class MainBot:
     # ------------------------------------------------------------ keyboards & texts
     def menu_kb(self, lang: str = "ru") -> dict:
         """Persistent keyboard in the client's language. Reply buttons cannot carry premium emoji, so their labels keep the plain ones."""
-        with transaction() as db:
-            labels = bot_texts.menu_labels(db, lang)
-            styled = settings_store.get_bool(db, "button_styles_enabled", True)
+        labels = bot_texts.menu_labels(None, lang)
+        styled = settings_store.get_bool(None, "button_styles_enabled", True)
         return reply_keyboard(
             [button(labels["deposit"], style="primary" if styled else ""), button(labels["withdraw"], style="primary" if styled else "")],
             [button(labels["help"])],
@@ -384,8 +434,7 @@ class MainBot:
 
     def text(self, key: str, lang: str = "ru", **values: Any) -> str:
         """A screen text from settings in the client's language (``ctx.lang``)."""
-        with transaction() as db:
-            return bot_texts.render(db, key, lang=lang, **values)
+        return bot_texts.render(None, key, lang=lang, **values)
 
     def lang_of(self, chat_id: int) -> str:
         """The client's language outside a handler (best effort: Russian when the database is unavailable)."""
@@ -408,11 +457,15 @@ class MainBot:
     # ------------------------------------------------------------ update entry
     def handle_update(self, update: dict[str, Any]) -> None:
         chat_id = Dispatcher.chat_id_of(update)
+        started = time.monotonic()
         with self.chat_lock(chat_id):
             if "callback_query" in update:
                 self._safe(self.on_callback, update["callback_query"])
             elif "message" in update:
                 self._safe(self.on_message, update["message"])
+        took = time.monotonic() - started
+        if took >= SLOW_STEP_SECONDS:  # a step the client felt: which one, and how long it really took
+            logger.info("slow step %.2fs chat=%s %s", took, chat_id, _step_name(update))
 
     def _safe(self, fn, payload: dict[str, Any]) -> None:
         """Run one handler. A database hiccup (a dropped connection, a busy pool) gets one quiet
@@ -458,8 +511,7 @@ class MainBot:
         if message.get("contact"):
             self.on_contact(ctx, message)
             return
-        with transaction() as db:
-            action = bot_texts.match_menu(db, text) if text else ""
+        action = bot_texts.match_menu(None, text) if text else ""
         if action:
             if action == "help":
                 self.show_help(ctx)
@@ -649,8 +701,10 @@ class MainBot:
         if not self.subscribed(ctx):
             self.show_subscribe(ctx)
             return
-        with transaction() as db:
-            if settings_store.get_bool(db, "phone_required") and not db.get(User, ctx.user_id).phone_verified_at:
+        if settings_store.get_bool(None, "phone_required"):
+            with transaction() as db:
+                verified = bool(db.get(User, ctx.user_id).phone_verified_at)
+            if not verified:
                 self.request_phone(ctx)
                 return
         self.show_menu(ctx, note)
@@ -678,9 +732,8 @@ class MainBot:
 
     def send_greeting_sticker(self, ctx: Ctx) -> None:
         """One big premium emoji before the greeting (only when the bot may use custom emoji)."""
-        with transaction() as db:
-            premium = settings_store.get_bool(db, "premium_emoji_enabled")
-            token = str(settings_store.get(db, "greeting_sticker") or "").strip()
+        premium = settings_store.get_bool(None, "premium_emoji_enabled")
+        token = str(settings_store.get(None, "greeting_sticker") or "").strip()
         if not premium or not token or self.premium_blocked:
             return
         text = bot_texts.render_template(token, premium=True)
@@ -792,9 +845,8 @@ class MainBot:
     def begin(self, ctx: Ctx, action: str) -> None:
         if action not in {"deposit", "withdraw"}:
             return
-        with transaction() as db:
-            paused = settings_store.get_bool(db, "bot_paused")
-            premium = settings_store.get_bool(db, "premium_emoji_enabled")
+        paused = settings_store.get_bool(None, "bot_paused")
+        premium = settings_store.get_bool(None, "premium_emoji_enabled")
         if paused:
             self.client.send_message(ctx.chat_id, bot_texts.strip_html(self.text("text_paused", ctx.lang)))
             return
@@ -849,10 +901,9 @@ class MainBot:
     def _step_text(self, lang: str, data: dict[str, Any], custom_key: str, setting_key: str, **values: Any) -> str:
         """Step text: the cash desk's own wording (written in Russian — Russian clients only) or the settings text in the client's language."""
         custom = str(data.get(custom_key) or "").strip() if lang == "ru" else ""
-        with transaction() as db:
-            if custom:
-                return bot_texts.render_template(custom, premium=settings_store.get_bool(db, "premium_emoji_enabled"), **{**bot_texts.common_values(db, lang), **values})
-            return bot_texts.render(db, setting_key, lang=lang, **values)
+        if custom:
+            return bot_texts.render_template(custom, premium=settings_store.get_bool(None, "premium_emoji_enabled"), **{**bot_texts.common_values(None, lang), **values})
+        return bot_texts.render(None, setting_key, lang=lang, **values)
 
     def ask_id(self, ctx: Ctx, data: dict[str, Any], saved: list[tuple[str, str]] | None = None, error: str = "") -> None:
         if saved is None:
@@ -915,8 +966,7 @@ class MainBot:
     # ------------------------------------------------------------ deposit
     def amount_kb(self, ctx: Ctx, data: dict[str, Any]) -> dict:
         low, high = Decimal(str(data.get("dep_min") or 100)), Decimal(str(data.get("dep_max") or 100000))
-        with transaction() as db:
-            raw = str(settings_store.get(db, "deposit_presets") or "")
+        raw = str(settings_store.get(None, "deposit_presets") or "")
         presets = []
         for part in raw.replace(";", ",").split(","):
             part = part.strip()
@@ -946,7 +996,7 @@ class MainBot:
         if amount != amount.to_integral_value():
             self.ask_amount(ctx, ctx.data, error=ctx.T("amount_digits"))
             return
-        ctx.panel(ctx.T("creating"), None)
+        self.note_later(ctx, ctx.T("creating"))
         nonce = str(ctx.data.get("nonce") or secrets.token_hex(6))
         key = sha256_hex(f"deposit:{ctx.chat_id}:{nonce}:{ctx.data.get('cash_id')}:{ctx.data.get('player_id')}:{amount}")[:96]
         try:
@@ -996,16 +1046,14 @@ class MainBot:
     def card_kb(self, ctx: Ctx, info: dict[str, Any]) -> dict:
         rows = []
         methods = list(info.get("methods") or [])
-        with transaction() as db:
-            premium = settings_store.get_bool(db, "premium_emoji_enabled")
+        premium = settings_store.get_bool(None, "premium_emoji_enabled")
         for i in range(0, len(methods), 2):
             rows.append([button(((m.get("emoji") or "") + " " + m["name"]).strip() + " ↗", url=m["url"], icon=str(m.get("custom_emoji_id") or "") if premium else "") for m in methods[i : i + 2]])
         rows.append([button(ctx.T("cancel_deposit"), f"cancel:{info.get('request_id')}")])
         return inline_keyboard(*rows)
 
     def card_photo(self, payload: str) -> bytes | None:
-        with transaction() as db:
-            opts = {k: str(settings_store.get(db, "qr_" + k) or "") for k in ("card_title", "card_subtitle", "overlay_text", "watermark_text")}
+        opts = {k: str(settings_store.get(None, "qr_" + k) or "") for k in ("card_title", "card_subtitle", "overlay_text", "watermark_text")}
         try:
             return render_pay_card(elqr.qr_image_value(payload), title=opts["card_title"], subtitle=opts["card_subtitle"], overlay=opts["overlay_text"], watermark=opts["watermark_text"])
         except Exception as exc:
@@ -1020,16 +1068,28 @@ class MainBot:
         ctx.panel(self.card_text(ctx, info), self.card_kb(ctx, info), photo=photo, state="wait_payment", data=data, protect=False)
 
     def send_receipt_prompt(self, ctx: Ctx) -> None:
-        with transaction() as db:
-            enabled = settings_store.get_bool(db, "receipt_request_enabled", True)
+        """«Отправьте скриншот чека» right behind the card — sent off the handler, so the client
+        already has the QR on screen while this one is still travelling."""
+        enabled = settings_store.get_bool(None, "receipt_request_enabled", True)
         if not enabled or ctx.state != "wait_payment":
             return
+        self.side.submit(self._receipt_prompt, ctx.chat_id, ctx.lang)
+
+    def _receipt_prompt(self, chat_id: int, lang: str) -> None:
         try:
-            sent = self.safe_send(ctx.chat_id, self.text("text_send_receipt", ctx.lang), None, protect=False)
+            sent = self.safe_send(chat_id, self.text("text_send_receipt", lang), None, protect=False)
         except TelegramError as exc:
             logger.info("receipt prompt failed: %s", exc)
             return
-        ctx.save(data={**ctx.data, "receipt_prompt_id": int(sent.get("message_id") or 0)})
+        message_id = int(sent.get("message_id") or 0)
+        if not message_id:
+            return
+        with self.chat_lock(chat_id):  # never overwrite a screen the client moved on to meanwhile
+            with transaction() as db:
+                state, data, panel_id = bot_state.get_state(db, BOT, chat_id)
+                if state != "wait_payment":
+                    return
+                bot_state.set_state(db, BOT, chat_id, state, {**data, "receipt_prompt_id": message_id}, panel_id)
 
     def show_active_deposit(self, ctx: Ctx, deposit_id: int = 0) -> None:
         deposit_id = deposit_id or self.active_deposit_id(ctx)
@@ -1162,8 +1222,7 @@ class MainBot:
 
     def bank_switched_off(self, ctx: Ctx, payload: str) -> bool:
         """The owner can switch a bank off for payouts (Настройки → Выводы); the client is asked for another QR."""
-        with transaction() as db:
-            disabled = str(settings_store.get(db, "withdraw_banks_disabled") or "")
+        disabled = str(settings_store.get(None, "withdraw_banks_disabled") or "")
         name = elqr.bank_disabled(payload, disabled) if disabled else ""
         if not name:
             return False
@@ -1217,8 +1276,7 @@ class MainBot:
         text = self._step_text(ctx.lang, data, "code_photo_text", "text_enter_code", cash=data.get("cash_name", ""), emoji=data.get("cash_emoji", ""), player=data.get("player_id", ""))
         if error:
             text += "\n\n" + error
-        with transaction() as db:
-            global_photo = str(settings_store.get(db, "instruction_photo") or "")
+        global_photo = str(settings_store.get(None, "instruction_photo") or "")
         photo = self.local_file(str(data.get("code_photo") or "")) or self.local_file(global_photo)
         markup = inline_keyboard([button(ctx.T("instruction"), "instr")], [button(ctx.T("cancel"), "cancel")])
         same_photo = bool(error) and str(ctx.data.get("panel_kind")) == "photo"
@@ -1430,6 +1488,7 @@ class MainBot:
         threading.Thread(target=self._loop, args=(self.deliver_outbox, 0.4, "outbox"), daemon=True).start()
         threading.Thread(target=self._loop, args=(self.tick_timers, 10.0, "timers"), daemon=True).start()
         start_periodic("main-typing", self.dispatcher.keep_typing, 1.0, stop=STOP)  # «печатает…» while a slow step runs
+        start_periodic("main-warm", self.keep_warm, 50.0, stop=STOP)  # держим соединение с Telegram живым
         start_db_keepalive("main", stop=STOP)
         start_heartbeat("main", stop=STOP)  # пульс для «сторожа тишины» в панели
         start_watchdog("main", lambda: self.dispatcher.last_poll_at, stop=STOP, before_exit=self.dispatcher.flush_offset)
@@ -1437,7 +1496,10 @@ class MainBot:
 
     def warm_up(self) -> None:
         """Touch the database, the settings cache and the emoji table once at start, so the first
-        client after a restart gets the same instant answer as everybody else."""
+        client after a restart gets the same instant answer as everybody else. The watermark of the
+        payment card is built here too (it is the same picture for every request) — off the polling
+        thread, because it is the one slow thing in a card."""
+        threading.Thread(target=qr_prewarm, name="main-card-warm", daemon=True).start()
         try:
             with transaction() as db:
                 settings_store.all_settings(db, fresh=True)
@@ -1446,6 +1508,14 @@ class MainBot:
             self.premium()
         except Exception as exc:
             logger.warning("warm-up skipped: %s", exc)
+
+    def keep_warm(self) -> None:
+        """A tiny call to Telegram every minute: the connection used for answers stays established,
+        so the first client after a quiet hour is not charged a TCP + TLS handshake."""
+        try:
+            self.client.get_me()
+        except Exception as exc:
+            logger.debug("keep-warm ping failed: %s", exc)
 
     def _loop(self, fn, interval: float, name: str) -> None:
         while not STOP.is_set():

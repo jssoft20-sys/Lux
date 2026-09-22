@@ -204,41 +204,50 @@ def _load(db: Session) -> dict[str, Any]:
     return data
 
 
-def all_settings(db: Session, fresh: bool = False) -> dict[str, Any]:
+def all_settings(db: Session | None = None, fresh: bool = False) -> dict[str, Any]:
+    """Every setting. ``db`` may be ``None``: then a short session of its own is opened, and only
+    when the process cache is cold — the bots read settings on every screen and must not pay for a
+    database round trip each time."""
     global _CACHE, _CACHE_AT
     now = time.monotonic()
     with _LOCK:
         if not fresh and _CACHE and now - _CACHE_AT < _CACHE_TTL:
             return dict(_CACHE)
-    data = _load(db)
+    if db is None:
+        from ..db import transaction  # local import: the module stays importable without a database
+
+        with transaction() as own:
+            data = _load(own)
+    else:
+        data = _load(db)
     with _LOCK:
         _CACHE = dict(data)
         _CACHE_AT = now
     return data
 
 
-def get(db: Session, key: str, default: Any = None) -> Any:
+def get(db: Session | None, key: str, default: Any = None) -> Any:
     data = all_settings(db)
     if key in data:
         return data[key]
     return DEFAULTS.get(key, default)
 
 
-def get_int(db: Session, key: str, default: int = 0) -> int:
+def get_int(db: Session | None, key: str, default: int = 0) -> int:
     try:
         return int(get(db, key, default))
     except Exception:
         return default
 
 
-def get_float(db: Session, key: str, default: float = 0.0) -> float:
+def get_float(db: Session | None, key: str, default: float = 0.0) -> float:
     try:
         return float(get(db, key, default))
     except Exception:
         return default
 
 
-def get_bool(db: Session, key: str, default: bool = False) -> bool:
+def get_bool(db: Session | None, key: str, default: bool = False) -> bool:
     value = get(db, key, default)
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "on"}

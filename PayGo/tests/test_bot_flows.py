@@ -113,8 +113,14 @@ CHAT = 5550001
 FROM = {"id": CHAT, "first_name": "Али", "username": "ali"}
 
 
+def drive(bot, update):
+    """One update, then the bot's fire-and-forget work (screen notes, the receipt prompt)."""
+    bot.handle_update(update)
+    assert bot.side.wait(10.0), "side tasks did not finish"
+
+
 def text(bot, value, mid=None):
-    bot.handle_update({"update_id": 1, "message": {"message_id": mid or 1, "chat": {"id": CHAT, "type": "private"}, "from": FROM, "text": value}})
+    drive(bot, {"update_id": 1, "message": {"message_id": mid or 1, "chat": {"id": CHAT, "type": "private"}, "from": FROM, "text": value}})
 
 
 def tap(bot, data):
@@ -123,11 +129,11 @@ def tap(bot, data):
 
     with tr() as db:
         _, _, panel = bot_state.get_state(db, "main", CHAT)
-    bot.handle_update({"update_id": 2, "callback_query": {"id": "cb", "data": data, "from": FROM, "message": {"message_id": panel, "chat": {"id": CHAT}}}})
+    drive(bot, {"update_id": 2, "callback_query": {"id": "cb", "data": data, "from": FROM, "message": {"message_id": panel, "chat": {"id": CHAT}}}})
 
 
 def photo(bot):
-    bot.handle_update({"update_id": 3, "message": {"message_id": 9, "chat": {"id": CHAT, "type": "private"}, "from": FROM, "photo": [{"file_id": "small"}, {"file_id": "big"}]}})
+    drive(bot, {"update_id": 3, "message": {"message_id": 9, "chat": {"id": CHAT, "type": "private"}, "from": FROM, "photo": [{"file_id": "small"}, {"file_id": "big"}]}})
 
 
 def pick_cash(bot, key="1xbet"):

@@ -92,8 +92,7 @@ class SupportBot:
             return user.id, user.language
 
     def greeting(self, lang: str = "ru") -> tuple[str, list[list[dict[str, str]]]]:
-        with transaction() as db:
-            text = str(settings_store.get(db, "support_greeting") or "")
+        text = str(settings_store.get(None, "support_greeting") or "")
         if lang == "kg":
             text = "Саламатсызбы! Бул PayGo колдоо кызматы. Сурооңузду бир билдирүү менен жазыңыз — көпчүлүк суроолор автоматтык чечилет."
         return text, support_service._menu_buttons(lang)
@@ -291,10 +290,18 @@ class SupportBot:
         logger.info("support bot started")
         threading.Thread(target=self._loop, args=(self.deliver_outbox, 0.4), daemon=True).start()
         start_periodic("support-typing", self.dispatcher.keep_typing, 1.0, stop=STOP)  # «печатает…» while Claude / the rules answer
+        start_periodic("support-warm", self.keep_warm, 50.0, stop=STOP)  # держим соединение с Telegram живым
         start_db_keepalive("support", stop=STOP)
         start_heartbeat("support", stop=STOP)  # пульс для «сторожа тишины» в панели
         start_watchdog("support", lambda: self.dispatcher.last_poll_at, stop=STOP, before_exit=self.dispatcher.flush_offset)
         self.dispatcher.run_polling()
+
+    def keep_warm(self) -> None:
+        """A tiny call to Telegram every minute so the answer connection stays established."""
+        try:
+            self.client.get_me()
+        except Exception as exc:
+            logger.debug("keep-warm ping failed: %s", exc)
 
     def _loop(self, fn, interval: float) -> None:
         while not STOP.is_set():

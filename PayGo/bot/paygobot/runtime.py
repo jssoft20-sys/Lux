@@ -128,19 +128,49 @@ def fan_out(pool: ThreadPoolExecutor, items: Iterable[Any], fn: Callable[[Any], 
 
 
 class SidePool:
-    """Bounded executor for fire-and-forget Telegram calls (deletes, button strips)."""
+    """Bounded executor for fire-and-forget Telegram calls (deletes, button strips, screen notes)."""
 
     def __init__(self, name: str, workers: int = 12):
-        self.pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix=f"{name}-side")
+        self.prefix = f"{name}-side"
+        self.pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix=self.prefix)
+        self._pending = 0
+        self._guard = threading.Lock()
+        self._idle = threading.Event()
+        self._idle.set()
 
-    def submit(self, fn: Callable, *args: Any) -> None:
+    def _done(self) -> None:
+        with self._guard:
+            self._pending -= 1
+            if self._pending <= 0:
+                self._pending = 0
+                self._idle.set()
+
+    def submit(self, fn: Callable, *args: Any) -> Future | None:
+        """Run ``fn`` off the handler. The future is returned for the rare caller that has to know
+        when the task landed (a screen note the next screen must not overtake)."""
+
         def _run() -> None:
             try:
                 fn(*args)
             except Exception as exc:  # deletes of already-gone messages are normal
                 logger.debug("side task failed: %s", exc)
+            finally:
+                self._done()
 
+        with self._guard:
+            self._pending += 1
+            self._idle.clear()
         try:
-            self.pool.submit(_run)
+            return self.pool.submit(_run)
         except RuntimeError:  # pool shut down while stopping
-            pass
+            self._done()
+            return None
+
+    def busy(self) -> bool:
+        """True while a submitted task is still queued or running (used to keep order without waiting)."""
+        with self._guard:
+            return self._pending > 0
+
+    def wait(self, timeout: float = 5.0) -> bool:
+        """Block until every submitted task has finished (shutdown, tests)."""
+        return self._idle.wait(timeout)

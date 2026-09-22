@@ -113,7 +113,7 @@ def parse_emoji_map(raw: Any) -> dict[str, str]:
     return out
 
 
-def premium_state(db: Session) -> dict[str, Any]:
+def premium_state(db: Session | None = None) -> dict[str, Any]:
     """What the client bot may do with emoji: premium on/off, strict (only premium), the id map."""
     return {
         "enabled": settings_store.get_bool(db, "premium_emoji_enabled"),
@@ -214,7 +214,7 @@ def strip_html(text: str) -> str:
     return html.unescape(TAG.sub("", str(text or "")))
 
 
-def template(db: Session, key: str, lang: str = "ru", default: str = "") -> str:
+def template(db: Session | None, key: str, lang: str = "ru", default: str = "") -> str:
     """The template of a client text in the client's language.
 
     Russian — the stored text, else the built-in default. Kyrgyz — the owner's override
@@ -233,7 +233,7 @@ def template(db: Session, key: str, lang: str = "ru", default: str = "") -> str:
     return str(value or "")
 
 
-def common_values(db: Session, lang: str = "ru") -> dict[str, Any]:
+def common_values(db: Session | None, lang: str = "ru") -> dict[str, Any]:
     return {
         "support": str(settings_store.get(db, "support_username") or ""),
         "brand": str(settings_store.get(db, "brand_name") or "PayGo"),
@@ -243,12 +243,12 @@ def common_values(db: Session, lang: str = "ru") -> dict[str, Any]:
     }
 
 
-def render(db: Session, key: str, *, default: str = "", lang: str = "ru", **values: Any) -> str:
+def render(db: Session | None, key: str, *, default: str = "", lang: str = "ru", **values: Any) -> str:
     merged = {**common_values(db, lang), **values}
     return render_template(template(db, key, lang, default), premium=settings_store.get_bool(db, "premium_emoji_enabled"), **merged)
 
 
-def instruction(db: Session, cash: Any = None, lang: str = "ru") -> str:
+def instruction(db: Session | None, cash: Any = None, lang: str = "ru") -> str:
     """Withdrawal instruction: the cash desk's own text (Russian clients) or the global one, with city/address substituted."""
     own = (getattr(cash, "instructions_text", "") or "").strip() if lang == "ru" else ""
     template_text = own or template(db, "instruction_text", lang)
@@ -266,7 +266,7 @@ def label_key(text: str) -> str:
     return NON_LETTERS.sub("", str(text or "")).lower()
 
 
-def menu_labels(db: Session, lang: str = "ru") -> dict[str, str]:
+def menu_labels(db: Session | None, lang: str = "ru") -> dict[str, str]:
     return {
         "deposit": template(db, "menu_deposit_label", lang) or "📥 Пополнить",
         "withdraw": template(db, "menu_withdraw_label", lang) or "📤 Вывести",
@@ -274,7 +274,7 @@ def menu_labels(db: Session, lang: str = "ru") -> dict[str, str]:
     }
 
 
-def match_menu(db: Session, text: str) -> str:
+def match_menu(db: Session | None, text: str) -> str:
     """Return the menu action for a reply-keyboard press in either language (or a bare word like «пополнить»)."""
     key = label_key(text)
     if not key:

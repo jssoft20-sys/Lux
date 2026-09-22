@@ -31,14 +31,24 @@ WATERMARK = (150, 150, 150, 46)
 
 _CACHE: OrderedDict[str, bytes] = OrderedDict()
 _LOCK = threading.Lock()
+_BACKGROUNDS: dict[tuple[int, int, str], Image.Image] = {}
+_FONTS = threading.local()  # a FreeType face is not shared between threads
+PALETTE_COLORS = 64  # the card is flat colour work: a 64-colour palette looks the same and halves the bytes Telegram has to carry
 
 
 def _font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    path = FONT_DIR / ("LiberationSans-Bold.ttf" if bold else "LiberationSans-Regular.ttf")
-    try:
-        return ImageFont.truetype(str(path), size)
-    except Exception:
-        return ImageFont.load_default()
+    cache = getattr(_FONTS, "cache", None)
+    if cache is None:
+        cache = _FONTS.cache = {}
+    font = cache.get((size, bold))
+    if font is None:
+        path = FONT_DIR / ("LiberationSans-Bold.ttf" if bold else "LiberationSans-Regular.ttf")
+        try:
+            font = ImageFont.truetype(str(path), size)
+        except Exception:
+            font = ImageFont.load_default()
+        cache[(size, bold)] = font
+    return font
 
 
 def _remember(key: str, data: bytes) -> bytes:
@@ -55,6 +65,68 @@ def _cached(key: str) -> bytes | None:
         if cached:
             _CACHE.move_to_end(key)
         return cached
+
+
+def _background(width: int, height: int, watermark: str) -> Image.Image:
+    """White card with the tiled diagonal watermark.
+
+    It is the same picture for every request, and drawing + rotating it is by far the most
+    expensive part of a card (~0.3 s), so it is built once per size and reused: a card then
+    costs only its QR, its texts and the PNG encoder."""
+    key = (width, height, watermark)
+    with _LOCK:
+        ready = _BACKGROUNDS.get(key)
+    if ready is not None:
+        return ready
+    base = Image.new("RGBA", (width, height), (255, 255, 255, 255))
+    if watermark:
+        layer = Image.new("RGBA", (width * 2, height * 2), (0, 0, 0, 0))
+        ldraw = ImageDraw.Draw(layer)
+        wfont = _font(30, bold=True)
+        step_x, step_y = 260, 90
+        for row, y in enumerate(range(0, height * 2, step_y)):
+            offset = (row % 2) * (step_x // 2)
+            for x in range(-step_x, width * 2, step_x):
+                ldraw.text((x + offset, y), watermark, font=wfont, fill=WATERMARK)
+        layer = layer.rotate(30, resample=Image.BICUBIC, expand=False)
+        left, top = (layer.width - width) // 2, (layer.height - height) // 2
+        base.alpha_composite(layer.crop((left, top, left + width, top + height)))
+    with _LOCK:
+        if len(_BACKGROUNDS) > 12:
+            _BACKGROUNDS.clear()
+        _BACKGROUNDS[key] = base
+    return base
+
+
+def _encode(card: Image.Image) -> bytes:
+    """PNG bytes of a finished card: palette first (smaller file, faster encoder, identical look)."""
+    image = card.convert("RGB")
+    try:
+        image = image.quantize(colors=PALETTE_COLORS, method=Image.MEDIANCUT, dither=Image.NONE)
+    except Exception:  # pragma: no cover - Pillow without median cut
+        pass
+    buf = io.BytesIO()
+    image.save(buf, format="PNG", compress_level=6)
+    return buf.getvalue()
+
+
+def prewarm(watermark: str = "") -> None:
+    """Build the card backgrounds ahead of the first client (called at bot start, off the hot path).
+
+    Without an argument the watermark the owner set in the panel is used, so the warm-up hits the
+    same cache entry the first real payment card will ask for."""
+    if not watermark:
+        try:
+            from . import settings_store
+
+            watermark = str(settings_store.get(None, "qr_watermark_text") or "PAYGO")
+        except Exception:  # pragma: no cover - no database yet: the default card is warmed anyway
+            watermark = "PAYGO"
+    try:
+        _background(880, 1100, watermark)
+        _background(880, 560, watermark)
+    except Exception:  # pragma: no cover - warming up must never break a start-up
+        pass
 
 
 def _qr_image(value: str, *, size: int, fill=BLACK) -> Image.Image:
@@ -92,21 +164,7 @@ def render_pay_card(value: str, *, title: str = "ОТСКАНИРУЙТЕ QR", s
     if cached:
         return cached
     width, height = 880, 1100
-    card = Image.new("RGBA", (width, height), (255, 255, 255, 255))
-    draw = ImageDraw.Draw(card)
-    # light tiled watermark
-    if watermark:
-        layer = Image.new("RGBA", (width * 2, height * 2), (0, 0, 0, 0))
-        ldraw = ImageDraw.Draw(layer)
-        wfont = _font(30, bold=True)
-        step_x, step_y = 260, 90
-        for row, y in enumerate(range(0, height * 2, step_y)):
-            offset = (row % 2) * (step_x // 2)
-            for x in range(-step_x, width * 2, step_x):
-                ldraw.text((x + offset, y), watermark, font=wfont, fill=WATERMARK)
-        layer = layer.rotate(30, resample=Image.BICUBIC, expand=False)
-        left, top = (layer.width - width) // 2, (layer.height - height) // 2
-        card.alpha_composite(layer.crop((left, top, left + width, top + height)))
+    card = _background(width, height, watermark).copy()
     # frame
     draw = ImageDraw.Draw(card)
     draw.rounded_rectangle([6, 6, width - 7, height - 7], radius=22, outline=FRAME, width=8)
@@ -140,9 +198,7 @@ def render_pay_card(value: str, *, title: str = "ОТСКАНИРУЙТЕ QR", s
     for line in _wrap(draw, subtitle, sfont, width - 120):
         draw.text(((width - _text_width(draw, line, sfont)) // 2, y), line, font=sfont, fill=BLUE)
         y += 50
-    buf = io.BytesIO()
-    card.convert("RGB").save(buf, format="PNG", optimize=True)
-    return _remember(key, buf.getvalue())
+    return _remember(key, _encode(card))
 
 
 STATUS_STYLES = {
@@ -161,19 +217,7 @@ def render_status_card(kind: str, title: str = "", subtitle: str = "", *, waterm
     if cached:
         return cached
     width, height = 880, 560
-    card = Image.new("RGBA", (width, height), (255, 255, 255, 255))
-    draw = ImageDraw.Draw(card)
-    if watermark:
-        layer = Image.new("RGBA", (width * 2, height * 2), (0, 0, 0, 0))
-        ldraw = ImageDraw.Draw(layer)
-        wfont = _font(30, bold=True)
-        for row, y in enumerate(range(0, height * 2, 90)):
-            offset = (row % 2) * 130
-            for x in range(-260, width * 2, 260):
-                ldraw.text((x + offset, y), watermark, font=wfont, fill=WATERMARK)
-        layer = layer.rotate(30, resample=Image.BICUBIC, expand=False)
-        left, top = (layer.width - width) // 2, (layer.height - height) // 2
-        card.alpha_composite(layer.crop((left, top, left + width, top + height)))
+    card = _background(width, height, watermark).copy()
     draw = ImageDraw.Draw(card)
     draw.rounded_rectangle([6, 6, width - 7, height - 7], radius=22, outline=color + (255,), width=8)
     # big status circle with a mark
@@ -192,9 +236,7 @@ def render_status_card(kind: str, title: str = "", subtitle: str = "", *, waterm
     for line in _wrap(draw, subtitle, sfont, width - 120)[:2]:
         draw.text(((width - _text_width(draw, line, sfont)) // 2, y + 6), line, font=sfont, fill=BLACK)
         y += 46
-    buf = io.BytesIO()
-    card.convert("RGB").save(buf, format="PNG", optimize=True)
-    return _remember(key, buf.getvalue())
+    return _remember(key, _encode(card))
 
 
 def render_qr_png(value: str, *, branded: bool = False, box_size: int = 10, border: int = 3) -> bytes:
@@ -208,8 +250,8 @@ def render_qr_png(value: str, *, branded: bool = False, box_size: int = 10, bord
     qr.make(fit=True)
     img = qr.make_image(fill_color=BLACK, back_color="white").convert("RGB")
     buf = io.BytesIO()
-    img.save(buf, format="PNG", optimize=True)
+    img.save(buf, format="PNG", optimize=True)  # a plain black/white QR is a few KB either way
     return _remember(key, buf.getvalue())
 
 
-__all__ = ["render_pay_card", "render_qr_png", "Path", "math"]
+__all__ = ["render_pay_card", "render_status_card", "render_qr_png", "prewarm", "Path", "math"]

@@ -63,7 +63,9 @@ class TelegramClient:
     def _new_http() -> httpx.Client:
         return httpx.Client(
             timeout=httpx.Timeout(20.0, connect=CONNECT_TIMEOUT),
-            limits=httpx.Limits(max_connections=128, max_keepalive_connections=48, keepalive_expiry=60.0),
+            # a quiet hour must not cost the next client a TLS handshake: connections are kept for
+            # minutes, and the bots ping the API often enough to keep one of them established
+            limits=httpx.Limits(max_connections=128, max_keepalive_connections=48, keepalive_expiry=300.0),
             headers={"User-Agent": "PayGoXBot/1.0"},
         )
 

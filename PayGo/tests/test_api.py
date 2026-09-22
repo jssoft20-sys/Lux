@@ -780,6 +780,21 @@ def test_watchdog_reports_silence_and_recovery(logged, user, fake_provider):
         assert "payments_silent" not in {a["key"] for a in watchdog.tick(db)}
 
 
+def test_watchdog_reminds_that_the_bot_is_paused(logged):
+    """Забытая «Пауза бота» выглядит как «бот не отвечает» — панель говорит об этом прямо."""
+    from paygo.db import transaction
+    from paygo.services import settings_store, watchdog
+
+    with transaction() as db:
+        settings_store.set_many(db, {"bot_paused": True})
+    with transaction() as db:
+        assert "bot_paused" in {a["key"] for a in watchdog.check(db)}
+    with transaction() as db:
+        settings_store.set_many(db, {"bot_paused": False})
+    with transaction() as db:
+        assert "bot_paused" not in {a["key"] for a in watchdog.check(db)}
+
+
 def test_payments_inbox_binds_a_payment_to_the_right_request(logged, user, fake_provider):
     """Инбокс: платёж без заявки показывается с подсказкой «похоже на заявку» и привязывается в одно нажатие."""
     with transaction() as db:
