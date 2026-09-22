@@ -5,7 +5,7 @@
   const BASE = location.pathname.replace(/\/[^/]*$/, '') || '';
   const API = BASE + '/api';
   const $ = (sel, root) => (root || document).querySelector(sel);
-  const state = { admin: null, route: { page: 'home', id: null, sub: null }, live: null, poll: null, lastNotifId: 0, cashes: [], types: [], quick: [], homeTab: 'actual', historyTab: 'all', historyFilters: {}, chatTab: 'open', chatQuery: '', searchQuery: '', searchMode: 'player' };
+  const state = { admin: null, route: { page: 'home', id: null, sub: null }, live: null, poll: null, lastNotifId: 0, cashes: [], types: [], quick: [], homeTab: 'actual', historyTab: 'all', historyFilters: {}, chatTab: 'open', chatQuery: '', searchQuery: '', searchMode: 'player', fromList: '' };
   const ICON = { home: 'M3 11.5 12 4l9 7.5V21h-6v-6H9v6H3Z', history: 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2', chat: 'M21 15a4 4 0 0 1-4 4H8l-5 3 1.7-5A8 8 0 1 1 21 15Z', search: 'M11 19a8 8 0 1 1 5.66-2.34L22 22', menu: 'M4 6h16M4 12h16M4 18h16', back: 'M19 12H5M11 18l-6-6 6-6', copy: 'M9 9h10v10H9zM5 15H4V5h10v1', check: 'M5 12l4 4L19 6', close: 'M6 6l12 12M18 6 6 18', user: 'M20 21a8 8 0 0 0-16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z', more: 'M12 5h.01M12 12h.01M12 19h.01', stats: 'M5 20V10M12 20V4M19 20v-7M3 20h18', wallet: 'M4 7h15v12H4zM4 7l2-3h11l2 3M15 12h4v3h-4z', bolt: 'M13 2 4 14h7l-1 8 9-12h-7z', terminal: 'M4 5h16v14H4zM7 9l3 3-3 3M12 15h5', settings: 'M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5ZM19 12l2-1-1-3-2 .2-1.4-1.4.2-2-3-1-1 2-2 0-1-2-3 1 .2 2L6.2 8.2 4 8l-1 3 2 1v2l-2 1 1 3 2.2-.2L7.8 19l-.2 2 3 1 1-2h2l1 2 3-1-.2-2 1.4-1.4 2 .2 1-3-2-1Z', plus: 'M12 5v14M5 12h14', chevron: 'M9 6l6 6-6 6', send: 'M22 2 11 13M22 2l-7 20-4-9-9-4Z', image: 'M4 4h16v16H4zM8.5 11a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM5 18l4.5-4.5 3 3 2-2L19 18', trash: 'M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5', refresh: 'M20 6v5h-5M4 18v-5h5M6.1 8A7 7 0 0 1 18 6l2 5M18 16a7 7 0 0 1-12 2l-2-5', logout: 'M10 4H5v16h5M14 8l4 4-4 4M18 12H9', note: 'M5 4h14v16H5zM8 8h8M8 12h8M8 16h5', calendar: 'M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2ZM8 2v4M16 2v4M3 9h18', shield: 'M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6zM9 12l2 2 4-5', filter: 'M4 5h16l-6 7v6l-4 2v-8Z', edit: 'M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4', bank: 'M3 10h18M5 10v8M9 10v8M15 10v8M19 10v8M3 20h18M12 3l9 5H3l9-5Z', bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21h4', lock: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4', qr: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z', alert: 'M12 9v4M12 17h.01M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', arrowDL: 'M17 7 7 17M7 8v9h9', arrowUR: 'M7 17 17 7M8 7h9v9', globe: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18', upload: 'M12 16V4M6 10l6-6 6 6M4 20h16', download: 'M12 4v12M6 10l6 6 6-6M4 20h16', doc: 'M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6', hash: 'M5 9h14M5 15h14M9 4l-2 16M17 4l-2 16', users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8', layers: 'M12 2 2 7l10 5 10-5-10-5ZM2 12l10 5 10-5M2 17l10 5 10-5', eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12ZM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z', flask: 'M9 3h6M10 3v6L4 20h16l-6-11V3', save: 'M5 3h11l3 3v15H5zM8 3v6h7V3M8 21v-7h8v7', clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 7v5l3 2', paperclip: 'M21 12 12 21a6 6 0 0 1-8.5-8.5l9-9a4 4 0 0 1 5.7 5.7l-9 9a2 2 0 0 1-2.8-2.8l8-8', printer: 'M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z', timer: 'M12 22a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM12 10v4M9 2h6', sun: 'M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10ZM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4', moon: 'M21 13A8 8 0 1 1 11 3a6 6 0 0 0 10 10Z', card: 'M3 6h18v12H3zM3 10h18M7 15h3' };
 
   /* ------------------------------------------------------------- utils */
@@ -53,7 +53,8 @@
   function copy(text) { navigator.clipboard && navigator.clipboard.writeText(String(text)).then(() => toast('Скопировано', 'ok', 1200)).catch(() => {}); }
   function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
   function confirmDialog(text, okLabel, danger) { return new Promise((resolve) => { const s = sheet({ title: 'Подтверждение', body: h('p', { style: { margin: '4px 0 8px', fontSize: '17px', lineHeight: '1.4' } }, text), actions: [h('button', { class: 'action-btn', onclick: () => { s.close(); resolve(false); } }, 'Отмена'), h('button', { class: 'action-btn ' + (danger ? 'danger' : 'primary'), onclick: () => { s.close(); resolve(true); } }, okLabel || 'Да')] }); }); }
-  function promptDialog(title, label, placeholder, value) { return new Promise((resolve) => { const input = h('textarea', { class: 'textarea', placeholder: placeholder || '' }, value || ''); const s = sheet({ title, body: h('label', { class: 'field' }, h('span', null, label || ''), input), actions: [h('button', { class: 'action-btn', onclick: () => { s.close(); resolve(null); } }, 'Отмена'), h('button', { class: 'action-btn primary', onclick: () => { s.close(); resolve(input.value.trim()); } }, 'Продолжить')] }); setTimeout(() => input.focus(), 60); }); }
+  /* ``chips`` — ready-made answers (причины отказа): one tap picks the text and closes the sheet */
+  function promptDialog(title, label, placeholder, value, chips) { return new Promise((resolve) => { const input = h('textarea', { class: 'textarea', placeholder: placeholder || '' }, value || ''); const pick = (t) => { s.close(); resolve(t); }; const s = sheet({ title, body: h('div', null, (chips && chips.length) ? h('div', { class: 'quick-chips' }, chips.map((t) => h('button', { class: 'quick-chip', type: 'button', onclick: () => pick(t) }, t))) : null, h('label', { class: 'field' }, h('span', null, label || ''), input)), actions: [h('button', { class: 'action-btn', onclick: () => { s.close(); resolve(null); } }, 'Отмена'), h('button', { class: 'action-btn primary', onclick: () => pick(input.value.trim()) }, 'Продолжить')] }); if (!(chips && chips.length)) setTimeout(() => input.focus(), 60); }); }
 
   /* ------------------------------------------------------------- theme: light / dark (Telegram-like grey) */
   function themeName() { try { return localStorage.getItem('paygo_theme') === 'dark' ? 'dark' : 'light'; } catch (e) { return 'light'; } }
@@ -219,8 +220,13 @@
 
   /* ------------------------------------------------------------- router / shell */
   function parseHash() { const parts = (location.hash || '#/home').replace(/^#\/?/, '').split('/'); return { page: parts[0] || 'home', id: parts[1] || null, sub: parts[2] || null }; }
-  window.addEventListener('hashchange', () => { closeSheets(); state.route = parseHash(); render(); window.scrollTo(0, 0); });
+  /* the list the operator came from (Главная, История, Поиск, чат, профиль): a processed request returns there,
+     so «Принять» / «Отказать» leaves nothing to tap — the next request is already on screen */
+  const LIST_PAGES = ['home', 'history', 'chats', 'search', 'users', 'menu'];
+  function rememberList() { if (LIST_PAGES.includes(state.route.page)) state.fromList = location.hash || '#/home'; }
+  window.addEventListener('hashchange', () => { closeSheets(); state.route = parseHash(); rememberList(); render(); window.scrollTo(0, 0); });
   const go = (hash) => { location.hash = hash; };
+  const backToList = () => go(state.fromList || '#/home');
   const TOP = ['home', 'history', 'chats', 'search', 'menu'];
   const NAV = [['home', 'Главная', 'home'], ['history', 'История', 'history'], ['chats', 'Чат', 'chat'], ['search', 'Поиск', 'search'], ['menu', 'Меню', 'menu']];
   function can(p) { return !!(state.admin && state.admin.permissions.includes(p)); }
@@ -619,6 +625,11 @@
   const SOURCE = { bot: 'Телеграм', telegram: 'Телеграм', admin: 'Панель', panel: 'Панель', api: 'API', manual: 'Вручную', macrodroid: 'MacroDroid', webhook: 'MacroDroid', imap: 'Почта', email: 'Почта', support: 'Поддержка', statement: 'Выписка' };
   const srcLabel = (v) => (v ? (SOURCE[String(v).toLowerCase()] || v) : 'Телеграм');
   const REASON = { user_cancelled: 'Отменено клиентом', expired: 'Истекло время оплаты', timeout: 'Истекло время оплаты' };
+  /* готовые причины отказа: одно нажатие вместо набора текста (клиент видит этот текст) */
+  const REJECT_REASONS = {
+    deposit: ['Оплата не поступила', 'Сумма не совпала с заявкой', 'Чек не подтверждён', 'Дубликат заявки'],
+    withdrawal: ['Неверный QR или реквизиты', 'Банк отклонил перевод', 'Дубликат заявки', 'Отмена по просьбе клиента'],
+  };
   const reasonText = (v) => (v ? (REASON[String(v).trim()] || v) : '');
   const txNo = (tx) => String(tx.public_id || tx.id).replace(/^[DW]-/, '');
   function busy(b, on) { if (!b) return; b.disabled = !!on; b.classList.toggle('busy', !!on); }
@@ -626,7 +637,7 @@
     opts = opts || {};
     const path = kind === 'deposit' ? 'deposits' : 'withdrawals';
     let reason = opts.reason || '';
-    if (opts.askReason) { reason = await promptDialog(opts.askReason, 'Клиент увидит причину', opts.placeholder || ''); if (reason === null) return null; }
+    if (opts.askReason) { reason = await promptDialog(opts.askReason, 'Клиент увидит причину', opts.placeholder || '', '', opts.reasons); if (reason === null) return null; }
     if (opts.confirm && !(await confirmDialog(opts.confirm, opts.okLabel || 'Да', opts.danger))) return null;
     try { const r = await api('/' + path + '/' + tx.id + '/action', { method: 'POST', body: { action, reason, amount: opts.amount } }); toast(opts.done || 'Готово', 'ok'); return r.item || tx; } catch (e) { err(e); return null; }
   }
@@ -651,10 +662,11 @@
     const open = !['success', 'cancelled', 'expired'].includes(tx.status);
     if (!can('operations') || !open) return null;
     let accept;
-    if (dep) accept = tx.status === 'processing' ? h('button', { class: 'act accept', disabled: true }, 'Зачисляется…') : h('button', { class: 'act accept', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const amount = await creditDialog(tx); if (amount === null) { busy(b, false); return; } const r = await txAction(kind, tx, 'credit', { amount, done: 'Зачислено ' + money(amount) + ' ' + curSign(tx.currency) }); busy(b, false); if (r) ctx.refresh(); } }, svg('check', 22), 'Принять');
-    else if (tx.receipt_required && !tx.has_receipt) accept = h('button', { class: 'act accept amber', onclick: async () => { const ok = await pickReceipt(tx, null); if (!ok) return; await txAction(kind, tx, 'complete', { confirm: 'Чек прикреплён. Перевели ' + money(tx.amount) + ' ' + curSign(tx.currency) + ' клиенту?', okLabel: 'Да, перевёл', done: 'Вывод выполнен' }); ctx.refresh(); } }, svg('image', 22), 'Чек → Принять');
-    else accept = h('button', { class: 'act accept', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const r = await txAction(kind, tx, 'complete', { confirm: 'Перевели ' + money(tx.amount) + ' ' + curSign(tx.currency) + ' клиенту?', okLabel: 'Да, перевёл', done: 'Вывод выполнен' }); busy(b, false); if (r) ctx.refresh(); } }, svg('check', 22), 'Принять');
-    const reject = h('button', { class: 'act reject', onclick: async () => { const r = await txAction(kind, tx, dep ? 'reject' : 'fail', { askReason: 'Причина отказа', done: 'Отказано' }); if (r) ctx.refresh(); } }, svg('close', 22), 'Отказать');
+    /* a processed request leaves the screen: ctx.done() returns to the list it was opened from */
+    if (dep) accept = tx.status === 'processing' ? h('button', { class: 'act accept', disabled: true }, 'Зачисляется…') : h('button', { class: 'act accept', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const amount = await creditDialog(tx); if (amount === null) { busy(b, false); return; } const r = await txAction(kind, tx, 'credit', { amount, done: 'Зачислено ' + money(amount) + ' ' + curSign(tx.currency) }); busy(b, false); if (r) ctx.done(); } }, svg('check', 22), 'Принять');
+    else if (tx.receipt_required && !tx.has_receipt) accept = h('button', { class: 'act accept amber', onclick: async () => { const ok = await pickReceipt(tx, null); if (!ok) return; const r = await txAction(kind, tx, 'complete', { confirm: 'Чек прикреплён. Перевели ' + money(tx.amount) + ' ' + curSign(tx.currency) + ' клиенту?', okLabel: 'Да, перевёл', done: 'Вывод выполнен' }); if (r) ctx.done(); else ctx.refresh(); } }, svg('image', 22), 'Чек → Принять');
+    else accept = h('button', { class: 'act accept', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const r = await txAction(kind, tx, 'complete', { confirm: 'Перевели ' + money(tx.amount) + ' ' + curSign(tx.currency) + ' клиенту?', okLabel: 'Да, перевёл', done: 'Вывод выполнен' }); busy(b, false); if (r) ctx.done(); } }, svg('check', 22), 'Принять');
+    const reject = h('button', { class: 'act reject', onclick: async () => { const r = await txAction(kind, tx, dep ? 'reject' : 'fail', { askReason: 'Причина отказа', reasons: REJECT_REASONS[dep ? 'deposit' : 'withdrawal'], done: 'Отказано' }); if (r) ctx.done(); } }, svg('close', 22), 'Отказать');
     return h('div', { class: 'action-bar' }, accept, reject);
   }
   function txMenu(kind, tx, ctx, anchor) {
@@ -663,13 +675,13 @@
     const open = !['success', 'cancelled', 'expired'].includes(tx.status);
     const ops = can('operations');
     dropdown(anchor, [
-      ops && open && !dep ? { label: tx.deferred ? 'Вернуть в работу' : 'Отложить заявку', icon: 'timer', onclick: async () => { const r = await txAction(kind, tx, tx.deferred ? 'resume' : 'defer', { done: tx.deferred ? 'Возвращено в работу' : 'Отложено' }); if (r) ctx.refresh(); } } : null,
+      ops && open && !dep ? { label: tx.deferred ? 'Вернуть в работу' : 'Отложить заявку', icon: 'timer', onclick: async () => { const r = await txAction(kind, tx, tx.deferred ? 'resume' : 'defer', { done: tx.deferred ? 'Возвращено в работу' : 'Отложено' }); if (!r) return; if (tx.deferred) ctx.refresh(); else ctx.done(); /* отложенная заявка уходит из списка — возвращаемся к нему */ } } : null,
       { label: 'Поиск по ID', icon: 'search', onclick: () => { state.historyFilters = { q: tx.player_id }; state.historyTab = 'all'; go('#/history'); } },
-      ops ? { label: 'Изменить', icon: 'edit', onclick: () => txEditSheet(kind, tx, ctx.refresh) } : null,
+      ops ? { label: 'Изменить', icon: 'edit', onclick: () => txEditSheet(kind, tx, ctx) } : null,
       ops && open && !dep && tx.status === 'created' ? { label: 'Взять в работу', icon: 'user', onclick: async () => { const r = await txAction(kind, tx, 'take', { done: 'В работе' }); if (r) ctx.refresh(); } } : null,
       ops && open && !dep && tx.autopay_active ? { label: 'Через Optima24', icon: 'send', onclick: async () => { try { const r = await api('/withdrawals/' + tx.id + '/action', { method: 'POST', body: { action: 'autopay' } }); toast(r.message || (r.dry_run ? 'Тест выполнен' : 'Отправлено'), 'ok'); ctx.refresh(); } catch (e2) { err(e2); } } } : null,
       ops && open && !dep && tx.optima_pay_link ? { label: 'Оплатить в Optima24', icon: 'send', onclick: () => window.open(tx.optima_pay_link, '_blank', 'noopener') } : null,
-      ops && open && (!dep || tx.status === 'created') ? { label: 'Отменить заявку', icon: 'close', onclick: async () => { const r = dep ? await txAction(kind, tx, 'cancel', { confirm: 'Отменить заявку?', okLabel: 'Отменить', danger: true, done: 'Отменено' }) : await txAction(kind, tx, 'reject', { askReason: 'Причина отмены', done: 'Отменено' }); if (r) ctx.refresh(); } } : null,
+      ops && open && (!dep || tx.status === 'created') ? { label: 'Отменить заявку', icon: 'close', onclick: async () => { const r = dep ? await txAction(kind, tx, 'cancel', { confirm: 'Отменить заявку?', okLabel: 'Отменить', danger: true, done: 'Отменено' }) : await txAction(kind, tx, 'reject', { askReason: 'Причина отмены', reasons: REJECT_REASONS.withdrawal, done: 'Отменено' }); if (r) ctx.done(); } } : null,
       can('users') && ctx.user ? { label: ctx.user.is_blocked ? 'Разблокировать' : 'Заблокировать', icon: 'shield', cls: ctx.user.is_blocked ? '' : 'danger', onclick: async () => { const u = ctx.user; if (u.is_blocked) { if (!(await confirmDialog('Разблокировать клиента?', 'Разблокировать'))) return; try { await api('/users/' + u.id, { method: 'PATCH', body: { is_blocked: false, block_reason: '' } }); toast('Разблокирован', 'ok'); ctx.refresh(); } catch (e) { err(e); } return; } const reason = await promptDialog('Заблокировать клиента', 'Клиент увидит причину'); if (reason === null) return; try { await api('/users/' + u.id, { method: 'PATCH', body: { is_blocked: true, block_reason: reason } }); toast('Заблокирован', 'ok'); ctx.refresh(); } catch (e) { err(e); } } } : null,
     ]);
   }
@@ -768,7 +780,8 @@
     const row = h('button', { class: 'history-row', type: 'button', onclick: () => { list.hidden = !list.hidden; row.classList.toggle('open', !list.hidden); } }, svg('history', 18), h('span', { class: 'k' }, 'История'), h('span', { class: 'v' }, items.length ? items.length + ' · ' + (last.title || '').slice(0, 40) : 'пусто'), svg('chevron', 18));
     return h('div', { class: 'history-block' }, row, list);
   }
-  function txEditSheet(kind, tx, refresh) {
+  function txEditSheet(kind, tx, ctx) {
+    const refresh = ctx.refresh;
     const dep = kind === 'deposit';
     const path = dep ? 'deposits' : 'withdrawals';
     const locked = tx.status === 'success' || tx.status === 'cancelled';
@@ -780,7 +793,7 @@
       field('ID счёта', 'player_id', 'text', locked), dep ? field('Имя игрока', 'player_name', 'text', locked) : null,
       field('Комментарий', 'error'));
     const extra = h('div', { class: 'btn-grid' });
-    if (!locked && dep) extra.appendChild(h('button', { class: 'action-btn blue', onclick: async () => { const r = await txAction(kind, tx, 'mark_success', { confirm: 'Отметить зачисленным без запроса в кассу?', okLabel: 'Отметить', done: 'Отмечено' }); if (r) { s.close(); refresh(); } } }, 'Зачислено вручную'));
+    if (!locked && dep) extra.appendChild(h('button', { class: 'action-btn blue', onclick: async () => { const r = await txAction(kind, tx, 'mark_success', { confirm: 'Отметить зачисленным без запроса в кассу?', okLabel: 'Отметить', done: 'Отмечено' }); if (r) { s.close(); ctx.done(); } } }, 'Зачислено вручную'));
     if (!locked && !dep) extra.appendChild(h('button', { class: 'action-btn blue', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const r = await txAction(kind, tx, 'retry', { done: 'Код проверен' }); busy(b, false); if (r) { s.close(); refresh(); } } }, 'Перепроверить код'));
     if (extra.childNodes.length) body.appendChild(extra);
     const s = sheet({ title: 'Изменить · # ' + txNo(tx), body, actions: [h('button', { class: 'action-btn', onclick: () => s.close() }, 'Отмена'), h('button', { class: 'action-btn primary', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const fields = {}; for (const [k, el] of Object.entries(f)) { const cur = tx[k] === null || tx[k] === undefined ? '' : String(tx[k]); if (String(el.value) !== cur) fields[k] = el.value; } try { if (Object.keys(fields).length) await api('/' + path + '/' + tx.id + '/edit', { method: 'POST', body: { fields } }); toast('Сохранено', 'ok'); s.close(); refresh(); } catch (ex) { err(ex); busy(b, false); } } }, 'Сохранить')] });
@@ -791,7 +804,9 @@
     const screen = h('section', { class: 'screen detail' }); shell.appendChild(screen);
     const headBox = h('div'); const body = h('div'); screen.appendChild(headBox); screen.appendChild(body); body.appendChild(loader(2));
     let stamp = '';
-    const ctx = { refresh: () => load(true), close: () => history.back(), user: null };
+    /* done() — the request is processed: back to the list it was opened from (Главная → Актуальные by default),
+       so the next one is already on screen; refresh() — the request stays open and is redrawn */
+    const ctx = { refresh: () => load(true), done: () => backToList(), close: () => history.back(), user: null };
     async function load(force) {
       try {
         const r = await api('/' + path + '/' + id);
@@ -1390,6 +1405,7 @@
   (async function boot() {
     applyTheme(themeName());
     state.route = parseHash();
+    rememberList();
     try { const r = await api('/auth/me'); state.admin = r.admin; startLive(); } catch (e) { state.admin = null; }
     render();
     if ('serviceWorker' in navigator) navigator.serviceWorker.register(BASE + '/sw.js', { scope: BASE + '/' }).catch(() => {});
