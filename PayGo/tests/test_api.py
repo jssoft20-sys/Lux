@@ -727,7 +727,7 @@ def test_risk_signals_warn_about_payout_over_deposits(logged, user, fake_provide
     """Антифрод-плашка: клиент выводит больше, чем пополнял; тот же QR у другого клиента;
     один ID игрока на нескольких Telegram-аккаунтах."""
     from paygo.db import transaction
-    from paygo.models import PaymentCash, User, Withdrawal
+    from paygo.models import PaymentCash, Withdrawal
     from paygo.services.users import get_or_create
     from paygo.utils import new_public_id
     from sqlalchemy import select
