@@ -7,7 +7,7 @@ The request lands in Главная → Актуальные with the recognised
 «Ген QR / Ориг QR», the «Оплатить в Optima24» button and the Принять / Отказать bar. It belongs to
 a demo client «Тест PayGo» (Telegram ID 100000001), touches no cash desk API and is never picked up
 by the automatic payout — accept or reject it like any other request. scripts/update.sh creates one
-such request once (marker data/.demo_withdrawal); run this by hand for another.
+such request once with --once (marker data/.demo_withdrawal); run this by hand for another.
 Run it on the server from /home/PayGo (reads .env for the database) or locally with DATABASE_URL set.
 """
 from __future__ import annotations
@@ -30,7 +30,14 @@ def main() -> int:
     ap.add_argument("--player", default="1759903333", help="player id shown on the request")
     ap.add_argument("--cash", default="", help="cash desk key (default: the first one)")
     ap.add_argument("--name", default="Тест PayGo", help="client display name")
+    ap.add_argument("--once", action="store_true", help="create only if the marker file is absent (used by scripts/update.sh)")
+    ap.add_argument("--marker", default="data/.demo_withdrawal", help="marker file for --once")
     args = ap.parse_args()
+
+    marker = ROOT / args.marker
+    if args.once and marker.exists():
+        print(f"Тестовый вывод уже создавался ({marker}) — пропускаю")
+        return 0
 
     from paygo.db import transaction
     from paygo.models import PaymentCash, Withdrawal
@@ -82,6 +89,9 @@ def main() -> int:
         db.flush()
         print(f"Создан тестовый вывод {row.public_id} (id {row.id}): {amount} {cash.currency}, банк {bank['name']} ({bank['key']}), QR {'распознан' if row.generated_qr_payload else 'только ссылка'}")
         print(f"Открыть в панели: #/withdrawal/{row.id}")
+    if args.once:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("created\n", encoding="utf-8")
     return 0
 
 

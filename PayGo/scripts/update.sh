@@ -5,6 +5,11 @@
 # Порядок: backup → стоп ботов и worker → rsync кода → pip → права → миграции → seed → рестарт backend → healthcheck → старт остальных.
 # .env, venv/, data/, logs/, backups/ на сервере не трогаются.
 set -euo pipefail
+# Скрипт запускается из СТАРОЙ версии (/home/PayGo/scripts/update.sh), а rsync ниже кладёт новую. Чтобы новые
+# шаги обновления (миграции, seed, тестовая заявка и т.д.) выполнялись уже в этом запуске, после rsync управление
+# передаётся свежескопированному скрипту: --stage2.
+STAGE2=0
+if [ "${1:-}" = "--stage2" ]; then STAGE2=1; shift; fi
 NEW_SRC="${1:?укажите каталог с новой версией}"
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_USER="${APP_USER:-paygo}"
@@ -12,11 +17,15 @@ cd "$APP_DIR"
 if [ ! -f "$NEW_SRC/pyproject.toml" ] || [ ! -d "$NEW_SRC/backend/paygo" ]; then
   echo "!! в $NEW_SRC нет проекта PayGo (ожидается каталог с pyproject.toml и backend/paygo)"; exit 1
 fi
-scripts/backup.sh
-systemctl stop paygo-bot paygo-support paygo-worker || true
-rsync -a --exclude venv --exclude .env --exclude data --exclude logs --exclude backups \
-  --exclude '__pycache__' --exclude '*.pyc' --exclude '.pytest_cache' --exclude '*.egg-info' \
-  "$NEW_SRC/" "$APP_DIR/"
+if [ "$STAGE2" = 0 ]; then
+  scripts/backup.sh
+  systemctl stop paygo-bot paygo-support paygo-worker || true
+  rsync -a --exclude venv --exclude .env --exclude data --exclude logs --exclude backups \
+    --exclude '__pycache__' --exclude '*.pyc' --exclude '.pytest_cache' --exclude '*.egg-info' \
+    "$NEW_SRC/" "$APP_DIR/"
+  chmod +x scripts/*.sh || true
+  exec "$APP_DIR/scripts/update.sh" --stage2 "$NEW_SRC"
+fi
 venv/bin/pip install -q -r requirements.txt zxing-cpp
 venv/bin/pip install -q -e .
 chmod +x scripts/*.sh || true
@@ -38,12 +47,11 @@ if ! venv/bin/alembic upgrade head; then
   echo "!! миграция не прошла — откат: scripts/restore.sh <последний backup>"; exit 1
 fi
 venv/bin/python -m paygo.cli seed >/dev/null || true
-# тестовый вывод для проверки панели (один раз, нужна хотя бы одна касса): Главная → Актуальные, клиент «Тест PayGo»
-if [ ! -f data/.demo_withdrawal ] && venv/bin/python scripts/demo_withdrawal.py \
-    --qr "https://qr.finik.kg/f36e0f6a-1f22-4f34-a177-71444f6c91aa?type=t" --amount 150 >/dev/null 2>&1; then
-  touch data/.demo_withdrawal
-  if id "$APP_USER" >/dev/null 2>&1; then chown "$APP_USER:$APP_USER" data/.demo_withdrawal; fi
-fi
+# тестовый вывод для проверки панели: один раз (метку data/.demo_withdrawal ставит сам скрипт, нужна хотя бы одна касса)
+# — Главная → Актуальные, клиент «Тест PayGo». Ошибка здесь не прерывает обновление, но видна в выводе.
+venv/bin/python scripts/demo_withdrawal.py --once --qr "https://qr.finik.kg/f36e0f6a-1f22-4f34-a177-71444f6c91aa?type=t" --amount 150 \
+  || echo "!! тестовый вывод не создан (см. выше); вручную: venv/bin/python scripts/demo_withdrawal.py --qr <ссылка> --amount 150"
+if id "$APP_USER" >/dev/null 2>&1 && [ -f data/.demo_withdrawal ]; then chown "$APP_USER:$APP_USER" data/.demo_withdrawal; fi
 systemctl restart paygo-backend
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
   curl -fsS "http://127.0.0.1:${PORT:-7035}/healthz" >/dev/null 2>&1 && break
