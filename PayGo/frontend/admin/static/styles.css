@@ -494,9 +494,18 @@ html.chat-open .shell{min-height:0;padding-bottom:0}
 .date-btn{width:100%;height:46px;border-radius:13px;border:1px solid var(--line2);background:var(--card);display:flex;align-items:center;gap:12px;padding:0 16px;font-size:15px;font-weight:600;text-align:left;color:var(--ink)}
 .date-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 /* ---- toasts (dark stacked cards) ---- */
-.toasts{position:fixed;top:16px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:16px;z-index:90;width:min(calc(var(--shell) - 32px),92vw);pointer-events:none}
-.toast{position:relative;display:flex;align-items:center;gap:10px;background:#101a2e;color:#c7d8ff;padding:12px 14px 12px 12px;border-radius:16px;font-size:14.5px;font-weight:600;box-shadow:0 14px 34px rgba(10,14,30,.35);pointer-events:auto;margin-top:8px;animation:toastIn .28s cubic-bezier(.2,.8,.2,1);line-height:1.3}
-.toast:before,.toast:after{content:"";position:absolute;left:14px;right:14px;height:12px;border-radius:0 0 16px 16px;background:inherit;opacity:.85;z-index:-1}.toast:before{bottom:-8px}.toast:after{bottom:-15px;left:26px;right:26px;opacity:.6}
+/* стопка на одном месте: последнее уведомление сверху, предыдущие выглядывают из-под него и не занимают экран */
+.toasts{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);height:0;z-index:90;width:min(calc(var(--shell) - 32px),92vw);pointer-events:none}
+.toast{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:10px;background:#101a2e;color:#c7d8ff;padding:12px 14px 12px 12px;border-radius:16px;font-size:14.5px;font-weight:600;box-shadow:0 14px 34px rgba(10,14,30,.35);pointer-events:auto;animation:toastIn .28s cubic-bezier(.2,.8,.2,1);line-height:1.3;transform-origin:50% 0;transition:transform .26s cubic-bezier(.2,.8,.2,1),opacity .26s}
+.toast:nth-last-child(1){z-index:3}
+.toast:nth-last-child(2){z-index:2;transform:translateY(9px) scale(.955)}
+.toast:nth-last-child(3){z-index:1;transform:translateY(17px) scale(.91)}
+.toast:nth-last-child(n+4){opacity:0;transform:translateY(22px) scale(.88)}
+.toast:not(:nth-last-child(1)){pointer-events:none}
+.toast:not(:nth-last-child(1)) .toast-x{opacity:0}
+.toast-n{margin-left:auto;padding-left:10px;font-size:13px;font-weight:700;opacity:.75;flex:0 0 auto}
+/* одиночное уведомление сохраняет вид стопки из образца */
+.toast:only-child:before,.toast:only-child:after{content:"";position:absolute;left:14px;right:14px;height:12px;border-radius:0 0 16px 16px;background:inherit;opacity:.85;z-index:-1}.toast:only-child:before{bottom:-8px}.toast:only-child:after{bottom:-15px;left:26px;right:26px;opacity:.6}
 @keyframes toastIn{from{transform:translateY(-14px) scale(.96);opacity:0}}
 .toast-ico{flex:none;width:30px;height:30px;border-radius:50%;background:#7fa4ff;color:#101a2e;display:grid;place-items:center}.toast-ico svg{stroke-width:3}.toast-msg{min-width:0}
 .toast-x{position:absolute;top:-11px;left:-11px;width:32px;height:32px;border-radius:50%;background:#1c2a48;color:#c7d8ff;display:grid;place-items:center;box-shadow:0 4px 10px rgba(0,0,0,.3)}

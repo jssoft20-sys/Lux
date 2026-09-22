@@ -48,7 +48,25 @@
     return data;
   }
   function fileUrl(u) { u = String(u || ''); if (u.startsWith('/uploads/')) return API + '/files/' + u.slice(9); if (u.startsWith('uploads/')) return API + '/files/' + u.slice(8); if (u.startsWith('/')) return BASE + u; return u; }
-  function toast(text, kind, ms) { const ic = kind === 'ok' ? 'check' : kind === 'err' ? 'alert' : kind === 'crit' ? 'bolt' : 'bell'; const el = h('div', { class: 'toast ' + (kind || '') }, h('button', { class: 'toast-x', type: 'button', 'aria-label': 'Закрыть', onclick: () => el.remove() }, svg('close', 14)), h('span', { class: 'toast-ico' }, svg(ic, 15)), h('span', { class: 'toast-msg' }, text)); $('#toasts').appendChild(el); setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .2s'; setTimeout(() => el.remove(), 220); }, ms || (kind === 'err' ? 4200 : 2400)); return el; }
+  /* Уведомления складываются стопкой на одном месте: новое садится поверх, предыдущие чуть выглядывают
+     из-под него и не занимают экран. Повтор того же текста не плодит карточки — поднимает счётчик «×N»
+     и продлевает показ; глубже трёх карточек стопка не растёт. */
+  const TOAST_MAX = 3;
+  function toastArm(el, ms) { clearTimeout(el._timer); el._timer = setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .2s'; setTimeout(() => el.remove(), 220); }, ms || (el.dataset.kind === 'err' ? 4200 : 2400)); }
+  function toast(text, kind, ms) {
+    const box = $('#toasts'); const key = String(text) + '|' + (kind || '');
+    const same = Array.from(box.children).find((el) => el.dataset.key === key);
+    if (same) {
+      const n = Number(same.dataset.n || 1) + 1; same.dataset.n = String(n);
+      let badge = same.querySelector('.toast-n'); if (!badge) { badge = h('span', { class: 'toast-n' }); same.appendChild(badge); }
+      badge.textContent = '×' + n; same.style.opacity = ''; box.appendChild(same); toastArm(same, ms); return same;
+    }
+    const ic = kind === 'ok' ? 'check' : kind === 'err' ? 'alert' : kind === 'crit' ? 'bolt' : 'bell';
+    const el = h('div', { class: 'toast ' + (kind || ''), 'data-key': key, 'data-kind': kind || '' }, h('button', { class: 'toast-x', type: 'button', 'aria-label': 'Закрыть', onclick: () => el.remove() }, svg('close', 14)), h('span', { class: 'toast-ico' }, svg(ic, 15)), h('span', { class: 'toast-msg' }, text));
+    box.appendChild(el);
+    while (box.children.length > TOAST_MAX) box.firstChild.remove();
+    toastArm(el, ms); return el;
+  }
   const err = (e) => toast(e && e.message ? e.message : String(e), 'err');
   function copy(text) { navigator.clipboard && navigator.clipboard.writeText(String(text)).then(() => toast('Скопировано', 'ok', 1200)).catch(() => {}); }
   function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
