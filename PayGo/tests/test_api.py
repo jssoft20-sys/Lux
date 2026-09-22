@@ -635,6 +635,59 @@ def test_bank_detection_uses_official_marks():
     assert elqr.bank_disabled("https://app.mbank.kg/qr/#0002", "finik") == ""
 
 
+def test_bank_link_resolves_to_elqr_payload():
+    """A Finik page link resolves (once) to the ELQR payload its Optima24 button carries; a raw payload
+    or a deep link needs no network; an unreachable page yields '' and is not retried at once."""
+    from conftest import FINIK_PAYLOAD
+    from paygo.services import elqr
+
+    link = "https://qr.finik.kg/f36e0f6a-1f22-4f34-a177-71444f6c91aa?type=t"
+    payload = elqr.resolve_bank_link(link)
+    assert payload == elqr.strip_crc(FINIK_PAYLOAD) and elqr.detect_bank(payload)["key"] == "finik"
+    assert elqr.resolve_bank_link(FINIK_PAYLOAD) == elqr.strip_crc(FINIK_PAYLOAD)
+    assert elqr.resolve_bank_link("https://mobile.optima24.kg/my-qr/confirm-screen?qr-url=#" + FINIK_PAYLOAD) == elqr.strip_crc(FINIK_PAYLOAD)
+    calls = []
+
+    def dead(url, timeout=8.0):
+        calls.append(url)
+        raise OSError("offline")
+
+    assert elqr.resolve_bank_link("https://app.mbank.kg/qr/abc", fetch=dead) == ""
+    assert elqr.resolve_bank_link("https://app.mbank.kg/qr/abc", fetch=dead) == "" and len(calls) == 1
+    assert elqr.resolve_bank_link("just words") == "" and elqr.resolve_bank_link("") == ""
+    full = elqr.inject_amount(payload, "150")
+    assert elqr.amount_from_payload(full) == Decimal("150")
+    assert elqr.optima_confirm_link(full).startswith("https://mobile.optima24.kg/my-qr/confirm-screen?qr-url=#000201")
+
+
+def test_withdrawal_page_resolves_bank_link_and_offers_optima_button(logged, user, fake_provider):
+    """A withdrawal stored with a bare bank link (older versions) is resolved when opened: «Ген QR»
+    and the Optima24 pay link appear; editing the QR with a page link works the same way."""
+    from paygo.db import transaction
+    from paygo.models import PaymentCash, Withdrawal
+    from paygo.services import elqr
+    from paygo.utils import new_public_id
+    from sqlalchemy import select
+
+    with transaction() as db:
+        cash = db.execute(select(PaymentCash)).scalars().first()
+        w = Withdrawal(public_id=new_public_id("W"), user_id=user, cash_id=cash.id, player_id="123456", currency="KGS", amount=Decimal("150"), code="C1", provider_claim_key="k1", idempotency_key="i1", qr_payload="https://qr.finik.kg/f36e0f6a-1f22-4f34-a177-71444f6c91aa?type=t", status="created", source="demo")
+        db.add(w)
+        db.flush()
+        wid = w.id
+    r = logged.get(f"/paygo/api/withdrawals/{wid}")
+    assert r.status_code == 200, r.text
+    item = r.json()["item"]
+    assert item["has_generated_qr"] and item["bank"]["key"] == "finik" and item["optima_pay_link"].startswith("https://mobile.optima24.kg/")
+    assert elqr.amount_from_payload(item["generated_qr_payload"]) == Decimal("150")
+    r = logged.post(f"/paygo/api/withdrawals/{wid}/edit", json={"fields": {"qr_payload": "https://app.mbank.kg/qr/abc"}})
+    assert r.status_code == 200, r.text  # unreachable page: the link is kept, no generated QR
+    r = logged.get(f"/paygo/api/withdrawals/{wid}")
+    assert r.json()["item"]["qr_payload"] == "https://app.mbank.kg/qr/abc" and not r.json()["item"]["has_generated_qr"]
+    r = logged.post(f"/paygo/api/withdrawals/{wid}/edit", json={"fields": {"qr_payload": "not a qr"}})
+    assert r.status_code == 400
+
+
 def test_payment_events_amount_filter(logged):
     from paygo.services import payments
 

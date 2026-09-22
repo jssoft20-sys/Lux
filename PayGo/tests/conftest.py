@@ -51,6 +51,25 @@ def database(tmp_path, monkeypatch):
     engine.dispose()
 
 
+FINIK_PAYLOAD = "00020101021232810011qr.finik.kg0114averspay-items1032f36e0f6a1f224f34a17771444f6c91aa12021213021233090005000065204782953034175405190005908Finik-QR6304d0e6"
+FINIK_PAGE = f'<html><body><a id="Optima24" href="https://mobile.optima24.kg/my-qr/confirm-screen?qr-url=#{FINIK_PAYLOAD}">Оплатить в Optima24</a></body></html>'
+
+
+@pytest.fixture(autouse=True)
+def offline_bank_pages(monkeypatch):
+    """Bank QR pages are never fetched over the network in tests: qr.finik.kg answers like the real
+    page (its Optima24 button carries the ELQR payload), every other link is unreachable."""
+    from paygo.services import elqr
+
+    def fetch(url, timeout=8.0):
+        if "qr.finik.kg" in url:
+            return FINIK_PAGE
+        raise OSError("offline")
+
+    monkeypatch.setattr(elqr, "fetch_text", fetch)
+    elqr._FAILED_LINKS.clear()
+
+
 @pytest.fixture
 def seeded(database):
     from paygo.db import transaction

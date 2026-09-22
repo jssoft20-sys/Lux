@@ -166,6 +166,8 @@
   const WITHDRAW_BANKS = [['mbank', 'MBank'], ['optima', 'Optima'], ['bakai', 'Bakai'], ['dengi', 'О!Деньги'], ['balance', 'Balance'], ['megapay', 'MegaPay'], ['demir', 'Demir'], ['kompanion', 'Компаньон'], ['finik', 'Finik'], ['rsk', 'РСК'], ['eldik', 'Элдик'], ['kicb', 'KICB'], ['aiyl', 'Айыл Банк'], ['elcart', 'Элкарт']];
   function bankOf(text) { const t = String(text || '').toLowerCase(); for (const [key, name, needles] of BANKS) if (needles.some((n) => t.includes(n))) return { key, name, logo: 'brand/banks/' + key + '.png' }; return { key: 'bank', name: '', logo: 'brand/banks/bank.png' }; }
   function bankLogo(bank) { const src = (bank && bank.logo) || 'brand/banks/bank.png'; return h('img', { src, alt: '', loading: 'lazy', onerror: function () { this.onerror = null; this.src = 'brand/banks/bank.png'; } }); }
+  /* every deposit carries the same mark (the purple ornament of the reference); withdrawals show the client's bank */
+  const depositMark = () => h('img', { src: 'brand/banks/deposit.png', alt: '', loading: 'lazy' });
   function avatarClass(name) { let s = 0; for (const ch of String(name || '')) s = (s * 31 + ch.charCodeAt(0)) >>> 0; return 'g' + (s % 6); }
   function avatarEl(name, url, cls) { const n = String(name || '').trim() || '?'; const initial = n.charAt(0).toUpperCase(); return h('span', { class: 'avatar ' + avatarClass(n) + (cls ? ' ' + cls : '') }, url ? h('img', { src: fileUrl(url), alt: '', loading: 'lazy', onerror: function () { this.replaceWith(document.createTextNode(initial)); } }) : initial); }
   const clientName = (tx) => (tx.player_name && tx.player_name.trim()) || tx.user_name || 'Клиент';
@@ -177,7 +179,7 @@
     const pay = tx.payment;
     const chip = tx.status === 'success' && (tx.source === 'auto' || (dep && tx.payment_source && tx.payment_source !== 'manual')) ? 'Авто' : (tx.operator_name && tx.status !== 'created' ? tx.operator_name : '');
     const card = h('button', { class: 'tx-card', type: 'button', onclick: () => go(txHref(tx)) },
-      h('span', { class: 'tx-logo-wrap' }, h('span', { class: 'tx-logo' }, bankLogo(tx.bank)), h('i', { class: 'tx-flow ' + (dep ? 'deposit' : 'withdraw') }, svg(dep ? 'arrowDL' : 'arrowUR', 12))),
+      h('span', { class: 'tx-logo-wrap' }, h('span', { class: 'tx-logo' }, dep ? depositMark() : bankLogo(tx.bank)), h('i', { class: 'tx-flow ' + (dep ? 'deposit' : 'withdraw') }, svg(dep ? 'arrowDL' : 'arrowUR', 12))),
       h('span', { class: 'tx-copy' }, h('b', null, h('span', { class: 'nm' }, clientName(tx)), chip ? h('span', { class: 'tx-chip' }, chip) : null), h('small', null, fmtDate(tx.created_at) + ' • ID ' + tx.player_id)),
       h('span', { class: 'tx-side' }, h('strong', { class: 'tx-amount ' + (dep ? 'deposit' : 'withdraw') }, (dep ? '+ ' : '− ') + som(dep ? tx.pay_amount : tx.amount, tx.currency)), stateEl(tx)),
       pay ? h('span', { class: 'tx-pay ' + pay.kind }, svg(pay.kind === 'matched' ? 'check' : 'bolt', 13), (pay.kind === 'matched' ? 'Платёж получен · ' : 'Есть платёж на эту сумму · ') + srcLabel(pay.source) + ' · ' + fmtTime(pay.received_at) + ' · ' + money(pay.amount)) : null);
@@ -196,21 +198,12 @@
     return wrap;
   }
 
-  /* ------------------------------------------------------------- feel: ripple, haptics, hold-to-open */
+  /* ------------------------------------------------------------- feel: haptics, hold-to-open
+     the press itself is pure CSS (:active — a soft scale / tint, see «feel» in styles.css), like the reference */
   const isTouch = () => matchMedia('(hover: none) and (pointer: coarse)').matches;
   function buzz(ms) { try { if (navigator.vibrate && isTouch()) navigator.vibrate(ms || 8); } catch (e) {} }
-  const RIPPLE_SEL = '.action-btn,.primary-btn,.outline-btn,.menu-row,.tx-card,.row-card,.chat-row,.nav-item,.seg button,.act,.check-pill,.tabs4 button,.mode-seg button,.save-btn,.refresh-btn,.round-btn,.icon-btn,.chat-btn,.doc-btn,.upload-btn,.find-btn,.search-btn,.send-wide,.test-btn,.green-btn,.add-btn,.quick-chip,.txm-card,.txm-btn,.menu-item';
-  document.addEventListener('touchstart', () => {}, { passive: true });
-  const unpress = () => document.querySelectorAll('.pressed').forEach((el) => el.classList.remove('pressed'));
-  ['pointerup', 'pointercancel', 'touchend', 'touchcancel', 'dragstart'].forEach((t) => document.addEventListener(t, unpress, { passive: true }));
-  document.addEventListener('pointerdown', (e) => {
-    const el = e.target.closest(RIPPLE_SEL); if (!el || el.disabled) return;
-    el.classList.add('pressed'); setTimeout(() => el.classList.remove('pressed'), 600);
-    const rect = el.getBoundingClientRect(); const size = Math.max(rect.width, rect.height) * 1.4;
-    const r = h('span', { class: 'ripple', style: { width: size + 'px', height: size + 'px', left: (e.clientX - rect.left - size / 2) + 'px', top: (e.clientY - rect.top - size / 2) + 'px' } });
-    el.appendChild(r); setTimeout(() => r.remove(), 520);
-    if (el.matches('.action-btn,.primary-btn,.act,.nav-item,.save-btn,.send-btn')) buzz(6);
-  }, { passive: true });
+  document.addEventListener('touchstart', () => {}, { passive: true }); /* enables :active on iOS */
+  document.addEventListener('pointerdown', (e) => { const el = e.target.closest('.action-btn,.primary-btn,.act,.nav-item,.save-btn,.send-btn'); if (el && !el.disabled) buzz(6); }, { passive: true });
   function holdMenu(el, onHold) {
     let timer = null, x0 = 0, y0 = 0, fired = 0;
     const fire = () => { if (Date.now() - fired < 700) return; fired = Date.now(); el.classList.remove('holding'); buzz(12); onHold(); };
@@ -683,7 +676,8 @@
   function amountBlock(kind, tx, ctx) {
     /* «+119,19» with the pencil → an inline field with ✓ / ✕ (like the reference) */
     const dep = kind === 'deposit';
-    const open = !['success', 'cancelled', 'expired'].includes(tx.status) && !(dep && tx.status === 'processing');
+    /* the pencil stays on cancelled / expired / failed requests too — only a credited (success) one is final */
+    const open = tx.status !== 'success' && !(dep && tx.status === 'processing');
     const wrap = h('div');
     const show = () => { wrap.innerHTML = ''; wrap.appendChild(h('div', { class: 'req-amount' }, h('div', null, h('b', { class: dep ? 'deposit' : 'withdraw' }, (dep ? '+' : '−') + money(dep ? tx.pay_amount : tx.amount)), dep && tx.amount !== tx.pay_amount ? h('small', null, 'запрос клиента ' + money(tx.amount)) : null, tx.deferred ? h('small', null, 'заявка отложена') : null), can('operations') && open ? h('button', { class: 'pen-btn', type: 'button', 'aria-label': 'Изменить сумму', onclick: edit }, svg('edit', 22)) : null)); };
     const edit = () => {
@@ -701,7 +695,7 @@
     const tabs = [gen ? ['gen', 'Ген QR'] : null, orig ? ['orig', 'Ориг QR'] : null].filter(Boolean);
     let cur = tabs.length ? tabs[0][0] : '';
     const img = h('img', { class: 'qr-img', alt: 'QR' }); const cap = h('div', { class: 'qr-cap' }); const tabBar = h('div', { class: 'qr-tabs' });
-    const links = r.payment_links && r.payment_links.length ? h('div', { class: 'bank-row' }, r.payment_links.map((l) => h('a', { class: 'outline-btn', href: l.url, target: '_blank', rel: 'noopener' }, l.name))) : null;
+    const links = null; /* the other banks' deep links live in «Открыть в другом банке» under the QR (see txDetailView) */
     const draw = () => {
       tabBar.innerHTML = ''; tabs.forEach(([k, l]) => tabBar.appendChild(h('button', { class: k === cur ? 'active' : '', type: 'button', onclick: () => { cur = k; draw(); } }, l)));
       const src = cur === 'gen' ? gen : orig; img.src = src; img.onclick = () => imageSheet(cur === 'gen' ? 'QR с суммой ' + money(tx.amount) + ' ' + curSign(tx.currency) : 'QR клиента', src);
@@ -825,7 +819,12 @@
           card.appendChild(h('div', { class: 'req-top' }, h('div', { class: 'req-bank' }, h('span', { class: 'logo' }, bankLogo(tx.bank)), h('div', { style: { minWidth: 0 } }, h('div', { class: 'req-id' }, h('span', null, tx.player_id), copyBtn(tx.player_id)), h('div', { class: 'req-date' }, fmtDate(tx.created_at)))), h('div', { class: 'req-side' }, statusPill(tx), h('b', { class: 'req-withdraw-amt' }, '-' + money0(tx.amount)), tx.has_receipt ? h('button', { class: 'doc-btn', type: 'button', 'aria-label': 'Чек', onclick: () => imageSheet('Чек перевода', API + '/withdrawals/' + tx.id + '/receipt', fmtDate(tx.receipt_at)) }, svg('doc', 22)) : null)));
           card.appendChild(qrBlock(tx, r, ctx));
           const open = !['success', 'cancelled', 'expired'].includes(tx.status);
-          if (can('operations') && open) card.appendChild(h('div', { style: { textAlign: 'center' } }, tx.has_receipt ? h('button', { class: 'upload-btn done', type: 'button', onclick: () => pickReceipt(tx, ctx.refresh) }, svg('check', 20), 'Чек прикреплён · заменить') : h('button', { class: 'upload-btn', type: 'button', onclick: () => pickReceipt(tx, ctx.refresh) }, svg('upload', 20), 'Загрузить чек')));
+          /* under the QR: «Загрузить чек» and, when the request carries a bank QR, «Оплатить в Optima24» — the
+             deep link opens the Optima24 app on the confirm screen with the recipient and amount filled in */
+          if (can('operations') && open) card.appendChild(h('div', { class: 'qr-actions' },
+            tx.has_receipt ? h('button', { class: 'upload-btn done', type: 'button', onclick: () => pickReceipt(tx, ctx.refresh) }, svg('check', 20), 'Чек прикреплён · заменить') : h('button', { class: 'upload-btn', type: 'button', onclick: () => pickReceipt(tx, ctx.refresh) }, svg('upload', 20), 'Загрузить чек'),
+            tx.optima_pay_link ? h('a', { class: 'optima-btn', href: tx.optima_pay_link, target: '_blank', rel: 'noopener' }, h('img', { src: 'brand/banks/optima.png', alt: '' }), 'Оплатить в Optima24') : null,
+            r.payment_links && r.payment_links.length ? h('button', { class: 'more-banks', type: 'button', onclick: () => actionSheet('Открыть QR в банке', r.payment_links.map((l) => ({ label: l.name, icon: 'send', onclick: () => window.open(l.url, '_blank', 'noopener') }))) }, 'Открыть в другом банке') : null));
         }
         body.appendChild(card);
         if (dep) body.appendChild(relatedBlock(tx));
@@ -856,7 +855,7 @@
         box.appendChild(h('button', { class: 'card note-card', type: 'button', onclick: async () => { if (!can('users')) return; const t = await promptDialog('Заметка', 'Видна только операторам', '', u.note || ''); if (t === null) return; try { await patch({ note: t }); toast('Сохранено', 'ok'); draw(); } catch (e) { err(e); } } }, h('div', { class: 'top' }, h('b', null, 'Заметка'), svg('edit', 24)), h('p', { class: u.note ? 'has' : '' }, u.note || 'Нажмите на иконку редактирования, чтобы добавить заметку о пользователе')));
         box.appendChild(h('div', { class: 'card shield-row' }, svg('shield', 30), h('div', null, h('b', null, u.is_blocked ? 'Заблокирован' : 'Активен'), h('small', null, u.is_blocked ? (u.block_reason || 'Операции недоступны') : 'Все операции доступны')), switchEl(!u.is_blocked, async (v) => { if (!can('users')) throw new Error('Нет доступа'); let reason = ''; if (!v) { reason = await promptDialog('Причина блокировки', 'Клиент увидит причину'); if (reason === null) throw new Error('__cancel__'); } await patch({ is_blocked: !v, block_reason: reason }); setTimeout(draw, 150); })));
         const txs = [...r.deposits, ...r.withdrawals].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        box.appendChild(txs.length ? txGroups(txs, { noAlert: true }) : empty('Заявок нет', '', 'history'));
+        box.appendChild(txs.length ? h('div', { class: 'card list-wrap' }, txGroups(txs, { noAlert: true })) : empty('Заявок нет', '', 'history'));
       } catch (e) { box.innerHTML = ''; box.appendChild(empty('Ошибка', e.message)); }
     };
     draw();
@@ -894,14 +893,18 @@
         const cashes = cs.items || []; const feeOf = (name) => cashes.find((c) => c.name === name) || {};
         const incomeOf = (c) => { const f = feeOf(c.name); return Number(c.deposits_sum) * (Number(f.deposit_fee_pct) || 0) / 100 + Number(c.withdrawals_sum) * (Number(f.withdraw_fee_pct) || 0) / 100; };
         const income = r.by_cash.reduce((a, c) => a + incomeOf(c), 0);
-        const limit = cashes.reduce((a, c) => a + (c.last_balance !== null && c.last_balance !== undefined ? Number(c.last_balance) : 0), 0);
-        const turnover = Number(r.deposits_sum) + Number(r.withdrawals_sum);
+        /* the cash desk API (1xbet & co) names things the other way round: its «Limit» is the money the desk can
+           still pay out — the real balance, shown here as the limit; its «Balance» is the desk's turnover */
+        const has = (v) => v !== null && v !== undefined && v !== '';
+        const num = (v) => (has(v) ? Number(v) : 0);
+        const limit = cashes.reduce((a, c) => a + num(c.last_limit), 0);
+        const turnover = cashes.reduce((a, c) => a + num(c.last_balance), 0);
         const usd = Number(r.usd_rate) > 0 ? income / Number(r.usd_rate) : 0;
         box.appendChild(h('div', { class: 'dark-card' }, h('div', { class: 'cap' }, 'Приблизительный доход'), h('div', { class: 'big' }, money0(income) + ' с'), h('div', { class: 'sub' }, '~ ' + money0(usd) + ' $'), h('div', { class: 'grid' }, h('div', null, h('small', null, 'Выведено наличных'), h('b', null, money0(r.withdrawals_sum) + ' с')), h('div', null, h('small', null, 'Суммарный лимит'), h('b', null, money0(limit) + ' с')))));
         box.appendChild(h('div', { class: 'stat2' }, h('div', { class: 'card stat-card green' }, h('div', { class: 'ico' }, svg('arrowUR', 22)), h('div', { class: 'l' }, 'Пополнения'), h('div', { class: 'v' }, money0(r.deposits_sum) + ' с'), h('span', { class: 'chip' }, r.deposits_count + ' транзакций')), h('div', { class: 'card stat-card red' }, h('div', { class: 'ico' }, svg('arrowDL', 22)), h('div', { class: 'l' }, 'Выводы'), h('div', { class: 'v' }, money0(r.withdrawals_sum) + ' с'), h('span', { class: 'chip' }, r.withdrawals_count + ' транзакций'))));
-        box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' }, svg('layers', 18), 'Лимиты шлюзов'), cashes.length ? cashes.map((c) => h('div', { class: 'kv-row' }, c.name, h('span', { class: 'amt' }, c.last_balance !== null && c.last_balance !== undefined ? money0(c.last_balance) + ' с' : '—'))) : h('div', { class: 'muted' }, 'Касс нет'), h('div', { class: 'kv-row hl' }, h('span', { class: 'lbl-ico' }, svg('wallet', 20), 'Баланс · оборот кассы'), h('span', { class: 'amt' }, money0(turnover) + ' с'))));
+        box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' }, svg('layers', 18), 'Лимиты шлюзов'), cashes.length ? cashes.map((c) => h('div', { class: 'kv-row' }, c.name, h('span', { class: 'amt' }, has(c.last_limit) ? money0(c.last_limit) + ' с' : '—'))) : h('div', { class: 'muted' }, 'Касс нет'), h('div', { class: 'kv-row hl' }, h('span', { class: 'lbl-ico' }, svg('wallet', 20), 'Баланс · оборот касс'), h('span', { class: 'amt' }, money0(turnover) + ' с'))));
         box.appendChild(h('div', { class: 'section-cap' }, 'Разбивка по шлюзам'));
-        r.by_cash.forEach((c) => box.appendChild(h('div', { class: 'card gw-card' }, h('div', { class: 'head' }, h('b', null, c.name), h('span', { class: 'income' }, 'Доход: ' + money0(incomeOf(c)) + ' с')), h('div', { class: 'cols' }, h('div', null, h('small', null, 'Ввод'), h('b', null, money0(c.deposits_sum) + ' с'), h('em', null, c.deposits_count + ' операций')), h('div', null, h('small', null, 'Вывод'), h('b', null, money0(c.withdrawals_sum) + ' с'), h('em', null, c.withdrawals_count + ' операций'))), h('div', { class: 'foot' }, 'Оборот кассы:', h('b', null, money0(Number(c.deposits_sum) + Number(c.withdrawals_sum)) + ' с')))));
+        r.by_cash.forEach((c) => { const cash = feeOf(c.name); box.appendChild(h('div', { class: 'card gw-card' }, h('div', { class: 'head' }, h('b', null, c.name), h('span', { class: 'income' }, 'Доход: ' + money0(incomeOf(c)) + ' с')), h('div', { class: 'cols' }, h('div', null, h('small', null, 'Ввод'), h('b', null, money0(c.deposits_sum) + ' с'), h('em', null, c.deposits_count + ' операций')), h('div', null, h('small', null, 'Вывод'), h('b', null, money0(c.withdrawals_sum) + ' с'), h('em', null, c.withdrawals_count + ' операций'))), h('div', { class: 'foot' }, 'Лимит (баланс кассы):', h('b', null, has(cash.last_limit) ? money0(cash.last_limit) + ' с' : '—')), h('div', { class: 'foot' }, 'Оборот кассы:', h('b', null, has(cash.last_balance) ? money0(cash.last_balance) + ' с' : money0(Number(c.deposits_sum) + Number(c.withdrawals_sum)) + ' с')))); });
       } catch (e) { box.innerHTML = ''; box.appendChild(empty('Ошибка', e.message)); }
     };
     draw();

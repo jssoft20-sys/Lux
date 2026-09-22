@@ -38,6 +38,12 @@ if ! venv/bin/alembic upgrade head; then
   echo "!! миграция не прошла — откат: scripts/restore.sh <последний backup>"; exit 1
 fi
 venv/bin/python -m paygo.cli seed >/dev/null || true
+# тестовый вывод для проверки панели (один раз, нужна хотя бы одна касса): Главная → Актуальные, клиент «Тест PayGo»
+if [ ! -f data/.demo_withdrawal ] && venv/bin/python scripts/demo_withdrawal.py \
+    --qr "https://qr.finik.kg/f36e0f6a-1f22-4f34-a177-71444f6c91aa?type=t" --amount 150 >/dev/null 2>&1; then
+  touch data/.demo_withdrawal
+  if id "$APP_USER" >/dev/null 2>&1; then chown "$APP_USER:$APP_USER" data/.demo_withdrawal; fi
+fi
 systemctl restart paygo-backend
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
   curl -fsS "http://127.0.0.1:${PORT:-7035}/healthz" >/dev/null 2>&1 && break

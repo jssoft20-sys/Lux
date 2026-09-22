@@ -315,7 +315,99 @@ def bank_disabled(text: str, disabled: str) -> str:
     return bank["name"] if bank["key"] in keys else ""
 
 
-OPTIMA_PAY_LINK_BASE = "https://mobile.optima24.kg/my-qr/confirm-screen?url=#"
+# ----------------------------------------------------------------------------- bank links → ELQR
+# A client may send the payout target as a bank link (https://qr.finik.kg/<id>?type=t, an MBank
+# link, …) instead of a QR photo. The link itself carries no requisites, but the bank's QR page
+# embeds the full ELQR payload in its "pay with Optima24 / MBank" buttons (…confirm-screen?qr-url=
+# #000201…). Resolving it once gives the withdrawal the same payload a scanned QR would — the
+# amount can be injected («Ген QR») and the Optima24 pay link works.
+_PAYLOAD_RE = re.compile(r"000201[0-9A-Za-z._\-%*:/!()]{40,900}")
+_FAILED_LINKS: dict[str, float] = {}
+_FAIL_TTL = 600.0
+_MAX_PAGE = 2_000_000
+
+
+def is_bank_link(value: str) -> bool:
+    """A payout target given as an http(s) link rather than a QR payload."""
+    return str(value or "").strip().lower().startswith(("http://", "https://"))
+
+
+def has_payload(value: str) -> bool:
+    """True when ``value`` already contains a valid ELQR payload (raw or wrapped in a deep link)."""
+    try:
+        normalize(value)
+    except Exception:
+        return False
+    return True
+
+
+def fetch_text(url: str, timeout: float = 8.0) -> str:
+    """GET a bank QR page (redirects followed, size-capped). Replaced in tests."""
+    import httpx
+
+    with httpx.Client(timeout=timeout, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 PayGo/1.0"}) as client:
+        with client.stream("GET", url) as resp:
+            resp.raise_for_status()
+            chunks: list[bytes] = []
+            size = 0
+            for chunk in resp.iter_bytes():
+                chunks.append(chunk)
+                size += len(chunk)
+                if size > _MAX_PAGE:
+                    break
+            return b"".join(chunks).decode(resp.encoding or "utf-8", "replace")
+
+
+def payloads_in_text(text: str) -> list[str]:
+    """Every distinct valid ELQR payload found in a page (hrefs, scripts, data attributes)."""
+    out: list[str] = []
+    for raw in _PAYLOAD_RE.findall(str(text or "")):
+        for candidate in (raw, urllib.parse.unquote(raw)):
+            try:
+                _, payload = normalize(candidate)
+            except Exception:
+                continue
+            if payload not in out:
+                out.append(payload)
+            break
+    return out
+
+
+def resolve_bank_link(link: str, *, fetch=None) -> str:
+    """ELQR payload (without CRC) for a bank link or a raw payload; '' when it cannot be resolved.
+
+    Raw payloads and deep links that already wrap one need no network. For a page link the page is
+    fetched once; a link that failed is not retried for ten minutes so the panel stays fast offline.
+    """
+    import time
+
+    value = str(link or "").strip()
+    if not value:
+        return ""
+    try:
+        return normalize(value)[1]
+    except Exception:
+        pass
+    if not is_bank_link(value):
+        return ""
+    failed_at = _FAILED_LINKS.get(value)
+    if failed_at and time.monotonic() - failed_at < _FAIL_TTL:
+        return ""
+    try:
+        text = (fetch or fetch_text)(value)
+        found = payloads_in_text(text)
+    except Exception:
+        found = []
+    if not found:
+        _FAILED_LINKS[value] = time.monotonic()
+        if len(_FAILED_LINKS) > 500:
+            _FAILED_LINKS.clear()
+        return ""
+    return found[0]
+
+
+# The link format is the one the banks' own QR pages use (qr.finik.kg → «Оплатить в Optima24»).
+OPTIMA_PAY_LINK_BASE = "https://mobile.optima24.kg/my-qr/confirm-screen?qr-url=#"
 
 
 def optima_confirm_link(full_payload: str, base: str = OPTIMA_PAY_LINK_BASE) -> str:

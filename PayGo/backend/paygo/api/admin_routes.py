@@ -399,6 +399,17 @@ def get_withdrawal(withdrawal_id: int, principal: Principal = Depends(current_pr
     w = db.get(Withdrawal, withdrawal_id)
     if w is None:
         raise HTTPException(404, "NOT_FOUND")
+    if w.status not in {"success", "cancelled"} and elqr.is_bank_link(w.qr_payload) and not elqr.has_payload(w.qr_payload):
+        # a request created from a bank link before the link resolver existed: resolve it on first open
+        resolved = elqr.resolve_bank_link(w.qr_payload)
+        if resolved:
+            w.qr_payload = resolved
+            if money(w.amount) > 0:
+                try:
+                    w.generated_qr_payload = elqr.inject_amount(resolved, w.amount)
+                except Exception:
+                    pass
+            db.flush()
     return {
         "ok": True,
         "item": {**withdrawal_service.public_withdrawal(w, full=True), "operator_name": _operator_name(db, w.operator_id), "receipt_required": withdrawal_service.receipt_required(db, w), "autopay_active": autopay_service.is_active(db), "optima_pay_link": elqr.optima_confirm_link(w.generated_qr_payload, settings_store.get(db, "optima_pay_link_base")) if w.generated_qr_payload else "", "bank": elqr.detect_bank(w.qr_payload or w.qr_file_url or w.generated_qr_payload)},

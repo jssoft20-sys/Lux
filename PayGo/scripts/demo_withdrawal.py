@@ -4,8 +4,10 @@
     venv/bin/python scripts/demo_withdrawal.py --qr "https://qr.finik.kg/f36e0f6a-1f22-4f34-a177-71444f6c91aa?type=t" --amount 150
 
 The request lands in Главная → Актуальные with the recognised bank mark (Finik, MBank, Optima…),
-«Ген QR / Ориг QR» and the Принять / Отказать bar. It belongs to a demo client «Тест PayGo»
-(Telegram ID 100000001) and touches no cash desk API — accept or reject it like any other request.
+«Ген QR / Ориг QR», the «Оплатить в Optima24» button and the Принять / Отказать bar. It belongs to
+a demo client «Тест PayGo» (Telegram ID 100000001), touches no cash desk API and is never picked up
+by the automatic payout — accept or reject it like any other request. scripts/update.sh creates one
+such request once (marker data/.demo_withdrawal); run this by hand for another.
 Run it on the server from /home/PayGo (reads .env for the database) or locally with DATABASE_URL set.
 """
 from __future__ import annotations
@@ -39,6 +41,8 @@ def main() -> int:
 
     link = args.qr.strip()
     bank = elqr.detect_bank(link)
+    # the bank's QR page carries the ELQR payload — with it the request gets «Ген QR» and the Optima24 link
+    payload = elqr.resolve_bank_link(link) or link
     with transaction() as db:
         stmt = select(PaymentCash).order_by(PaymentCash.priority)
         if args.cash:
@@ -62,21 +66,21 @@ def main() -> int:
             code=f"DEMO{stamp % 100000}",
             provider_claim_key=f"demo:{stamp}",
             idempotency_key=f"demo-withdrawal-{stamp}",
-            qr_payload=link,
+            qr_payload=payload,
             status="created",
-            source="manual",
+            source="demo",
             needs_attention=False,
             error="",
         )
-        if link.startswith("000201"):
+        if payload.startswith("000201"):
             try:
-                row.generated_qr_payload = elqr.inject_amount(link, amount)
+                row.generated_qr_payload = elqr.inject_amount(payload, amount)
             except Exception:
                 row.generated_qr_payload = ""
         db.add(row)
         user.withdrawals_count = int(user.withdrawals_count or 0) + 1
         db.flush()
-        print(f"Создан тестовый вывод {row.public_id} (id {row.id}): {amount} {cash.currency}, банк {bank['name']} ({bank['key']})")
+        print(f"Создан тестовый вывод {row.public_id} (id {row.id}): {amount} {cash.currency}, банк {bank['name']} ({bank['key']}), QR {'распознан' if row.generated_qr_payload else 'только ссылка'}")
         print(f"Открыть в панели: #/withdrawal/{row.id}")
     return 0
 

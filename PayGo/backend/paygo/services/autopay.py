@@ -459,6 +459,8 @@ def _candidates(db: Session, cfg: Config) -> list[Withdrawal]:
     ).scalars().all()
     out: list[Withdrawal] = []
     for w in rows:
+        if w.source == "demo":
+            continue  # the panel's test request (scripts/demo_withdrawal.py) is never paid automatically
         if cutoff is not None and w.created_at and w.created_at.replace(tzinfo=w.created_at.tzinfo or timezone.utc) < cutoff:
             continue
         if _autopay_state(w).get("state") in _HANDLED_STATES:

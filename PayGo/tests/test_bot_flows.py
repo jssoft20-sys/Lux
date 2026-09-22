@@ -1,9 +1,12 @@
 """End-to-end client bot flows with a fake Telegram client (no network)."""
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 from paygo.db import transaction
 from paygo.models import Deposit, Notification, Withdrawal
+from paygo.services import elqr
 
 
 class FakeTelegram:
@@ -257,8 +260,27 @@ def test_withdraw_by_bank_link_and_switched_off_bank(bot, fake_provider):
     assert "Заявка на вывод принята" in bot.client.last[1]
     with transaction() as db:
         w = db.query(Withdrawal).one()
-        assert w.qr_payload == link and w.qr_file_url == "" and w.generated_qr_payload == ""
+        # the Finik page carries the ELQR payload → stored like a scanned QR, amount injected («Ген QR»)
+        assert w.qr_payload.startswith("000201") and "qr.finik.kg" in w.qr_payload and w.qr_file_url == ""
+        assert w.generated_qr_payload.startswith("000201") and elqr.amount_from_payload(w.generated_qr_payload) == Decimal("5300")
         assert db.query(QrRecord).one().bank_name == "Finik"
+
+
+def test_withdraw_by_unresolvable_bank_link_keeps_the_link(bot, fake_provider):
+    """A bank page that cannot be fetched still gives a request: the link is kept, the bank recognised,
+    no generated QR until an operator pastes the payload."""
+    link = "https://app.mbank.kg/qr/abc"
+    text(bot, "/start")
+    text(bot, "Вывести")
+    pick_cash(bot)
+    text(bot, link)
+    assert "Введите ваш ID для вывода" in bot.client.last[1]
+    text(bot, "123456")
+    text(bot, "CODE1234")
+    assert "Заявка на вывод принята" in bot.client.last[1]
+    with transaction() as db:
+        w = db.query(Withdrawal).one()
+        assert w.qr_payload == link and w.generated_qr_payload == ""
 
 
 def test_withdraw_flow_qr_then_id_then_code(bot, fake_provider):

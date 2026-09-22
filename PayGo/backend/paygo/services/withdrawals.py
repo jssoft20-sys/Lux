@@ -86,6 +86,10 @@ def create_withdrawal(
         if dup:
             return {"ok": True, "duplicate": True, "withdrawal": public_withdrawal(dup), "message": "✅ Эта заявка на вывод уже принята. Повторно этот код отправлять не нужно."}
         qr = db.get(QrRecord, qr_record_id) if qr_record_id else None
+        qr_payload = (qr.payload if qr else "") or ""
+        if elqr.is_bank_link(qr_payload) and not elqr.has_payload(qr_payload):
+            # a bank link the client sent as text: the bank's page carries the ELQR payload
+            qr_payload = elqr.resolve_bank_link(qr_payload) or qr_payload
         row = Withdrawal(
             public_id=new_public_id("W"),
             user_id=user.id,
@@ -97,7 +101,7 @@ def create_withdrawal(
             provider_claim_key=_claim_key(cash, player_id, code),
             qr_record_id=qr.id if qr else None,
             qr_file_url=(qr.file_url if qr else qr_file_url) or "",
-            qr_payload=(qr.payload if qr else "") or "",
+            qr_payload=qr_payload,
             status="created",
             idempotency_key=idempotency_key,
             source=source,
@@ -333,10 +337,12 @@ def edit_fields(db: Session, w: Withdrawal, data: dict[str, Any], operator_id: i
     if "qr_payload" in data:
         payload = str(data["qr_payload"] or "").strip()
         if payload:
-            _, clean = elqr.normalize(payload)
-            w.qr_payload = clean
-            if money(w.amount) > 0:
-                w.generated_qr_payload = elqr.inject_amount(clean, w.amount)
+            # a raw ELQR, a bank deep link wrapping one, or a bank page link (resolved online)
+            clean = elqr.resolve_bank_link(payload)
+            if not clean and not elqr.is_bank_link(payload):
+                raise WithdrawalError("QR не похож на ELQR/TLV")
+            w.qr_payload = clean or payload
+            w.generated_qr_payload = elqr.inject_amount(clean, w.amount) if clean and money(w.amount) > 0 else ""
             changes["qr_payload"] = "updated"
     w.operator_id = operator_id
     db.flush()

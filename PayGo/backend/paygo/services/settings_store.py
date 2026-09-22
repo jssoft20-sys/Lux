@@ -124,7 +124,7 @@ DEFAULTS: dict[str, Any] = {
     "autopay_min_interval_seconds": 18,  # bank-friendly gap between transfers (Optima asked for 15-20s)
     # deep link that opens the Optima24 app on the transfer-confirm screen, recipient+amount filled
     # (operator taps in the panel and confirms with Face ID; the link never pays on its own)
-    "optima_pay_link_base": "https://mobile.optima24.kg/my-qr/confirm-screen?url=#",
+    "optima_pay_link_base": "https://mobile.optima24.kg/my-qr/confirm-screen?qr-url=#",
     # support
     "support_greeting": "Здравствуйте! Это поддержка PayGo. Опишите вопрос одним сообщением — большинство вопросов решаются автоматически.",
     "support_rate_limit_messages": 6,

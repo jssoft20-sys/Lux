@@ -1176,12 +1176,8 @@ class MainBot:
         if self.bank_switched_off(ctx, link):
             return
         bank = elqr.detect_bank(link)
-        payload = link
-        if link.startswith("000201"):
-            try:
-                payload = elqr.bank_meta(link)["payload"]
-            except Exception:
-                payload = link
+        # the bank's QR page carries the ELQR payload → «Ген QR» and the Optima24 link work as for a photo
+        payload = elqr.resolve_bank_link(link) or link
         with transaction() as db:
             qr = user_service.save_qr(db, db.get(User, ctx.user_id), payload=payload, bank_name=bank["name"] if bank["key"] != "bank" else "")
             qr_id = qr.id
