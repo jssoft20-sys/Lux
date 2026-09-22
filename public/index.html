@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lux — найти фильм по обрывку</title>
+    <meta name="description" content="Shazam для фильмов: узнать название по пересказу, по кадру из шортса или по звуку." />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <span class="logo">◑</span>
+        <div>
+          <h1>Lux</h1>
+          <p>Помнишь кусок — найдём фильм</p>
+        </div>
+      </div>
+      <button id="engines-toggle" class="ghost" type="button">Движки</button>
+    </header>
+
+    <section id="engines" class="engines" hidden></section>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab is-active" data-tab="text" role="tab">Описание</button>
+      <button class="tab" data-tab="frame" role="tab">Кадр</button>
+      <button class="tab" data-tab="audio" role="tab">Звук</button>
+    </nav>
+
+    <main>
+      <!-- ОПИСАНИЕ -->
+      <section class="panel is-active" data-panel="text">
+        <p class="lead">
+          Расскажи всё, что помнишь: сцену, реплику, чем кончилось, какая была эпоха.
+          Неточности — нормально.
+        </p>
+        <textarea
+          id="description"
+          rows="6"
+          placeholder="Например: мужик просыпается в отеле, весь фильм гоняется за человеком с татуировками-заметками, и сюжет идёт задом наперёд…"
+        ></textarea>
+        <div class="row">
+          <button id="find-text" class="primary" type="button">Найти фильм</button>
+          <span class="hint">Ctrl/⌘ + Enter</span>
+        </div>
+        <div class="examples">
+          <button class="chip" type="button">девочка и киллер с фикусом в горшке</button>
+          <button class="chip" type="button">город складывается пополам, сон во сне</button>
+          <button class="chip" type="button">две девочки-близняшки стоят в коридоре отеля</button>
+        </div>
+      </section>
+
+      <!-- КАДР -->
+      <section class="panel" data-panel="frame">
+        <p class="lead">Скриншот из шортса или рилса. Можно перетащить файл или вставить из буфера (Ctrl+V).</p>
+        <label id="drop" class="drop" tabindex="0">
+          <input id="image-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
+          <img id="preview" alt="" hidden />
+          <span id="drop-label">Перетащи кадр сюда · или нажми, чтобы выбрать</span>
+        </label>
+        <input id="frame-hint" type="text" placeholder="Подсказка, если есть: «был смешной дубляж», «вроде 90-е»…" />
+        <div class="row">
+          <button id="find-frame" class="primary" type="button" disabled>Распознать кадр</button>
+        </div>
+      </section>
+
+      <!-- ЗВУК -->
+      <section class="panel" data-panel="audio">
+        <p class="lead">
+          Запиши звук с колонки телефона или загрузи сам клип. Разбираем две дорожки:
+          реплики героев и музыку/саундтрек.
+        </p>
+        <div class="row recorder">
+          <button id="record" class="primary" type="button">● Записать 15 секунд</button>
+          <span id="record-state" class="hint">микрофон не запущен</span>
+        </div>
+        <label class="file-row">
+          <input id="audio-input" type="file" accept="audio/*,video/*" hidden />
+          <span id="audio-label">…или выбрать файл (mp3, m4a, mp4, webm)</span>
+        </label>
+        <audio id="playback" controls hidden></audio>
+        <input id="audio-hint" type="text" placeholder="Подсказка, если помнишь ещё что-то о сцене" />
+        <div class="row">
+          <button id="find-audio" class="primary" type="button" disabled>Распознать звук</button>
+        </div>
+      </section>
+    </main>
+
+    <section id="result" class="result" hidden></section>
+
+    <footer>
+      <p>
+        Lux не хранит присланные файлы: кадр и звук уходят в распознавание и
+        отбрасываются вместе с запросом.
+      </p>
+    </footer>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

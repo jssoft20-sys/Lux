@@ -1,0 +1,22 @@
+{
+  "name": "lux",
+  "version": "0.1.0",
+  "description": "Lux — Shazam для фильмов: распознавание фильма по описанию, кадру и звуку",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "multer": "^2.0.2"
+  }
+}
