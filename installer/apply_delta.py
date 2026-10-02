@@ -1,4 +1,4 @@
-"""PayGo 1.13.9.66 — build the new files in a staging directory from the files on this server.
+"""PayGo 1.13.9.67 — build the new files in a staging directory from the files on this server.
 
     python3 apply_delta.py <APP dir> <STAGE dir>
 
