@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PayGo 1.13.9.69 — поверх 1.13.9.40 … 1.13.9.68
+# PayGo 1.13.9.70 — поверх 1.13.9.40 … 1.13.9.69
 #
 #   bash install.sh --check   только проверки, ничего не меняет
 #   bash install.sh           установка
@@ -15,7 +15,7 @@
 # База данных не меняется. Журнал зачислений и защита от двойных зачислений сохраняются.
 set -Eeuo pipefail
 
-VERSION="1.13.9.69"
+VERSION="1.13.9.70"
 PKG="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP="${PAYGO_DIR:-/home/PayGo}"; APP="${APP%/}"
 UNITDIR="${PAYGO_SYSTEMD_DIR:-/etc/systemd/system}"
