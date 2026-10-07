@@ -1,9 +1,9 @@
-PayGo 1.13.9.75 — ставится поверх 1.13.9.40 … 1.13.9.74
+PayGo 1.13.9.76 — ставится поверх 1.13.9.40 … 1.13.9.75
 
-  bash /home/PayGo-1.13.9.75-Update/install.sh --check   только проверка
-  bash /home/PayGo-1.13.9.75-Update/install.sh           установка (сама откатится при ошибке)
+  bash /home/PayGo-1.13.9.76-Update/install.sh --check   только проверка
+  bash /home/PayGo-1.13.9.76-Update/install.sh           установка (сама откатится при ошибке)
 
-Откат: bash /home/PayGo-backup-before-1.13.9.75-<время>/rollback.sh
+Откат: bash /home/PayGo-backup-before-1.13.9.76-<время>/rollback.sh
 База данных не меняется.
 
 Если админка не открывается из-за VPN, а VPN выключен (или нужен доступ с конкретного адреса):
