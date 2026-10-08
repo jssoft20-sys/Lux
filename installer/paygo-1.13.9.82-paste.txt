@@ -1,0 +1,1 @@
+cd /home && unzip PayGo-1.13.9.82-Update.zip && cd PayGo-1.13.9.82-Update && sudo bash install.sh
