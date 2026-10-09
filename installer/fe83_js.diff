@@ -1,5 +1,5 @@
 diff --git a/frontend/admin/static/app-1.13.9.76.js b/frontend/admin/static/app-1.13.9.76.js
-index a31dae0..5893c9b 100644
+index a31dae0..3dae63a 100644
 --- a/frontend/admin/static/app-1.13.9.76.js
 +++ b/frontend/admin/static/app-1.13.9.76.js
 @@ -392,7 +392,7 @@
@@ -219,7 +219,16 @@ index a31dae0..5893c9b 100644
  
          /* TIYIN_TABLE_UI_1_13_9_35 -- separate from approximate profit; 1 som = 100 tiyin. */
          const tiyinRows = (r.by_cash || []).filter((c) => Number(c.tiyin_count || 0) > 0);
-@@ -2012,7 +2079,6 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -1631,6 +1698,8 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+         h('div',{class:'dm-meta'},h('span',{class:'dm-chip'+(w.state==='online'?' on':'')},h('i'),live),h('span',{class:'dm-chip'},svg('qr',14),w.requisite?w.requisite.name+(w.requisite.enabled?'':' (выкл.)'):'QR не привязан'),w.recipient?h('span',{class:'dm-chip'},svg('user',14),w.recipient):null),
+         w.last_error?h('div',{class:'ow-status-msg'},w.last_error):null,
+         h('div',{class:'dm-trust'},svg('shield',15),trust),
++        /* FAST_MAIL_1_13_9_84: IDLE (instant push) + a check of the mailbox every second on a second connection */
++        w.enabled&&w.state==='online'?h('div',{class:'dm-spam'+(w.poll&&w.poll.connected?' on':'')},svg('bolt',14),(w.idle?'Мгновенно (IDLE)':'Проверка писем')+(w.poll&&w.poll.on?(w.poll.connected?' + проверка каждую '+(Number(w.poll.every)>1?Number(w.poll.every)+' сек':'секунду'):' · проверка: '+(w.poll.error||'подключение…')):'')):null,
+         w.spam&&w.spam.on?h('div',{class:'dm-spam'+(w.spam.connected?' on':'')},svg('filter',14),w.spam.connected?('Папка «'+(w.spam.folder||'Спам')+'» тоже читается'+(w.spam.found?' · писем банка оттуда: '+w.spam.found+' — отметьте «Не спам»':'')):('«Спам»: '+(w.spam.error||'подключение…'))):null,
+         (w.rejected||[]).length?h('div',{class:'dm-rej'},'Отклонено: '+w.rejected.slice(-1)[0].reason):null,
+         (w.payments||[]).length?h('div',{class:'dm-pays'},w.payments.map((p)=>h('div',{class:'dm-pay'},h('b',null,money(p.amount)+' KGS'),h('small',null,fmtDate(p.at)),h('span',{class:'dm-st '+(p.status||'')},payWord(p))))):h('div',{class:'dm-empty'},'Поступлений пока нет — первое письмо банка появится здесь'),
+@@ -2012,7 +2081,6 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
        box.innerHTML = ''; box.appendChild(loader());
        let r; try { r = await api('/sites'); } catch (e) { box.innerHTML = ''; box.appendChild(empty('Не удалось загрузить', e.message)); return; }
        const frag = h('div', { class: 'sites' });
@@ -227,7 +236,7 @@ index a31dae0..5893c9b 100644
        frag.appendChild(h('div', { class: 'card setting-row' }, h('div', null, h('b', null, '🎡 Фриспин (колесо)'), h('small', null, 'Бесплатный прокрут · настройки во вкладке «Фриспин»')), switchEl(!!r.wheel_master, (val) => toggle('all', 'wheel_master', val))));
        (r.bots || []).forEach((b) => {
          const card = h('div', { class: 'card site-card' });
-@@ -2020,7 +2086,6 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2020,7 +2088,6 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
          const row = (label, target, on, sub) => h('div', { class: 'setting-row' }, h('div', null, h('span', null, label), sub ? h('small', { class: 'muted' }, ' ' + sub) : null), switchEl(!!on, (val) => toggle(b.bot, target, val)));
          card.appendChild(row('Пополнения', 'deposits', b.deposits));
          card.appendChild(row('Выводы', 'withdrawals', b.withdrawals));
@@ -235,7 +244,7 @@ index a31dae0..5893c9b 100644
          card.appendChild(row('🎡 Фриспин', 'wheel', b.wheel_toggle, b.wheel ? '' : (r.wheel_master ? '' : '· выключен сверху')));
          if ((b.cashes || []).length) { card.appendChild(h('div', { class: 'site-sub' }, 'Букмекеры')); (b.cashes || []).forEach((c) => card.appendChild(row((c.emoji ? c.emoji + ' ' : '') + c.name, 'cash:' + c.key, c.on, c.global_enabled ? '' : '· выключена глобально'))); }
          frag.appendChild(card);
-@@ -2044,7 +2109,7 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2044,7 +2111,7 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
          const inp = (k) => h('input', { class: 'input', value: (v[k] == null ? '' : String(v[k])) });
          const amt = inp('wheel_win_amount'), cap = inp('wheel_daily_win_cap'), ch = inp('wheel_win_chance_pct'), nd = inp('wheel_new_client_days'), nc = inp('wheel_new_client_chance_pct'), bm = inp('wheel_big_client_min'), bc = inp('wheel_big_client_chance_pct');
          frag.appendChild(h('div', { class: 'card crypto-cfg' },
@@ -244,7 +253,7 @@ index a31dae0..5893c9b 100644
            h('label', { class: 'field' }, h('span', null, 'Лимит выигрышей в сутки'), cap),
            h('label', { class: 'field' }, h('span', null, 'Базовый шанс выигрыша, %'), ch),
            h('label', { class: 'field' }, h('span', null, 'Новый клиент: дней с регистрации'), nd),
-@@ -2053,10 +2118,29 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2053,10 +2120,29 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
            h('label', { class: 'field' }, h('span', null, 'Шанс для крупных клиентов, %'), bc),
            h('button', { class: 'primary-btn', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; try { await api('/wheel/settings', { method: 'POST', body: { values: { wheel_win_amount: parseInt(amt.value) || 0, wheel_daily_win_cap: parseInt(cap.value) || 0, wheel_win_chance_pct: parseInt(ch.value) || 0, wheel_new_client_days: parseInt(nd.value) || 0, wheel_new_client_chance_pct: parseInt(nc.value) || 0, wheel_big_client_min: parseInt(bm.value) || 0, wheel_big_client_chance_pct: parseInt(bc.value) || 0 } } }); toast('Сохранено', 'ok'); } catch (ex) { err(ex); } b.disabled = false; } }, 'Сохранить')));
        }
@@ -274,7 +283,7 @@ index a31dae0..5893c9b 100644
          const st = { claimable: ['amber', 'ждёт пополнения'], claimed: ['blue', 'в работе'], credited: ['green', 'выплачено'], rejected: ['red', 'отклонено'] }[w.status] || ['', w.status];
          frag.appendChild(h('div', { class: 'card crypto-ord' },
            h('div', { class: 'co-head' }, h('b', null, money0(w.amount) + ' ' + curSign('KGS')), h('span', { class: 'co-badge ' + st[0] }, st[1])),
-@@ -2085,52 +2169,6 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2085,52 +2171,6 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
        h('button', { class: 'primary-btn', onclick: async (e) => { const b = e.currentTarget; const pid = (idInp.value || '').replace(/\D/g, ''); if (!pid) { toast('Введите ID', 'err'); return; } b.disabled = true; try { const r = await api('/wheel/' + win.id + '/credit', { method: 'POST', body: { cash_id: chosen, player_id: pid } }); if (r.ok) { toast('Приз зачислён', 'ok'); sh.close(); if (reload) reload(); } else { toast(r.message || 'Не удалось зачислить', 'err'); b.disabled = false; } } catch (ex) { err(ex); b.disabled = false; } } }, 'Зачислить ' + money0(win.amount)),
        h('button', { class: 'action-btn', onclick: () => sh.close() }, 'Отмена')] });
    }
@@ -327,7 +336,7 @@ index a31dae0..5893c9b 100644
    async function cashesView(shell) {
      const box = page(shell, 'Кассы', { right: can('cashes') ? h('button', { class: 'icon-btn', onclick: () => cashForm(null), 'aria-label': 'Добавить' }, svg('plus', 26)) : null });
      try {
-@@ -2357,7 +2395,8 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2357,7 +2397,8 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
    function expenseQuick(pre) {
      pre = pre || {};
      const meta = EXP_META || { suggestions: [], categories: EXP_CATS };
@@ -337,7 +346,7 @@ index a31dae0..5893c9b 100644
      const amount = h('input', { class: 'exp-amount-in', type: 'text', inputmode: 'decimal', enterkeyhint: 'next', placeholder: '0', autocomplete: 'off', 'aria-label': 'Сумма', value: pre.amount ? String(Number(pre.amount)) : '' });
      const sum = h('label', { class: 'exp-amount' }, amount, h('span', { class: 'exp-cur' }, curSign('KGS')));
      const title = h('input', { class: 'input exp-title-in', type: 'text', enterkeyhint: 'done', placeholder: 'За что', maxlength: 160, autocomplete: 'off', 'aria-label': 'За что', value: pre.title || '' });
-@@ -2369,19 +2408,30 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2369,19 +2410,30 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
      const save = h('button', { class: 'primary-btn exp-save', type: 'button' }, svg('check', 18), pre.id ? 'Сохранить' : 'Записать');
      const all = pre.id || pre.balance_log_id ? null : h('button', { class: 'exp-all', type: 'button', onclick: () => { s.close(); go('#/expenses'); } }, 'Все расходы', svg('chevron', 14));
      const from = pre.balance_log_id ? h('div', { class: 'exp-from' }, svg('bank', 15), 'Списание с Optima' + (pre.when ? ' · ' + pre.when : '')) : null;
@@ -371,7 +380,7 @@ index a31dae0..5893c9b 100644
          const fab = document.getElementById('exp-fab'); if (fab) { fab.classList.remove('done'); void fab.offsetWidth; fab.classList.add('done'); setTimeout(() => fab.classList.remove('done'), 1500); }
          expMeta(true); if (pre.onSaved) pre.onSaved(r.item);
        } catch (ex) { err(ex); busy(save, false); }
-@@ -2390,9 +2440,10 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2390,9 +2442,10 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
      amount.addEventListener('input', () => { const c = amount.value.replace(/[^\d.,\s]/g, ''); if (c !== amount.value) amount.value = c; sum.classList.toggle('filled', !!c); });
      amount.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); title.focus(); } });
      title.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
@@ -383,7 +392,7 @@ index a31dae0..5893c9b 100644
    }
    async function expensesView(shell) {
      const tab = state.route.id === 'optima' ? 'optima' : 'list';
-@@ -2407,7 +2458,7 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2407,7 +2460,7 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
      const dayName = (d) => { const k = dayKey(d); const t = dayKey(new Date()); const y = dayKey(new Date(Date.now() - 86400000)); return k === t ? 'Сегодня' : (k === y ? 'Вчера' : new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })); };
      const hm = (d) => new Date(d).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
      const rowMenu = (it) => actionSheet(it.title, [
@@ -392,7 +401,7 @@ index a31dae0..5893c9b 100644
        { label: 'Удалить', icon: 'trash', cls: 'danger', onclick: async () => { if (!(await confirmDialog('Удалить расход «' + it.title + '» на ' + money0(it.amount) + expCur() + '?', 'Удалить', true))) return; try { await api('/expenses/' + it.id, { method: 'DELETE' }); toast('Удалено', 'ok'); draw(); } catch (ex) { err(ex); } } },
      ]);
      const drawList = async () => {
-@@ -2420,6 +2471,8 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2420,6 +2473,8 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
        content.appendChild(h('div', { class: 'card exp-hero' }, h('small', null, { today: 'Потрачено сегодня', week: 'Потрачено за 7 дней', month: 'Потрачено за 30 дней', all: 'Потрачено всего' }[st.period]), big, h('span', { class: 'exp-hero-n' }, (cur.count || 0) + ' ' + ((n) => n % 10 === 1 && n % 100 !== 11 ? 'запись' : ([2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'записи' : 'записей'))(cur.count || 0)),
          h('div', { class: 'exp-mini' }, [['Сегодня', t.today], ['7 дней', t.week], ['30 дней', t.month]].map(([l, v]) => h('div', null, h('small', null, l), h('b', null, money0((v || {}).sum || 0) + expCur()))))));
        countUp(big, Number(cur.sum || 0), (v) => money0(Math.round(v)) + expCur());
@@ -401,7 +410,7 @@ index a31dae0..5893c9b 100644
        const cats = r.by_category || [];
        if (cats.length > 1) {
          const max = Math.max(...cats.map((c) => Number(c.sum) || 0), 1);
-@@ -2429,11 +2482,14 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2429,11 +2484,14 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
        }
        const items = r.items || [];
        if (!items.length) { content.appendChild(empty('Расходов пока нет', 'Нажмите «+» вверху или кнопку на главном экране', 'note')); return; }
@@ -418,7 +427,7 @@ index a31dae0..5893c9b 100644
            h('span', { class: 'exp-row-ico' + (it.source === 'optima' ? ' opt' : '') }, svg(it.source === 'optima' ? 'bank' : expIcon(it.category), 18)),
            h('div', null, h('b', null, it.title), h('small', null, [it.category, hm(it.spent_at), it.created_by, it.source === 'optima' ? 'из Optima' : ''].filter(Boolean).join(' · '))),
            h('strong', null, '−' + money0(it.amount) + expCur()))));
-@@ -2748,10 +2804,10 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2748,10 +2806,10 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
          if (item.state === 'waiting') body.appendChild(h('div', { class: 'tp-wait small' }, h('i', { class: 'tp-spin' }), h('b', null, 'Ждём ответ бота…'), h('small', null, 'Окно можно закрыть — ответ придёт сюда при следующем открытии')));
          else {
            const pick = h('input', { type: 'file', accept: 'image/*,application/pdf', hidden: true });
