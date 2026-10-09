@@ -1606,123 +1606,53 @@ rep("""        presence();
         if (c.wheel_win && can('operations')) screen.appendChild(wheelWinBanner(c.wheel_win, draw));
         caseCard(screen, c, ctx);""")
 
-# ── STAGE 25 (1.13.9.82) ── Cash balance: 1xBet manual deposit/withdraw tracking ──
-# 25a. Route map: add 'xbet-balance': cashBalanceView
-rep("top: topView, deposit:",
-    "top: topView, 'xbet-balance': cashBalanceView, deposit:")
-# 25b. Menu: add 'Баланс 1xBet' after 'Сверка 1WIN'
-rep("['audit', 'shield', 'Сверка 1WIN', 'red', 'cashes'], ['expenses',",
-    "['audit', 'shield', 'Сверка 1WIN', 'red', 'cashes'], ['xbet-balance', 'wallet', 'Баланс 1xBet', 'blue', 'cashes'], ['expenses',")
-# 25c. Home: "+" button on 1xBet row — add x1AddBtn variable + inject into box
-rep("""if (x1) { const xok = x1.last_check_ok !== false && !!x1.last_check_at; const hasNum = present(x1.last_limit) || present(x1.last_balance);
-          oneWinBox.appendChild(h('div',{class:'ow-x1'},""",
-    """if (x1) { const xok = x1.last_check_ok !== false && !!x1.last_check_at; const hasNum = present(x1.last_limit) || present(x1.last_balance);
-          const x1AddBtn = can('cashes') ? h('button',{class:'ow-x1-add',type:'button','aria-label':'Записать баланс 1xBet',onclick:(e)=>{e.stopPropagation();cashBalanceQuick({cash_id:x1.id,cash_name:'1xBet'});}},svg('plus',16)) : null;
-          oneWinBox.appendChild(h('div',{class:'ow-x1'},""")
-rep("""              : h('small',{class:'ow-x1-note'},x1.last_check_at?('проверено '+ago(x1.last_check_at)+' назад'):'не проверялась'))); }""",
-    """              : h('small',{class:'ow-x1-note'},x1.last_check_at?('проверено '+ago(x1.last_check_at)+' назад'):'не проверялась'),
-            x1AddBtn)); }""")
-# 25d. Analytics: 1xBet commission section after tiyin
-rep("""      } catch (e) { box.innerHTML = ''; box.appendChild(empty('Ошибка', e.message)); }
-    };
-    draw();
-  }
+# ── STAGE 26 (1.13.9.83) ── no crypto, «Деп на кассу», 1WIN vouchers, menu groups, 1xBet analytics, receipt → «Перевёл».
+# Applied as exact unified diffs over the 1.13.9.81 files built above; every context line must match.
+import re as _re
 
-  /* ------------------------------------------------------------- wallets""",
-    """        /* XBET_ANALYTICS_1_13_9_82 — 1xBet manual balance commission in analytics */
-        try {
-          const cbQs = (st.from || st.to) ? '?date_from=' + st.from + '&date_to=' + st.to : '';
-          const cbr = await api('/cash-balance/summary' + cbQs);
-          const cbDep = Number(cbr.deposits_sum || 0);
-          const cbWd = Number(cbr.withdrawals_sum || 0);
-          const cbDepComm = Number(cbr.deposits_commission || 0);
-          const cbWdComm = Number(cbr.withdrawals_commission || 0);
-          const cbTotalComm = Number(cbr.total_commission || 0);
-          const cbBalance = Number(cbr.balance || 0);
-          if (cbDep > 0 || cbWd > 0) {
-            box.appendChild(h('div', { class: 'section-cap' }, 'Баланс 1xBet (ручной учёт)'));
-            box.appendChild(h('div', { class: 'card list-card' },
-              h('div', { class: 'cap' }, svg('wallet', 18), '1xBet · комиссия 8% / 2%'),
-              h('div', { class: 'kv-row' }, h('span', null, 'Пополнения (' + (cbr.deposits_count || 0) + ')'), h('span', { class: 'amt' }, money0(cbDep) + ' сом')),
-              h('div', { class: 'kv-row' }, h('span', null, 'Комиссия 8% с пополнений'), h('span', { class: 'amt' }, '+' + money(cbDepComm) + ' сом')),
-              h('div', { class: 'kv-row' }, h('span', null, 'Выводы (' + (cbr.withdrawals_count || 0) + ')'), h('span', { class: 'amt' }, money0(cbWd) + ' сом')),
-              h('div', { class: 'kv-row' }, h('span', null, 'Комиссия 2% с выводов'), h('span', { class: 'amt' }, '+' + money(cbWdComm) + ' сом')),
-              h('div', { class: 'kv-row hl' }, h('span', { class: 'lbl-ico' }, svg('wallet', 20), 'Доход 1xBet (комиссия)'), h('span', { class: 'amt' }, money(cbTotalComm) + ' сом')),
-              h('div', { class: 'kv-row' }, h('span', null, 'Баланс (попол. − выводы)'), h('span', { class: 'amt' }, money0(cbBalance) + ' сом'))
-            ));
-          }
-        } catch (_) {}
-      } catch (e) { box.innerHTML = ''; box.appendChild(empty('Ошибка', e.message)); }
-    };
-    draw();
-  }
+_HUNK = _re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
-  /* ------------------------------------------------------------- wallets""")
-# 25e. cashBalanceQuick() + cashBalanceView() — insert before VOUCHERS section
-rep("""  /* VOUCHERS_1_13_9_61""",
-    """  /* CASH_BALANCE_1_13_9_82 — «Баланс 1xBet»: manual deposit/withdraw tracking, 8% / 2% commission */
-  function cashBalanceQuick(pre) {
-    pre = pre || {};
-    let kind = pre.kind || 'deposit';
-    const sum = h('input', { class: 'input', type: 'text', inputmode: 'decimal', placeholder: '0', value: pre.amount || '' });
-    const note = h('input', { class: 'input', placeholder: 'Комментарий (необ.)' });
-    const kindRow = h('div', { class: 'cb-kind-row' });
-    const commLabel = h('small', { class: 'cb-comm' });
-    const updComm = () => { const v = Number(String(sum.value).replace(/\\s/g, '').replace(',', '.')) || 0; const pct = kind === 'deposit' ? 8 : 2; commLabel.textContent = v > 0 ? 'Комиссия ' + pct + '% = ' + money(v * pct / 100) + ' сом' : ''; };
-    const paintKind = () => { kindRow.innerHTML = ''; ['deposit', 'withdraw'].forEach((k) => { const label = k === 'deposit' ? 'Пополнение' : 'Вывод'; kindRow.appendChild(h('button', { class: 'cb-kind' + (kind === k ? ' on ' + k : ''), type: 'button', onclick: () => { kind = k; paintKind(); updComm(); } }, label)); }); };
-    paintKind(); sum.addEventListener('input', updComm); updComm();
-    const save = h('button', { class: 'primary-btn', type: 'button' }, svg('check', 18), 'Записать');
-    const allBtn = h('button', { class: 'exp-all', type: 'button', onclick: () => { s.close(); go('#/xbet-balance'); } }, 'Все записи', svg('chevron', 14));
-    const s = sheet({ form: true, title: 'Баланс 1xBet', body: h('div', { class: 'cb-quick' }, kindRow, h('label', { class: 'field' }, h('span', null, 'Сумма'), sum), commLabel, note, save, allBtn) });
-    save.onclick = async () => {
-      const v = String(sum.value).replace(/\\s/g, '').replace(',', '.'); if (!v || Number(v) <= 0) return toast('Введите сумму', 'err');
-      busy(save, true);
-      try {
-        await api('/cash-balance', { method: 'POST', body: { kind, amount: v, cash_id: pre.cash_id || null, cash_name: pre.cash_name || '1xBet', note: note.value.trim() } });
-        toast(kind === 'deposit' ? 'Пополнение записано' : 'Вывод записан', 'ok');
-        s.close(); if (pre.onSaved) pre.onSaved();
-      } catch (ex) { err(ex); } busy(save, false);
-    };
-    setTimeout(() => sum.focus(), 250);
-  }
-  async function cashBalanceView(shell) {
-    const st = { period: 'month' };
-    const addBtn = h('button', { class: 'icon-btn exp-add-top', 'aria-label': 'Записать', onclick: () => cashBalanceQuick({ onSaved: () => draw() }) }, svg('plus', 24));
-    const box = page(shell, 'Баланс 1xBet', { right: addBtn });
-    const content = h('div');
-    const draw = async () => {
-      box.innerHTML = '';
-      box.appendChild(segEl([['today', 'Сегодня'], ['week', '7 дней'], ['month', '30 дней']], st.period, (k) => { st.period = k; draw(); }, 'cb-tabs'));
-      box.appendChild(content); content.innerHTML = ''; content.appendChild(loader(2));
-      try {
-        const r = await api('/cash-balance?period=' + st.period);
-        content.innerHTML = '';
-        const t = r.totals || {}, at = r.all_totals || {};
-        content.appendChild(h('div', { class: 'dark-card cb-summary' },
-          h('div', { class: 'cb-row' }, h('div', null, h('small', null, 'Пополнения'), h('b', null, money0(t.deposits_sum) + ' сом'), h('em', null, t.deposits_count + ' · комиссия ' + money0(t.deposits_commission))), h('div', null, h('small', null, 'Выводы'), h('b', null, money0(t.withdrawals_sum) + ' сом'), h('em', null, t.withdrawals_count + ' · комиссия ' + money0(t.withdrawals_commission)))),
-          h('div', { class: 'cb-total' }, h('span', null, 'Доход (комиссия)'), h('strong', null, money0(t.total_commission) + ' сом')),
-          h('div', { class: 'cb-total sub' }, h('span', null, 'Баланс (попол. − выводы)'), h('strong', null, money0(t.balance) + ' сом'))));
-        if (Number(at.total_commission) > 0) { content.appendChild(h('div', { class: 'cb-all-comm' }, h('small', null, 'За всё время: комиссия '), h('b', null, money0(at.total_commission) + ' сом'))); }
-        const items = r.items || [];
-        if (!items.length) { content.appendChild(empty('Записей пока нет', 'Нажмите + чтобы добавить', 'card')); return; }
-        const list = h('div', { class: 'card exp-list' });
-        items.forEach((it, i) => {
-          const dep = it.kind === 'deposit';
-          list.appendChild(h('div', { class: 'exp-row cb ' + it.kind, style: { '--i': Math.min(i, 10) } },
-            h('span', { class: 'exp-row-ico ' + (dep ? 'up' : 'down') }, svg(dep ? 'arrowDL' : 'arrowUR', 18)),
-            h('div', null,
-              h('b', null, (dep ? '+' : '−') + money0(it.amount) + ' сом'),
-              h('small', null, it.kind_label + ' · комиссия ' + it.commission_pct + '% = ' + money0(it.commission) + ' сом'),
-              it.note ? h('small', { class: 'cb-note' }, it.note) : null,
-              h('small', { class: 'muted' }, hm(it.created_at) + (it.created_by ? ' · ' + it.created_by : ''))),
-            h('button', { class: 'cb-del', type: 'button', 'aria-label': 'Удалить', onclick: async (e) => { e.stopPropagation(); if (!(await confirmDialog('Удалить запись ' + it.kind_label + ' ' + money0(it.amount) + '?', 'Удалить', true))) return; try { await api('/cash-balance/' + it.id, { method: 'DELETE' }); toast('Удалено', 'ok'); draw(); } catch (ex) { err(ex); } } }, svg('trash', 16))));
-        });
-        content.appendChild(list);
-      } catch (ex) { content.innerHTML = ''; content.appendChild(empty('Ошибка', ex.message)); }
-    };
-    draw();
-  }
-  /* VOUCHERS_1_13_9_61""")
+
+def _apply_diff(text, name):
+    src = text.splitlines(keepends=True)
+    out, pos = [], 0
+    lines = Path(__file__).with_name(name).read_text(encoding="utf-8").splitlines(keepends=True)
+    i = 0
+    while i < len(lines) and not lines[i].startswith("@@"):
+        i += 1
+    while i < len(lines):
+        m = _HUNK.match(lines[i])
+        assert m, ("bad hunk", name, lines[i][:60])
+        start = int(m.group(1)) - 1 if int(m.group(2) or 1) else int(m.group(1))
+        assert start >= pos, ("overlap", name)
+        out.extend(src[pos:start])
+        pos = start
+        i += 1
+        last = None
+        while i < len(lines) and not lines[i].startswith("@@"):
+            tag, body = lines[i][:1], lines[i][1:]
+            if tag == "\\":
+                if last == "+" and out and out[-1].endswith("\n"):
+                    out[-1] = out[-1][:-1]
+                i += 1
+                continue
+            if tag in (" ", "-"):
+                have = src[pos] if pos < len(src) else None
+                assert have is not None and have.rstrip("\n") == body.rstrip("\n"), ("context mismatch", name, pos + 1)
+                if tag == " ":
+                    out.append(have)
+                pos += 1
+            elif tag == "+":
+                out.append(body)
+            else:
+                raise AssertionError(("unexpected diff line", name, lines[i][:60]))
+            last = tag
+            i += 1
+    out.extend(src[pos:])
+    return "".join(out)
+
+
+s = _apply_diff(s, "fe83_js.diff")
 
 Path(sys.argv[2]).write_text(s, encoding="utf-8")
 css = css + Path(__file__).with_name("fe_add.css").read_text(encoding="utf-8")
@@ -1752,34 +1682,6 @@ css = css + """
 .wheel-banner{border:1px solid rgba(210,150,30,.5);background:linear-gradient(180deg,rgba(255,205,70,.14),rgba(255,205,70,.05))}
 .wheel-banner b{font-size:15px}.wheel-banner small{display:block;color:var(--muted);margin-top:2px}
 """
-# CASH_BALANCE_1_13_9_82 styles
-css = css + """/* ---- cash balance (1xBet manual tracking) ---- */
-.ow-x1-add{width:32px;height:32px;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center;flex:0 0 32px;transition:transform .18s,background .15s}
-.ow-x1-add:active{transform:scale(.9);background:var(--blue-soft2)}
-.cb-kind-row{display:flex;gap:8px;margin-bottom:14px}
-.cb-kind{flex:1;height:44px;border-radius:14px;border:1px solid var(--line2);background:var(--card);font-size:15px;font-weight:600;color:var(--muted);display:flex;align-items:center;justify-content:center;transition:all .18s}
-.cb-kind.on.deposit{background:var(--green-soft);color:var(--green);border-color:rgba(43,171,111,.35)}
-.cb-kind.on.withdraw{background:var(--red-soft);color:var(--red);border-color:rgba(220,40,40,.3)}
-.cb-quick{display:flex;flex-direction:column;gap:12px}
-.cb-quick .field{margin:0}.cb-quick .field>span{margin-bottom:6px}
-.cb-comm{display:block;color:var(--muted);font-size:13px;margin:-6px 0 2px}
-.cb-tabs{margin-bottom:14px}
-.cb-summary{display:flex;flex-direction:column;gap:0}
-.cb-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding-bottom:14px}
-.cb-row small{display:block;color:#aeb8c9;font-size:12.5px;margin-bottom:4px}
-.cb-row b{display:block;font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
-.cb-row em{font-style:normal;display:block;font-size:12px;color:#7fa4ff;margin-top:2px}
-.cb-total{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0 0;border-top:1px solid rgba(255,255,255,.12);font-size:14px;color:#aeb8c9}
-.cb-total strong{font-size:18px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums}
-.cb-total.sub{border-top:0;padding-top:6px}
-.cb-total.sub strong{font-size:16px;color:#7fa4ff}
-.cb-all-comm{display:flex;align-items:center;gap:6px;padding:10px 14px;border-radius:12px;background:var(--blue-soft);color:var(--blue-ink);font-size:14px;margin-bottom:14px}
-.cb-all-comm b{font-weight:700}
-.exp-row.cb{border-left:3px solid transparent;padding-left:12px}
-.exp-row.cb.deposit{border-left-color:var(--green)}.exp-row.cb.withdraw{border-left-color:var(--red)}
-.cb-note{display:block;font-style:italic;color:var(--muted);font-size:12.5px;margin-top:1px}
-.cb-del{width:32px;height:32px;border-radius:10px;background:var(--red-soft);color:var(--red);display:grid;place-items:center;flex:0 0 32px;align-self:center;opacity:.7;transition:opacity .15s}
-.cb-del:active{opacity:1}
-"""
+css = _apply_diff(css, "fe83_css.diff")
 Path(sys.argv[3]).write_text(css, encoding="utf-8")
 print("stage1 ok", len(s))

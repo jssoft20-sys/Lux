@@ -1,0 +1,43 @@
+diff --git a/frontend/admin/static/styles-1.13.9.76.css b/frontend/admin/static/styles-1.13.9.76.css
+index dc19427..f8d0695 100644
+--- a/frontend/admin/static/styles-1.13.9.76.css
++++ b/frontend/admin/static/styles-1.13.9.76.css
+@@ -1340,3 +1340,38 @@ button svg.icon,a svg.icon{pointer-events:none}
+ .crypto-ord .co-addr{display:flex;align-items:center;gap:6px;margin-top:6px;font-family:monospace;font-size:12px;word-break:break-all;cursor:pointer;color:var(--accent)}
+ .wheel-banner{border:1px solid rgba(210,150,30,.5);background:linear-gradient(180deg,rgba(255,205,70,.14),rgba(255,205,70,.05))}
+ .wheel-banner b{font-size:15px}.wheel-banner small{display:block;color:var(--muted);margin-top:2px}
++/* ---- 1.13.9.83: menu groups, «Деп на кассу», Фриспин vouchers, receipt link ---- */
++.menu-sec{margin:18px 4px 8px;font-size:12.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
++.menu-sec:first-of-type{margin-top:4px}
++.menu-grid .menu-tile{animation:menuIn .32s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0) * 22ms)}
++@keyframes menuIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
++.menu-logout{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:54px;margin:18px 0 8px;border-radius:18px;color:var(--red);font-size:15.5px;font-weight:600}
++.menu-logout:active{transform:scale(.98)}
++@media (prefers-reduced-motion:reduce){.menu-grid .menu-tile{animation:none}}
++.exp-kind{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px;border-radius:14px;background:var(--bg2)}
++.exp-kind-btn{display:flex;align-items:center;justify-content:center;gap:7px;height:40px;border-radius:11px;font-size:14.5px;font-weight:600;color:var(--muted);transition:background .18s,color .18s,box-shadow .18s}
++.exp-kind-btn.on{background:var(--card);color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.08)}
++.exp-kind-btn.on.cash_topup{color:var(--blue)}.exp-kind-btn.on.expense{color:var(--amber-ink)}
++.exp-cash{display:grid;grid-template-columns:1fr 1fr;gap:10px}
++.exp-cash-btn{display:flex;align-items:center;justify-content:center;gap:8px;height:50px;border-radius:14px;border:1.5px solid var(--line2);background:var(--card);font-size:16px;font-weight:700;color:var(--ink2);transition:all .18s}
++.exp-cash-btn.on{border-color:var(--blue);background:var(--blue-soft);color:var(--blue)}
++.exp-cash-btn:active{transform:scale(.97)}
++.exp-cash-hint{display:block;text-align:center;color:var(--muted);font-size:12.5px;margin-top:-4px}
++.exp-topups{padding:12px 16px;margin-bottom:14px}
++.exp-topups-cap{display:flex;align-items:center;gap:7px;font-weight:700;font-size:14.5px;color:var(--blue)}
++.exp-topups-cap span{margin-left:auto;font-weight:500;font-size:12px;color:var(--muted)}
++.exp-topups-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
++.exp-topups-row small{display:block;color:var(--muted);font-size:12px}
++.exp-topups-row b{font-size:17px;font-variant-numeric:tabular-nums}
++.exp-row-ico.top{background:var(--blue-soft);color:var(--blue)}
++.exp-row.top strong{color:var(--blue)}
++.wv-card{display:flex;flex-direction:column;gap:10px;padding:14px 16px}
++.wv-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
++.wv-head b{font-size:16px}
++.wv-count{font-size:12.5px;font-weight:600;padding:4px 10px;border-radius:10px;background:var(--green-soft);color:var(--green);white-space:nowrap}
++.wv-count.empty{background:var(--red-soft);color:var(--red)}
++.wv-codes{min-height:110px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;letter-spacing:.04em;line-height:1.5}
++.wv-btns{display:flex;flex-wrap:wrap;gap:8px}.wv-btns .primary-btn{flex:1 1 auto}
++.wv-code{display:inline-flex;align-items:center;gap:8px;margin-top:8px;padding:8px 12px;border-radius:10px;border:1.5px dashed var(--blue);background:var(--blue-soft);color:var(--blue);font:700 15px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em;max-width:100%;word-break:break-all}
++.wv-code:active{transform:scale(.97)}
++.tp-receipt-link{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin-top:10px;padding:8px;color:var(--blue);font-size:14px;font-weight:600}

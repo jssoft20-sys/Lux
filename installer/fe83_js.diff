@@ -1,0 +1,433 @@
+diff --git a/frontend/admin/static/app-1.13.9.76.js b/frontend/admin/static/app-1.13.9.76.js
+index a31dae0..5893c9b 100644
+--- a/frontend/admin/static/app-1.13.9.76.js
++++ b/frontend/admin/static/app-1.13.9.76.js
+@@ -392,7 +392,7 @@
+     const shell = h('div', { class: 'shell page-in ' + (noNav ? 'no-nav' : '') });
+     document.documentElement.classList.toggle('chat-open', page === 'chats' && !!state.route.id);
+     app.appendChild(shell);
+-    const views = { home: homeView, history: historyView, chats: chatsView, search: searchView, menu: menuView, stats: statsView, cashes: cashesView, sites: sitesView, crypto: cryptoView, wheel: wheelView, events: eventsView, wallets: walletsView, payments: paymentsView, broadcast: broadcastView, security: securityView, tg: tgView, quick: quickView, logs: logsView, settings: settingsView, macrodroid: macrodroidView, statements: statementsView, audit: auditView, expenses: expensesView, top: topView, deposit: (m) => txDetailView(m, 'deposit', state.route.id), withdrawal: (m) => txDetailView(m, 'withdraw', state.route.id), deposits: (m) => (state.route.id ? txDetailView(m, 'deposit', state.route.id) : homeView(m)), withdrawals: (m) => (state.route.id ? txDetailView(m, 'withdraw', state.route.id) : homeView(m)), users: (m) => userDetailView(m, state.route.id), push: pushView, env: envView };
++    const views = { home: homeView, history: historyView, chats: chatsView, search: searchView, menu: menuView, stats: statsView, cashes: cashesView, sites: sitesView, wheel: wheelView, events: eventsView, wallets: walletsView, payments: paymentsView, broadcast: broadcastView, security: securityView, tg: tgView, quick: quickView, logs: logsView, settings: settingsView, macrodroid: macrodroidView, statements: statementsView, audit: auditView, expenses: expensesView, top: topView, deposit: (m) => txDetailView(m, 'deposit', state.route.id), withdrawal: (m) => txDetailView(m, 'withdraw', state.route.id), deposits: (m) => (state.route.id ? txDetailView(m, 'deposit', state.route.id) : homeView(m)), withdrawals: (m) => (state.route.id ? txDetailView(m, 'withdraw', state.route.id) : homeView(m)), users: (m) => userDetailView(m, state.route.id), push: pushView, env: envView };
+     (views[page] || homeView)(shell);
+     if (!noNav) shell.appendChild(bottomNav(page));
+   }
+@@ -1054,8 +1054,8 @@
+     let accept;
+     /* a processed request leaves the screen: ctx.done() returns to the list it was opened from */
+     if (dep) accept = tx.status === 'processing' ? h('button', { class: 'act accept', disabled: true }, 'Зачисляется…') : h('button', { class: 'act accept', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const amount = await creditDialog(tx); if (amount === null) { busy(b, false); return; } const r = await txAction(kind, tx, 'credit', { amount, done: 'Зачислено ' + money(amount) + ' ' + curSign(tx.currency) }); busy(b, false); if (r) ctx.done(); } }, svg('check', 22), 'Принять');
+-    else if (tx.receipt_required && !tx.has_receipt) accept = h('button', { class: 'act accept amber', onclick: async () => { const ok = await pickReceipt(tx, null); if (!ok) return; const r = await txAction(kind, tx, 'complete', { confirm: 'Чек прикреплён. Перевели ' + money(tx.amount) + ' ' + curSign(tx.currency) + ' клиенту?', okLabel: 'Да, перевёл', done: 'Вывод выполнен' }); if (r) ctx.done(); else ctx.refresh(); } }, svg('image', 22), 'Чек → Принять');
+-    else accept = h('button', { class: 'act accept', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const r = await txAction(kind, tx, 'complete', { confirm: 'Перевели ' + money(tx.amount) + ' ' + curSign(tx.currency) + ' клиенту?', okLabel: 'Да, перевёл', done: 'Вывод выполнен' }); busy(b, false); if (r) ctx.done(); } }, svg('check', 22), 'Принять');
++    else if (tx.receipt_required && !tx.has_receipt) accept = h('button', { class: 'act accept amber', onclick: async (e) => { const b = e.currentTarget; const ok = await pickReceipt(tx, null, { complete: true, busyBtn: b }); if (ok) go('#/home'); else ctx.refresh(); } }, svg('image', 22), 'Чек → Перевёл');
++    else accept = h('button', { class: 'act accept', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const r = await txAction(kind, tx, 'complete', { confirm: 'Перевели ' + money(tx.amount) + ' ' + curSign(tx.currency) + ' клиенту?', okLabel: 'Да, перевёл', done: 'Вывод выполнен' }); busy(b, false); if (r) go('#/home'); } }, svg('check', 22), 'Принять');
+     const reject = h('button', { class: 'act reject', onclick: async () => { const r = await txAction(kind, tx, dep ? 'reject' : 'fail', { askReason: 'Причина отказа', reasons: REJECT_REASONS[dep ? 'deposit' : 'withdrawal'], done: 'Отказано' }); if (r) ctx.done(); } }, svg('close', 22), 'Отказать');
+     return h('div', { class: 'action-bar' }, accept, reject);
+   }
+@@ -1111,15 +1111,55 @@
+     draw();
+     return h('div', { class: 'qr-wrap' }, tabs.length > 1 ? tabBar : h('div', { style: { height: '14px' } }), img, cap, links, tools.childNodes.length ? tools : null);
+   }
+-  async function pickReceipt(tx, refresh) {
++  /* RECEIPT_FAST_1_13_9_83: a phone photo (3–10 MB) is shrunk to a ~1600 px JPEG before the upload — a second
++     instead of a minute; anything the browser cannot draw (PDF, HEIC on Android) goes as it is */
++  function shrinkImage(file, max, quality) {
++    max = max || 1600; quality = quality || 0.82;
+     return new Promise((resolve) => {
+-      const input = h('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
+-      const cam = h('input', { type: 'file', accept: 'image/*', capture: 'environment', style: { display: 'none' } });
+-      const upload = async (file) => { if (!file) return resolve(false); const note = toast('Загружаю чек…', '', 60000); try { const fd = new FormData(); fd.append('file', file); await api('/withdrawals/' + tx.id + '/receipt', { method: 'POST', body: fd }); note.remove(); toast('Чек прикреплён', 'ok'); if (refresh) refresh(); resolve(true); } catch (e) { note.remove(); err(e); resolve(false); } };
++      if (!file || !/^image\//.test(file.type || '') || /gif|svg/.test(file.type) || file.size < 300000) return resolve(file);
++      const url = URL.createObjectURL(file); const img = new Image();
++      const done = (out) => { URL.revokeObjectURL(url); resolve(out || file); };
++      img.onload = () => {
++        try {
++          const k = Math.min(1, max / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
++          const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
++          const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
++          c.toBlob((blob) => done(blob && blob.size < file.size ? new File([blob], (String(file.name || 'receipt').replace(/\.[^.]+$/, '') || 'receipt') + '.jpg', { type: 'image/jpeg' }) : file), 'image/jpeg', quality);
++        } catch (e) { done(file); }
++      };
++      img.onerror = () => done(file);
++      img.src = url;
++    });
++  }
++  /* «Чек перевода»: with opts.complete the upload also presses «Перевёл» on the server (one request); resolves
++     true when the receipt is in. The promise waits for the camera however long it takes. */
++  async function pickReceipt(tx, refresh, opts) {
++    opts = opts || {};
++    document.querySelectorAll('input.receipt-pick').forEach((x) => x.remove());
++    return new Promise((resolve) => {
++      let settled = false;
++      const input = h('input', { class: 'receipt-pick', type: 'file', accept: 'image/*', style: { display: 'none' } });
++      const cam = h('input', { class: 'receipt-pick', type: 'file', accept: 'image/*', capture: 'environment', style: { display: 'none' } });
++      const finish = (v) => { if (settled) return; settled = true; input.remove(); cam.remove(); if (opts.busyBtn) busy(opts.busyBtn, false); resolve(v); };
++      const upload = async (picked) => {
++        if (!picked) return finish(false);
++        if (opts.busyBtn) busy(opts.busyBtn, true);
++        const note = toast(opts.complete ? 'Отправляю чек и закрываю вывод…' : 'Загружаю чек…', '', 60000);
++        try {
++          const file = await shrinkImage(picked);
++          const fd = new FormData(); fd.append('file', file, file.name || 'receipt.jpg');
++          await api('/withdrawals/' + tx.id + '/receipt' + (opts.complete ? '?complete=true' : ''), { method: 'POST', body: fd });
++          note.remove(); buzz(14);
++          toast(opts.complete ? 'Вывод выполнен — чек отправлен клиенту' : 'Чек прикреплён', 'ok', 2200);
++          document.dispatchEvent(new CustomEvent('paygo:changed'));
++          if (refresh && !opts.complete) refresh();
++          finish(true);
++        } catch (e) { note.remove(); err(e); if (refresh) refresh(); finish(false); }
++      };
+       input.onchange = () => upload(input.files[0]); cam.onchange = () => upload(cam.files[0]);
++      input.addEventListener('cancel', () => finish(false)); cam.addEventListener('cancel', () => finish(false));
+       document.body.appendChild(input); document.body.appendChild(cam);
+-      const s = actionSheet('Чек перевода', [{ label: 'Сделать фото', icon: 'image', onclick: () => cam.click() }, { label: 'Из галереи', icon: 'note', onclick: () => input.click() }]);
+-      const prev = s.close; s.close = () => { prev(); setTimeout(() => { if (!input.files.length && !cam.files.length) resolve(false); input.remove(); cam.remove(); }, 1500); };
++      actionSheet('Чек перевода', [{ label: 'Сделать фото', icon: 'image', onclick: () => cam.click() }, { label: 'Из галереи', icon: 'note', onclick: () => input.click() }]);
+     });
+   }
+   function relatedBlock(tx) {
+@@ -1409,7 +1449,7 @@
+           /* under the QR: «Загрузить чек» and, when the request carries a bank QR, «Оплатить в Optima24» — the
+              deep link opens the Optima24 app on the confirm screen with the recipient and amount filled in */
+           if (can('operations') && open) card.appendChild(h('div', { class: 'qr-actions' },
+-            tx.has_receipt ? h('button', { class: 'upload-btn done', type: 'button', onclick: () => pickReceipt(tx, ctx.refresh) }, svg('check', 20), 'Чек прикреплён · заменить') : h('button', { class: 'upload-btn', type: 'button', onclick: () => pickReceipt(tx, ctx.refresh) }, svg('upload', 20), 'Загрузить чек'),
++            tx.has_receipt ? h('button', { class: 'upload-btn done', type: 'button', onclick: () => pickReceipt(tx, ctx.refresh) }, svg('check', 20), 'Чек прикреплён · заменить') : h('button', { class: 'upload-btn', type: 'button', onclick: async (e) => { if (await pickReceipt(tx, ctx.refresh, { complete: true, busyBtn: e.currentTarget })) go('#/home'); } }, svg('upload', 20), 'Загрузить чек — перевёл'),
+             tx.optima_pay_link ? h('a', { class: 'optima-btn', href: tx.optima_pay_link, target: '_blank', rel: 'noopener' }, h('img', { src: 'brand/banks/optima.png', alt: '' }), 'Оплатить в Optima24') : null,
+             r.payment_links && r.payment_links.length ? h('button', { class: 'more-banks', type: 'button', onclick: () => actionSheet('Открыть QR в банке', r.payment_links.map((l) => ({ label: l.name, icon: 'send', onclick: () => window.open(l.url, '_blank', 'noopener') }))) }, 'Открыть в другом банке') : null));
+         }
+@@ -1456,15 +1496,29 @@
+   }
+ 
+   /* ------------------------------------------------------------- menu: account, theme, sections (operators see only what they need) */
+-  const MENU = [['audit', 'shield', 'Сверка 1WIN', 'red', 'cashes'], ['expenses', 'receipt', 'Расходы', 'yellow', 'cashes'], ['top', 'trophy', 'Топ пополнения', 'purple', 'cashes'], ['stats', 'stats', 'Аналитика', 'blue', 'view'], ['quick', 'bolt', 'Быстрые ответы', 'yellow', 'support'], ['wallets', 'qr', 'Кошельки', 'purple', 'settings'], ['settings', 'settings', 'Настройки', 'gray', 'settings'], ['logs', 'terminal', 'Логи', 'red', 'logs'], ['broadcast', 'send', 'Рассылки', 'teal', 'settings'], ['cashes', 'wallet', 'Кассы', 'green', 'cashes'], ['sites', 'settings', 'Сайты', 'teal', 'settings'], ['crypto', 'wallet', 'Крипта', 'yellow', 'cashes'], ['wheel', 'bolt', 'Фриспин', 'teal', 'settings'], ['security', 'shield', 'Безопасность', 'teal', 'settings'], ['tg', 'send', 'Telegram-аккаунт', 'blue', 'settings']];
++  /* MENU_1_13_9_83: four groups, nothing extra — [route, icon, label, colour, permission] */
++  const MENU_GROUPS = [
++    ['Финансы', [['stats', 'stats', 'Аналитика', 'blue', 'view'], ['expenses', 'receipt', 'Расходы', 'yellow', 'cashes'], ['audit', 'shield', 'Сверка 1WIN', 'red', 'cashes'], ['top', 'trophy', 'Топ пополнения', 'purple', 'cashes']]],
++    ['Клиенты', [['quick', 'bolt', 'Быстрые ответы', 'yellow', 'support'], ['broadcast', 'send', 'Рассылки', 'teal', 'settings'], ['wheel', 'gift', 'Фриспин', 'purple', 'settings']]],
++    ['Кассы и оплата', [['cashes', 'wallet', 'Кассы', 'green', 'cashes'], ['wallets', 'qr', 'Кошельки', 'blue', 'settings'], ['sites', 'globe', 'Сайты', 'teal', 'settings']]],
++    ['Система', [['settings', 'settings', 'Настройки', 'gray', 'settings'], ['tg', 'send', 'Telegram-аккаунт', 'blue', 'settings'], ['security', 'lock', 'Безопасность', 'teal', 'settings'], ['logs', 'terminal', 'Логи', 'red', 'logs']]],
++  ];
+   const ROLE_LABEL = { owner: 'Владелец', admin: 'Администратор', operator: 'Оператор', viewer: 'Просмотр' };
+   function menuView(shell) {
+     const screen = h('section', { class: 'screen' }); shell.appendChild(screen);
+     const a = state.admin;
+     screen.appendChild(h('div', { class: 'card account menu-acc' }, h('span', { class: 'menu-acc-ico' }, svg('user', 22)), h('div', null, h('b', null, 'Мой аккаунт'), h('small', null, (a.name || a.username) + ' · ' + (ROLE_LABEL[a.role] || a.role)))));
+     screen.appendChild(h('div', { class: 'card theme-row' }, h('b', null, 'Тема'), segEl([['light', 'Светлая'], ['dark', 'Тёмная']], themeName(), (k) => { applyTheme(k); render(); }, 'light')));
+-    const rows = MENU.filter((m) => can(m[4]) && (!['security', 'tg'].includes(m[0]) || String((state.admin || {}).username || '').toLowerCase() === 'admin'));
+-    screen.appendChild(h('div', { class: 'menu-grid' }, rows.map((m) => h('button', { class: 'card menu-tile', type: 'button', onclick: () => go('#/' + m[0]) }, h('span', { class: 'ico menu-color ' + m[3] }, svg(m[1], 20)), h('b', null, m[2]))), h('button', { class: 'card menu-tile danger', type: 'button', onclick: logout }, h('span', { class: 'ico menu-color red' }, svg('logout', 20)), h('b', null, 'Выйти'))));
++    const owner = String((state.admin || {}).username || '').toLowerCase() === 'admin';
++    const tile = (m, i) => h('button', { class: 'card menu-tile', type: 'button', style: { '--i': i }, onclick: () => go('#/' + m[0]) }, h('span', { class: 'ico menu-color ' + m[3] }, svg(m[1], 20)), h('b', null, m[2]));
++    let n = 0;
++    MENU_GROUPS.forEach(([title, items]) => {
++      const rows = items.filter((m) => can(m[4]) && (!['security', 'tg'].includes(m[0]) || owner));
++      if (!rows.length) return;
++      screen.appendChild(h('div', { class: 'menu-sec' }, title));
++      screen.appendChild(h('div', { class: 'menu-grid' }, rows.map((m) => tile(m, n++))));
++    });
++    screen.appendChild(h('button', { class: 'card menu-logout', type: 'button', onclick: logout }, svg('logout', 20), 'Выйти из аккаунта'));
+   }
+ 
+   /* ------------------------------------------------------------- analytics (Аналитика) */
+@@ -1485,29 +1539,31 @@
+         box.innerHTML = ''; box.appendChild(h('button', { class: 'period-btn', type: 'button', onclick: pickPeriod }, svg('calendar', 24), st.label));
+         const allCashes = cs.items || [];
+         const cashes = allCashes.filter((c) => c.key === '1win');
+-        const rows = (r.by_cash || []).filter((c) => c.cash === '1win');
+-        const feeOf = (name) => cashes.find((c) => c.name === name) || {};
+-                /* NET_PROFIT_UI_1_13_9_35: fixed business economics; tiyins are NOT part of this KPI. */
++        /* XBET_INCOME_1_13_9_83: every 1WIN desk (satellites too) and the 1xBet (Mobcash) desk, each with its own economics */
++        const groupOf = (c) => c.group || (/xbet/i.test(String(c.cash || '')) ? '1xbet' : (/^1win/i.test(String(c.cash || '')) ? '1win' : 'other'));
++        const rows = (r.by_cash || []).filter((c) => groupOf(c) === '1win');
++        const xrows = (r.by_cash || []).filter((c) => groupOf(c) === '1xbet');
++        const feeOf = (name) => allCashes.find((c) => c.name === name) || {};
++        /* NET_PROFIT_UI_1_13_9_35: fixed business economics; tiyins are NOT part of this KPI. */
+         const PROFIT_DEPOSIT_PCT = 10;
+         const PROFIT_WITHDRAW_PCT = 2;
+         const BANK_INCOMING_PCT = 1;
+         const BANK_WITHDRAW_PCT = 0.8;
+-        const incomeOf = (c) => {
+-          const d = Number(c.deposits_sum || 0);
+-          const w = Number(c.withdrawals_sum || 0);
+-          return d * PROFIT_DEPOSIT_PCT / 100 + w * PROFIT_WITHDRAW_PCT / 100 - d * BANK_INCOMING_PCT / 100 - w * BANK_WITHDRAW_PCT / 100;
+-        };
+-        const depositsBase = Number(r.deposits_sum || 0);
+-        const withdrawalsBase = Number(r.withdrawals_sum || 0);
+-        const depositIncome = depositsBase * PROFIT_DEPOSIT_PCT / 100;
+-        const withdrawIncome = withdrawalsBase * PROFIT_WITHDRAW_PCT / 100;
+-        const bankIncomingLoss = depositsBase * BANK_INCOMING_PCT / 100;
+-        const bankWithdrawLoss = withdrawalsBase * BANK_WITHDRAW_PCT / 100;
+-        const income = depositIncome + withdrawIncome - bankIncomingLoss - bankWithdrawLoss;
+-        const depSum = rows.reduce((a, c) => a + Number(c.deposits_sum || 0), 0);
+-        const depCount = rows.reduce((a, c) => a + Number(c.deposits_count || 0), 0);
+-        const wdSum = rows.reduce((a, c) => a + Number(c.withdrawals_sum || 0), 0);
+-        const wdCount = rows.reduce((a, c) => a + Number(c.withdrawals_count || 0), 0);
++        const fees = r.fees || {};
++        const XBET_DEPOSIT_PCT = Number(fees.xbet_deposit_pct == null ? 8 : fees.xbet_deposit_pct);
++        const XBET_WITHDRAW_PCT = Number(fees.xbet_withdraw_pct == null ? 2 : fees.xbet_withdraw_pct);
++        const pctTxt = (v) => String(v).replace('.', ',') + '%';
++        const calc = (d, w, dp, wp) => { const di = d * dp / 100, wi = w * wp / 100, bi = d * BANK_INCOMING_PCT / 100, bo = w * BANK_WITHDRAW_PCT / 100; return { di, wi, bi, bo, net: di + wi - bi - bo }; };
++        const incomeOf = (c) => (groupOf(c) === '1xbet' ? calc(Number(c.deposits_sum || 0), Number(c.withdrawals_sum || 0), XBET_DEPOSIT_PCT, XBET_WITHDRAW_PCT) : calc(Number(c.deposits_sum || 0), Number(c.withdrawals_sum || 0), PROFIT_DEPOSIT_PCT, PROFIT_WITHDRAW_PCT)).net;
++        const sumOf = (list, k) => list.reduce((a, c) => a + Number(c[k] || 0), 0);
++        const depSum = sumOf(rows, 'deposits_sum'), depCount = sumOf(rows, 'deposits_count'), wdSum = sumOf(rows, 'withdrawals_sum'), wdCount = sumOf(rows, 'withdrawals_count');
++        const xDep = sumOf(xrows, 'deposits_sum'), xDepN = sumOf(xrows, 'deposits_count'), xWd = sumOf(xrows, 'withdrawals_sum'), xWdN = sumOf(xrows, 'withdrawals_count');
++        const w1 = calc(depSum, wdSum, PROFIT_DEPOSIT_PCT, PROFIT_WITHDRAW_PCT);
++        const x1 = calc(xDep, xWd, XBET_DEPOSIT_PCT, XBET_WITHDRAW_PCT);
++        const income = w1.net + x1.net;
++        const spent = r.spent || {};
++        const spentSum = Number(spent.expenses_sum || 0);
++        const tops = spent.topups || {};
+         /* the cash desk API (1xbet & co) names things the other way round: its «Limit» is the money the desk can
+            still pay out — the real balance, shown here as the limit; its «Balance» is the desk's turnover */
+         const has = (v) => v !== null && v !== undefined && v !== '';
+@@ -1515,20 +1571,31 @@
+         const limit = cashes.reduce((a, c) => a + num(c.last_limit), 0);
+         const turnover = cashes.reduce((a, c) => a + num(c.last_balance), 0);
+         const usd = Number(r.usd_rate) > 0 ? income / Number(r.usd_rate) : 0;
+-        box.appendChild(h('div', { class: 'dark-card' }, h('div', { class: 'cap' }, 'Приблизительный доход'), h('div', { class: 'big' }, money(income) + ' ₽'), h('div', { class: 'sub' }, '~ ' + money0(usd) + ' $'), h('div', { class: 'grid' }, h('div', null, h('small', null, 'Выводы 1WIN'), h('b', null, money0(wdSum) + ' ₽')), h('div', null, h('small', null, 'Лимит 1WIN'), h('b', null, money0(limit) + ' ₽')))));
+-        box.appendChild(h('div', { class: 'stat2' }, h('div', { class: 'card stat-card green' }, h('div', { class: 'ico' }, svg('arrowUR', 22)), h('div', { class: 'l' }, 'Пополнения'), h('div', { class: 'v' }, money0(depSum) + ' ₽'), h('span', { class: 'chip' }, depCount + ' транзакций')), h('div', { class: 'card stat-card red' }, h('div', { class: 'ico' }, svg('arrowDL', 22)), h('div', { class: 'l' }, 'Выводы'), h('div', { class: 'v' }, money0(wdSum) + ' ₽'), h('span', { class: 'chip' }, wdCount + ' транзакций'))));
+-                /* NET_PROFIT_BREAKDOWN_1_13_9_35 */
++        box.appendChild(h('div', { class: 'dark-card' }, h('div', { class: 'cap' }, 'Приблизительный доход'), h('div', { class: 'big' }, money(income) + ' ₽'), h('div', { class: 'sub' }, '~ ' + money0(usd) + ' $'), h('div', { class: 'grid' }, h('div', null, h('small', null, 'Доход 1WIN'), h('b', null, money0(w1.net) + ' ₽')), h('div', null, h('small', null, 'Доход 1xBet'), h('b', null, money0(x1.net) + ' ₽')))));
++        box.appendChild(h('div', { class: 'stat2' }, h('div', { class: 'card stat-card green' }, h('div', { class: 'ico' }, svg('arrowUR', 22)), h('div', { class: 'l' }, 'Пополнения'), h('div', { class: 'v' }, money0(depSum + xDep) + ' ₽'), h('span', { class: 'chip' }, (depCount + xDepN) + ' транзакций')), h('div', { class: 'card stat-card red' }, h('div', { class: 'ico' }, svg('arrowDL', 22)), h('div', { class: 'l' }, 'Выводы'), h('div', { class: 'v' }, money0(wdSum + xWd) + ' ₽'), h('span', { class: 'chip' }, (wdCount + xWdN) + ' транзакций'))));
++        /* NET_PROFIT_BREAKDOWN_1_13_9_35 */
++        const calcCard = (title, d, dn, w, wn, c, dp, wp) => h('div', { class: 'card list-card' },
++          h('div', { class: 'cap' }, svg('layers', 18), title),
++          h('div', { class: 'kv-row' }, h('span', null, 'Пополнения · ' + dn), h('span', { class: 'amt' }, money0(d) + ' ₽')),
++          h('div', { class: 'kv-row' }, h('span', null, 'Выводы · ' + wn), h('span', { class: 'amt' }, money0(w) + ' ₽')),
++          h('div', { class: 'kv-row' }, h('span', null, 'Доход с пополнений · ' + pctTxt(dp)), h('span', { class: 'amt' }, '+' + money(c.di) + ' ₽')),
++          h('div', { class: 'kv-row' }, h('span', null, 'Доход с выводов · ' + pctTxt(wp)), h('span', { class: 'amt' }, '+' + money(c.wi) + ' ₽')),
++          h('div', { class: 'kv-row' }, h('span', null, 'Банк за поступления · 1%'), h('span', { class: 'amt' }, '−' + money(c.bi) + ' ₽')),
++          h('div', { class: 'kv-row' }, h('span', null, 'Банк за вывод · 0,8%'), h('span', { class: 'amt' }, '−' + money(c.bo) + ' ₽')),
++          h('div', { class: 'kv-row hl' }, h('span', { class: 'lbl-ico' }, svg('wallet', 20), 'Чистый доход'), h('span', { class: 'amt' }, money(c.net) + ' ₽')));
+         box.appendChild(h('div', { class: 'section-cap' }, 'Калькуляция дохода'));
++        box.appendChild(calcCard('1WIN', depSum, depCount, wdSum, wdCount, w1, PROFIT_DEPOSIT_PCT, PROFIT_WITHDRAW_PCT));
++        box.appendChild(calcCard('1xBet', xDep, xDepN, xWd, xWdN, x1, XBET_DEPOSIT_PCT, XBET_WITHDRAW_PCT));
++        box.appendChild(h('div', { class: 'section-cap' }, 'Расходы и деп на кассу'));
+         box.appendChild(h('div', { class: 'card list-card' },
+-          h('div', { class: 'kv-row' }, h('span', null, 'Доход с пополнений · 10%'), h('span', { class: 'amt' }, '+' + money(depositIncome) + ' ₽')),
+-          h('div', { class: 'kv-row' }, h('span', null, 'Доход с выводов · 2%'), h('span', { class: 'amt' }, '+' + money(withdrawIncome) + ' ₽')),
+-          h('div', { class: 'kv-row' }, h('span', null, 'Банк за поступления · 1%'), h('span', { class: 'amt' }, '−' + money(bankIncomingLoss) + ' ₽')),
+-          h('div', { class: 'kv-row' }, h('span', null, 'Банк за вывод · 0,8%'), h('span', { class: 'amt' }, '−' + money(bankWithdrawLoss) + ' ₽')),
+-          h('div', { class: 'kv-row hl' }, h('span', { class: 'lbl-ico' }, svg('wallet', 20), 'Приблизительный чистый доход'), h('span', { class: 'amt' }, money(income) + ' ₽'))
+-        ));
++          h('div', { class: 'kv-row' }, h('span', null, 'Расходы · ' + (spent.expenses_count || 0)), h('span', { class: 'amt' }, '−' + money0(spentSum) + ' ₽')),
++          h('div', { class: 'kv-row' }, h('span', null, 'Деп на кассу 1WIN'), h('span', { class: 'amt' }, money0(tops['1win'] || 0) + ' ₽')),
++          h('div', { class: 'kv-row' }, h('span', null, 'Деп на кассу 1xBet'), h('span', { class: 'amt' }, money0(tops['1xbet'] || 0) + ' ₽')),
++          h('div', { class: 'kv-row hl' }, h('span', { class: 'lbl-ico' }, svg('wallet', 20), 'Доход минус расходы'), h('span', { class: 'amt' }, money(income - spentSum) + ' ₽')),
++          h('div', { class: 'muted small', style: { marginTop: '6px' } }, 'Деп на кассу — свои деньги на кассу, не расход и не доход.')));
+ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' }, svg('layers', 18), '1WIN · баланс и лимит'), cashes.length ? cashes.map((c) => h('div', { class: 'kv-row' }, c.name, h('span', { class: 'amt' }, has(c.last_limit) ? money0(c.last_limit) + ' ₽' : '—'))) : h('div', { class: 'muted' }, 'Касс нет'), h('div', { class: 'kv-row hl' }, h('span', { class: 'lbl-ico' }, svg('wallet', 20), 'Оборот 1WIN'), h('span', { class: 'amt' }, money0(turnover) + ' ₽'))));
+         box.appendChild(h('div', { class: 'section-cap' }, 'Разбивка по шлюзам'));
+-        rows.forEach((c) => { const cash = feeOf(c.name); box.appendChild(h('div', { class: 'card gw-card' }, h('div', { class: 'head' }, h('b', null, c.name), h('span', { class: 'income' }, 'Чистый доход: ' + money(incomeOf(c)) + ' ₽')), h('div', { class: 'cols' }, h('div', null, h('small', null, 'Ввод'), h('b', null, money0(c.deposits_sum) + ' ₽'), h('em', null, c.deposits_count + ' операций')), h('div', null, h('small', null, 'Вывод'), h('b', null, money0(c.withdrawals_sum) + ' ₽'), h('em', null, c.withdrawals_count + ' операций'))), h('div', { class: 'foot' }, 'Лимит (баланс кассы):', h('b', null, has(cash.last_limit) ? money0(cash.last_limit) + ' ₽' : '—')), h('div', { class: 'foot' }, 'Оборот кассы:', h('b', null, has(cash.last_balance) ? money0(cash.last_balance) + ' ₽' : money0(Number(c.deposits_sum) + Number(c.withdrawals_sum)) + ' ₽')))); });
++        rows.concat(xrows).forEach((c) => { const cash = feeOf(c.name); box.appendChild(h('div', { class: 'card gw-card' }, h('div', { class: 'head' }, h('b', null, c.name), h('span', { class: 'income' }, 'Чистый доход: ' + money(incomeOf(c)) + ' ₽')), h('div', { class: 'cols' }, h('div', null, h('small', null, 'Ввод'), h('b', null, money0(c.deposits_sum) + ' ₽'), h('em', null, c.deposits_count + ' операций')), h('div', null, h('small', null, 'Вывод'), h('b', null, money0(c.withdrawals_sum) + ' ₽'), h('em', null, c.withdrawals_count + ' операций'))), h('div', { class: 'foot' }, 'Лимит (баланс кассы):', h('b', null, has(cash.last_limit) ? money0(cash.last_limit) + ' ₽' : '—')), h('div', { class: 'foot' }, 'Оборот кассы:', h('b', null, has(cash.last_balance) ? money0(cash.last_balance) + ' ₽' : money0(Number(c.deposits_sum) + Number(c.withdrawals_sum)) + ' ₽')))); });
+ 
+         /* TIYIN_TABLE_UI_1_13_9_35 -- separate from approximate profit; 1 som = 100 tiyin. */
+         const tiyinRows = (r.by_cash || []).filter((c) => Number(c.tiyin_count || 0) > 0);
+@@ -2012,7 +2079,6 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+       box.innerHTML = ''; box.appendChild(loader());
+       let r; try { r = await api('/sites'); } catch (e) { box.innerHTML = ''; box.appendChild(empty('Не удалось загрузить', e.message)); return; }
+       const frag = h('div', { class: 'sites' });
+-      frag.appendChild(h('div', { class: 'card setting-row' }, h('div', null, h('b', null, '🪙 Криптовалюта (USDT)'), h('small', null, r.crypto_configured ? 'Токен подключён · вкладка «Крипта»' : 'Токен не задан — вкладка «Крипта»')), switchEl(!!r.crypto_master, (val) => toggle('all', 'crypto_master', val))));
+       frag.appendChild(h('div', { class: 'card setting-row' }, h('div', null, h('b', null, '🎡 Фриспин (колесо)'), h('small', null, 'Бесплатный прокрут · настройки во вкладке «Фриспин»')), switchEl(!!r.wheel_master, (val) => toggle('all', 'wheel_master', val))));
+       (r.bots || []).forEach((b) => {
+         const card = h('div', { class: 'card site-card' });
+@@ -2020,7 +2086,6 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+         const row = (label, target, on, sub) => h('div', { class: 'setting-row' }, h('div', null, h('span', null, label), sub ? h('small', { class: 'muted' }, ' ' + sub) : null), switchEl(!!on, (val) => toggle(b.bot, target, val)));
+         card.appendChild(row('Пополнения', 'deposits', b.deposits));
+         card.appendChild(row('Выводы', 'withdrawals', b.withdrawals));
+-        card.appendChild(row('🪙 Крипта (USDT)', 'crypto', b.crypto_toggle, b.crypto ? '' : (r.crypto_configured ? '' : '· нет токена')));
+         card.appendChild(row('🎡 Фриспин', 'wheel', b.wheel_toggle, b.wheel ? '' : (r.wheel_master ? '' : '· выключен сверху')));
+         if ((b.cashes || []).length) { card.appendChild(h('div', { class: 'site-sub' }, 'Букмекеры')); (b.cashes || []).forEach((c) => card.appendChild(row((c.emoji ? c.emoji + ' ' : '') + c.name, 'cash:' + c.key, c.on, c.global_enabled ? '' : '· выключена глобально'))); }
+         frag.appendChild(card);
+@@ -2044,7 +2109,7 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+         const inp = (k) => h('input', { class: 'input', value: (v[k] == null ? '' : String(v[k])) });
+         const amt = inp('wheel_win_amount'), cap = inp('wheel_daily_win_cap'), ch = inp('wheel_win_chance_pct'), nd = inp('wheel_new_client_days'), nc = inp('wheel_new_client_chance_pct'), bm = inp('wheel_big_client_min'), bc = inp('wheel_big_client_chance_pct');
+         frag.appendChild(h('div', { class: 'card crypto-cfg' },
+-          h('label', { class: 'field' }, h('span', null, 'Приз (пополнение), сом'), amt),
++          h('label', { class: 'field' }, h('span', null, 'Приз 1xBet (пополнение), сом'), amt),
+           h('label', { class: 'field' }, h('span', null, 'Лимит выигрышей в сутки'), cap),
+           h('label', { class: 'field' }, h('span', null, 'Базовый шанс выигрыша, %'), ch),
+           h('label', { class: 'field' }, h('span', null, 'Новый клиент: дней с регистрации'), nd),
+@@ -2053,10 +2118,29 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+           h('label', { class: 'field' }, h('span', null, 'Шанс для крупных клиентов, %'), bc),
+           h('button', { class: 'primary-btn', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; try { await api('/wheel/settings', { method: 'POST', body: { values: { wheel_win_amount: parseInt(amt.value) || 0, wheel_daily_win_cap: parseInt(cap.value) || 0, wheel_win_chance_pct: parseInt(ch.value) || 0, wheel_new_client_days: parseInt(nd.value) || 0, wheel_new_client_chance_pct: parseInt(nc.value) || 0, wheel_big_client_min: parseInt(bm.value) || 0, wheel_big_client_chance_pct: parseInt(bc.value) || 0 } } }); toast('Сохранено', 'ok'); } catch (ex) { err(ex); } b.disabled = false; } }, 'Сохранить')));
+       }
++      /* WHEEL_VOUCHERS_1_13_9_83: the 1WIN voucher list — a 1WIN winner gets the next code at once */
++      const vfree = Number(t.vouchers_free || 0), vgiven = Number(t.vouchers_given || 0);
++      if (can('settings')) {
++        const ta = h('textarea', { class: 'input wv-codes', rows: 5, placeholder: 'Вставьте коды ваучеров 1WIN — по одному в строке' });
++        const addB = h('button', { class: 'primary-btn', type: 'button', onclick: async (e) => { const b = e.currentTarget; if (!ta.value.trim()) { toast('Вставьте коды', 'err'); return; } busy(b, true); try { const rr = await api('/wheel/vouchers', { method: 'POST', body: { text: ta.value } }); toast('Добавлено: ' + rr.added + (rr.duplicates_count ? ' · повторы пропущены: ' + rr.duplicates_count : '') + (rr.bad_count ? ' · не коды: ' + rr.bad_count : ''), 'ok', 3200); render(); } catch (ex) { err(ex); busy(b, false); } } }, svg('upload', 18), 'Загрузить ваучеры');
++        const clr = vfree ? h('button', { class: 'outline-btn danger', type: 'button', onclick: async () => { if (!(await confirmDialog('Удалить ' + vfree + ' невыданных ваучеров из списка?', 'Удалить', true))) return; try { await api('/wheel/vouchers', { method: 'DELETE' }); toast('Список очищен', 'ok'); render(); } catch (ex) { err(ex); } } }, 'Очистить невыданные') : null;
++        frag.appendChild(h('div', { class: 'card wv-card' },
++          h('div', { class: 'wv-head' }, h('b', null, '🎟 Ваучеры 1WIN'), h('span', { class: 'wv-count' + (vfree ? '' : ' empty') }, 'осталось ' + vfree + ' · выдано ' + vgiven)),
++          h('small', { class: 'muted' }, 'Выиграл клиент 1WIN — сразу получает следующий код: в колесе с кнопкой «Скопировать» и сообщением в боте. Клиентам 1xBet — приз пополнением через поддержку.'),
++          ta, h('div', { class: 'wv-btns' }, addB, clr)));
++      }
+       frag.appendChild(h('div', { class: 'crypto-sec' }, 'Выигрыши'));
+       const wins = r.wins || [];
+       if (!wins.length) frag.appendChild(empty('Пока нет выигрышей', '', 'gift'));
+       else wins.forEach((w) => {
++        if (w.prize_type === 'voucher') {
++          frag.appendChild(h('div', { class: 'card crypto-ord wv-win' },
++            h('div', { class: 'co-head' }, h('b', null, '🎟 Ваучер 1WIN'), h('span', { class: 'co-badge green' }, 'выдан')),
++            h('div', { class: 'co-sub' }, (w.client || '') + (w.client_username ? ' · @' + w.client_username : '')),
++            w.voucher_code ? h('button', { class: 'wv-code', type: 'button', title: 'Скопировать', onclick: () => copy(w.voucher_code) }, h('span', null, w.voucher_code), svg('copy', 15)) : null,
++            h('div', { class: 'co-sub muted' }, fmtDate(w.created_at))));
++          return;
++        }
+         const st = { claimable: ['amber', 'ждёт пополнения'], claimed: ['blue', 'в работе'], credited: ['green', 'выплачено'], rejected: ['red', 'отклонено'] }[w.status] || ['', w.status];
+         frag.appendChild(h('div', { class: 'card crypto-ord' },
+           h('div', { class: 'co-head' }, h('b', null, money0(w.amount) + ' ' + curSign('KGS')), h('span', { class: 'co-badge ' + st[0] }, st[1])),
+@@ -2085,52 +2169,6 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+       h('button', { class: 'primary-btn', onclick: async (e) => { const b = e.currentTarget; const pid = (idInp.value || '').replace(/\D/g, ''); if (!pid) { toast('Введите ID', 'err'); return; } b.disabled = true; try { const r = await api('/wheel/' + win.id + '/credit', { method: 'POST', body: { cash_id: chosen, player_id: pid } }); if (r.ok) { toast('Приз зачислён', 'ok'); sh.close(); if (reload) reload(); } else { toast(r.message || 'Не удалось зачислить', 'err'); b.disabled = false; } } catch (ex) { err(ex); b.disabled = false; } } }, 'Зачислить ' + money0(win.amount)),
+       h('button', { class: 'action-btn', onclick: () => sh.close() }, 'Отмена')] });
+   }
+-  async function cryptoView(shell) {
+-    const box = page(shell, 'Крипта');
+-    const render = async () => {
+-      box.innerHTML = ''; box.appendChild(loader());
+-      let r; try { r = await api('/crypto'); } catch (e) { box.innerHTML = ''; box.appendChild(empty('Не удалось загрузить', e.message)); return; }
+-      const v = r.settings || {}, t = r.totals || {};
+-      const frag = h('div', { class: 'crypto' });
+-      frag.appendChild(h('div', { class: 'card setting-row' }, h('div', null, h('b', null, 'Crypto Pay (CryptoBot)'), h('small', null, r.configured ? '✅ токен подключён' : '❌ токен не задан')), can('settings') ? h('button', { class: 'outline-btn', onclick: async () => { const val = await promptDialog('Токен Crypto Pay', 'Вставьте API Token приложения из @CryptoBot', '642440:AA...'); if (!val) return; try { await api('/crypto/token', { method: 'POST', body: { token: String(val).trim() } }); toast('Токен сохранён', 'ok'); render(); } catch (ex) { err(ex); } } }, r.configured ? 'Сменить' : 'Задать токен') : null));
+-      frag.appendChild(h('div', { class: 'card crypto-tot' },
+-        h('div', { class: 'ct-row' }, h('div', null, h('small', null, 'Пополнения'), h('b', null, (t.deposit_usdt || '0') + ' USDT')), h('div', null, h('small', null, 'в сомах'), h('b', null, money0(t.deposit_som || 0)))),
+-        h('div', { class: 'ct-row' }, h('div', null, h('small', null, 'Выводы'), h('b', null, (t.withdraw_usdt || '0') + ' USDT')), h('div', null, h('small', null, 'в сомах'), h('b', null, money0(t.withdraw_som || 0)))),
+-        h('div', { class: 'ct-row' }, h('div', null, h('small', null, 'Чистыми'), h('b', null, (t.net_usdt || '0') + ' USDT')), h('div', null, h('small', null, 'ожидают (поп/выв)'), h('b', null, (t.pending_deposit || 0) + ' / ' + (t.pending_withdraw || 0))))));
+-      if (can('settings')) {
+-        const inp = (key) => h('input', { class: 'input', value: (v[key] == null ? '' : String(v[key])) });
+-        const dr = inp('crypto_deposit_rate'), wr = inp('crypto_withdraw_rate'), fee = inp('crypto_fee_pct'), nets = inp('crypto_networks');
+-        frag.appendChild(h('div', { class: 'card crypto-cfg' },
+-          h('label', { class: 'field' }, h('span', null, 'Курс пополнения (сом за 1 USDT)'), dr),
+-          h('label', { class: 'field' }, h('span', null, 'Курс вывода (сом за 1 USDT)'), wr),
+-          h('label', { class: 'field' }, h('span', null, 'Комиссия клиента, %'), fee),
+-          h('label', { class: 'field' }, h('span', null, 'Сети (через запятую)'), nets),
+-          h('button', { class: 'primary-btn', onclick: async (e) => { const btn = e.currentTarget; btn.disabled = true; try { await api('/crypto/settings', { method: 'POST', body: { values: { crypto_deposit_rate: parseFloat(dr.value) || 0, crypto_withdraw_rate: parseFloat(wr.value) || 0, crypto_fee_pct: parseFloat(fee.value) || 0, crypto_networks: nets.value } } }); toast('Сохранено', 'ok'); } catch (ex) { err(ex); } btn.disabled = false; } }, 'Сохранить курсы')));
+-      }
+-      const badge = { created: ['amber', 'ожидает оплаты'], paid: ['blue', 'оплачено'], credited: ['green', 'зачислено'], completed: ['green', 'выплачено'], cancelled: ['red', 'отменено'], failed: ['red', 'ошибка'], expired: ['', 'истекло'] };
+-      const orderCard = (o) => {
+-        const st = badge[o.status] || ['', o.status];
+-        const card = h('div', { class: 'card crypto-ord' },
+-          h('div', { class: 'co-head' }, h('b', null, o.usdt + ' USDT'), h('span', { class: 'co-badge ' + st[0] }, st[1])),
+-          h('div', { class: 'co-sub' }, money0(o.som) + ' ' + curSign('KGS') + ' · ' + (o.network || '') + ' · ' + (o.cash_name || '') + ' · ID ' + (o.player_id || '—')),
+-          h('div', { class: 'co-sub muted' }, (o.client || '') + ' · ' + fmtDate(o.created_at) + (o.error ? ' · ' + o.error : '')));
+-        if (o.address) card.appendChild(h('div', { class: 'co-addr', title: 'Копировать', onclick: () => copyText(o.address) }, svg('copy', 13), o.address));
+-        if (o.code) card.appendChild(h('div', { class: 'co-sub' }, 'Код кассы: ', h('b', null, o.code)));
+-        if (o.kind === 'withdraw' && o.status === 'created' && can('operations')) card.appendChild(h('div', { class: 'btn-row' },
+-          h('button', { class: 'outline-btn green', onclick: async () => { const tx = await promptDialog('Выплата USDT', 'Хэш транзакции (необязательно)', '0x...'); try { await api('/crypto/' + o.id + '/action', { method: 'POST', body: { action: 'complete', tx_hash: tx ? String(tx).trim() : '' } }); toast('Отмечено выплаченным', 'ok'); render(); } catch (ex) { err(ex); } } }, 'Выплатил'),
+-          h('button', { class: 'outline-btn danger', onclick: async () => { if (!(await confirmDialog('Отклонить заявку на вывод?', 'Отклонить', true))) return; try { await api('/crypto/' + o.id + '/action', { method: 'POST', body: { action: 'reject' } }); toast('Отклонено', 'ok'); render(); } catch (ex) { err(ex); } } }, 'Отклонить')));
+-        if (o.kind === 'deposit' && o.status === 'paid' && can('operations')) card.appendChild(h('button', { class: 'outline-btn blue', onclick: async () => { try { const rr = await api('/crypto/' + o.id + '/action', { method: 'POST', body: { action: 'recredit' } }); toast(rr.ok ? 'Зачислено' : 'Не удалось — проверьте кассу', rr.ok ? 'ok' : 'err'); render(); } catch (ex) { err(ex); } } }, 'Зачислить ещё раз'));
+-        return card;
+-      };
+-      const deps = r.deposits || [], wds = r.withdrawals || [];
+-      frag.appendChild(h('div', { class: 'crypto-sec' }, 'Пополнения криптой'));
+-      if (deps.length) deps.forEach((o) => frag.appendChild(orderCard(o))); else frag.appendChild(empty('Пока нет', '', 'wallet'));
+-      frag.appendChild(h('div', { class: 'crypto-sec' }, 'Выводы криптой'));
+-      if (wds.length) wds.forEach((o) => frag.appendChild(orderCard(o))); else frag.appendChild(empty('Пока нет', '', 'wallet'));
+-      box.innerHTML = ''; box.appendChild(frag);
+-    };
+-    render();
+-  }
+   async function cashesView(shell) {
+     const box = page(shell, 'Кассы', { right: can('cashes') ? h('button', { class: 'icon-btn', onclick: () => cashForm(null), 'aria-label': 'Добавить' }, svg('plus', 26)) : null });
+     try {
+@@ -2357,7 +2395,8 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+   function expenseQuick(pre) {
+     pre = pre || {};
+     const meta = EXP_META || { suggestions: [], categories: EXP_CATS };
+-    const st = { cat: pre.category || '' };
++    /* CASH_TOPUP_1_13_9_83: «Деп на кассу» — own money put into the 1WIN / 1xBet desk; not spending */
++    const st = { cat: pre.category || '', kind: pre.kind === 'cash_topup' ? 'cash_topup' : 'expense', cash: pre.cash === '1xbet' ? '1xbet' : '1win' };
+     const amount = h('input', { class: 'exp-amount-in', type: 'text', inputmode: 'decimal', enterkeyhint: 'next', placeholder: '0', autocomplete: 'off', 'aria-label': 'Сумма', value: pre.amount ? String(Number(pre.amount)) : '' });
+     const sum = h('label', { class: 'exp-amount' }, amount, h('span', { class: 'exp-cur' }, curSign('KGS')));
+     const title = h('input', { class: 'input exp-title-in', type: 'text', enterkeyhint: 'done', placeholder: 'За что', maxlength: 160, autocomplete: 'off', 'aria-label': 'За что', value: pre.title || '' });
+@@ -2369,19 +2408,30 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+     const save = h('button', { class: 'primary-btn exp-save', type: 'button' }, svg('check', 18), pre.id ? 'Сохранить' : 'Записать');
+     const all = pre.id || pre.balance_log_id ? null : h('button', { class: 'exp-all', type: 'button', onclick: () => { s.close(); go('#/expenses'); } }, 'Все расходы', svg('chevron', 14));
+     const from = pre.balance_log_id ? h('div', { class: 'exp-from' }, svg('bank', 15), 'Списание с Optima' + (pre.when ? ' · ' + pre.when : '')) : null;
+-    const s = sheet({ form: true, title: pre.id ? 'Изменить расход' : (pre.balance_log_id ? 'Списание в расходы' : 'Новый расход'), body: h('div', { class: 'exp-quick' }, from, sum, title, suggRow, catRow, save, all) });
++    const kindRow = h('div', { class: 'exp-kind' });
++    const cashRow = h('div', { class: 'exp-cash' });
++    const cashHint = h('small', { class: 'exp-cash-hint' }, 'Свои деньги на кассу — не считается расходом');
++    const drawCash = () => { cashRow.innerHTML = ''; [['1win', '1WIN'], ['1xbet', '1xBet']].forEach(([k, l]) => cashRow.appendChild(h('button', { class: 'exp-cash-btn' + (st.cash === k ? ' on' : ''), type: 'button', onclick: () => { st.cash = k; drawCash(); buzz(6); } }, svg('wallet', 17), l))); };
++    const applyKind = () => { const top = st.kind === 'cash_topup'; [title, catRow, suggRow, sheetEl().querySelector('.exp-sugg')].forEach((el) => { if (el) el.style.display = top ? 'none' : ''; }); cashRow.style.display = top ? '' : 'none'; cashHint.style.display = top ? '' : 'none'; };
++    const drawKind = () => { kindRow.innerHTML = ''; [['expense', 'Расход', 'receipt'], ['cash_topup', 'Деп на кассу', 'bank']].forEach(([k, l, ic]) => kindRow.appendChild(h('button', { class: 'exp-kind-btn' + (st.kind === k ? ' on ' + k : ''), type: 'button', onclick: () => { st.kind = k; drawKind(); applyKind(); buzz(6); } }, svg(ic, 16), l))); };
++    drawKind(); drawCash();
++    const s = sheet({ form: true, title: pre.id ? 'Изменить запись' : (pre.balance_log_id ? 'Списание в расходы' : 'Новая запись'), body: h('div', { class: 'exp-quick' }, from, kindRow, sum, cashRow, cashHint, title, suggRow, catRow, save, all) });
++    const sheetEl = () => (s && s.el) || document;
++    applyKind();
+     const shake = (el) => { el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); buzz(14); };
+     const submit = async () => {
+       const v = amount.value.replace(/\s/g, '').replace(',', '.');
++      const top = st.kind === 'cash_topup';
+       if (!(Number(v) > 0)) { shake(sum); amount.focus(); return; }
+-      if (!title.value.trim()) { shake(title); title.focus(); return; }
++      if (!top && !title.value.trim()) { shake(title); title.focus(); return; }
+       busy(save, true);
+       try {
+-        const body = { amount: v, title: title.value.trim(), category: st.cat };
++        const body = top ? { kind: 'cash_topup', cash: st.cash, amount: v } : { kind: 'expense', amount: v, title: title.value.trim(), category: st.cat };
+         if (pre.balance_log_id) body.balance_log_id = pre.balance_log_id;
+         const r = await api(pre.id ? '/expenses/' + pre.id : '/expenses', { method: pre.id ? 'PATCH' : 'POST', body });
+         s.close(); buzz(12);
+         toast((pre.id ? 'Сохранено: ' : 'Записано: ') + money0(r.item.amount) + expCur() + ' — ' + r.item.title, 'ok', 2200);
++        if (r.item.kind === 'cash_topup') buzz(8);
+         const fab = document.getElementById('exp-fab'); if (fab) { fab.classList.remove('done'); void fab.offsetWidth; fab.classList.add('done'); setTimeout(() => fab.classList.remove('done'), 1500); }
+         expMeta(true); if (pre.onSaved) pre.onSaved(r.item);
+       } catch (ex) { err(ex); busy(save, false); }
+@@ -2390,9 +2440,10 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+     amount.addEventListener('input', () => { const c = amount.value.replace(/[^\d.,\s]/g, ''); if (c !== amount.value) amount.value = c; sum.classList.toggle('filled', !!c); });
+     amount.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); title.focus(); } });
+     title.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
++    amount.addEventListener('keyup', (e) => { if (e.key === 'Enter' && st.kind === 'cash_topup') submit(); });
+     sum.classList.toggle('filled', !!amount.value);
+     const first = amount.value ? title : amount; try { first.focus({ preventScroll: true }); } catch (e) {} requestAnimationFrame(() => { if (document.activeElement !== first) first.focus(); });
+-    if (!EXP_META && !pre.id) expMeta().then((m) => { if (!s.el.isConnected || suggRow) return; const list = (m.suggestions || []).slice(0, 6); if (!list.length) return; const row = h('div', { class: 'exp-sugg in', 'data-hscroll': '' }, list.map((x) => h('button', { class: 'exp-sugg-btn', type: 'button', onclick: () => { title.value = x.title; if (x.category) { st.cat = x.category; drawCats(); } } }, x.title))); title.after(row); });
++    if (!EXP_META && !pre.id) expMeta().then((m) => { if (!s.el.isConnected || suggRow || st.kind === 'cash_topup') return; const list = (m.suggestions || []).slice(0, 6); if (!list.length) return; const row = h('div', { class: 'exp-sugg in', 'data-hscroll': '' }, list.map((x) => h('button', { class: 'exp-sugg-btn', type: 'button', onclick: () => { title.value = x.title; if (x.category) { st.cat = x.category; drawCats(); } } }, x.title))); title.after(row); });
+   }
+   async function expensesView(shell) {
+     const tab = state.route.id === 'optima' ? 'optima' : 'list';
+@@ -2407,7 +2458,7 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+     const dayName = (d) => { const k = dayKey(d); const t = dayKey(new Date()); const y = dayKey(new Date(Date.now() - 86400000)); return k === t ? 'Сегодня' : (k === y ? 'Вчера' : new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })); };
+     const hm = (d) => new Date(d).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+     const rowMenu = (it) => actionSheet(it.title, [
+-      { label: 'Изменить', icon: 'edit', onclick: () => expenseQuick({ id: it.id, amount: it.amount, title: it.title, category: it.category, onSaved: () => draw() }) },
++      { label: 'Изменить', icon: 'edit', onclick: () => expenseQuick({ id: it.id, amount: it.amount, title: it.title, category: it.category, kind: it.kind, cash: it.cash, onSaved: () => draw() }) },
+       { label: 'Удалить', icon: 'trash', cls: 'danger', onclick: async () => { if (!(await confirmDialog('Удалить расход «' + it.title + '» на ' + money0(it.amount) + expCur() + '?', 'Удалить', true))) return; try { await api('/expenses/' + it.id, { method: 'DELETE' }); toast('Удалено', 'ok'); draw(); } catch (ex) { err(ex); } } },
+     ]);
+     const drawList = async () => {
+@@ -2420,6 +2471,8 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+       content.appendChild(h('div', { class: 'card exp-hero' }, h('small', null, { today: 'Потрачено сегодня', week: 'Потрачено за 7 дней', month: 'Потрачено за 30 дней', all: 'Потрачено всего' }[st.period]), big, h('span', { class: 'exp-hero-n' }, (cur.count || 0) + ' ' + ((n) => n % 10 === 1 && n % 100 !== 11 ? 'запись' : ([2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'записи' : 'записей'))(cur.count || 0)),
+         h('div', { class: 'exp-mini' }, [['Сегодня', t.today], ['7 дней', t.week], ['30 дней', t.month]].map(([l, v]) => h('div', null, h('small', null, l), h('b', null, money0((v || {}).sum || 0) + expCur()))))));
+       countUp(big, Number(cur.sum || 0), (v) => money0(Math.round(v)) + expCur());
++      const tp = (r.topups || {})[st.period] || {};
++      if (Number(tp.sum) > 0) content.appendChild(h('div', { class: 'card exp-topups' }, h('div', { class: 'exp-topups-cap' }, svg('bank', 16), 'Деп на кассу', h('span', null, 'не расход')), h('div', { class: 'exp-topups-row' }, h('div', null, h('small', null, '1WIN'), h('b', null, money0(tp['1win'] || 0) + expCur())), h('div', null, h('small', null, '1xBet'), h('b', null, money0(tp['1xbet'] || 0) + expCur())))));
+       const cats = r.by_category || [];
+       if (cats.length > 1) {
+         const max = Math.max(...cats.map((c) => Number(c.sum) || 0), 1);
+@@ -2429,11 +2482,14 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+       }
+       const items = r.items || [];
+       if (!items.length) { content.appendChild(empty('Расходов пока нет', 'Нажмите «+» вверху или кнопку на главном экране', 'note')); return; }
+-      const groups = []; items.forEach((it) => { const k = dayKey(it.spent_at); let g = groups.find((x) => x.k === k); if (!g) { g = { k, d: it.spent_at, items: [], sum: 0 }; groups.push(g); } g.items.push(it); g.sum += Number(it.amount) || 0; });
++      const groups = []; items.forEach((it) => { const k = dayKey(it.spent_at); let g = groups.find((x) => x.k === k); if (!g) { g = { k, d: it.spent_at, items: [], sum: 0 }; groups.push(g); } g.items.push(it); if (it.kind !== 'cash_topup') g.sum += Number(it.amount) || 0; });
+       groups.forEach((g) => {
+         content.appendChild(h('div', { class: 'exp-day' }, h('span', null, dayName(g.d)), h('b', null, '−' + money0(g.sum) + expCur())));
+         const list = h('div', { class: 'card exp-list' });
+-        g.items.forEach((it, i) => list.appendChild(h('button', { class: 'exp-row', type: 'button', style: { '--i': Math.min(i, 10) }, onclick: () => rowMenu(it) },
++        g.items.forEach((it, i) => list.appendChild(it.kind === 'cash_topup' ? h('button', { class: 'exp-row top', type: 'button', style: { '--i': Math.min(i, 10) }, onclick: () => rowMenu(it) },
++          h('span', { class: 'exp-row-ico top' }, svg('bank', 18)),
++          h('div', null, h('b', null, it.title), h('small', null, [hm(it.spent_at), it.created_by, it.note].filter(Boolean).join(' · '))),
++          h('strong', null, '→ ' + money0(it.amount) + expCur())) : h('button', { class: 'exp-row', type: 'button', style: { '--i': Math.min(i, 10) }, onclick: () => rowMenu(it) },
+           h('span', { class: 'exp-row-ico' + (it.source === 'optima' ? ' opt' : '') }, svg(it.source === 'optima' ? 'bank' : expIcon(it.category), 18)),
+           h('div', null, h('b', null, it.title), h('small', null, [it.category, hm(it.spent_at), it.created_by, it.source === 'optima' ? 'из Optima' : ''].filter(Boolean).join(' · '))),
+           h('strong', null, '−' + money0(it.amount) + expCur()))));
+@@ -2748,10 +2804,10 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+         if (item.state === 'waiting') body.appendChild(h('div', { class: 'tp-wait small' }, h('i', { class: 'tp-spin' }), h('b', null, 'Ждём ответ бота…'), h('small', null, 'Окно можно закрыть — ответ придёт сюда при следующем открытии')));
+         else {
+           const pick = h('input', { type: 'file', accept: 'image/*,application/pdf', hidden: true });
+-          pick.onchange = async () => { const f = pick.files && pick.files[0]; if (!f) return; const fd = new FormData(); fd.append('file', f); try { const r = await api('/tg-agent/topup/' + jobId + '/receipt', { method: 'POST', body: fd }); toast('Чек отправлен боту', 'ok', 1400); draw(r.item); } catch (ex) { err(ex); } };
++          pick.onchange = async () => { const f0 = pick.files && pick.files[0]; if (!f0) return; const note = toast('Отправляю чек боту…', '', 60000); try { const f = await shrinkImage(f0); const fd = new FormData(); fd.append('file', f, f.name || 'check.jpg'); const r = await api('/tg-agent/topup/' + jobId + '/receipt', { method: 'POST', body: fd }); note.remove(); toast('Чек отправлен боту', 'ok', 1400); draw(r.item); } catch (ex) { note.remove(); err(ex); } };
+           const cancelBtn = h('button', { class: 'action-btn', type: 'button', onclick: async (e) => { if (!(await confirmDialog('Отменить пополнение? В боте заявка тоже отменится.', 'Отменить', true))) return; await act('cancel', e.currentTarget); } }, 'Отмена');
+           if (item.needs_receipt) { body.appendChild(h('div', { class: 'tp-note' }, 'Бот просит чек: оплатите по QR и загрузите скриншот оплаты — панель отправит его боту.')); body.appendChild(h('div', { class: 'btn-grid' }, cancelBtn, h('button', { class: 'action-btn primary', type: 'button', onclick: () => pick.click() }, svg('paperclip', 18), 'Загрузить чек'))); body.appendChild(pick); }
+-          else body.appendChild(h('div', { class: 'btn-grid' }, cancelBtn, h('button', { class: 'action-btn primary', type: 'button', onclick: (e) => act('paid', e.currentTarget) }, svg('check', 18), 'Оплатил')));
++          else { body.appendChild(h('div', { class: 'btn-grid' }, cancelBtn, h('button', { class: 'action-btn primary', type: 'button', onclick: (e) => act('paid', e.currentTarget) }, svg('check', 18), 'Оплатил'))); body.appendChild(h('button', { class: 'tp-receipt-link', type: 'button', onclick: () => pick.click() }, svg('paperclip', 16), 'Бот просит чек? Загрузить чек')); body.appendChild(pick); }
+         }
+         body.appendChild(logEl(item)); return poll(item.state === 'waiting' ? 1500 : 2500);
+       }
