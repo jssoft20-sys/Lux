@@ -1,8 +1,45 @@
 diff --git a/frontend/admin/static/app-1.13.9.76.js b/frontend/admin/static/app-1.13.9.76.js
-index a31dae0..3dae63a 100644
+index a31dae0..78b3b7c 100644
 --- a/frontend/admin/static/app-1.13.9.76.js
 +++ b/frontend/admin/static/app-1.13.9.76.js
-@@ -392,7 +392,7 @@
+@@ -59,8 +59,11 @@
+     const headers = Object.assign({}, opts.headers || {});
+     if (opts.body && !(opts.body instanceof FormData)) { headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(opts.body); }
+     if ((opts.method || 'GET') !== 'GET') headers['X-CSRF-Token'] = (state.admin && state.admin.csrf_token) || getCookie('paygo_csrf');
+-    let res;
+-    try { res = await fetch(API + path, Object.assign({ credentials: 'same-origin' }, opts, { headers })); } catch (e) { throw new Error('Нет соединения с сервером'); }
++    let res, tmr = 0;
++    /* STEADY_BALANCES_1_13_9_85: opts.timeout (ms) — the request is given up instead of hanging forever */
++    if (opts.timeout && !opts.signal && window.AbortController) { const ctl = new AbortController(); opts = Object.assign({}, opts, { signal: ctl.signal }); tmr = setTimeout(() => ctl.abort(), opts.timeout); }
++    try { res = await fetch(API + path, Object.assign({ credentials: 'same-origin' }, opts, { headers })); } catch (e) { clearTimeout(tmr); throw new Error(e && e.name === 'AbortError' ? 'Сервер не ответил вовремя' : 'Нет соединения с сервером'); }
++    clearTimeout(tmr);
+     let data = {}; try { data = await res.json(); } catch (e) { data = {}; }
+     if (res.status === 403 && /VPN_BLOCKED/.test(String(data.error || data.detail || ''))) { vpnBlock(); const e = new Error('Вход через VPN запрещён — отключите VPN'); e.status = 403; throw e; }
+     if (res.status === 401) { if (state.admin) { state.admin = null; render(); } throw new Error('Сессия истекла — войдите снова'); }
+@@ -295,13 +298,20 @@
+     const chip = tx.status === 'success' && (tx.source === 'auto' || (dep && tx.payment_source && tx.payment_source !== 'manual')) ? 'Авто' : (tx.operator_name && tx.status !== 'created' ? tx.operator_name : '');
+     const card = h('button', { class: 'tx-card', type: 'button', onclick: () => go(txHref(tx)) },
+       h('span', { class: 'tx-logo-wrap' }, h('span', { class: 'tx-logo' }, dep ? depositMark() : bankLogo(tx.bank)), h('i', { class: 'tx-flow ' + (dep ? 'deposit' : 'withdraw') }, svg(dep ? 'arrowDL' : 'arrowUR', 12)), botMark(tx)),
+-      h('span', { class: 'tx-copy' }, h('b', null, h('span', { class: 'nm' }, clientName(tx)), chip ? h('span', { class: 'tx-chip' }, chip) : null, null), h('small', null, fmtDate(tx.created_at) + ' • ID ' + tx.player_id)),
++      h('span', { class: 'tx-copy' }, h('b', null, h('span', { class: 'nm' }, clientName(tx)), bkTag(tx), chip ? h('span', { class: 'tx-chip' }, chip) : null, null), h('small', null, fmtDate(tx.created_at) + ' • ID ' + tx.player_id)),
+       h('span', { class: 'tx-side' }, h('strong', { class: 'tx-amount ' + (dep ? 'deposit' : 'withdraw') }, (dep ? '+ ' : '− ') + som(dep ? tx.pay_amount : tx.amount, tx.currency)), stateEl(tx)),
+       null);
+     if (!problem || opts.noAlert) return card;
+     return h('div', null, card, h('div', { class: 'tx-attn' }, h('b', null, dep ? 'Надо пополнить: деньги пришли, букмекер не зачислил' : 'Нужна проверка: касса не подтвердила сумму вывода'), h('small', null, tx.error || 'Откройте заявку и повторите операцию.')));
+   }
+-  const txSig = (tx) => JSON.stringify([tx.status, tx.updated_at, tx.error, tx.needs_attention, tx.deferred, tx.operator_name, tx.player_name, tx.user_name, tx.player_id, tx.pay_amount, tx.amount, tx.payment_source, tx.source, tx.bank && tx.bank.key, tx.currency]);
++  /* BK_TAG_1_13_9_85: a small, quiet 1WIN / 1xBet mark before the date */
++  function bkTag(tx) {
++    const k = String(tx.cash_key || '').toLowerCase(), n = String(tx.cash_name || '').toLowerCase().replace(/\s+/g, '');
++    const x = k.indexOf('xbet') >= 0 || n.indexOf('xbet') >= 0;
++    const w = !x && (k.indexOf('1win') === 0 || n.indexOf('1win') >= 0);
++    return x || w ? h('i', { class: 'tx-bk ' + (x ? 'x' : 'w') }, x ? '1xBet' : '1WIN') : null;
++  }
++  const txSig = (tx) => JSON.stringify([tx.cash_key, tx.status, tx.updated_at, tx.error, tx.needs_attention, tx.deferred, tx.operator_name, tx.player_name, tx.user_name, tx.player_id, tx.pay_amount, tx.amount, tx.payment_source, tx.source, tx.bank && tx.bank.key, tx.currency]);
+   function txGroups(list, opts) { opts = opts || {}; const groups = groupByDay(list); return h('div', { class: 'tx-groups' }, groups.map((g) => h('section', { class: 'tx-day' }, h('div', { class: 'tx-day-title' }, g.label), h('div', { class: 'tx-day-list' }, g.items.map((tx, i) => { const card = txCard(tx, opts); card.style.setProperty('--i', Math.min(i, 10)); const sw = opts.swipe && opts.swipe(tx); const el = sw ? swipeRow(card, sw) : card; el.dataset.key = (tx.kind || '') + ':' + tx.id; el.dataset.sig = txSig(tx); return el; }))))); }
+   /* PERF_1_13_9_42: live lists are patched in place — unchanged cards keep their DOM node (no flash, no
+      re-animation, images stay loaded, scroll stays); new cards slide in, changed ones flash softly */
+@@ -392,7 +402,7 @@
      const shell = h('div', { class: 'shell page-in ' + (noNav ? 'no-nav' : '') });
      document.documentElement.classList.toggle('chat-open', page === 'chats' && !!state.route.id);
      app.appendChild(shell);
@@ -11,7 +48,79 @@ index a31dae0..3dae63a 100644
      (views[page] || homeView)(shell);
      if (!noNav) shell.appendChild(bottomNav(page));
    }
-@@ -1054,8 +1054,8 @@
+@@ -478,7 +488,7 @@
+ 
+     let liveTimer = null;
+     let homeLoadBusy=false, homeInteracting=false, homeDataTimer=null, homeSig="", liveSig="", homeLastScroll=0;
+-    let liveBusy = false;
++    let liveBusy = false, liveBusyAt = 0;
+     const USDT_TRC20 = 'TLYMB5TPh35EWbZ28XUwv3Xh9fYb4c55Sz';
+     const present = (v) => v !== null && v !== undefined && v !== '';
+     const GAME_ID = '378630535';
+@@ -497,33 +507,40 @@
+ 
+     const drawLiveBalances = async (force) => {
+       if (!document.body.contains(screen)) { if (liveTimer) clearInterval(liveTimer); return; }
+-      if (liveBusy) return;
+-      liveBusy = true;
++      if (liveBusy && Date.now() - liveBusyAt < 20000) return;  /* a request that hangs never blocks the next refreshes */
++      liveBusy = true; liveBusyAt = Date.now();
+       try {
+-        if (force && can('settings')) { try { await api('/optima-wallets/sync-all',{method:'POST'}); } catch (_) {} }
+-        let cs = await api('/cashes');
++        if (force && can('settings')) { try { await api('/optima-wallets/sync-all',{method:'POST',timeout:8000}); } catch (_) {} }
++        const [cs, op] = await Promise.all([api('/cashes',{timeout:12000}), api('/optima-live',{timeout:9000}).catch(()=>({ok:false,balance:null,count:0,online:0,wallets:[]}))]);
+         let c = (cs.items || []).find((x)=>String(x.key||'').toLowerCase()==='1win'||String(x.name||'').toLowerCase()==='1win');
+-        const op = await api('/optima-live').catch(()=>({ok:false,balance:null,count:0,online:0,wallets:[]}));
+         if (force && c && can('cashes')) {
+-          try { const rr=await api('/cashes/'+c.id+'/check',{method:'POST'}); c=rr.item||c; if (rr.result&&rr.result.ok) toast('Балансы обновляются','ok',900); else if(rr.result) toast('1WIN: '+(rr.result.message||'ошибка проверки'),'err',2400); } catch(e){ toast('1WIN: '+e.message,'err',2400); }
++          try { const rr=await api('/cashes/'+c.id+'/check',{method:'POST',timeout:25000}); c=rr.item||c; if (rr.result&&rr.result.ok) toast('Балансы обновляются','ok',900); else if(rr.result) toast('1WIN: '+(rr.result.message||'ошибка проверки'),'err',2400); } catch(e){ toast('1WIN: '+e.message,'err',2400); }
+         }
+-        const nextLiveSig=JSON.stringify([c&&c.id,c&&c.last_check_ok,c&&c.last_limit,c&&c.last_balance,c&&c.last_check_message,op&&op.balance,op&&op.count,op&&op.online]);
+-        if(!force && nextLiveSig===liveSig){return;}
+-        if(homeInteracting && !force){return;}
++        /* STEADY_BALANCES_1_13_9_85: the «обновлено …» label follows the clock on every tick; a desk / Optima that has not
++           reported for 3 minutes gets an amber dot, so a frozen number is never taken for a live one */
++        const tsOf = (v) => { const n = v ? new Date(v).getTime() : 0; return isNaN(n) ? 0 : n; };
++        const winAt = tsOf(c && c.last_check_at), optAt = tsOf(op && op.updated_at);
++        const stamp = Math.max(winAt, optAt);
++        const stampText = stamp ? (Date.now() - stamp < 60000 ? 'обновлено только что' : 'обновлено ' + ago(stamp) + ' назад') : 'live';
++        const winStale = !winAt || Date.now() - winAt > 180000, optStale = !optAt || Date.now() - optAt > 180000;
++        const paintStamp = () => { const el = oneWinBox.querySelector('.ow2-head small'); if (el) { el.textContent = uiText(stampText); el.classList.toggle('stale', winStale && optStale); } };
++        const nextLiveSig=JSON.stringify([c&&c.id,c&&c.last_check_ok,c&&c.last_limit,c&&c.last_balance,c&&c.last_check_message,op&&op.balance,op&&op.count,op&&op.online,winStale,optStale]);
++        if(!force && nextLiveSig===liveSig){paintStamp();return;}
++        if(homeInteracting && !force){paintStamp();return;}
+         liveSig=nextLiveSig;
+         oneWinBox.innerHTML='';
+         const ok = c ? c.last_check_ok !== false : false;
+-        const statusText = c && c.last_check_at ? ('обновлено '+ago(c.last_check_at)+' назад') : 'live';
++        const statusText = stampText;
+         const btn = h('button',{class:'ow-refresh',type:'button','aria-label':'Обновить балансы',onclick:async(e)=>{e.currentTarget.disabled=true;e.currentTarget.classList.add('spin');await drawLiveBalances(true);setTimeout(()=>drawLiveBalances(false),900);e.currentTarget.disabled=false;e.currentTarget.classList.remove('spin');}},svg('refresh',18));
+         /* BALANCES_1_13_9_43: one compact card — three tiles in a row */
+         const optOk = op && op.count > 0 && op.online > 0;
+         const num = (v) => present(v) ? money0(Math.round(Number(v) || 0)) : '—';
+-        const tile = (label, val, cls, dot) => h('div', { class: 'ow2-tile ' + (cls || '') }, h('small', null, dot === undefined ? null : h('i', { class: 'ow-dot ' + (dot ? 'ok' : 'bad') }), label), h('strong', null, val));
++        const tile = (label, val, cls, dot, stale) => h('div', { class: 'ow2-tile ' + (cls || ''), title: stale ? 'Давно не обновлялось' : '' }, h('small', null, dot === undefined ? null : h('i', { class: 'ow-dot ' + (dot ? (stale ? 'warn' : 'ok') : 'bad') }), label), h('strong', null, val));
+         oneWinBox.appendChild(h('div',{class:'ow2-head'},h('b',null,'Балансы'),h('small',null,statusText),btn));
+         oneWinBox.appendChild(h('div',{class:'ow2-grid'},
+-          tile('1WIN', num(c && c.last_limit), '', ok),
++          tile('1WIN', num(c && c.last_limit), '', ok, winStale),
+           tile('Вывод 1WIN', num(c && c.last_balance), 'payout'),
+-          tile('Optima ' + (op.online||0) + '/' + (op.count||0), num(op.balance), 'optima', optOk)));
++          tile('Optima ' + (op.online||0) + '/' + (op.count||0), num(op.balance), 'optima', optOk, optStale)));
+         /* MOBCASH_1_13_9_64: 1xBet (Mobcash) — статус показываем иконкой-точкой; лимит/баланс числами, если каб��нет их отдаёт */
+         const x1 = (cs.items || []).find((x)=>String(x.provider_type||'').toLowerCase()==='mobcash' || String(x.key||'').toLowerCase()==='1xbet');
+         if (x1) { const xok = x1.last_check_ok !== false && !!x1.last_check_at; const hasNum = present(x1.last_limit) || present(x1.last_balance);
+@@ -543,7 +560,7 @@
+         const owHead=oneWinBox.querySelector('.ow2-head'); if(owHead) owHead.insertBefore(usdtBtn, owHead.lastChild);
+         oneWinBox.appendChild(h('div',{class:'ow-wallet2'},h('div',{class:'ow-wallet2-row two'},idBtn,can('cashes')?refillBtn:null),usdtAddr));
+         if (c && !ok && c.last_check_message) oneWinBox.appendChild(h('div',{class:'ow-status-msg'},String(c.last_check_message)));
+-      } catch(e) { if(!oneWinBox.children.length) oneWinBox.appendChild(h('div',{class:'ow-status-msg'},'Live-балансы временно недоступны')); }
++      } catch(e) { if(!oneWinBox.querySelector('.ow2-grid')) { oneWinBox.innerHTML=''; oneWinBox.appendChild(h('div',{class:'ow-status-msg'},'Балансы временно недоступны — обновлю сам через пару секунд')); } else { const el=oneWinBox.querySelector('.ow2-head small'); if (el) { el.textContent='нет связи · повторяю…'; el.classList.add('stale'); } } }
+       finally { liveBusy=false; }
+     };
+ 
+@@ -1054,8 +1071,8 @@
      let accept;
      /* a processed request leaves the screen: ctx.done() returns to the list it was opened from */
      if (dep) accept = tx.status === 'processing' ? h('button', { class: 'act accept', disabled: true }, 'Зачисляется…') : h('button', { class: 'act accept', onclick: async (e) => { const b = e.currentTarget; busy(b, true); const amount = await creditDialog(tx); if (amount === null) { busy(b, false); return; } const r = await txAction(kind, tx, 'credit', { amount, done: 'Зачислено ' + money(amount) + ' ' + curSign(tx.currency) }); busy(b, false); if (r) ctx.done(); } }, svg('check', 22), 'Принять');
@@ -22,7 +131,7 @@ index a31dae0..3dae63a 100644
      const reject = h('button', { class: 'act reject', onclick: async () => { const r = await txAction(kind, tx, dep ? 'reject' : 'fail', { askReason: 'Причина отказа', reasons: REJECT_REASONS[dep ? 'deposit' : 'withdrawal'], done: 'Отказано' }); if (r) ctx.done(); } }, svg('close', 22), 'Отказать');
      return h('div', { class: 'action-bar' }, accept, reject);
    }
-@@ -1111,15 +1111,55 @@
+@@ -1111,15 +1128,55 @@
      draw();
      return h('div', { class: 'qr-wrap' }, tabs.length > 1 ? tabBar : h('div', { style: { height: '14px' } }), img, cap, links, tools.childNodes.length ? tools : null);
    }
@@ -31,10 +140,7 @@ index a31dae0..3dae63a 100644
 +     instead of a minute; anything the browser cannot draw (PDF, HEIC on Android) goes as it is */
 +  function shrinkImage(file, max, quality) {
 +    max = max || 1600; quality = quality || 0.82;
-     return new Promise((resolve) => {
--      const input = h('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
--      const cam = h('input', { type: 'file', accept: 'image/*', capture: 'environment', style: { display: 'none' } });
--      const upload = async (file) => { if (!file) return resolve(false); const note = toast('Загружаю чек…', '', 60000); try { const fd = new FormData(); fd.append('file', file); await api('/withdrawals/' + tx.id + '/receipt', { method: 'POST', body: fd }); note.remove(); toast('Чек прикреплён', 'ok'); if (refresh) refresh(); resolve(true); } catch (e) { note.remove(); err(e); resolve(false); } };
++    return new Promise((resolve) => {
 +      if (!file || !/^image\//.test(file.type || '') || /gif|svg/.test(file.type) || file.size < 300000) return resolve(file);
 +      const url = URL.createObjectURL(file); const img = new Image();
 +      const done = (out) => { URL.revokeObjectURL(url); resolve(out || file); };
@@ -55,7 +161,10 @@ index a31dae0..3dae63a 100644
 +  async function pickReceipt(tx, refresh, opts) {
 +    opts = opts || {};
 +    document.querySelectorAll('input.receipt-pick').forEach((x) => x.remove());
-+    return new Promise((resolve) => {
+     return new Promise((resolve) => {
+-      const input = h('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
+-      const cam = h('input', { type: 'file', accept: 'image/*', capture: 'environment', style: { display: 'none' } });
+-      const upload = async (file) => { if (!file) return resolve(false); const note = toast('Загружаю чек…', '', 60000); try { const fd = new FormData(); fd.append('file', file); await api('/withdrawals/' + tx.id + '/receipt', { method: 'POST', body: fd }); note.remove(); toast('Чек прикреплён', 'ok'); if (refresh) refresh(); resolve(true); } catch (e) { note.remove(); err(e); resolve(false); } };
 +      let settled = false;
 +      const input = h('input', { class: 'receipt-pick', type: 'file', accept: 'image/*', style: { display: 'none' } });
 +      const cam = h('input', { class: 'receipt-pick', type: 'file', accept: 'image/*', capture: 'environment', style: { display: 'none' } });
@@ -84,7 +193,7 @@ index a31dae0..3dae63a 100644
      });
    }
    function relatedBlock(tx) {
-@@ -1409,7 +1449,7 @@
+@@ -1409,7 +1466,7 @@
            /* under the QR: «Загрузить чек» and, when the request carries a bank QR, «Оплатить в Optima24» — the
               deep link opens the Optima24 app on the confirm screen with the recipient and amount filled in */
            if (can('operations') && open) card.appendChild(h('div', { class: 'qr-actions' },
@@ -93,7 +202,7 @@ index a31dae0..3dae63a 100644
              tx.optima_pay_link ? h('a', { class: 'optima-btn', href: tx.optima_pay_link, target: '_blank', rel: 'noopener' }, h('img', { src: 'brand/banks/optima.png', alt: '' }), 'Оплатить в Optima24') : null,
              r.payment_links && r.payment_links.length ? h('button', { class: 'more-banks', type: 'button', onclick: () => actionSheet('Открыть QR в банке', r.payment_links.map((l) => ({ label: l.name, icon: 'send', onclick: () => window.open(l.url, '_blank', 'noopener') }))) }, 'Открыть в другом банке') : null));
          }
-@@ -1456,15 +1496,29 @@
+@@ -1456,100 +1513,173 @@
    }
  
    /* ------------------------------------------------------------- menu: account, theme, sections (operators see only what they need) */
@@ -126,23 +235,104 @@ index a31dae0..3dae63a 100644
    }
  
    /* ------------------------------------------------------------- analytics (Аналитика) */
-@@ -1485,29 +1539,31 @@
-         box.innerHTML = ''; box.appendChild(h('button', { class: 'period-btn', type: 'button', onclick: pickPeriod }, svg('calendar', 24), st.label));
-         const allCashes = cs.items || [];
-         const cashes = allCashes.filter((c) => c.key === '1win');
++  /* ANALYTICS_1_13_9_85: compact — period chips, one hero (net income, counted up), a column chart by day that grows in,
++     the desks in one small table (tap a row for the calculation), the rest in one line. The bank takes 1% of incoming
++     payments; payouts to Optima24 are free since 09.10.2026 (both are settings). */
++  const anNum = (v, d) => { const n = Number(v); return isFinite(n) ? n : (d || 0); };
++  const anK = (v) => { const a = Math.abs(v); if (a >= 1e6) return (v / 1e6).toFixed(a >= 1e7 ? 0 : 1).replace('.0', '') + 'M'; if (a >= 1e3) return Math.round(v / 1e3) + 'K'; return String(Math.round(v)); };
++  const anNice = (v) => { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); const f = v / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p; };
++  const AN_MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
++  function anChart(points, unit, valueOf, tipOf) {
++    const wrap = h('div', { class: 'an-chart-wrap' });
++    const tip = h('div', { class: 'an-tip', hidden: true });
++    wrap.appendChild(tip);
++    const NS = 'http://www.w3.org/2000/svg';
++    const el = (tag, attrs) => { const e = document.createElementNS(NS, tag); Object.entries(attrs || {}).forEach(([k, v]) => e.setAttribute(k, v)); return e; };
++    const draw = () => {
++      [...wrap.querySelectorAll('svg')].forEach((x) => x.remove());
++      const W = Math.max(260, wrap.clientWidth || 320), H = 168, padL = 34, padB = 22, padT = 18;
++      const vals = points.map((p) => Math.max(0, valueOf(p)));
++      const max = anNice(Math.max(...vals, 0) * 1.08);
++      const n = Math.max(1, points.length), slot = (W - padL - 4) / n, bw = Math.max(3, Math.min(24, slot * 0.62));
++      const y = (v) => padT + (H - padT - padB) * (1 - v / max);
++      const svgEl = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, class: 'an-svg', role: 'img', 'aria-label': 'График по ' + (unit === 'month' ? 'месяцам' : 'дням') });
++      [0, 0.5, 1].forEach((f) => { const yy = y(max * f); svgEl.appendChild(el('line', { x1: padL, x2: W - 2, y1: yy, y2: yy, class: 'an-grid' })); const t = el('text', { x: padL - 6, y: yy + 4, class: 'an-axis', 'text-anchor': 'end' }); t.textContent = anK(max * f); svgEl.appendChild(t); });
++      const every = n <= 10 ? 1 : Math.ceil(n / 8);
++      const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
++      let best = -1; vals.forEach((v, i) => { if (v > 0 && (best < 0 || v > vals[best])) best = i; });
++      const bars = [];
++      points.forEach((p, i) => {
++        const cx = padL + slot * i + slot / 2, v = vals[i], top = y(v), base = y(0), hgt = Math.max(0, base - top);
++        if (hgt > 0.5) {
++          const r = Math.min(4, bw / 2, hgt);
++          const x0 = cx - bw / 2, x1 = cx + bw / 2;
++          const bar = el('path', { d: `M${x0},${base}V${top + r}Q${x0},${top} ${x0 + r},${top}H${x1 - r}Q${x1},${top} ${x1},${top + r}V${base}Z`, class: 'an-bar' + (i === n - 1 ? ' last' : '') });
++          if (!reduce) { bar.style.transitionDelay = Math.min(i, 30) * 22 + 'ms'; bar.classList.add('grow'); }
++          svgEl.appendChild(bar);
++          bars[i] = bar;
++        }
++        if (i % every === 0 || i === n - 1) {
++          const t = el('text', { x: cx, y: H - 6, class: 'an-axis', 'text-anchor': 'middle' });
++          const parts = String(p.key).split('-');
++          t.textContent = unit === 'month' ? AN_MONTHS[Number(parts[1]) - 1] : String(Number(parts[2]));
++          svgEl.appendChild(t);
++        }
++        const hit = el('rect', { x: padL + slot * i, y: padT, width: Math.max(slot, 8), height: H - padT - padB + 4, class: 'an-hit', tabindex: '0' });
++        const show = () => { tip.innerHTML = ''; tip.appendChild(tipOf(p)); tip.hidden = false; const tw = tip.offsetWidth || 120; tip.style.left = Math.max(0, Math.min(W - tw, cx - tw / 2)) + 'px'; tip.style.top = Math.max(0, top - 54) + 'px'; bars.forEach((x) => x && x.classList.remove('hot')); if (bars[i]) bars[i].classList.add('hot'); };
++        hit.addEventListener('pointerenter', show); hit.addEventListener('click', show); hit.addEventListener('focus', show);
++        svgEl.appendChild(hit);
++      });
++      if (best >= 0) { const cx = padL + slot * best + slot / 2; const t = el('text', { x: cx, y: Math.max(11, y(vals[best]) - 5), class: 'an-peak', 'text-anchor': 'middle' }); t.textContent = anK(vals[best]); svgEl.appendChild(t); }
++      svgEl.addEventListener('pointerleave', () => { tip.hidden = true; svgEl.querySelectorAll('.an-bar').forEach((x) => x.classList.remove('hot')); });
++      wrap.appendChild(svgEl);
++      if (!reduce) requestAnimationFrame(() => requestAnimationFrame(() => svgEl.querySelectorAll('.an-bar.grow').forEach((x) => x.classList.add('in'))));
++    };
++    requestAnimationFrame(draw);
++    let lastW = 0; const ro = window.ResizeObserver ? new ResizeObserver(() => { const w = wrap.clientWidth; if (w && Math.abs(w - lastW) > 4) { lastW = w; draw(); } }) : null; if (ro) ro.observe(wrap);
++    return wrap;
++  }
+   async function statsView(shell) {
+-    const screen = h('section', { class: 'screen' }); shell.appendChild(screen);
+-    const st = { from: '', to: '', label: 'Выбрать период' };
+-    const box = h('div'); screen.appendChild(hero('Аналитика', 'Финансовые показатели', { tools: [h('span', { class: 'round-btn soft' }, svg('stats', 26))] })); screen.appendChild(box);
+-    const pickPeriod = () => {
+-      const from = h('input', { class: 'input', type: 'date', value: st.from }); const to = h('input', { class: 'input', type: 'date', value: st.to });
+-      const quick = (days, label) => h('button', { class: 'action-btn', type: 'button', onclick: () => { const t = new Date(); const f = new Date(Date.now() - (days - 1) * 86400000); st.from = dayKey(f); st.to = dayKey(t); st.label = label; s.close(); draw(); } }, label);
+-      const s = sheet({ title: 'Период', body: h('div', null, h('div', { class: 'btn-grid' }, quick(1, 'Сегодня'), quick(7, '7 дней'), quick(30, '30 дней'), h('button', { class: 'action-btn', type: 'button', onclick: () => { st.from = ''; st.to = ''; st.label = 'Выбрать период'; s.close(); draw(); } }, 'Всё время')), h('span', { class: 'lbl' }, 'Свой период'), h('div', { class: 'date-grid' }, from, to)), actions: [h('button', { class: 'action-btn', onclick: () => s.close() }, 'Отмена'), h('button', { class: 'action-btn primary', onclick: () => { st.from = from.value; st.to = to.value; st.label = (from.value || '…') + ' — ' + (to.value || '…'); s.close(); draw(); } }, 'Применить')] });
++    const screen = h('section', { class: 'screen an' }); shell.appendChild(screen);
++    let saved = null; try { saved = JSON.parse(localStorage.getItem('an-view') || 'null'); } catch (e) {}
++    const st = Object.assign({ p: '7', from: '', to: '', metric: 'income' }, saved || {});
++    const keep = () => { try { localStorage.setItem('an-view', JSON.stringify(st)); } catch (e) {} };
++    screen.appendChild(hero('Аналитика', 'Доход и обороты'));
++    const periods = h('div', { class: 'an-periods', 'data-hscroll': '' }); const box = h('div', { class: 'an-body' });
++    screen.appendChild(periods); screen.appendChild(box);
++    const PERIOD_LABEL = { '1': 'сегодня', '7': 'за 7 дней', '30': 'за 30 дней', all: 'за всё время' };
++    const range = () => { if (st.p === 'custom') return [st.from, st.to]; if (st.p === 'all') return ['2000-01-01', '']; const days = Number(st.p) || 7; return [dayKey(new Date(Date.now() - (days - 1) * 86400000)), dayKey(new Date())]; };
++    const pickCustom = () => {
++      const from = h('input', { class: 'input', type: 'date', value: st.from }); const to = h('input', { class: 'input', type: 'date', value: st.to || dayKey(new Date()) });
++      const sh = sheet({ title: 'Свой период', body: h('div', { class: 'date-grid' }, from, to), actions: [h('button', { class: 'action-btn', onclick: () => sh.close() }, 'Отмена'), h('button', { class: 'action-btn primary', onclick: () => { if (!from.value) return toast('Выберите начало', 'err'); st.p = 'custom'; st.from = from.value; st.to = to.value; keep(); sh.close(); drawPeriods(); draw(); } }, 'Показать')] });
+     };
++    const drawPeriods = () => {
++      periods.innerHTML = '';
++      [['1', 'Сегодня'], ['7', '7 дней'], ['30', '30 дней'], ['all', 'Всё']].forEach(([k, l]) => periods.appendChild(h('button', { class: 'an-chip' + (st.p === k ? ' on' : ''), type: 'button', onclick: () => { if (st.p === k) return; st.p = k; keep(); drawPeriods(); draw(); } }, l)));
++      periods.appendChild(h('button', { class: 'an-chip cal' + (st.p === 'custom' ? ' on' : ''), type: 'button', 'aria-label': 'Свой период', onclick: pickCustom }, svg('calendar', 16), st.p === 'custom' ? ((st.from || '').slice(5).split('-').reverse().join('.') + ' – ' + ((st.to || '').slice(5).split('-').reverse().join('.') || '…')) : null));
++    };
++    let seq = 0;
+     const draw = async () => {
+-      box.innerHTML = ''; box.appendChild(h('button', { class: 'period-btn', type: 'button', onclick: pickPeriod }, svg('calendar', 24), st.label)); box.appendChild(loader(2));
+-      try {
+-        const qs = (st.from || st.to) ? '?date_from=' + st.from + '&date_to=' + st.to : '?date_from=2000-01-01';
+-        const [r, cs] = await Promise.all([api('/stats' + qs), api('/cashes').catch(() => ({ items: [] }))]);
+-        box.innerHTML = ''; box.appendChild(h('button', { class: 'period-btn', type: 'button', onclick: pickPeriod }, svg('calendar', 24), st.label));
+-        const allCashes = cs.items || [];
+-        const cashes = allCashes.filter((c) => c.key === '1win');
 -        const rows = (r.by_cash || []).filter((c) => c.cash === '1win');
 -        const feeOf = (name) => cashes.find((c) => c.name === name) || {};
 -                /* NET_PROFIT_UI_1_13_9_35: fixed business economics; tiyins are NOT part of this KPI. */
-+        /* XBET_INCOME_1_13_9_83: every 1WIN desk (satellites too) and the 1xBet (Mobcash) desk, each with its own economics */
-+        const groupOf = (c) => c.group || (/xbet/i.test(String(c.cash || '')) ? '1xbet' : (/^1win/i.test(String(c.cash || '')) ? '1win' : 'other'));
-+        const rows = (r.by_cash || []).filter((c) => groupOf(c) === '1win');
-+        const xrows = (r.by_cash || []).filter((c) => groupOf(c) === '1xbet');
-+        const feeOf = (name) => allCashes.find((c) => c.name === name) || {};
-+        /* NET_PROFIT_UI_1_13_9_35: fixed business economics; tiyins are NOT part of this KPI. */
-         const PROFIT_DEPOSIT_PCT = 10;
-         const PROFIT_WITHDRAW_PCT = 2;
-         const BANK_INCOMING_PCT = 1;
-         const BANK_WITHDRAW_PCT = 0.8;
+-        const PROFIT_DEPOSIT_PCT = 10;
+-        const PROFIT_WITHDRAW_PCT = 2;
+-        const BANK_INCOMING_PCT = 1;
+-        const BANK_WITHDRAW_PCT = 0.8;
 -        const incomeOf = (c) => {
 -          const d = Number(c.deposits_sum || 0);
 -          const w = Number(c.withdrawals_sum || 0);
@@ -159,67 +349,115 @@ index a31dae0..3dae63a 100644
 -        const depCount = rows.reduce((a, c) => a + Number(c.deposits_count || 0), 0);
 -        const wdSum = rows.reduce((a, c) => a + Number(c.withdrawals_sum || 0), 0);
 -        const wdCount = rows.reduce((a, c) => a + Number(c.withdrawals_count || 0), 0);
-+        const fees = r.fees || {};
-+        const XBET_DEPOSIT_PCT = Number(fees.xbet_deposit_pct == null ? 8 : fees.xbet_deposit_pct);
-+        const XBET_WITHDRAW_PCT = Number(fees.xbet_withdraw_pct == null ? 2 : fees.xbet_withdraw_pct);
-+        const pctTxt = (v) => String(v).replace('.', ',') + '%';
-+        const calc = (d, w, dp, wp) => { const di = d * dp / 100, wi = w * wp / 100, bi = d * BANK_INCOMING_PCT / 100, bo = w * BANK_WITHDRAW_PCT / 100; return { di, wi, bi, bo, net: di + wi - bi - bo }; };
-+        const incomeOf = (c) => (groupOf(c) === '1xbet' ? calc(Number(c.deposits_sum || 0), Number(c.withdrawals_sum || 0), XBET_DEPOSIT_PCT, XBET_WITHDRAW_PCT) : calc(Number(c.deposits_sum || 0), Number(c.withdrawals_sum || 0), PROFIT_DEPOSIT_PCT, PROFIT_WITHDRAW_PCT)).net;
-+        const sumOf = (list, k) => list.reduce((a, c) => a + Number(c[k] || 0), 0);
-+        const depSum = sumOf(rows, 'deposits_sum'), depCount = sumOf(rows, 'deposits_count'), wdSum = sumOf(rows, 'withdrawals_sum'), wdCount = sumOf(rows, 'withdrawals_count');
-+        const xDep = sumOf(xrows, 'deposits_sum'), xDepN = sumOf(xrows, 'deposits_count'), xWd = sumOf(xrows, 'withdrawals_sum'), xWdN = sumOf(xrows, 'withdrawals_count');
-+        const w1 = calc(depSum, wdSum, PROFIT_DEPOSIT_PCT, PROFIT_WITHDRAW_PCT);
-+        const x1 = calc(xDep, xWd, XBET_DEPOSIT_PCT, XBET_WITHDRAW_PCT);
-+        const income = w1.net + x1.net;
-+        const spent = r.spent || {};
-+        const spentSum = Number(spent.expenses_sum || 0);
-+        const tops = spent.topups || {};
-         /* the cash desk API (1xbet & co) names things the other way round: its «Limit» is the money the desk can
-            still pay out — the real balance, shown here as the limit; its «Balance» is the desk's turnover */
-         const has = (v) => v !== null && v !== undefined && v !== '';
-@@ -1515,20 +1571,31 @@
-         const limit = cashes.reduce((a, c) => a + num(c.last_limit), 0);
-         const turnover = cashes.reduce((a, c) => a + num(c.last_balance), 0);
-         const usd = Number(r.usd_rate) > 0 ? income / Number(r.usd_rate) : 0;
+-        /* the cash desk API (1xbet & co) names things the other way round: its «Limit» is the money the desk can
+-           still pay out — the real balance, shown here as the limit; its «Balance» is the desk's turnover */
+-        const has = (v) => v !== null && v !== undefined && v !== '';
+-        const num = (v) => (has(v) ? Number(v) : 0);
+-        const limit = cashes.reduce((a, c) => a + num(c.last_limit), 0);
+-        const turnover = cashes.reduce((a, c) => a + num(c.last_balance), 0);
+-        const usd = Number(r.usd_rate) > 0 ? income / Number(r.usd_rate) : 0;
 -        box.appendChild(h('div', { class: 'dark-card' }, h('div', { class: 'cap' }, 'Приблизительный доход'), h('div', { class: 'big' }, money(income) + ' ₽'), h('div', { class: 'sub' }, '~ ' + money0(usd) + ' $'), h('div', { class: 'grid' }, h('div', null, h('small', null, 'Выводы 1WIN'), h('b', null, money0(wdSum) + ' ₽')), h('div', null, h('small', null, 'Лимит 1WIN'), h('b', null, money0(limit) + ' ₽')))));
 -        box.appendChild(h('div', { class: 'stat2' }, h('div', { class: 'card stat-card green' }, h('div', { class: 'ico' }, svg('arrowUR', 22)), h('div', { class: 'l' }, 'Пополнения'), h('div', { class: 'v' }, money0(depSum) + ' ₽'), h('span', { class: 'chip' }, depCount + ' транзакций')), h('div', { class: 'card stat-card red' }, h('div', { class: 'ico' }, svg('arrowDL', 22)), h('div', { class: 'l' }, 'Выводы'), h('div', { class: 'v' }, money0(wdSum) + ' ₽'), h('span', { class: 'chip' }, wdCount + ' транзакций'))));
 -                /* NET_PROFIT_BREAKDOWN_1_13_9_35 */
-+        box.appendChild(h('div', { class: 'dark-card' }, h('div', { class: 'cap' }, 'Приблизительный доход'), h('div', { class: 'big' }, money(income) + ' ₽'), h('div', { class: 'sub' }, '~ ' + money0(usd) + ' $'), h('div', { class: 'grid' }, h('div', null, h('small', null, 'Доход 1WIN'), h('b', null, money0(w1.net) + ' ₽')), h('div', null, h('small', null, 'Доход 1xBet'), h('b', null, money0(x1.net) + ' ₽')))));
-+        box.appendChild(h('div', { class: 'stat2' }, h('div', { class: 'card stat-card green' }, h('div', { class: 'ico' }, svg('arrowUR', 22)), h('div', { class: 'l' }, 'Пополнения'), h('div', { class: 'v' }, money0(depSum + xDep) + ' ₽'), h('span', { class: 'chip' }, (depCount + xDepN) + ' транзакций')), h('div', { class: 'card stat-card red' }, h('div', { class: 'ico' }, svg('arrowDL', 22)), h('div', { class: 'l' }, 'Выводы'), h('div', { class: 'v' }, money0(wdSum + xWd) + ' ₽'), h('span', { class: 'chip' }, (wdCount + xWdN) + ' транзакций'))));
-+        /* NET_PROFIT_BREAKDOWN_1_13_9_35 */
-+        const calcCard = (title, d, dn, w, wn, c, dp, wp) => h('div', { class: 'card list-card' },
-+          h('div', { class: 'cap' }, svg('layers', 18), title),
-+          h('div', { class: 'kv-row' }, h('span', null, 'Пополнения · ' + dn), h('span', { class: 'amt' }, money0(d) + ' ₽')),
-+          h('div', { class: 'kv-row' }, h('span', null, 'Выводы · ' + wn), h('span', { class: 'amt' }, money0(w) + ' ₽')),
-+          h('div', { class: 'kv-row' }, h('span', null, 'Доход с пополнений · ' + pctTxt(dp)), h('span', { class: 'amt' }, '+' + money(c.di) + ' ₽')),
-+          h('div', { class: 'kv-row' }, h('span', null, 'Доход с выводов · ' + pctTxt(wp)), h('span', { class: 'amt' }, '+' + money(c.wi) + ' ₽')),
-+          h('div', { class: 'kv-row' }, h('span', null, 'Банк за поступления · 1%'), h('span', { class: 'amt' }, '−' + money(c.bi) + ' ₽')),
-+          h('div', { class: 'kv-row' }, h('span', null, 'Банк за вывод · 0,8%'), h('span', { class: 'amt' }, '−' + money(c.bo) + ' ₽')),
-+          h('div', { class: 'kv-row hl' }, h('span', { class: 'lbl-ico' }, svg('wallet', 20), 'Чистый доход'), h('span', { class: 'amt' }, money(c.net) + ' ₽')));
-         box.appendChild(h('div', { class: 'section-cap' }, 'Калькуляция дохода'));
-+        box.appendChild(calcCard('1WIN', depSum, depCount, wdSum, wdCount, w1, PROFIT_DEPOSIT_PCT, PROFIT_WITHDRAW_PCT));
-+        box.appendChild(calcCard('1xBet', xDep, xDepN, xWd, xWdN, x1, XBET_DEPOSIT_PCT, XBET_WITHDRAW_PCT));
-+        box.appendChild(h('div', { class: 'section-cap' }, 'Расходы и деп на кассу'));
-         box.appendChild(h('div', { class: 'card list-card' },
+-        box.appendChild(h('div', { class: 'section-cap' }, 'Калькуляция дохода'));
+-        box.appendChild(h('div', { class: 'card list-card' },
 -          h('div', { class: 'kv-row' }, h('span', null, 'Доход с пополнений · 10%'), h('span', { class: 'amt' }, '+' + money(depositIncome) + ' ₽')),
 -          h('div', { class: 'kv-row' }, h('span', null, 'Доход с выводов · 2%'), h('span', { class: 'amt' }, '+' + money(withdrawIncome) + ' ₽')),
 -          h('div', { class: 'kv-row' }, h('span', null, 'Банк за поступления · 1%'), h('span', { class: 'amt' }, '−' + money(bankIncomingLoss) + ' ₽')),
 -          h('div', { class: 'kv-row' }, h('span', null, 'Банк за вывод · 0,8%'), h('span', { class: 'amt' }, '−' + money(bankWithdrawLoss) + ' ₽')),
 -          h('div', { class: 'kv-row hl' }, h('span', { class: 'lbl-ico' }, svg('wallet', 20), 'Приблизительный чистый доход'), h('span', { class: 'amt' }, money(income) + ' ₽'))
 -        ));
-+          h('div', { class: 'kv-row' }, h('span', null, 'Расходы · ' + (spent.expenses_count || 0)), h('span', { class: 'amt' }, '−' + money0(spentSum) + ' ₽')),
-+          h('div', { class: 'kv-row' }, h('span', null, 'Деп на кассу 1WIN'), h('span', { class: 'amt' }, money0(tops['1win'] || 0) + ' ₽')),
-+          h('div', { class: 'kv-row' }, h('span', null, 'Деп на кассу 1xBet'), h('span', { class: 'amt' }, money0(tops['1xbet'] || 0) + ' ₽')),
-+          h('div', { class: 'kv-row hl' }, h('span', { class: 'lbl-ico' }, svg('wallet', 20), 'Доход минус расходы'), h('span', { class: 'amt' }, money(income - spentSum) + ' ₽')),
-+          h('div', { class: 'muted small', style: { marginTop: '6px' } }, 'Деп на кассу — свои деньги на кассу, не расход и не доход.')));
- box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' }, svg('layers', 18), '1WIN · баланс и лимит'), cashes.length ? cashes.map((c) => h('div', { class: 'kv-row' }, c.name, h('span', { class: 'amt' }, has(c.last_limit) ? money0(c.last_limit) + ' ₽' : '—'))) : h('div', { class: 'muted' }, 'Касс нет'), h('div', { class: 'kv-row hl' }, h('span', { class: 'lbl-ico' }, svg('wallet', 20), 'Оборот 1WIN'), h('span', { class: 'amt' }, money0(turnover) + ' ₽'))));
-         box.appendChild(h('div', { class: 'section-cap' }, 'Разбивка по шлюзам'));
+-box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' }, svg('layers', 18), '1WIN · баланс и лимит'), cashes.length ? cashes.map((c) => h('div', { class: 'kv-row' }, c.name, h('span', { class: 'amt' }, has(c.last_limit) ? money0(c.last_limit) + ' ₽' : '—'))) : h('div', { class: 'muted' }, 'Касс нет'), h('div', { class: 'kv-row hl' }, h('span', { class: 'lbl-ico' }, svg('wallet', 20), 'Оборот 1WIN'), h('span', { class: 'amt' }, money0(turnover) + ' ₽'))));
+-        box.appendChild(h('div', { class: 'section-cap' }, 'Разбивка по шлюзам'));
 -        rows.forEach((c) => { const cash = feeOf(c.name); box.appendChild(h('div', { class: 'card gw-card' }, h('div', { class: 'head' }, h('b', null, c.name), h('span', { class: 'income' }, 'Чистый доход: ' + money(incomeOf(c)) + ' ₽')), h('div', { class: 'cols' }, h('div', null, h('small', null, 'Ввод'), h('b', null, money0(c.deposits_sum) + ' ₽'), h('em', null, c.deposits_count + ' операций')), h('div', null, h('small', null, 'Вывод'), h('b', null, money0(c.withdrawals_sum) + ' ₽'), h('em', null, c.withdrawals_count + ' операций'))), h('div', { class: 'foot' }, 'Лимит (баланс кассы):', h('b', null, has(cash.last_limit) ? money0(cash.last_limit) + ' ₽' : '—')), h('div', { class: 'foot' }, 'Оборот кассы:', h('b', null, has(cash.last_balance) ? money0(cash.last_balance) + ' ₽' : money0(Number(c.deposits_sum) + Number(c.withdrawals_sum)) + ' ₽')))); });
-+        rows.concat(xrows).forEach((c) => { const cash = feeOf(c.name); box.appendChild(h('div', { class: 'card gw-card' }, h('div', { class: 'head' }, h('b', null, c.name), h('span', { class: 'income' }, 'Чистый доход: ' + money(incomeOf(c)) + ' ₽')), h('div', { class: 'cols' }, h('div', null, h('small', null, 'Ввод'), h('b', null, money0(c.deposits_sum) + ' ₽'), h('em', null, c.deposits_count + ' операций')), h('div', null, h('small', null, 'Вывод'), h('b', null, money0(c.withdrawals_sum) + ' ₽'), h('em', null, c.withdrawals_count + ' операций'))), h('div', { class: 'foot' }, 'Лимит (баланс кассы):', h('b', null, has(cash.last_limit) ? money0(cash.last_limit) + ' ₽' : '—')), h('div', { class: 'foot' }, 'Оборот кассы:', h('b', null, has(cash.last_balance) ? money0(cash.last_balance) + ' ₽' : money0(Number(c.deposits_sum) + Number(c.withdrawals_sum)) + ' ₽')))); });
+-
+-        /* TIYIN_TABLE_UI_1_13_9_35 -- separate from approximate profit; 1 som = 100 tiyin. */
+-        const tiyinRows = (r.by_cash || []).filter((c) => Number(c.tiyin_count || 0) > 0);
+-        const tiyinTotal = Math.round(Number(r.tiyin_count || 0));
+-        const tiyinSom = Number(r.tiyin_income || (tiyinTotal / 100));
+-        const tiyinText = (v) => Math.round(Number(v || 0)).toLocaleString('ru-RU');
+-        box.appendChild(h('div', { class: 'section-cap' }, 'Доход с тыйынов'));
+-        box.appendChild(h('div', { class: 'card list-card' },
+-          h('div', { class: 'cap' }, svg('wallet', 18), 'Отдельный учёт · 1 сом = 100 тыйын'),
+-          tiyinRows.length ? tiyinRows.map((c) => h('div', { class: 'kv-row' },
+-            h('span', null, c.name),
+-            h('span', { class: 'amt' }, tiyinText(c.tiyin_count) + ' тыйын = ', h('b', null, money(Number(c.tiyin_income || 0))), ' сом')
+-          )) : h('div', { class: 'muted' }, 'Тыйынов за период нет'),
+-          h('div', { class: 'kv-row hl' },
+-            h('span', { class: 'lbl-ico' }, svg('wallet', 20), 'Всего тыйынов'),
+-            h('span', { class: 'amt' }, tiyinText(tiyinTotal) + ' тыйын = ', h('b', null, money(tiyinSom)), ' сом')
+-          )
+-        ));
+-      } catch (e) { box.innerHTML = ''; box.appendChild(empty('Ошибка', e.message)); }
++      const my = ++seq;
++      box.innerHTML = ''; box.appendChild(loader(2));
++      let r;
++      try { const [f, t] = range(); r = await api('/stats?date_from=' + f + '&date_to=' + t, { timeout: 20000 }); }
++      catch (e) { if (my === seq) { box.innerHTML = ''; box.appendChild(empty('Не загрузилось', e.message, 'alert')); } return; }
++      if (my !== seq || !box.isConnected) return;
++      box.innerHTML = '';
++      const fees = r.fees || {};
++      const RATES = { '1win': [10, 2], '1xbet': [anNum(fees.xbet_deposit_pct, 8), anNum(fees.xbet_withdraw_pct, 2)] };
++      const BANK_IN = anNum(fees.bank_incoming_pct, 1), BANK_OUT = anNum(fees.bank_withdraw_pct, 0);
++      const pct = (v) => String(v).replace('.', ',') + '%';
++      const calc = (g, d, w) => { const [dp, wp] = RATES[g] || [0, 0]; const di = d * dp / 100, wi = w * wp / 100, bi = d * BANK_IN / 100, bo = w * BANK_OUT / 100; return { di, wi, bi, bo, net: di + wi - bi - bo }; };
++      const groupOf = (c) => c.group || (/xbet/i.test(String(c.cash || '')) ? '1xbet' : (/^1win/i.test(String(c.cash || '')) ? '1win' : 'other'));
++      const desk = (g) => { const rows = (r.by_cash || []).filter((c) => groupOf(c) === g); const sum = (k) => rows.reduce((a, c) => a + anNum(c[k]), 0); const d = sum('deposits_sum'), w = sum('withdrawals_sum'); return { g, d, w, dn: sum('deposits_count'), wn: sum('withdrawals_count'), c: calc(g, d, w) }; };
++      const W1 = desk('1win'), X1 = desk('1xbet');
++      const income = W1.c.net + X1.c.net;
++      const spent = r.spent || {}; const spentSum = anNum(spent.expenses_sum); const tops = spent.topups || {};
++      const usd = anNum(r.usd_rate) > 0 ? income / anNum(r.usd_rate) : 0;
++      // hero: the one number
++      const big = h('div', { class: 'big' }, '0');
++      box.appendChild(h('div', { class: 'dark-card an-hero' },
++        h('div', { class: 'cap' }, 'Чистый доход ' + (st.p === 'custom' ? 'за период' : PERIOD_LABEL[st.p] || '')), big,
++        h('div', { class: 'an-hero-sub' }, h('span', null, '≈ ' + money0(usd) + ' $'), h('span', null, '1WIN ' + money0(W1.c.net)), h('span', null, '1xBet ' + money0(X1.c.net)))));
++      countUp(big, income, (v) => money0(Math.round(v)) + ' ₽');
++      // three numbers in one strip
++      const kpi = (l, v, sub, cls) => h('div', { class: 'an-kpi ' + (cls || '') }, h('small', null, l), h('b', null, money0(v)), h('em', null, sub));
++      box.appendChild(h('div', { class: 'card an-kpis' },
++        kpi('Пополнения', W1.d + X1.d, (W1.dn + X1.dn) + ' шт.', 'in'), kpi('Выводы', W1.w + X1.w, (W1.wn + X1.wn) + ' шт.', 'out'), kpi('Расходы', spentSum, (spent.expenses_count || 0) + ' зап.', 'sp')));
++      // the chart
++      const pts = ((r.series || {}).points) || [];
++      const valueOf = (p) => { const d1 = anNum(p['1win'] && p['1win'].d), w1 = anNum(p['1win'] && p['1win'].w), dx = anNum(p['1xbet'] && p['1xbet'].d), wx = anNum(p['1xbet'] && p['1xbet'].w), dO = anNum(p.other && p.other.d), wO = anNum(p.other && p.other.w);
++        if (st.metric === 'in') return d1 + dx + dO; if (st.metric === 'out') return w1 + wx + wO; return calc('1win', d1, w1).net + calc('1xbet', dx, wx).net; };
++      const unit = (r.series || {}).unit || 'day';
++      const tipOf = (p) => { const parts = String(p.key).split('-'); const when = unit === 'month' ? AN_MONTHS[Number(parts[1]) - 1] + ' ' + parts[0] : Number(parts[2]) + ' ' + AN_MONTHS[Number(parts[1]) - 1];
++        const d = anNum(p['1win'] && p['1win'].d) + anNum(p['1xbet'] && p['1xbet'].d) + anNum(p.other && p.other.d), w = anNum(p['1win'] && p['1win'].w) + anNum(p['1xbet'] && p['1xbet'].w) + anNum(p.other && p.other.w);
++        const m = st.metric; return h('div', null, h('small', null, when), h('b', null, money0(valueOf(p)) + ' ₽'), h('span', null, m === 'income' ? 'ввод ' + anK(d) + ' · вывод ' + anK(w) : (p.count || 0) + ' пополн.')); };
++      const metric = segEl([['income', 'Доход'], ['in', 'Ввод'], ['out', 'Вывод']], st.metric, (k) => { st.metric = k; keep(); chartBox.innerHTML = ''; chartBox.appendChild(pts.some((p) => valueOf(p) > 0) ? anChart(pts, unit, valueOf, tipOf) : h('div', { class: 'an-empty' }, 'Нет операций за период')); }, 'an-metric light');
++      const chartBox = h('div');
++      chartBox.appendChild(pts.some((p) => valueOf(p) > 0) ? anChart(pts, unit, valueOf, tipOf) : h('div', { class: 'an-empty' }, 'Нет операций за период'));
++      box.appendChild(h('div', { class: 'card an-chart' }, h('div', { class: 'an-chart-head' }, h('b', null, unit === 'month' ? 'По месяцам' : 'По дням'), metric), chartBox));
++      // desks: one small table, a tap shows the calculation
++      const deskRow = (label, x) => {
++        const [dp, wp] = RATES[x.g];
++        const more = h('div', { class: 'an-more', hidden: true },
++          h('div', null, h('span', null, 'С пополнений · ' + pct(dp)), h('b', null, '+' + money(x.c.di))),
++          h('div', null, h('span', null, 'С выводов · ' + pct(wp)), h('b', null, '+' + money(x.c.wi))),
++          BANK_IN > 0 ? h('div', null, h('span', null, 'Банк за поступления · ' + pct(BANK_IN)), h('b', null, '−' + money(x.c.bi))) : null,
++          BANK_OUT > 0 ? h('div', null, h('span', null, 'Банк за вывод · ' + pct(BANK_OUT)), h('b', null, '−' + money(x.c.bo))) : null);
++        const row = h('button', { class: 'an-desk', type: 'button', onclick: () => { more.hidden = !more.hidden; row.classList.toggle('open', !more.hidden); } },
++          h('span', { class: 'an-desk-name' }, h('i', { class: 'tx-bk ' + (x.g === '1xbet' ? 'x' : 'w') }, label), svg('chevron', 14)),
++          h('span', null, money0(x.d)), h('span', null, money0(x.w)), h('b', null, money0(x.c.net)));
++        return [row, more];
++      };
++      box.appendChild(h('div', { class: 'card an-desks' },
++        h('div', { class: 'an-desk head' }, h('span', null, 'Касса'), h('span', null, 'Ввод'), h('span', null, 'Вывод'), h('span', null, 'Доход')),
++        ...deskRow('1WIN', W1), ...deskRow('1xBet', X1)));
++      // the rest in one line each
++      const tiyin = Math.round(anNum(r.tiyin_count));
++      box.appendChild(h('div', { class: 'card an-foot' },
++        h('div', null, h('span', null, 'Доход минус расходы'), h('b', { class: income - spentSum < 0 ? 'neg' : '' }, money0(income - spentSum) + ' ₽')),
++        h('div', null, h('span', null, 'Деп на кассу'), h('b', null, '1WIN ' + money0(tops['1win'] || 0) + ' · 1xBet ' + money0(tops['1xbet'] || 0))),
++        tiyin > 0 ? h('div', null, h('span', null, 'Тыйыны (отдельно)'), h('b', null, tiyin.toLocaleString('ru-RU') + ' = ' + money(anNum(r.tiyin_income)) + ' сом')) : null));
+     };
+-    draw();
++    drawPeriods(); draw();
+   }
  
-         /* TIYIN_TABLE_UI_1_13_9_35 -- separate from approximate profit; 1 som = 100 tiyin. */
-         const tiyinRows = (r.by_cash || []).filter((c) => Number(c.tiyin_count || 0) > 0);
-@@ -1631,6 +1698,8 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+   /* ------------------------------------------------------------- wallets (Кошельки) */
+@@ -1631,6 +1761,8 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
          h('div',{class:'dm-meta'},h('span',{class:'dm-chip'+(w.state==='online'?' on':'')},h('i'),live),h('span',{class:'dm-chip'},svg('qr',14),w.requisite?w.requisite.name+(w.requisite.enabled?'':' (выкл.)'):'QR не привязан'),w.recipient?h('span',{class:'dm-chip'},svg('user',14),w.recipient):null),
          w.last_error?h('div',{class:'ow-status-msg'},w.last_error):null,
          h('div',{class:'dm-trust'},svg('shield',15),trust),
@@ -228,7 +466,7 @@ index a31dae0..3dae63a 100644
          w.spam&&w.spam.on?h('div',{class:'dm-spam'+(w.spam.connected?' on':'')},svg('filter',14),w.spam.connected?('Папка «'+(w.spam.folder||'Спам')+'» тоже читается'+(w.spam.found?' · писем банка оттуда: '+w.spam.found+' — отметьте «Не спам»':'')):('«Спам»: '+(w.spam.error||'подключение…'))):null,
          (w.rejected||[]).length?h('div',{class:'dm-rej'},'Отклонено: '+w.rejected.slice(-1)[0].reason):null,
          (w.payments||[]).length?h('div',{class:'dm-pays'},w.payments.map((p)=>h('div',{class:'dm-pay'},h('b',null,money(p.amount)+' KGS'),h('small',null,fmtDate(p.at)),h('span',{class:'dm-st '+(p.status||'')},payWord(p))))):h('div',{class:'dm-empty'},'Поступлений пока нет — первое письмо банка появится здесь'),
-@@ -2012,7 +2081,6 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2012,7 +2144,6 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
        box.innerHTML = ''; box.appendChild(loader());
        let r; try { r = await api('/sites'); } catch (e) { box.innerHTML = ''; box.appendChild(empty('Не удалось загрузить', e.message)); return; }
        const frag = h('div', { class: 'sites' });
@@ -236,7 +474,7 @@ index a31dae0..3dae63a 100644
        frag.appendChild(h('div', { class: 'card setting-row' }, h('div', null, h('b', null, '🎡 Фриспин (колесо)'), h('small', null, 'Бесплатный прокрут · настройки во вкладке «Фриспин»')), switchEl(!!r.wheel_master, (val) => toggle('all', 'wheel_master', val))));
        (r.bots || []).forEach((b) => {
          const card = h('div', { class: 'card site-card' });
-@@ -2020,7 +2088,6 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2020,7 +2151,6 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
          const row = (label, target, on, sub) => h('div', { class: 'setting-row' }, h('div', null, h('span', null, label), sub ? h('small', { class: 'muted' }, ' ' + sub) : null), switchEl(!!on, (val) => toggle(b.bot, target, val)));
          card.appendChild(row('Пополнения', 'deposits', b.deposits));
          card.appendChild(row('Выводы', 'withdrawals', b.withdrawals));
@@ -244,7 +482,7 @@ index a31dae0..3dae63a 100644
          card.appendChild(row('🎡 Фриспин', 'wheel', b.wheel_toggle, b.wheel ? '' : (r.wheel_master ? '' : '· выключен сверху')));
          if ((b.cashes || []).length) { card.appendChild(h('div', { class: 'site-sub' }, 'Букмекеры')); (b.cashes || []).forEach((c) => card.appendChild(row((c.emoji ? c.emoji + ' ' : '') + c.name, 'cash:' + c.key, c.on, c.global_enabled ? '' : '· выключена глобально'))); }
          frag.appendChild(card);
-@@ -2044,7 +2111,7 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2044,7 +2174,7 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
          const inp = (k) => h('input', { class: 'input', value: (v[k] == null ? '' : String(v[k])) });
          const amt = inp('wheel_win_amount'), cap = inp('wheel_daily_win_cap'), ch = inp('wheel_win_chance_pct'), nd = inp('wheel_new_client_days'), nc = inp('wheel_new_client_chance_pct'), bm = inp('wheel_big_client_min'), bc = inp('wheel_big_client_chance_pct');
          frag.appendChild(h('div', { class: 'card crypto-cfg' },
@@ -253,7 +491,7 @@ index a31dae0..3dae63a 100644
            h('label', { class: 'field' }, h('span', null, 'Лимит выигрышей в сутки'), cap),
            h('label', { class: 'field' }, h('span', null, 'Базовый шанс выигрыша, %'), ch),
            h('label', { class: 'field' }, h('span', null, 'Новый клиент: дней с регистрации'), nd),
-@@ -2053,10 +2120,29 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2053,10 +2183,29 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
            h('label', { class: 'field' }, h('span', null, 'Шанс для крупных клиентов, %'), bc),
            h('button', { class: 'primary-btn', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; try { await api('/wheel/settings', { method: 'POST', body: { values: { wheel_win_amount: parseInt(amt.value) || 0, wheel_daily_win_cap: parseInt(cap.value) || 0, wheel_win_chance_pct: parseInt(ch.value) || 0, wheel_new_client_days: parseInt(nd.value) || 0, wheel_new_client_chance_pct: parseInt(nc.value) || 0, wheel_big_client_min: parseInt(bm.value) || 0, wheel_big_client_chance_pct: parseInt(bc.value) || 0 } } }); toast('Сохранено', 'ok'); } catch (ex) { err(ex); } b.disabled = false; } }, 'Сохранить')));
        }
@@ -283,7 +521,7 @@ index a31dae0..3dae63a 100644
          const st = { claimable: ['amber', 'ждёт пополнения'], claimed: ['blue', 'в работе'], credited: ['green', 'выплачено'], rejected: ['red', 'отклонено'] }[w.status] || ['', w.status];
          frag.appendChild(h('div', { class: 'card crypto-ord' },
            h('div', { class: 'co-head' }, h('b', null, money0(w.amount) + ' ' + curSign('KGS')), h('span', { class: 'co-badge ' + st[0] }, st[1])),
-@@ -2085,52 +2171,6 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2085,52 +2234,6 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
        h('button', { class: 'primary-btn', onclick: async (e) => { const b = e.currentTarget; const pid = (idInp.value || '').replace(/\D/g, ''); if (!pid) { toast('Введите ID', 'err'); return; } b.disabled = true; try { const r = await api('/wheel/' + win.id + '/credit', { method: 'POST', body: { cash_id: chosen, player_id: pid } }); if (r.ok) { toast('Приз зачислён', 'ok'); sh.close(); if (reload) reload(); } else { toast(r.message || 'Не удалось зачислить', 'err'); b.disabled = false; } } catch (ex) { err(ex); b.disabled = false; } } }, 'Зачислить ' + money0(win.amount)),
        h('button', { class: 'action-btn', onclick: () => sh.close() }, 'Отмена')] });
    }
@@ -336,7 +574,7 @@ index a31dae0..3dae63a 100644
    async function cashesView(shell) {
      const box = page(shell, 'Кассы', { right: can('cashes') ? h('button', { class: 'icon-btn', onclick: () => cashForm(null), 'aria-label': 'Добавить' }, svg('plus', 26)) : null });
      try {
-@@ -2357,7 +2397,8 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2357,10 +2460,11 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
    function expenseQuick(pre) {
      pre = pre || {};
      const meta = EXP_META || { suggestions: [], categories: EXP_CATS };
@@ -345,8 +583,12 @@ index a31dae0..3dae63a 100644
 +    const st = { cat: pre.category || '', kind: pre.kind === 'cash_topup' ? 'cash_topup' : 'expense', cash: pre.cash === '1xbet' ? '1xbet' : '1win' };
      const amount = h('input', { class: 'exp-amount-in', type: 'text', inputmode: 'decimal', enterkeyhint: 'next', placeholder: '0', autocomplete: 'off', 'aria-label': 'Сумма', value: pre.amount ? String(Number(pre.amount)) : '' });
      const sum = h('label', { class: 'exp-amount' }, amount, h('span', { class: 'exp-cur' }, curSign('KGS')));
-     const title = h('input', { class: 'input exp-title-in', type: 'text', enterkeyhint: 'done', placeholder: 'За что', maxlength: 160, autocomplete: 'off', 'aria-label': 'За что', value: pre.title || '' });
-@@ -2369,19 +2410,30 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+-    const title = h('input', { class: 'input exp-title-in', type: 'text', enterkeyhint: 'done', placeholder: 'За что', maxlength: 160, autocomplete: 'off', 'aria-label': 'За что', value: pre.title || '' });
++    const title = h('input', { class: 'input exp-title-in', type: 'text', enterkeyhint: 'done', placeholder: 'На что потратили', maxlength: 160, autocomplete: 'off', 'aria-label': 'На что потратили', value: pre.title || '' });
+     const catRow = h('div', { class: 'exp-chips', 'data-hscroll': '' });
+     const drawCats = () => { catRow.innerHTML = ''; (meta.categories || EXP_CATS).forEach((c) => catRow.appendChild(h('button', { class: 'exp-chip' + (st.cat === c ? ' on' : ''), type: 'button', onclick: () => { st.cat = st.cat === c ? '' : c; drawCats(); buzz(6); } }, svg(expIcon(c), 15), c))); };
+     drawCats();
+@@ -2369,19 +2473,31 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
      const save = h('button', { class: 'primary-btn exp-save', type: 'button' }, svg('check', 18), pre.id ? 'Сохранить' : 'Записать');
      const all = pre.id || pre.balance_log_id ? null : h('button', { class: 'exp-all', type: 'button', onclick: () => { s.close(); go('#/expenses'); } }, 'Все расходы', svg('chevron', 14));
      const from = pre.balance_log_id ? h('div', { class: 'exp-from' }, svg('bank', 15), 'Списание с Optima' + (pre.when ? ' · ' + pre.when : '')) : null;
@@ -358,7 +600,8 @@ index a31dae0..3dae63a 100644
 +    const applyKind = () => { const top = st.kind === 'cash_topup'; [title, catRow, suggRow, sheetEl().querySelector('.exp-sugg')].forEach((el) => { if (el) el.style.display = top ? 'none' : ''; }); cashRow.style.display = top ? '' : 'none'; cashHint.style.display = top ? '' : 'none'; };
 +    const drawKind = () => { kindRow.innerHTML = ''; [['expense', 'Расход', 'receipt'], ['cash_topup', 'Деп на кассу', 'bank']].forEach(([k, l, ic]) => kindRow.appendChild(h('button', { class: 'exp-kind-btn' + (st.kind === k ? ' on ' + k : ''), type: 'button', onclick: () => { st.kind = k; drawKind(); applyKind(); buzz(6); } }, svg(ic, 16), l))); };
 +    drawKind(); drawCash();
-+    const s = sheet({ form: true, title: pre.id ? 'Изменить запись' : (pre.balance_log_id ? 'Списание в расходы' : 'Новая запись'), body: h('div', { class: 'exp-quick' }, from, kindRow, sum, cashRow, cashHint, title, suggRow, catRow, save, all) });
++    /* ONE_NAME_1_13_9_85: no preset category chips — what it was spent on is the category (the same text = one group) */
++    const s = sheet({ form: true, title: pre.id ? 'Изменить запись' : (pre.balance_log_id ? 'Списание в расходы' : 'Новая запись'), body: h('div', { class: 'exp-quick' }, from, kindRow, sum, cashRow, cashHint, title, suggRow, save, all) });
 +    const sheetEl = () => (s && s.el) || document;
 +    applyKind();
      const shake = (el) => { el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); buzz(14); };
@@ -380,7 +623,7 @@ index a31dae0..3dae63a 100644
          const fab = document.getElementById('exp-fab'); if (fab) { fab.classList.remove('done'); void fab.offsetWidth; fab.classList.add('done'); setTimeout(() => fab.classList.remove('done'), 1500); }
          expMeta(true); if (pre.onSaved) pre.onSaved(r.item);
        } catch (ex) { err(ex); busy(save, false); }
-@@ -2390,9 +2442,10 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2390,9 +2506,10 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
      amount.addEventListener('input', () => { const c = amount.value.replace(/[^\d.,\s]/g, ''); if (c !== amount.value) amount.value = c; sum.classList.toggle('filled', !!c); });
      amount.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); title.focus(); } });
      title.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
@@ -392,7 +635,7 @@ index a31dae0..3dae63a 100644
    }
    async function expensesView(shell) {
      const tab = state.route.id === 'optima' ? 'optima' : 'list';
-@@ -2407,7 +2460,7 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2407,7 +2524,7 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
      const dayName = (d) => { const k = dayKey(d); const t = dayKey(new Date()); const y = dayKey(new Date(Date.now() - 86400000)); return k === t ? 'Сегодня' : (k === y ? 'Вчера' : new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })); };
      const hm = (d) => new Date(d).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
      const rowMenu = (it) => actionSheet(it.title, [
@@ -401,7 +644,7 @@ index a31dae0..3dae63a 100644
        { label: 'Удалить', icon: 'trash', cls: 'danger', onclick: async () => { if (!(await confirmDialog('Удалить расход «' + it.title + '» на ' + money0(it.amount) + expCur() + '?', 'Удалить', true))) return; try { await api('/expenses/' + it.id, { method: 'DELETE' }); toast('Удалено', 'ok'); draw(); } catch (ex) { err(ex); } } },
      ]);
      const drawList = async () => {
-@@ -2420,6 +2473,8 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2420,20 +2537,25 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
        content.appendChild(h('div', { class: 'card exp-hero' }, h('small', null, { today: 'Потрачено сегодня', week: 'Потрачено за 7 дней', month: 'Потрачено за 30 дней', all: 'Потрачено всего' }[st.period]), big, h('span', { class: 'exp-hero-n' }, (cur.count || 0) + ' ' + ((n) => n % 10 === 1 && n % 100 !== 11 ? 'запись' : ([2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'записи' : 'записей'))(cur.count || 0)),
          h('div', { class: 'exp-mini' }, [['Сегодня', t.today], ['7 дней', t.week], ['30 дней', t.month]].map(([l, v]) => h('div', null, h('small', null, l), h('b', null, money0((v || {}).sum || 0) + expCur()))))));
        countUp(big, Number(cur.sum || 0), (v) => money0(Math.round(v)) + expCur());
@@ -410,7 +653,10 @@ index a31dae0..3dae63a 100644
        const cats = r.by_category || [];
        if (cats.length > 1) {
          const max = Math.max(...cats.map((c) => Number(c.sum) || 0), 1);
-@@ -2429,11 +2484,14 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+-        const card = h('div', { class: 'card section-card exp-cats' }, h('h2', null, 'По категориям'));
++        const card = h('div', { class: 'card section-card exp-cats' }, h('h2', null, 'На что тратим'));
+         cats.forEach((c, i) => { const bar = h('i', { style: { width: '0%' } }); card.appendChild(h('div', { class: 'exp-cat' }, h('span', { class: 'exp-cat-ico' }, svg(expIcon(c.category), 16)), h('div', null, h('div', { class: 'exp-cat-top' }, h('b', null, c.category), h('span', null, money0(c.sum) + expCur())), h('div', { class: 'exp-bar' }, bar)))); setTimeout(() => { bar.style.width = Math.max(3, (Number(c.sum) || 0) / max * 100) + '%'; }, 60 + i * 50); });
+         content.appendChild(card);
        }
        const items = r.items || [];
        if (!items.length) { content.appendChild(empty('Расходов пока нет', 'Нажмите «+» вверху или кнопку на главном экране', 'note')); return; }
@@ -427,7 +673,7 @@ index a31dae0..3dae63a 100644
            h('span', { class: 'exp-row-ico' + (it.source === 'optima' ? ' opt' : '') }, svg(it.source === 'optima' ? 'bank' : expIcon(it.category), 18)),
            h('div', null, h('b', null, it.title), h('small', null, [it.category, hm(it.spent_at), it.created_by, it.source === 'optima' ? 'из Optima' : ''].filter(Boolean).join(' · '))),
            h('strong', null, '−' + money0(it.amount) + expCur()))));
-@@ -2748,10 +2806,10 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
+@@ -2748,10 +2870,10 @@ box.appendChild(h('div', { class: 'card list-card' }, h('div', { class: 'cap' },
          if (item.state === 'waiting') body.appendChild(h('div', { class: 'tp-wait small' }, h('i', { class: 'tp-spin' }), h('b', null, 'Ждём ответ бота…'), h('small', null, 'Окно можно закрыть — ответ придёт сюда при следующем открытии')));
          else {
            const pick = h('input', { type: 'file', accept: 'image/*,application/pdf', hidden: true });

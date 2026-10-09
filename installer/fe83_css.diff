@@ -1,8 +1,8 @@
 diff --git a/frontend/admin/static/styles-1.13.9.76.css b/frontend/admin/static/styles-1.13.9.76.css
-index dc19427..f8d0695 100644
+index dc19427..fef9737 100644
 --- a/frontend/admin/static/styles-1.13.9.76.css
 +++ b/frontend/admin/static/styles-1.13.9.76.css
-@@ -1340,3 +1340,38 @@ button svg.icon,a svg.icon{pointer-events:none}
+@@ -1340,3 +1340,117 @@ button svg.icon,a svg.icon{pointer-events:none}
  .crypto-ord .co-addr{display:flex;align-items:center;gap:6px;margin-top:6px;font-family:monospace;font-size:12px;word-break:break-all;cursor:pointer;color:var(--accent)}
  .wheel-banner{border:1px solid rgba(210,150,30,.5);background:linear-gradient(180deg,rgba(255,205,70,.14),rgba(255,205,70,.05))}
  .wheel-banner b{font-size:15px}.wheel-banner small{display:block;color:var(--muted);margin-top:2px}
@@ -41,3 +41,82 @@ index dc19427..f8d0695 100644
 +.wv-code{display:inline-flex;align-items:center;gap:8px;margin-top:8px;padding:8px 12px;border-radius:10px;border:1.5px dashed var(--blue);background:var(--blue-soft);color:var(--blue);font:700 15px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em;max-width:100%;word-break:break-all}
 +.wv-code:active{transform:scale(.97)}
 +.tp-receipt-link{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin-top:10px;padding:8px;color:var(--blue);font-size:14px;font-weight:600}
++/* ---- 1.13.9.85: flat blocks (no shadows), compact balances, bookmaker tag, compact analytics ---- */
++:root,:root[data-theme=light],:root[data-theme=dark]{--shadow:none}
++.card,.onewin-live-card,.dark-card,.tx-card,.case-card,.sk,.menu-tile,.stat-card,.period-btn,.seg,.seg.light,.gw-card,.list-card,.hero .add-btn{box-shadow:none!important}
++.card,.onewin-live-card{border:1px solid var(--line)}
++.onewin-live-card{padding:10px 10px 9px;margin:8px 0 10px;border-radius:18px}
++.ow2-head{margin:0 2px 7px;gap:6px}.ow2-head b{font-size:14px}
++.ow2-head small{font-size:11.5px}.ow2-head small.stale{color:var(--amber-ink)}
++.ow2-grid{gap:6px}
++.ow2-tile{padding:7px 9px 8px;border-radius:12px}
++.ow2-tile small{font-size:10.5px;gap:4px}
++.ow2-tile strong{margin-top:2px;font-size:15.5px;letter-spacing:-.2px}
++.ow-dot.warn{background:var(--amber)!important}
++.ow-x1{margin-top:6px;padding:6px 9px;border-radius:11px;font-size:12.5px;gap:7px}
++.ow-x1-ico{width:22px;height:22px;border-radius:7px}.ow-x1-ico svg{width:13px;height:13px}
++.ow-x1-nums{gap:10px;font-size:12px}
++.onewin-live-card .ow-wallet2{margin-top:6px;gap:6px}
++.ow-wallet2-row.two{gap:6px}
++.ow-wallet2-row.two .ow-game{padding:6px 8px;border-radius:11px;gap:7px}
++.ow-wallet2-row.two .ow-topup-ico{width:26px!important;height:26px!important;flex:0 0 26px!important;border-radius:8px!important}
++.ow-wallet2-row.two .ow-topup-ico svg{width:15px;height:15px}
++.ow-wallet2-row.two .ow-game-copy b{font-size:13px!important}
++.ow-wallet2-row.two .ow-game-copy small{font-size:11px}
++.ow2-head .ow-usdt-btn{height:26px;padding:0 8px;font-size:11px}
++.ow-refresh{width:30px;height:30px}
++.tx-copy b .tx-bk{flex:0 0 auto;margin:0 0 0 6px;vertical-align:0}
++.ow-wallet2-row.two .ow-game-copy{min-width:0}
++@media (min-width:360px){.ow-wallet2-row.two .ow-game-copy b,.ow-wallet2-row.two .ow-game-copy small{display:block;white-space:nowrap!important;overflow:hidden;text-overflow:ellipsis}}
++.tx-bk{display:inline-block;margin-right:6px;padding:0 5px;border-radius:5px;font-style:normal;font-size:10.5px;font-weight:700;line-height:16px;letter-spacing:.02em;vertical-align:1px;background:var(--bg2);color:var(--muted)}
++.tx-bk.x{color:#2f6fd0;background:var(--blue-soft)}
++.tx-bk.w{color:var(--ink2)}
++.an .hero{margin-bottom:10px}
++.an-periods{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 0 12px;padding:1px}.an-periods::-webkit-scrollbar{display:none}
++.an-chip{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 13px;border-radius:11px;border:1px solid var(--line);background:var(--card);color:var(--ink2);font-size:14px;font-weight:600;transition:background .18s,color .18s,border-color .18s}
++.an-chip.on{background:var(--ink);color:var(--card);border-color:var(--ink)}
++.an-chip.cal{padding:0 10px}
++.an-hero{padding:16px 18px;margin-bottom:10px;animation:anIn .35s ease both}
++.an-hero .cap{font-size:12px;letter-spacing:.06em;text-transform:uppercase;opacity:.7}
++.an-hero .big{font-size:34px;font-weight:800;letter-spacing:-.8px;margin:4px 0 6px;font-variant-numeric:tabular-nums}
++.an-hero-sub{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:#aeb8c9}
++.an-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:12px 6px;margin-bottom:10px;animation:anIn .35s .05s ease both}
++.an-kpi{padding:0 10px;min-width:0}.an-kpi+.an-kpi{border-left:1px solid var(--line)}
++.an-kpi small{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:11.5px;font-weight:600}
++.an-kpi small::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--muted2)}
++.an-kpi.in small::before{background:var(--green)}.an-kpi.out small::before{background:var(--red)}.an-kpi.sp small::before{background:var(--amber)}
++.an-kpi b{display:block;margin-top:3px;font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.an-kpi em{display:block;font-style:normal;color:var(--muted);font-size:11.5px;margin-top:1px}
++.an-chart{padding:12px 12px 6px;margin-bottom:10px;animation:anIn .35s .1s ease both}
++.an-chart-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 2px 6px}
++.an-chart-head b{font-size:15px}
++.an-metric{height:32px;width:auto;flex:0 0 auto}.an-metric button{font-size:12.5px;padding:0 10px}
++.an-chart-wrap{position:relative;width:100%;min-height:168px}
++.an-svg{display:block;overflow:visible}
++.an-grid{stroke:var(--line);stroke-width:1;shape-rendering:crispEdges}
++.an-axis{fill:var(--muted);font-size:10.5px;font-variant-numeric:tabular-nums}
++.an-peak{fill:var(--ink2);font-size:10.5px;font-weight:700}
++.an-bar{fill:var(--blue);opacity:.86;transition:opacity .15s}
++.an-bar.last{opacity:1}.an-bar.hot{opacity:1;fill:var(--blue2)}
++.an-bar.grow{transform-box:fill-box;transform-origin:50% 100%;transform:scaleY(0);transition:transform .6s cubic-bezier(.2,.8,.2,1),opacity .15s}
++.an-bar.grow.in{transform:scaleY(1)}
++.an-hit{fill:transparent;cursor:pointer;outline:none}
++.an-tip{position:absolute;z-index:2;pointer-events:none;min-width:110px;padding:7px 10px;border-radius:10px;background:var(--ink);color:var(--card);font-size:12px;line-height:1.35;white-space:nowrap}
++.an-tip small{display:block;opacity:.7;font-size:11px}.an-tip b{display:block;font-size:14px;font-variant-numeric:tabular-nums}.an-tip span{display:block;opacity:.75;font-size:11px}
++.an-empty{display:grid;place-items:center;height:120px;color:var(--muted);font-size:13.5px}
++.an-desks{padding:4px 12px;margin-bottom:10px;animation:anIn .35s .15s ease both}
++.an-desk{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;align-items:center;gap:6px;width:100%;padding:10px 2px;text-align:right;font-size:13.5px;font-variant-numeric:tabular-nums;border-bottom:1px solid var(--line);color:var(--ink)}
++.an-desk.head{font-size:11.5px;color:var(--muted);font-weight:600;padding:8px 2px 6px}
++.an-desk>:first-child{text-align:left}
++.an-desk b{font-weight:800}
++.an-desk-name{display:inline-flex;align-items:center;gap:4px}.an-desk-name svg{color:var(--muted);transition:transform .2s}
++.an-desk.open .an-desk-name svg{transform:rotate(90deg)}
++.an-desk-name .tx-bk{font-size:12px;line-height:20px;padding:0 7px}
++.an-more{padding:4px 2px 10px;border-bottom:1px solid var(--line);animation:anIn .2s ease both}
++.an-more div{display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-size:12.5px;color:var(--muted)}.an-more b{color:var(--ink);font-variant-numeric:tabular-nums}
++.an-desks>:last-child{border-bottom:0}
++.an-foot{padding:6px 14px;margin-bottom:12px;animation:anIn .35s .2s ease both}
++.an-foot>div{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;font-size:13.5px;border-bottom:1px solid var(--line)}
++.an-foot>div:last-child{border-bottom:0}.an-foot span{color:var(--muted)}.an-foot b{font-variant-numeric:tabular-nums;text-align:right}.an-foot b.neg{color:var(--red)}
++@keyframes anIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
++@media (prefers-reduced-motion:reduce){.an-hero,.an-kpis,.an-chart,.an-desks,.an-foot,.an-more{animation:none}}
